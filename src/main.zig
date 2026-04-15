@@ -59,6 +59,7 @@ test {
     _ = @import("grammar/normalize.zig");
     _ = @import("grammar/prepare/extract_tokens.zig");
     _ = @import("grammar/prepare/expand_repeats.zig");
+    _ = @import("grammar/prepare/flatten_grammar.zig");
     _ = @import("ir/symbols.zig");
     _ = @import("ir/rules.zig");
     _ = @import("ir/grammar_ir.zig");

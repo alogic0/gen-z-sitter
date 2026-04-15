@@ -78,6 +78,209 @@ PreparedGrammar
 
 The exact type names can differ, but the stage boundaries should be clear and testable.
 
+## Current Status
+
+Implemented and passing:
+
+- post-prepared IR scaffolding:
+  - `src/ir/syntax_grammar.zig`
+  - `src/ir/lexical_grammar.zig`
+  - `src/ir/aliases.zig`
+- token extraction scaffold:
+  - `src/grammar/prepare/extract_tokens.zig`
+- repeat expansion scaffold:
+  - `src/grammar/prepare/expand_repeats.zig`
+- repeat semantics currently covered:
+  - auxiliary repeat creation
+  - repeat deduplication
+  - hidden top-level repeat promotion in place
+  - removal of promoted hidden repeats from `variables_to_inline`
+  - nested repeat auxiliary allocation without symbol-index collisions
+
+Still missing:
+
+- grammar flattening
+- default alias extraction
+- variable info / node-shape aggregation
+- node-type computation
+- deterministic `node-types.json` rendering
+- CLI path to emit or preview `node-types.json`
+- golden tests for generated node-type output
+
+## Remaining Critical Path
+
+Milestone 3 is not blocked on more repeat work. The shortest path to completion is:
+
+1. define flattened syntax IR
+2. implement flattening from extracted syntax grammar
+3. extract default aliases and variable info from flattened grammar
+4. compute node-type structures
+5. render deterministic JSON
+6. add golden-output tests
+
+## Status By Task Group
+
+### Task Group A: Post-prepared IR
+
+Status:
+
+- mostly done for Milestone 3 needs
+
+Remaining:
+
+- decide whether `src/ir/aliases.zig` is sufficient as-is or needs richer lookup helpers once flattening begins
+- add `src/ir/variable_info.zig` only if node-type computation becomes awkward without a dedicated intermediate type
+
+Exit criteria:
+
+- no new IR redesign should be needed once flattening starts
+
+### Task Group B: Token Extraction
+
+Status:
+
+- underway and usable
+
+Already implemented:
+
+- lexical extraction for string/pattern/token-marked rules
+- syntax-side terminal replacement
+- extras vs separators split
+- basic metadata carry-through
+
+Remaining:
+
+- compare `extract_tokens.zig` more closely against upstream `extract_tokens.rs` for:
+  - word-token edge cases
+  - reserved-word token restrictions
+  - external-token behavior
+  - supertype terminal rejection
+- decide whether to implement Milestone 3 errors now or defer some extraction diagnostics to a dedicated cleanup pass
+
+Exit criteria:
+
+- token extraction is stable enough that flattening and node-type work do not need to revisit symbol-category decisions
+
+### Task Group C: Repeat Expansion
+
+Status:
+
+- substantially done for the initial Milestone 3 target
+
+Already implemented:
+
+- explicit repeat auxiliaries
+- auxiliary reuse for repeated content
+- hidden top-level repeat promotion
+- nested repeat regression coverage
+
+Remaining:
+
+- add at least one upstream-style regression with a nested repeat inside a sequence/choice mix
+- review naming behavior against upstream `expand_repeats.rs` if auxiliary numbering becomes visible in later snapshots
+
+Exit criteria:
+
+- no raw repeat semantics remain as a blocker for flattening
+
+### Task Group D: Grammar Flattening
+
+Status:
+
+- not started
+
+Files to add:
+
+- `src/grammar/prepare/flatten_grammar.zig`
+- optionally `src/ir/flattened_syntax.zig` if `syntax_grammar.zig` should remain pre-flattening only
+
+Immediate tasks:
+
+- define the flattened production and step types
+- decide whether flattening operates on existing `SyntaxGrammar` in place or returns a new flattened IR
+- port the minimal upstream logic from `flatten_grammar.rs`
+- add tests for:
+  - nested sequence flattening
+  - nested choice flattening
+  - metadata preservation
+  - flattened output determinism
+
+Exit criteria:
+
+- downstream code can iterate productions without recursive syntax-rule descent
+
+### Task Group E: Alias Extraction And Variable Info
+
+Status:
+
+- not started
+
+Files to add:
+
+- `src/grammar/prepare/extract_default_aliases.zig`
+- optional `src/ir/variable_info.zig`
+
+Immediate tasks:
+
+- inspect upstream `extract_default_aliases.rs`
+- define exactly what node-type computation needs:
+  - effective visible name
+  - namedness
+  - alias targets
+  - child field structure
+  - supertype relationships
+- choose whether alias info is stored as:
+  - a flat map keyed by symbol reference
+  - per-production-step data
+  - a separate analysis result layered on flattened grammar
+
+Exit criteria:
+
+- node-type computation can ask questions about aliases and variable identity without re-walking raw productions
+
+### Task Group F: Node-Type Computation And Rendering
+
+Status:
+
+- not started
+
+Files to add:
+
+- `src/node_types/compute.zig`
+- `src/node_types/render_json.zig`
+
+Immediate tasks:
+
+- define a `NodeType` IR with stable ordering rules
+- decide the exact render boundary:
+  - in-memory node-type model first
+  - then JSON renderer
+- start with one curated grammar fixture and compare against expected `node-types.json`
+
+Exit criteria:
+
+- `node-types.json` is emitted deterministically for at least one curated grammar and matches the expected output
+
+### CLI And Test Integration
+
+Status:
+
+- not started for Milestone 3 artifact output
+
+Immediate tasks:
+
+- choose whether node types are:
+  - printed to stdout
+  - written beside `grammar.json`
+  - available only through a debug path first
+- add at least:
+  - one passing golden fixture
+  - one determinism test
+
+Exit criteria:
+
+- the artifact can be exercised from the CLI and compared in tests
+
 ## File-by-File Plan
 
 ### 1. `src/ir/syntax_grammar.zig`
@@ -463,10 +666,10 @@ Milestone 3 is complete when:
 
 After this plan is accepted, implementation should start with:
 
-1. create `src/ir/syntax_grammar.zig`
-2. create `src/ir/lexical_grammar.zig`
-3. create `src/ir/aliases.zig`
-4. scaffold `src/grammar/prepare/extract_tokens.zig`
-5. add one successful extraction test and one tiny `node-types.json` target grammar
+1. create `src/grammar/prepare/flatten_grammar.zig`
+2. define the flattened production representation
+3. add one flattening test for nested `choice` / `seq`
+4. preserve metadata through flattening
+5. use that boundary as the entry point for alias extraction and node-type work
 
-That is the shortest path into real Milestone 3 work without overcommitting to parse-table logic too early.
+That is the shortest path from the current code state into real artifact-producing Milestone 3 work.
