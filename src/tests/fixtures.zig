@@ -689,6 +689,28 @@ pub fn parseTableConflictGroupedActionTableDump() Fixture {
     };
 }
 
+pub fn parseTableTinyGroupedActionTableDump() Fixture {
+    return .{
+        .name = "parse_table_tiny_grouped_action_table_dump",
+        .contents =
+            \\state 0
+            \\  actions:
+            \\    terminal:0:
+            \\      shift 3
+            \\
+            \\state 1
+            \\  actions:
+            \\
+            \\state 2
+            \\  actions:
+            \\
+            \\state 3
+            \\  actions:
+            \\
+        ,
+    };
+}
+
 pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
     return .{
         .name = "parse_table_reduce_reduce_grouped_action_table_dump",

@@ -263,6 +263,29 @@ test "generateGroupedActionTableDumpFromPrepared matches the conflict grouped ac
     try std.testing.expectEqualStrings(fixtures.parseTableConflictGroupedActionTableDump().contents, dump);
 }
 
+test "generateGroupedActionTableDumpFromPrepared matches the tiny grouped action-table golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableTinyGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateGroupedActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.parseTableTinyGroupedActionTableDump().contents, dump);
+}
+
 test "generateGroupedActionTableDumpFromPrepared matches the reduce/reduce grouped action-table golden fixture" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
