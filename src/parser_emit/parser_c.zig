@@ -34,6 +34,9 @@ pub fn writeParserC(
     try writer.print("#define TS_SYMBOL_COUNT {d}\n\n", .{emitted_symbols.len});
     try writer.print("#define TS_LANGUAGE_VERSION {d}\n", .{compatibility.language_version});
     try writer.print("#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION {d}\n", .{compatibility.min_compatible_language_version});
+    try writer.writeAll("#define TS_SYMBOL_KIND_NON_TERMINAL 1\n");
+    try writer.writeAll("#define TS_SYMBOL_KIND_TERMINAL 2\n");
+    try writer.writeAll("#define TS_SYMBOL_KIND_EXTERNAL 3\n");
     try writer.writeAll("#define TS_ACTION_SHIFT 1\n");
     try writer.writeAll("#define TS_ACTION_REDUCE 2\n");
     try writer.writeAll("#define TS_ACTION_ACCEPT 3\n");
@@ -43,7 +46,9 @@ pub fn writeParserC(
     try writer.writeAll("typedef struct { uint16_t symbol_id; uint16_t state; } TSGotoEntry;\n");
     try writer.writeAll("typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidates; } TSUnresolvedEntry;\n\n");
     try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  uint16_t id;\n");
     try writer.writeAll("  const char *name;\n");
+    try writer.writeAll("  uint16_t kind;\n");
     try writer.writeAll("  bool terminal;\n");
     try writer.writeAll("  bool external;\n");
     try writer.writeAll("} TSSymbolInfo;\n\n");
@@ -107,11 +112,13 @@ pub fn writeParserC(
     try writer.writeAll("\",\n");
     try writer.writeAll("};\n\n");
     try writer.writeAll("static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {\n");
-    for (emitted_symbols) |symbol| {
+    for (emitted_symbols, 0..) |symbol, index| {
         try writer.writeAll("  {\n");
+        try writer.print("    .id = {d},\n", .{index});
         try writer.writeAll("    .name = \"");
         try writer.writeAll(symbol.label);
         try writer.writeAll("\",\n");
+        try writer.print("    .kind = {d},\n", .{symbolKindCode(symbol.ref)});
         try writer.print("    .terminal = {},\n", .{symbolKindIsTerminal(symbol.ref)});
         try writer.print("    .external = {},\n", .{symbolKindIsExternal(symbol.ref)});
         try writer.writeAll("  },\n");
@@ -312,6 +319,16 @@ pub fn writeParserC(
     try writer.writeAll("const char *ts_parser_symbol_name(uint16_t symbol_id) {\n");
     try writer.writeAll("  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);\n");
     try writer.writeAll("  return symbol ? symbol->name : 0;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("uint16_t ts_parser_symbol_id(uint16_t symbol_id) {\n");
+    try writer.writeAll("  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);\n");
+    try writer.writeAll("  return symbol ? symbol->id : 0;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("uint16_t ts_parser_symbol_kind(uint16_t symbol_id) {\n");
+    try writer.writeAll("  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);\n");
+    try writer.writeAll("  return symbol ? symbol->kind : 0;\n");
     try writer.writeAll("}\n");
     try writer.writeAll("\n");
     try writer.writeAll("bool ts_parser_symbol_is_terminal(uint16_t symbol_id) {\n");
@@ -612,6 +629,14 @@ fn symbolKindIsExternal(symbol: syntax_grammar.SymbolRef) bool {
     };
 }
 
+fn symbolKindCode(symbol: syntax_grammar.SymbolRef) u16 {
+    return switch (symbol) {
+        .non_terminal => 1,
+        .terminal => 2,
+        .external => 3,
+    };
+}
+
 fn hasUnresolvedStates(serialized: serialize.SerializedTable) bool {
     for (serialized.states) |state| {
         if (state.unresolved.len > 0) return true;
@@ -661,6 +686,9 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\
         \\#define TS_LANGUAGE_VERSION 15
         \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
+        \\#define TS_SYMBOL_KIND_NON_TERMINAL 1
+        \\#define TS_SYMBOL_KIND_TERMINAL 2
+        \\#define TS_SYMBOL_KIND_EXTERNAL 3
         \\#define TS_ACTION_SHIFT 1
         \\#define TS_ACTION_REDUCE 2
         \\#define TS_ACTION_ACCEPT 3
@@ -672,7 +700,9 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidates; } TSUnresolvedEntry;
         \\
         \\typedef struct {
+        \\  uint16_t id;
         \\  const char *name;
+        \\  uint16_t kind;
         \\  bool terminal;
         \\  bool external;
         \\} TSSymbolInfo;
@@ -742,17 +772,23 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\
         \\static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {
         \\  {
+        \\    .id = 0,
         \\    .name = "non_terminal:1",
+        \\    .kind = 1,
         \\    .terminal = false,
         \\    .external = false,
         \\  },
         \\  {
+        \\    .id = 1,
         \\    .name = "terminal:0",
+        \\    .kind = 2,
         \\    .terminal = true,
         \\    .external = false,
         \\  },
         \\  {
+        \\    .id = 2,
         \\    .name = "terminal:1",
+        \\    .kind = 2,
         \\    .terminal = true,
         \\    .external = false,
         \\  },
@@ -907,6 +943,16 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
         \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
         \\  return symbol ? symbol->name : 0;
+        \\}
+        \\
+        \\uint16_t ts_parser_symbol_id(uint16_t symbol_id) {
+        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+        \\  return symbol ? symbol->id : 0;
+        \\}
+        \\
+        \\uint16_t ts_parser_symbol_kind(uint16_t symbol_id) {
+        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+        \\  return symbol ? symbol->kind : 0;
         \\}
         \\
         \\bool ts_parser_symbol_is_terminal(uint16_t symbol_id) {

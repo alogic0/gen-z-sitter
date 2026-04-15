@@ -37,9 +37,17 @@ Current result for this stage:
 
 ### 3. Strengthen symbol/runtime metadata
 
-- [ ] review the current emitted symbol table for missing runtime-relevant properties
-- [ ] add any clearly justified symbol metadata needed for a more credible parser artifact
-- [ ] keep compatibility-oriented symbol accessors and checks aligned with the richer metadata
+- [x] review the current emitted symbol table for missing runtime-relevant properties
+- [x] add any clearly justified symbol metadata needed for a more credible parser artifact
+- [x] keep compatibility-oriented symbol accessors and checks aligned with the richer metadata
+
+Current result for this stage:
+- emitted `TSSymbolInfo` now carries symbol identity and kind metadata in addition to name and terminal/external flags
+- the symbol surface now exposes:
+  - `ts_parser_symbol_id(...)`
+  - `ts_parser_symbol_kind(...)`
+  - existing name/terminal/external compatibility helpers
+- compatibility checks now require the richer symbol struct and accessors, so the stronger metadata surface is part of the enforced emitted boundary
 
 ### 4. Add compile-oriented proof
 

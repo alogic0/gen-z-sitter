@@ -7,6 +7,8 @@ pub const CompatibilityCheckError = error{
     MissingSymbolStruct,
     MissingSymbolAccessor,
     MissingSymbolNameAccessor,
+    MissingSymbolIdAccessor,
+    MissingSymbolKindAccessor,
     MissingLanguageStruct,
     MissingLanguageAccessor,
     MissingCompatibilityTarget,
@@ -20,11 +22,13 @@ pub fn validateParserCCompatibilitySurface(contents: []const u8) CompatibilityCh
     try requireSubstring(contents, "#define TS_LANGUAGE_VERSION ", error.MissingLanguageVersion);
     try requireSubstring(contents, "#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION ", error.MissingMinimumCompatibleLanguageVersion);
     try requireSubstring(contents, "#define TS_SYMBOL_COUNT ", error.MissingSymbolCount);
-    try requireSubstring(contents, "typedef struct {\n  const char *name;\n  bool terminal;\n  bool external;\n} TSSymbolInfo;", error.MissingSymbolStruct);
+    try requireSubstring(contents, "typedef struct {\n  uint16_t id;\n  const char *name;\n  uint16_t kind;\n  bool terminal;\n  bool external;\n} TSSymbolInfo;", error.MissingSymbolStruct);
     try requireSubstring(contents, "typedef struct {\n  uint16_t language_version;\n  uint16_t min_compatible_language_version;\n  const char *target;\n  const char *layer;\n} TSCompatibilityInfo;", error.MissingCompatibilityStruct);
     try requireSubstring(contents, "typedef struct {\n  const TSParser *parser;\n  const TSParserRuntime *runtime;\n  const TSCompatibilityInfo *compatibility;\n} TSLanguage;", error.MissingLanguageStruct);
     try requireSubstring(contents, "const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id)", error.MissingSymbolAccessor);
     try requireSubstring(contents, "const char *ts_parser_symbol_name(uint16_t symbol_id)", error.MissingSymbolNameAccessor);
+    try requireSubstring(contents, "uint16_t ts_parser_symbol_id(uint16_t symbol_id)", error.MissingSymbolIdAccessor);
+    try requireSubstring(contents, "uint16_t ts_parser_symbol_kind(uint16_t symbol_id)", error.MissingSymbolKindAccessor);
     try requireSubstring(contents, "const TSLanguage *ts_language_instance(void)", error.MissingLanguageAccessor);
     try requireSubstring(contents, "const TSCompatibilityInfo *ts_parser_compatibility(void)", error.MissingCompatibilityAccessor);
     try requireSubstring(contents, "const char *ts_parser_compatibility_target(void)", error.MissingCompatibilityTarget);
@@ -44,7 +48,9 @@ test "validateParserCCompatibilitySurface accepts a compatibility-oriented parse
         \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
         \\#define TS_SYMBOL_COUNT 2
         \\typedef struct {
+        \\  uint16_t id;
         \\  const char *name;
+        \\  uint16_t kind;
         \\  bool terminal;
         \\  bool external;
         \\} TSSymbolInfo;
@@ -61,6 +67,8 @@ test "validateParserCCompatibilitySurface accepts a compatibility-oriented parse
         \\} TSLanguage;
         \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) { return 0; }
         \\const char *ts_parser_symbol_name(uint16_t symbol_id) { return 0; }
+        \\uint16_t ts_parser_symbol_id(uint16_t symbol_id) { return symbol_id; }
+        \\uint16_t ts_parser_symbol_kind(uint16_t symbol_id) { return symbol_id; }
         \\const TSLanguage *ts_language_instance(void) { return 0; }
         \\const TSCompatibilityInfo *ts_parser_compatibility(void) { return 0; }
         \\const char *ts_parser_compatibility_target(void) { return 0; }
@@ -77,7 +85,9 @@ test "validateParserCCompatibilitySurface rejects missing compatibility target a
             \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
             \\#define TS_SYMBOL_COUNT 2
             \\typedef struct {
+            \\  uint16_t id;
             \\  const char *name;
+            \\  uint16_t kind;
             \\  bool terminal;
             \\  bool external;
             \\} TSSymbolInfo;
@@ -94,6 +104,8 @@ test "validateParserCCompatibilitySurface rejects missing compatibility target a
             \\} TSLanguage;
             \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) { return 0; }
             \\const char *ts_parser_symbol_name(uint16_t symbol_id) { return 0; }
+            \\uint16_t ts_parser_symbol_id(uint16_t symbol_id) { return symbol_id; }
+            \\uint16_t ts_parser_symbol_kind(uint16_t symbol_id) { return symbol_id; }
             \\const TSLanguage *ts_language_instance(void) { return 0; }
             \\const TSCompatibilityInfo *ts_parser_compatibility(void) { return 0; }
             \\const char *ts_parser_compatibility_layer(void) { return 0; }

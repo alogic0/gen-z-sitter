@@ -942,6 +942,9 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\#define TS_LANGUAGE_VERSION 15
             \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
+            \\#define TS_SYMBOL_KIND_NON_TERMINAL 1
+            \\#define TS_SYMBOL_KIND_TERMINAL 2
+            \\#define TS_SYMBOL_KIND_EXTERNAL 3
             \\#define TS_ACTION_SHIFT 1
             \\#define TS_ACTION_REDUCE 2
             \\#define TS_ACTION_ACCEPT 3
@@ -953,7 +956,9 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidates; } TSUnresolvedEntry;
             \\
             \\typedef struct {
+            \\  uint16_t id;
             \\  const char *name;
+            \\  uint16_t kind;
             \\  bool terminal;
             \\  bool external;
             \\} TSSymbolInfo;
@@ -1023,22 +1028,30 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {
             \\  {
+            \\    .id = 0,
             \\    .name = "non_terminal:0",
+            \\    .kind = 1,
             \\    .terminal = false,
             \\    .external = false,
             \\  },
             \\  {
+            \\    .id = 1,
             \\    .name = "non_terminal:1",
+            \\    .kind = 1,
             \\    .terminal = false,
             \\    .external = false,
             \\  },
             \\  {
+            \\    .id = 2,
             \\    .name = "terminal:0",
+            \\    .kind = 2,
             \\    .terminal = true,
             \\    .external = false,
             \\  },
             \\  {
+            \\    .id = 3,
             \\    .name = "terminal:1",
+            \\    .kind = 2,
             \\    .terminal = true,
             \\    .external = false,
             \\  },
@@ -1317,6 +1330,16 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  return symbol ? symbol->name : 0;
             \\}
             \\
+            \\uint16_t ts_parser_symbol_id(uint16_t symbol_id) {
+            \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+            \\  return symbol ? symbol->id : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_symbol_kind(uint16_t symbol_id) {
+            \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+            \\  return symbol ? symbol->kind : 0;
+            \\}
+            \\
             \\bool ts_parser_symbol_is_terminal(uint16_t symbol_id) {
             \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
             \\  return symbol ? symbol->terminal : false;
@@ -1512,6 +1535,9 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\#define TS_LANGUAGE_VERSION 15
             \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
+            \\#define TS_SYMBOL_KIND_NON_TERMINAL 1
+            \\#define TS_SYMBOL_KIND_TERMINAL 2
+            \\#define TS_SYMBOL_KIND_EXTERNAL 3
             \\#define TS_ACTION_SHIFT 1
             \\#define TS_ACTION_REDUCE 2
             \\#define TS_ACTION_ACCEPT 3
@@ -1523,7 +1549,9 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidates; } TSUnresolvedEntry;
             \\
             \\typedef struct {
+            \\  uint16_t id;
             \\  const char *name;
+            \\  uint16_t kind;
             \\  bool terminal;
             \\  bool external;
             \\} TSSymbolInfo;
@@ -1593,22 +1621,30 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {
             \\  {
+            \\    .id = 0,
             \\    .name = "non_terminal:0",
+            \\    .kind = 1,
             \\    .terminal = false,
             \\    .external = false,
             \\  },
             \\  {
+            \\    .id = 1,
             \\    .name = "non_terminal:1",
+            \\    .kind = 1,
             \\    .terminal = false,
             \\    .external = false,
             \\  },
             \\  {
+            \\    .id = 2,
             \\    .name = "terminal:0",
+            \\    .kind = 2,
             \\    .terminal = true,
             \\    .external = false,
             \\  },
             \\  {
+            \\    .id = 3,
             \\    .name = "terminal:1",
+            \\    .kind = 2,
             \\    .terminal = true,
             \\    .external = false,
             \\  },
@@ -1868,6 +1904,16 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
             \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
             \\  return symbol ? symbol->name : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_symbol_id(uint16_t symbol_id) {
+            \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+            \\  return symbol ? symbol->id : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_symbol_kind(uint16_t symbol_id) {
+            \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+            \\  return symbol ? symbol->kind : 0;
             \\}
             \\
             \\bool ts_parser_symbol_is_terminal(uint16_t symbol_id) {
