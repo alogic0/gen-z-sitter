@@ -1321,7 +1321,7 @@ pub fn parseTableNonAssociativeResolvedActionDump() Fixture {
             \\
             \\state 5
             \\  resolved_actions:
-            \\    terminal:0: unresolved
+            \\    terminal:0: unresolved (shift_reduce)
             \\      candidate shift 4
             \\      candidate reduce 2
             \\
@@ -1427,7 +1427,7 @@ pub fn parseTableConflictResolvedActionDump() Fixture {
             \\
             \\state 5
             \\  resolved_actions:
-            \\    terminal:0: unresolved
+            \\    terminal:0: unresolved (shift_reduce)
             \\      candidate shift 4
             \\      candidate reduce 2
             \\
@@ -1460,7 +1460,7 @@ pub fn parseTableReduceReduceResolvedActionDump() Fixture {
             \\
             \\state 5
             \\  resolved_actions:
-            \\    terminal:0: unresolved
+            \\    terminal:0: unresolved (reduce_reduce)
             \\      candidate reduce 4
             \\      candidate reduce 5
             \\

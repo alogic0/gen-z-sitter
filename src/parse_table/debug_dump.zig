@@ -232,7 +232,13 @@ pub fn writeResolvedActionTable(
                     }
                 },
                 .unresolved => {
-                    try writer.writeAll("unresolved\n");
+                    try writer.writeAll("unresolved");
+                    if (group.reason) |reason| {
+                        try writer.writeAll(" (");
+                        try writer.writeAll(@tagName(reason));
+                        try writer.writeByte(')');
+                    }
+                    try writer.writeByte('\n');
                     for (group.candidates) |entry| {
                         try writer.writeAll("      candidate ");
                         switch (entry.action) {
@@ -463,6 +469,7 @@ test "dumpResolvedActionTableAlloc formats chosen and unresolved groups determin
                             .{ .symbol = .{ .terminal = 1 }, .action = .{ .reduce = 4 } },
                         },
                         .chosen = null,
+                        .reason = .shift_reduce,
                     },
                 },
             },
@@ -476,7 +483,7 @@ test "dumpResolvedActionTableAlloc formats chosen and unresolved groups determin
         \\state 0
         \\  resolved_actions:
         \\    terminal:0: reduce 2
-        \\    terminal:1: unresolved
+        \\    terminal:1: unresolved (shift_reduce)
         \\      candidate shift 3
         \\      candidate reduce 4
         \\

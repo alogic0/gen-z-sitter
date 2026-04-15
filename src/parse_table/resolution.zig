@@ -8,11 +8,19 @@ pub const ResolutionKind = enum {
     unresolved,
 };
 
+pub const UnresolvedReason = enum {
+    multiple_candidates,
+    shift_reduce,
+    reduce_reduce,
+    unsupported_action_mix,
+};
+
 pub const ResolvedActionGroup = struct {
     symbol: @import("../ir/syntax_grammar.zig").SymbolRef,
     kind: ResolutionKind,
     candidates: []const actions.ActionEntry,
     chosen: ?actions.ParseAction = null,
+    reason: ?UnresolvedReason = null,
 };
 
 pub const ResolvedStateActions = struct {
@@ -53,12 +61,13 @@ pub fn resolveActionTable(
     for (grouped_table.states, 0..) |grouped_state, state_index| {
         const groups = try allocator.alloc(ResolvedActionGroup, grouped_state.groups.len);
         for (grouped_state.groups, 0..) |group, group_index| {
-            const chosen = chooseResolvedAction(productions, group.entries);
+            const decision = chooseResolvedAction(productions, group.entries);
             groups[group_index] = .{
                 .symbol = group.symbol,
-                .kind = if (chosen != null) .chosen else .unresolved,
+                .kind = if (decision.chosen != null) .chosen else .unresolved,
                 .candidates = try allocator.dupe(actions.ActionEntry, group.entries),
-                .chosen = chosen,
+                .chosen = decision.chosen,
+                .reason = decision.reason,
             };
         }
         states[state_index] = .{
@@ -69,25 +78,45 @@ pub fn resolveActionTable(
     return .{ .states = states };
 }
 
+const ResolutionDecision = struct {
+    chosen: ?actions.ParseAction = null,
+    reason: ?UnresolvedReason = null,
+};
+
 fn chooseResolvedAction(
     productions: anytype,
     candidates: []const actions.ActionEntry,
-) ?actions.ParseAction {
-    if (candidates.len == 1) return candidates[0].action;
+) ResolutionDecision {
+    if (candidates.len == 1) return .{ .chosen = candidates[0].action };
 
     if (candidates.len == 2) {
         const first = candidates[0].action;
         const second = candidates[1].action;
 
         if (isShift(first) and isReduce(second)) {
-            return resolveShiftReduce(productions, first, second);
+            return .{
+                .chosen = resolveShiftReduce(productions, first, second),
+                .reason = .shift_reduce,
+            };
         }
         if (isReduce(first) and isShift(second)) {
-            return resolveShiftReduce(productions, second, first);
+            return .{
+                .chosen = resolveShiftReduce(productions, second, first),
+                .reason = .shift_reduce,
+            };
+        }
+        if (isReduce(first) and isReduce(second)) {
+            return .{
+                .chosen = null,
+                .reason = .reduce_reduce,
+            };
         }
     }
 
-    return null;
+    return .{
+        .chosen = null,
+        .reason = if (candidates.len > 1) .multiple_candidates else .unsupported_action_mix,
+    };
 }
 
 fn resolveShiftReduce(
@@ -219,6 +248,7 @@ test "resolveActionTableSkeleton leaves multi-candidate groups unresolved" {
 
     try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(2)[0].kind);
     try std.testing.expect(resolved.groupsForState(2)[0].chosen == null);
+    try std.testing.expectEqual(UnresolvedReason.shift_reduce, resolved.groupsForState(2)[0].reason.?);
     try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(2)[0].candidates.len);
 }
 
@@ -266,6 +296,7 @@ test "resolveActionTable keeps reduce/reduce pairs unresolved" {
 
     try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(4)[0].kind);
     try std.testing.expectEqual(@as(?actions.ParseAction, null), resolved.groupsForState(4)[0].chosen);
+    try std.testing.expectEqual(UnresolvedReason.reduce_reduce, resolved.groupsForState(4)[0].reason.?);
     try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(4)[0].candidates.len);
 }
 
@@ -535,6 +566,7 @@ test "resolveActionTable keeps equal-precedence non-associative conflicts unreso
 
     try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(3)[0].kind);
     try std.testing.expectEqual(@as(?actions.ParseAction, null), resolved.groupsForState(3)[0].chosen);
+    try std.testing.expectEqual(UnresolvedReason.shift_reduce, resolved.groupsForState(3)[0].reason.?);
     try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(3)[0].candidates.len);
 }
 
