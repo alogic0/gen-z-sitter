@@ -50,6 +50,7 @@ const Extractor = struct {
 
     fn extract(self: *Extractor) ExtractTokensError!ExtractedGrammars {
         const variables = try self.extractVariables();
+        const external_tokens = try self.extractExternalTokens();
         const extra_symbols = try self.extractExtraSymbols();
         const expected_conflicts = try self.convertConflictSets();
         const precedence_orderings = try self.convertPrecedenceOrderings();
@@ -60,6 +61,7 @@ const Extractor = struct {
         return .{
             .syntax = .{
                 .variables = variables,
+                .external_tokens = external_tokens,
                 .extra_symbols = extra_symbols,
                 .expected_conflicts = expected_conflicts,
                 .precedence_orderings = precedence_orderings,
@@ -72,6 +74,25 @@ const Extractor = struct {
                 .separators = try self.separators.toOwnedSlice(),
             },
         };
+    }
+
+    fn extractExternalTokens(self: *Extractor) ExtractTokensError![]const syntax_ir.ExternalToken {
+        var result = std.array_list.Managed(syntax_ir.ExternalToken).init(self.allocator);
+        defer result.deinit();
+
+        for (self.prepared.external_tokens) |token| {
+            try result.append(.{
+                .name = token.name,
+                .kind = switch (token.kind) {
+                    .named => .named,
+                    .hidden => .hidden,
+                    .anonymous => .anonymous,
+                    .auxiliary => .auxiliary,
+                },
+            });
+        }
+
+        return try result.toOwnedSlice();
     }
 
     fn extractVariables(self: *Extractor) ExtractTokensError![]const syntax_ir.SyntaxVariable {
@@ -456,6 +477,9 @@ test "extractTokens splits simple prepared grammar into syntax and lexical parts
     const extracted = try extractTokens(extract_arena.allocator(), prepared);
 
     try std.testing.expectEqual(@as(usize, 3), extracted.syntax.variables.len);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.external_tokens.len);
+    try std.testing.expectEqualStrings("indent", extracted.syntax.external_tokens[0].name);
+    try std.testing.expectEqual(syntax_ir.VariableKind.named, extracted.syntax.external_tokens[0].kind);
     try std.testing.expectEqual(@as(usize, 2), extracted.lexical.variables.len);
     try std.testing.expectEqualStrings("expr", extracted.lexical.variables[0].name);
     try std.testing.expectEqualStrings("term", extracted.lexical.variables[1].name);
@@ -523,10 +547,77 @@ test "extractTokens expands repeat rules into auxiliary syntax variables" {
 
     const extracted = try extractTokens(arena.allocator(), prepared);
     try std.testing.expectEqual(@as(usize, 2), extracted.syntax.variables.len);
+    try std.testing.expectEqual(@as(usize, 0), extracted.syntax.external_tokens.len);
     try std.testing.expectEqualStrings("source_file", extracted.syntax.variables[0].name);
     try std.testing.expectEqualStrings("source_file_repeat1", extracted.syntax.variables[1].name);
     try std.testing.expectEqual(@as(u32, 1), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
+}
+
+test "extractTokens carries external token metadata into syntax grammar" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "externals",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+        },
+        .external_tokens = &.{
+            .{
+                .name = "_automatic_semicolon",
+                .symbol = ir_symbols.SymbolId.external(0),
+                .kind = .hidden,
+                .rule = 1,
+            },
+            .{
+                .name = "template_chars",
+                .symbol = ir_symbols.SymbolId.external(1),
+                .kind = .named,
+                .rule = 2,
+            },
+        },
+        .rules = &.{.{ .blank = {} }, .{ .blank = {} }, .{ .blank = {} }},
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.external(0),
+                .name = "_automatic_semicolon",
+                .named = false,
+                .visible = false,
+            },
+            .{
+                .id = ir_symbols.SymbolId.external(1),
+                .name = "template_chars",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 2), extracted.syntax.external_tokens.len);
+    try std.testing.expectEqualStrings("_automatic_semicolon", extracted.syntax.external_tokens[0].name);
+    try std.testing.expectEqual(syntax_ir.VariableKind.hidden, extracted.syntax.external_tokens[0].kind);
+    try std.testing.expectEqualStrings("template_chars", extracted.syntax.external_tokens[1].name);
+    try std.testing.expectEqual(syntax_ir.VariableKind.named, extracted.syntax.external_tokens[1].kind);
 }
 
 test "extractTokens promotes hidden top-level repeats in place and removes them from inline symbols" {

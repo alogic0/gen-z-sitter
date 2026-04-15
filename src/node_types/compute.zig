@@ -120,6 +120,17 @@ pub fn computeNodeTypes(
         });
     }
 
+    for (syntax.external_tokens, 0..) |token, index| {
+        const symbol: syntax_ir.SymbolRef = .{ .external = @intCast(index) };
+        if (!isVisibleExternalToken(token, defaults.findForSymbol(symbol))) continue;
+
+        try nodes.append(.{
+            .kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults),
+            .named = isNamedExternalToken(token, defaults.findForSymbol(symbol)),
+            .extra = containsSymbolRef(syntax.extra_symbols, symbol),
+        });
+    }
+
     std.mem.sort(NodeType, nodes.items, {}, lessThanNodeType);
     return try mergeDuplicateNodeTypes(allocator, nodes.items);
 }
@@ -483,7 +494,7 @@ fn isVisibleChild(
     return switch (symbol) {
         .non_terminal => |index| isVisibleSyntaxVariable(syntax.variables[index]),
         .terminal => |index| isVisibleLexicalVariable(lexical.variables[index], defaults.findForSymbol(symbol)),
-        .external => true,
+        .external => |index| isVisibleExternalToken(syntax.external_tokens[index], defaults.findForSymbol(symbol)),
     };
 }
 
@@ -498,7 +509,7 @@ fn effectiveNameForSymbol(
     return switch (symbol) {
         .non_terminal => |index| syntax.variables[index].name,
         .terminal => |index| lexical.variables[index].name,
-        .external => "external",
+        .external => |index| syntax.external_tokens[index].name,
     };
 }
 
@@ -522,7 +533,7 @@ fn isNamedSymbol(
     return switch (symbol) {
         .non_terminal => |index| isNamedSyntaxVariable(syntax.variables[index], alias),
         .terminal => |index| isNamedLexicalVariable(lexical.variables[index], alias),
-        .external => alias != null and alias.?.named,
+        .external => |index| isNamedExternalToken(syntax.external_tokens[index], alias),
     };
 }
 
@@ -562,6 +573,22 @@ fn isVisibleLexicalVariable(variable: lexical_ir.LexicalVariable, alias: ?rules.
 fn isNamedLexicalVariable(variable: lexical_ir.LexicalVariable, alias: ?rules.Alias) bool {
     if (alias) |a| return a.named;
     return switch (variable.kind) {
+        .named => true,
+        .anonymous, .hidden, .auxiliary => false,
+    };
+}
+
+fn isVisibleExternalToken(token: syntax_ir.ExternalToken, alias: ?rules.Alias) bool {
+    if (alias != null) return true;
+    return switch (token.kind) {
+        .hidden, .auxiliary => false,
+        .named, .anonymous => true,
+    };
+}
+
+fn isNamedExternalToken(token: syntax_ir.ExternalToken, alias: ?rules.Alias) bool {
+    if (alias) |a| return a.named;
+    return switch (token.kind) {
         .named => true,
         .anonymous, .hidden, .auxiliary => false,
     };
@@ -635,6 +662,7 @@ test "computeNodeTypes includes visible syntax and lexical nodes with default al
             .{ .name = "expr", .kind = .named, .productions = &.{.{ .steps = expr_steps[0..] }} },
             .{ .name = "_hidden", .kind = .hidden, .productions = &.{.{ .steps = &.{} }} },
         },
+        .external_tokens = &.{},
         .extra_symbols = &.{.{ .terminal = 0 }},
         .expected_conflicts = &.{},
         .precedence_orderings = &.{},
@@ -683,6 +711,7 @@ test "computeNodeTypes merges duplicate entries with the same effective type nam
             .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
             .{ .name = "expr", .kind = .named, .productions = &.{.{ .steps = expr_steps[0..] }} },
         },
+        .external_tokens = &.{},
         .extra_symbols = &.{},
         .expected_conflicts = &.{},
         .precedence_orderings = &.{},
@@ -706,6 +735,40 @@ test "computeNodeTypes merges duplicate entries with the same effective type nam
     try std.testing.expectEqualStrings("expr", expr.children.?.types[0].kind);
 }
 
+test "computeNodeTypes includes visible external tokens with real names" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .external = 1 } },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+        },
+        .external_tokens = &.{
+            .{ .name = "_automatic_semicolon", .kind = .hidden },
+            .{ .name = "template_chars", .kind = .named },
+        },
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{},
+        .separators = &.{},
+    };
+
+    const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
+    try std.testing.expectEqual(@as(usize, 2), nodes.len);
+    try std.testing.expectEqualStrings("source_file", nodes[0].kind);
+    try std.testing.expectEqualStrings("template_chars", nodes[1].kind);
+    try std.testing.expect(nodes[1].named);
+}
+
 test "computeNodeTypes computes visible supertype subtypes" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -726,6 +789,7 @@ test "computeNodeTypes computes visible supertype subtypes" {
             .{ .name = "binary_expression", .kind = .named, .productions = &.{.{ .steps = &.{} }} },
             .{ .name = "identifier", .kind = .named, .productions = &.{.{ .steps = &.{} }} },
         },
+        .external_tokens = &.{},
         .extra_symbols = &.{},
         .expected_conflicts = &.{},
         .precedence_orderings = &.{},
@@ -770,6 +834,7 @@ test "computeNodeTypes aggregates fields and visible children" {
             .{ .name = "expr", .kind = .named, .productions = &.{ .{ .steps = expr_steps[0..] } } },
             .{ .name = "term", .kind = .named, .productions = &.{ .{ .steps = term_steps[0..] } } },
         },
+        .external_tokens = &.{},
         .extra_symbols = &.{},
         .expected_conflicts = &.{},
         .precedence_orderings = &.{},
@@ -827,6 +892,7 @@ test "computeNodeTypes inherits fields and children through hidden wrappers" {
             .{ .name = "expr", .kind = .named, .productions = &.{.{ .steps = expr_steps[0..] }} },
             .{ .name = "term", .kind = .named, .productions = &.{.{ .steps = term_steps[0..] }} },
         },
+        .external_tokens = &.{},
         .extra_symbols = &.{},
         .expected_conflicts = &.{},
         .precedence_orderings = &.{},

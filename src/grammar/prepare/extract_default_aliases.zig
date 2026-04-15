@@ -92,6 +92,7 @@ fn cloneSyntaxGrammar(
 
     return .{
         .variables = try variables.toOwnedSlice(),
+        .external_tokens = try allocator.dupe(syntax_ir.ExternalToken, syntax.external_tokens),
         .extra_symbols = try allocator.dupe(syntax_ir.SymbolRef, syntax.extra_symbols),
         .expected_conflicts = try cloneConflictSets(allocator, syntax.expected_conflicts),
         .precedence_orderings = try clonePrecedenceOrderings(allocator, syntax.precedence_orderings),
@@ -396,6 +397,7 @@ test "extractDefaultAliases promotes always-aliased symbols and clears redundant
                 },
             },
         },
+        .external_tokens = &.{},
         .extra_symbols = &.{},
         .expected_conflicts = &.{},
         .precedence_orderings = &.{},
@@ -437,6 +439,7 @@ test "extractDefaultAliases does not promote aliases for inlined variables" {
                 },
             },
         },
+        .external_tokens = &.{},
         .extra_symbols = &.{},
         .expected_conflicts = &.{},
         .precedence_orderings = &.{},

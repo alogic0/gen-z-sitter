@@ -200,6 +200,10 @@ pub fn validResolvedNodeTypesJson() Fixture {
             \\    "named": true
             \\  },
             \\  {
+            \\    "type": "indent",
+            \\    "named": true
+            \\  },
+            \\  {
             \\    "type": "source_file",
             \\    "named": true,
             \\    "root": true

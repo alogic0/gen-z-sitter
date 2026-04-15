@@ -7,6 +7,11 @@ pub const SyntaxVariable = struct {
     productions: []const Production,
 };
 
+pub const ExternalToken = struct {
+    name: []const u8,
+    kind: VariableKind,
+};
+
 pub const VariableKind = enum {
     named,
     hidden,
@@ -36,6 +41,7 @@ pub const ProductionStep = struct {
 
 pub const SyntaxGrammar = struct {
     variables: []const SyntaxVariable,
+    external_tokens: []const ExternalToken,
     extra_symbols: []const SymbolRef,
     expected_conflicts: []const []const SymbolRef,
     precedence_orderings: []const []const PrecedenceEntry,
@@ -52,6 +58,7 @@ pub const PrecedenceEntry = union(enum) {
 test "syntax grammar can be instantiated minimally" {
     const grammar = SyntaxGrammar{
         .variables = &.{},
+        .external_tokens = &.{},
         .extra_symbols = &.{},
         .expected_conflicts = &.{},
         .precedence_orderings = &.{},
@@ -61,6 +68,7 @@ test "syntax grammar can be instantiated minimally" {
     };
 
     try std.testing.expectEqual(@as(usize, 0), grammar.variables.len);
+    try std.testing.expectEqual(@as(usize, 0), grammar.external_tokens.len);
     try std.testing.expect(grammar.word_token == null);
 }
 
