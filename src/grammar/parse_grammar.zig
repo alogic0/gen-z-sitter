@@ -13,6 +13,7 @@ pub const ParseGrammarError = error{
     UndefinedConflict,
     UndefinedWordToken,
     UndeclaredPrecedence,
+    ConflictingPrecedenceOrdering,
     OutOfMemory,
 };
 
@@ -39,7 +40,7 @@ const Builder = struct {
             return error.HiddenStartRule;
         }
 
-        try self.validateNamedPrecedences();
+        try self.validatePrecedences();
 
         var symbols = try self.buildSymbols();
         var variables = try self.buildVariables();
@@ -76,9 +77,12 @@ const Builder = struct {
         };
     }
 
-    fn validateNamedPrecedences(self: *Builder) ParseGrammarError!void {
+    fn validatePrecedences(self: *Builder) ParseGrammarError!void {
         var declared = std.StringHashMap(void).init(self.allocator);
         defer declared.deinit();
+
+        var pairs = std.array_list.Managed(PrecedencePairOrdering).init(self.allocator);
+        defer pairs.deinit();
 
         for (self.grammar.precedences) |ordering| {
             for (ordering) |entry| {
@@ -87,6 +91,7 @@ const Builder = struct {
                     else => {},
                 }
             }
+            try validatePrecedenceOrderingPairs(&pairs, ordering);
         }
 
         for (self.grammar.rules) |entry| {
@@ -408,6 +413,17 @@ const Builder = struct {
     }
 };
 
+const PrecedencePairOrdering = struct {
+    left: OrderingEntry,
+    right: OrderingEntry,
+    direction: std.math.Order,
+};
+
+const OrderingEntry = union(enum) {
+    name: []const u8,
+    symbol: []const u8,
+};
+
 fn variableKindForName(name: []const u8) ir.VariableKind {
     return if (isHidden(name)) .hidden else .named;
 }
@@ -435,6 +451,86 @@ fn validatePrecedenceValueDeclared(
             }
         },
     }
+}
+
+fn validatePrecedenceOrderingPairs(
+    pairs: *std.array_list.Managed(PrecedencePairOrdering),
+    ordering: raw.PrecedenceList,
+) ParseGrammarError!void {
+    for (ordering, 0..) |entry1_rule, i| {
+        const entry1 = try lowerRawPrecedenceEntry(entry1_rule);
+        for (ordering[(i + 1)..]) |entry2_rule| {
+            const entry2 = try lowerRawPrecedenceEntry(entry2_rule);
+            if (precedenceEntryEql(entry1, entry2)) continue;
+
+            var left = entry1;
+            var right = entry2;
+            var direction = std.math.Order.gt;
+            if (precedenceEntryLessThan(right, left)) {
+                left = entry2;
+                right = entry1;
+                direction = .lt;
+            }
+
+            for (pairs.items) |existing| {
+                if (precedenceEntryEql(existing.left, left) and precedenceEntryEql(existing.right, right)) {
+                    if (existing.direction != direction) {
+                        return error.ConflictingPrecedenceOrdering;
+                    }
+                    break;
+                }
+            } else {
+                try pairs.append(.{
+                    .left = left,
+                    .right = right,
+                    .direction = direction,
+                });
+            }
+        }
+    }
+}
+
+fn lowerRawPrecedenceEntry(entry: *const raw.RawRule) ParseGrammarError!OrderingEntry {
+    return switch (entry.*) {
+        .string => |value| .{ .name = value },
+        .symbol => |name| .{ .symbol = name },
+        else => unreachable,
+    };
+}
+
+fn precedenceEntryLessThan(lhs: OrderingEntry, rhs: OrderingEntry) bool {
+    const lhs_tag: u8 = switch (lhs) {
+        .name => 0,
+        .symbol => 1,
+    };
+    const rhs_tag: u8 = switch (rhs) {
+        .name => 0,
+        .symbol => 1,
+    };
+    if (lhs_tag != rhs_tag) return lhs_tag < rhs_tag;
+    return switch (lhs) {
+        .name => |lhs_name| switch (rhs) {
+            .name => |rhs_name| std.mem.order(u8, lhs_name, rhs_name) == .lt,
+            else => unreachable,
+        },
+        .symbol => |lhs_symbol| switch (rhs) {
+            .symbol => |rhs_symbol| std.mem.order(u8, lhs_symbol, rhs_symbol) == .lt,
+            else => unreachable,
+        },
+    };
+}
+
+fn precedenceEntryEql(lhs: OrderingEntry, rhs: OrderingEntry) bool {
+    return switch (lhs) {
+        .name => |lhs_name| switch (rhs) {
+            .name => |rhs_name| std.mem.eql(u8, lhs_name, rhs_name),
+            else => false,
+        },
+        .symbol => |lhs_symbol| switch (rhs) {
+            .symbol => |rhs_symbol| std.mem.eql(u8, lhs_symbol, rhs_symbol),
+            else => false,
+        },
+    };
 }
 
 fn mergeMetadata(existing: ir_rules.Metadata, patch: ir_rules.Metadata) ir_rules.Metadata {
@@ -519,6 +615,19 @@ test "parseRawGrammar rejects undeclared named precedence values" {
 
     const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
     try std.testing.expectError(error.UndeclaredPrecedence, parseRawGrammar(parse_arena.allocator(), &raw_grammar));
+}
+
+test "parseRawGrammar rejects conflicting precedence orderings" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), fixtures.conflictingPrecedenceOrderingGrammarJson().contents, .{});
+    defer parsed.deinit();
+
+    const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
+    try std.testing.expectError(error.ConflictingPrecedenceOrdering, parseRawGrammar(parse_arena.allocator(), &raw_grammar));
 }
 
 test "parseRawGrammar prefers internal symbols over duplicate external names" {

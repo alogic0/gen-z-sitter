@@ -344,6 +344,30 @@ pub fn normalizedListsGrammarJson() Fixture {
     };
 }
 
+pub fn conflictingPrecedenceOrderingGrammarJson() Fixture {
+    return .{
+        .name = "conflicting_precedence_ordering",
+        .contents =
+            \\{
+            \\  "name": "basic",
+            \\  "rules": {
+            \\    "source_file": { "type": "STRING", "value": "x" }
+            \\  },
+            \\  "precedences": [
+            \\    [
+            \\      { "type": "STRING", "value": "a" },
+            \\      { "type": "STRING", "value": "b" }
+            \\    ],
+            \\    [
+            \\      { "type": "STRING", "value": "b" },
+            \\      { "type": "STRING", "value": "a" }
+            \\    ]
+            \\  ]
+            \\}
+        ,
+    };
+}
+
 test "basic fixture is non-empty" {
     const fixture = basicGrammarJson();
     try std.testing.expect(fixture.contents.len > 0);
