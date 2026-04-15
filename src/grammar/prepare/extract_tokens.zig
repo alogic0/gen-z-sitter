@@ -228,16 +228,26 @@ const Extractor = struct {
             defer converted.deinit();
 
             for (conflict_set) |symbol| {
-                switch (symbol.kind) {
-                    .non_terminal => try converted.append(.{ .non_terminal = symbol.index }),
-                    .external => return error.InvalidConflictSymbol,
-                }
+                try converted.append(try self.extractConflictSymbol(symbol));
             }
 
             try result.append(try converted.toOwnedSlice());
         }
 
         return try result.toOwnedSlice();
+    }
+
+    fn extractConflictSymbol(self: *Extractor, symbol: ir_symbols.SymbolId) ExtractTokensError!syntax_ir.SymbolRef {
+        switch (symbol.kind) {
+            .non_terminal => {
+                const variable = self.prepared.variables[symbol.index];
+                if (self.findLexicalVariable(variable.rule)) |terminal_index| {
+                    return .{ .terminal = terminal_index };
+                }
+                return .{ .non_terminal = symbol.index };
+            },
+            .external => return error.InvalidConflictSymbol,
+        }
     }
 
     fn convertPrecedenceOrderings(self: *Extractor) ExtractTokensError![]const []const syntax_ir.PrecedenceEntry {
@@ -278,13 +288,23 @@ const Extractor = struct {
 
         for (self.prepared.variables_to_inline) |symbol| {
             if (self.isPromotedTopLevelRepeatSymbol(symbol)) continue;
-            switch (symbol.kind) {
-                .non_terminal => try result.append(.{ .non_terminal = symbol.index }),
-                .external => return error.InvalidInlineSymbol,
-            }
+            try result.append(try self.extractInlineSymbol(symbol));
         }
 
         return try result.toOwnedSlice();
+    }
+
+    fn extractInlineSymbol(self: *Extractor, symbol: ir_symbols.SymbolId) ExtractTokensError!syntax_ir.SymbolRef {
+        switch (symbol.kind) {
+            .non_terminal => {
+                const variable = self.prepared.variables[symbol.index];
+                if (self.findLexicalVariable(variable.rule)) |terminal_index| {
+                    return .{ .terminal = terminal_index };
+                }
+                return .{ .non_terminal = symbol.index };
+            },
+            .external => return error.InvalidInlineSymbol,
+        }
     }
 
     fn extractSupertypeSymbols(self: *Extractor) ExtractTokensError![]const syntax_ir.SymbolRef {
@@ -584,6 +604,12 @@ test "extractTokens splits simple prepared grammar into syntax and lexical parts
     try std.testing.expectEqualStrings("term", extracted.lexical.variables[1].name);
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.separators.len);
     try std.testing.expectEqual(@as(usize, 0), extracted.syntax.extra_symbols.len);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables_to_inline.len);
+    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.variables_to_inline[0].terminal);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.expected_conflicts.len);
+    try std.testing.expectEqual(@as(usize, 2), extracted.syntax.expected_conflicts[0].len);
+    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.expected_conflicts[0][0].non_terminal);
+    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.expected_conflicts[0][1].terminal);
     try std.testing.expect(extracted.syntax.word_token != null);
     try std.testing.expectEqual(@as(u32, 1), extracted.syntax.word_token.?.terminal);
 }
@@ -1176,6 +1202,56 @@ test "extractTokens assigns distinct auxiliary symbols for nested repeats" {
     try std.testing.expectEqual(@as(u32, 1), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
     try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[1].productions[2].steps[1].symbol.non_terminal);
     try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[2].productions[1].steps[0].symbol.non_terminal);
+}
+
+test "extractTokens rewrites tokenized inline symbols to extracted terminals" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "inline-token-rewrite",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+            .{
+                .name = "term",
+                .symbol = ir_symbols.SymbolId.nonTerminal(1),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{ .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) }, .{ .string = "x" } },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(1),
+                .name = "term",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{ir_symbols.SymbolId.nonTerminal(1)},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables_to_inline.len);
+    try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables_to_inline[0].terminal);
 }
 
 test "extractTokens rejects external inline symbols" {
