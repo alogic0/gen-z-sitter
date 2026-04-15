@@ -527,7 +527,7 @@ test "resolveActionTableSkeleton leaves the first precedence-sensitive grammar u
                 if (!std.meta.eql(group.symbol, conflict.symbol.?)) continue;
                 try std.testing.expectEqual(resolution.ResolutionKind.unresolved, group.kind);
                 try std.testing.expect(group.chosen == null);
-                try std.testing.expect(group.candidates.len >= 2);
+                try std.testing.expect(group.candidate_actions.len >= 2);
                 saw_unresolved = true;
             }
         }

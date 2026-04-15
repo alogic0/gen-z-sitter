@@ -19,7 +19,7 @@ pub const UnresolvedReason = enum {
 pub const ResolvedActionGroup = struct {
     symbol: @import("../ir/syntax_grammar.zig").SymbolRef,
     kind: ResolutionKind,
-    candidates: []const actions.ActionEntry,
+    candidate_actions: []const actions.ParseAction,
     chosen: ?actions.ParseAction = null,
     reason: ?UnresolvedReason = null,
 };
@@ -87,7 +87,7 @@ pub fn resolveActionTableWithContext(
             groups[group_index] = .{
                 .symbol = group.symbol,
                 .kind = if (decision.chosen != null) .chosen else .unresolved,
-                .candidates = try allocator.dupe(actions.ActionEntry, group.entries),
+                .candidate_actions = try dupActions(allocator, group.entries),
                 .chosen = decision.chosen,
                 .reason = decision.reason,
             };
@@ -98,6 +98,17 @@ pub fn resolveActionTableWithContext(
         };
     }
     return .{ .states = states };
+}
+
+fn dupActions(
+    allocator: std.mem.Allocator,
+    entries: []const actions.ActionEntry,
+) std.mem.Allocator.Error![]const actions.ParseAction {
+    const duplicated = try allocator.alloc(actions.ParseAction, entries.len);
+    for (entries, 0..) |entry, index| {
+        duplicated[index] = entry.action;
+    }
+    return duplicated;
 }
 
 const ResolutionDecision = struct {
@@ -368,7 +379,7 @@ test "resolveActionTableSkeleton marks singleton groups as chosen" {
     const resolved = try resolveActionTableSkeleton(allocator, grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -402,7 +413,7 @@ test "resolveActionTableSkeleton leaves multi-candidate groups unresolved" {
     const resolved = try resolveActionTableSkeleton(allocator, grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -411,7 +422,15 @@ test "resolveActionTableSkeleton leaves multi-candidate groups unresolved" {
     try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(2)[0].kind);
     try std.testing.expect(resolved.groupsForState(2)[0].chosen == null);
     try std.testing.expectEqual(UnresolvedReason.shift_reduce, resolved.groupsForState(2)[0].reason.?);
-    try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(2)[0].candidates.len);
+    try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(2)[0].candidate_actions.len);
+    try std.testing.expect(switch (resolved.groupsForState(2)[0].candidate_actions[0]) {
+        .shift => |id| id == 4,
+        else => false,
+    });
+    try std.testing.expect(switch (resolved.groupsForState(2)[0].candidate_actions[1]) {
+        .reduce => |id| id == 2,
+        else => false,
+    });
 }
 
 test "resolveActionTable keeps reduce/reduce pairs unresolved" {
@@ -450,7 +469,7 @@ test "resolveActionTable keeps reduce/reduce pairs unresolved" {
     const resolved = try resolveActionTable(allocator, productions[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -459,7 +478,7 @@ test "resolveActionTable keeps reduce/reduce pairs unresolved" {
     try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(4)[0].kind);
     try std.testing.expectEqual(@as(?actions.ParseAction, null), resolved.groupsForState(4)[0].chosen);
     try std.testing.expectEqual(UnresolvedReason.reduce_reduce_deferred, resolved.groupsForState(4)[0].reason.?);
-    try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(4)[0].candidates.len);
+    try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(4)[0].candidate_actions.len);
 }
 
 test "resolveActionTable chooses reduce for a positive integer precedence shift/reduce pair" {
@@ -505,7 +524,7 @@ test "resolveActionTable chooses reduce for a positive integer precedence shift/
     const resolved = try resolveActionTable(allocator, productions[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -565,7 +584,7 @@ test "resolveActionTable chooses reduce for named precedence ordered above the c
     const resolved = try resolveActionTableWithPrecedence(allocator, productions[0..], precedence_orderings[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -625,7 +644,7 @@ test "resolveActionTable chooses shift for named precedence ordered below the co
     const resolved = try resolveActionTableWithPrecedence(allocator, productions[0..], precedence_orderings[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -678,7 +697,7 @@ test "resolveActionTable chooses shift for a negative integer precedence shift/r
     const resolved = try resolveActionTable(allocator, productions[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -732,7 +751,7 @@ test "resolveActionTable chooses reduce for equal-precedence left associativity"
     const resolved = try resolveActionTable(allocator, productions[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -786,7 +805,7 @@ test "resolveActionTable chooses shift for equal-precedence right associativity"
     const resolved = try resolveActionTable(allocator, productions[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -840,7 +859,7 @@ test "resolveActionTable keeps equal-precedence non-associative conflicts unreso
     const resolved = try resolveActionTable(allocator, productions[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -849,7 +868,7 @@ test "resolveActionTable keeps equal-precedence non-associative conflicts unreso
     try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(3)[0].kind);
     try std.testing.expectEqual(@as(?actions.ParseAction, null), resolved.groupsForState(3)[0].chosen);
     try std.testing.expectEqual(UnresolvedReason.shift_reduce, resolved.groupsForState(3)[0].reason.?);
-    try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(3)[0].candidates.len);
+    try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(3)[0].candidate_actions.len);
 }
 
 test "extractResolutionMetadata captures integer precedence and associativity" {
@@ -920,7 +939,7 @@ test "resolveActionTable chooses reduce for positive dynamic precedence shift/re
     const resolved = try resolveActionTable(allocator, productions[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -971,7 +990,7 @@ test "resolveActionTable chooses shift for negative dynamic precedence shift/red
     const resolved = try resolveActionTable(allocator, productions[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -1032,7 +1051,7 @@ test "resolveActionTable lets positive dynamic precedence outrank named preceden
     const resolved = try resolveActionTableWithPrecedence(allocator, productions[0..], precedence_orderings[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -1114,7 +1133,7 @@ test "resolveActionTable uses shift-side integer precedence from the current sta
     const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, parse_states[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);
@@ -1209,7 +1228,7 @@ test "resolveActionTable uses shift-side named precedence from the current state
     );
     defer {
         for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
             allocator.free(resolved_state.groups);
         }
         allocator.free(resolved.states);

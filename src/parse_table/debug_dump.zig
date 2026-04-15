@@ -239,9 +239,9 @@ pub fn writeResolvedActionTable(
                         try writer.writeByte(')');
                     }
                     try writer.writeByte('\n');
-                    for (group.candidates) |entry| {
+                    for (group.candidate_actions) |candidate| {
                         try writer.writeAll("      candidate ");
-                        switch (entry.action) {
+                        switch (candidate) {
                             .shift => |target| try writer.print("shift {d}\n", .{target}),
                             .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
                             .accept => try writer.writeAll("accept\n"),
@@ -456,17 +456,15 @@ test "dumpResolvedActionTableAlloc formats chosen and unresolved groups determin
                     .{
                         .symbol = .{ .terminal = 0 },
                         .kind = .chosen,
-                        .candidates = &[_]actions.ActionEntry{
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
-                        },
+                        .candidate_actions = &[_]actions.ParseAction{.{ .reduce = 2 }},
                         .chosen = .{ .reduce = 2 },
                     },
                     .{
                         .symbol = .{ .terminal = 1 },
                         .kind = .unresolved,
-                        .candidates = &[_]actions.ActionEntry{
-                            .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 3 } },
-                            .{ .symbol = .{ .terminal = 1 }, .action = .{ .reduce = 4 } },
+                        .candidate_actions = &[_]actions.ParseAction{
+                            .{ .shift = 3 },
+                            .{ .reduce = 4 },
                         },
                         .chosen = null,
                         .reason = .shift_reduce,

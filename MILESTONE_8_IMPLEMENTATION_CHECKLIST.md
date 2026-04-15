@@ -17,6 +17,24 @@ and
 
 - “the build layer owns stable parser decisions that are credible inputs to later serialization/code emission”.
 
+## Current Status
+
+Milestone 8 is well underway and already has its main boundary changes in code.
+
+Implemented now:
+
+- builder-owned resolved actions in `src/parse_table/build.zig`
+- pipeline/debug consumption of builder-owned resolved actions instead of re-deriving them downstream
+- explicit reduce/reduce policy boundary in the resolved-action layer via `reduce_reduce_deferred`
+- richer shift-side precedence support at the direct resolver boundary:
+  - shift-side integer precedence from current-state steps
+  - shift-side named precedence from current-state steps
+
+What this means:
+
+- Milestone 8 is no longer blocked on ownership/infrastructure
+- the main remaining question is whether there is enough real semantic work left to justify another expansion before closeout
+
 ## What Milestone 8 Includes
 
 - richer shift-side precedence modeling
@@ -62,16 +80,97 @@ What Milestone 7 intentionally leaves incomplete:
 - builder-owned resolved actions in `BuildResult`
 - broader precedence-priority policy beyond the currently tested subset
 
+## Review Result
+
+After the current Milestone 8 work, the remaining gaps are narrower than they were at kickoff.
+
+Implemented during Milestone 8:
+
+- build-time ownership of resolved actions
+- explicit reduce/reduce deferral boundary in code and artifacts
+- shift-side precedence no longer limited to:
+  - default shift precedence of `0`
+  - direct symbol ordering only
+
+Real semantic gaps still remaining:
+
+### 1. Shift-side precedence is improved, but still not full upstream semantics
+
+Current state:
+
+- the resolver can inspect current-state shift-side step metadata for:
+  - integer precedence
+  - named precedence
+
+Remaining gap:
+
+- shift-side semantics are still a narrow supported subset rather than a full upstream-equivalent model
+
+Assessment:
+
+- this is a real remaining semantic gap
+- but it is now materially smaller than it was at Milestone 8 start
+
+### 2. Reduce/reduce remains intentionally deferred
+
+Current state:
+
+- reduce/reduce is no longer merely unresolved by accident
+- it is now explicitly classified as `reduce_reduce_deferred`
+
+Remaining gap:
+
+- no supported reduce/reduce resolution policy exists
+
+Assessment:
+
+- this is still a real semantic gap
+- but it is now a clear milestone boundary rather than unfinished infrastructure
+
+### 3. Priority policy is still intentionally narrow
+
+Current state:
+
+- the supported priority subset is implemented and test-covered:
+  - integer precedence
+  - named precedence
+  - dynamic precedence
+  - associativity
+  - dynamic precedence outranking named precedence on the reduce side
+
+Remaining gap:
+
+- the broader precedence-priority matrix is not exhaustively modeled or documented
+
+Assessment:
+
+- this is partly semantic and partly closeout/documentation work
+
+## Remaining Work Before Closeout
+
+The remaining work now looks like this:
+
+### Real semantic work
+
+- decide whether to add one more focused precedence-priority rule beyond the current tested subset
+- decide whether reduce/reduce should remain deferred for this milestone or gain a narrow policy
+
+### Closeout work
+
+- update this checklist to completion state if no further semantic expansion is chosen
+- update `README.md` with the actual Milestone 8 implemented subset
+- document the remaining parser-decision semantics for the later serialization milestone
+
 ## Main Targets
 
 ### 1. Shift-side precedence semantics
 
 Current state:
 
-- shift/reduce resolution primarily uses reduce-side metadata
-- the shift side is represented by:
-  - the default shift precedence of `0`, or
-  - direct ordering against the conflicted shift symbol
+- implemented for the current supported subset
+- the resolver can now inspect current-state shift-side step metadata for:
+  - integer precedence
+  - named precedence
 
 Target state:
 
@@ -80,14 +179,14 @@ Target state:
 
 Acceptance criteria:
 
-- at least one focused fixture proves a decision that depends on richer shift-side precedence rather than only reduce-side metadata
+- completed for the current supported subset at the direct resolver boundary
 
 ### 2. Reduce/reduce policy boundary
 
 Current state:
 
 - reduce/reduce is classified and preserved explicitly
-- no supported resolution policy exists yet
+- the resolved-action layer now marks it as `reduce_reduce_deferred`
 
 Target state:
 
@@ -103,12 +202,13 @@ Acceptance criteria:
 
 Current state:
 
-- `BuildResult` owns:
+- implemented
+- `BuildResult` now owns:
   - productions
   - precedence orderings
   - raw states
   - raw actions
-- resolved actions are derived later in the pipeline
+  - resolved actions
 
 Target state:
 
@@ -116,13 +216,13 @@ Target state:
 
 Acceptance criteria:
 
-- later stages no longer need to reconstruct resolution policy independently from builder output
+- completed
 
 ### 4. Priority policy documentation and coverage
 
 Current state:
 
-- the current precedence-priority subset works and is test-covered
+- the supported precedence-priority subset works and is test-covered
 - but the broader policy remains intentionally narrow
 
 Target state:
@@ -220,12 +320,9 @@ Acceptance criteria:
 
 ## Recommended Implementation Order
 
-1. Decide whether Milestone 8 will implement a reduce/reduce policy or explicitly formalize its deferral boundary.
-2. Add a focused fixture that requires richer shift-side precedence.
-3. Refactor `src/parse_table/resolution.zig` so precedence-priority rules are explicit and composable.
-4. Move resolved actions into `BuildResult`, or add an equivalent first-class build-time resolved surface.
-5. Update dumps/pipeline tests to consume the new build-time boundary.
-6. Do a closeout review documenting what parser-decision semantics are stable before the later serialization milestone.
+1. Decide whether Milestone 8 needs one more semantic rule beyond the current supported subset.
+2. If not, mark the milestone complete and move the remaining parser-decision gaps to the next milestone.
+3. If yes, keep the addition narrowly scoped and artifact-tested.
 
 ## Risks
 

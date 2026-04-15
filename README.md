@@ -44,6 +44,19 @@ The next parser-generation work is now Milestone 8:
 - whether builder-owned resolved actions are required before closeout
 - and how far parser-decision semantics should be stabilized before table serialization work
 
+Milestone 8 is now underway and already implements:
+
+- builder-owned resolved actions in `BuildResult`
+- an explicit `reduce_reduce_deferred` policy boundary
+- richer shift-side precedence support at the direct resolver boundary for:
+  - integer precedence
+  - named precedence
+
+The remaining Milestone 8 work is narrower:
+
+- whether to add one more semantic rule beyond the current supported subset
+- or close the milestone and defer the remaining parser-decision gaps to the next milestone
+
 ## Documents
 
 - [MASTER_PLAN.md](./MASTER_PLAN.md)
@@ -55,6 +68,7 @@ The next parser-generation work is now Milestone 8:
 - [MILESTONE_6_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_6_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_7_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_7_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_8_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_8_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_9_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_9_IMPLEMENTATION_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)
