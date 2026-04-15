@@ -34,6 +34,11 @@ pub fn writeParserC(
     try writer.writeAll("  const TSUnresolvedEntry *unresolved;\n");
     try writer.writeAll("  uint16_t unresolved_count;\n");
     try writer.writeAll("} TSStateTable;\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  bool blocked;\n");
+    try writer.writeAll("  uint16_t state_count;\n");
+    try writer.writeAll("  const TSStateTable *states;\n");
+    try writer.writeAll("} TSParser;\n\n");
 
     for (serialized.states, 0..) |serialized_state, index| {
         try writer.print("/* state {d} */\n", .{serialized_state.id});
@@ -90,6 +95,12 @@ pub fn writeParserC(
         try writer.writeAll("  },\n");
     }
     try writer.writeAll("};\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("static const TSParser ts_parser = {\n");
+    try writer.print("  .blocked = {},\n", .{serialized.blocked});
+    try writer.writeAll("  .state_count = TS_STATE_COUNT,\n");
+    try writer.writeAll("  .states = ts_states,\n");
+    try writer.writeAll("};\n");
 }
 
 test "emitParserCAlloc formats parser C skeletons deterministically" {
@@ -143,6 +154,12 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  uint16_t unresolved_count;
         \\} TSStateTable;
         \\
+        \\typedef struct {
+        \\  bool blocked;
+        \\  uint16_t state_count;
+        \\  const TSStateTable *states;
+        \\} TSParser;
+        \\
         \\/* state 0 */
         \\static const TSActionEntry ts_state_0_actions[] = {
         \\  { "terminal:0", "shift", 2 },
@@ -162,6 +179,12 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\    .unresolved = ts_state_0_unresolved,
         \\    .unresolved_count = 1,
         \\  },
+        \\};
+        \\
+        \\static const TSParser ts_parser = {
+        \\  .blocked = true,
+        \\  .state_count = TS_STATE_COUNT,
+        \\  .states = ts_states,
         \\};
         \\
     , emitted);

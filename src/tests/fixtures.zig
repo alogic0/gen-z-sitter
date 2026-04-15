@@ -888,6 +888,12 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  uint16_t unresolved_count;
             \\} TSStateTable;
             \\
+            \\typedef struct {
+            \\  bool blocked;
+            \\  uint16_t state_count;
+            \\  const TSStateTable *states;
+            \\} TSParser;
+            \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
             \\  { "terminal:1", "shift", 3 },
@@ -995,6 +1001,12 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  },
             \\};
             \\
+            \\static const TSParser ts_parser = {
+            \\  .blocked = false,
+            \\  .state_count = TS_STATE_COUNT,
+            \\  .states = ts_states,
+            \\};
+            \\
         ,
     };
 }
@@ -1022,6 +1034,12 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  const TSUnresolvedEntry *unresolved;
             \\  uint16_t unresolved_count;
             \\} TSStateTable;
+            \\
+            \\typedef struct {
+            \\  bool blocked;
+            \\  uint16_t state_count;
+            \\  const TSStateTable *states;
+            \\} TSParser;
             \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
@@ -1117,6 +1135,12 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\    .unresolved = ts_state_5_unresolved,
             \\    .unresolved_count = 1,
             \\  },
+            \\};
+            \\
+            \\static const TSParser ts_parser = {
+            \\  .blocked = true,
+            \\  .state_count = TS_STATE_COUNT,
+            \\  .states = ts_states,
             \\};
             \\
         ,
