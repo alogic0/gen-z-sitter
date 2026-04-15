@@ -108,6 +108,11 @@ The next parser-generation work is now Milestone 13:
 - decisions about ABI targeting and compatibility layering
 - fuller parser output beyond the Milestone 12 query/helper layer
 
+Milestone 13 begins with an explicit scope decision:
+
+- the emitted parser API may grow into a compatibility-oriented runtime-facing surface
+- but it still does not claim upstream Tree-sitter runtime ABI compatibility or full `parser.c` parity
+
 ## Documents
 
 - [MASTER_PLAN.md](./MASTER_PLAN.md)
@@ -123,6 +128,7 @@ The next parser-generation work is now Milestone 13:
 - [MILESTONE_10_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_10_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_11_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_11_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_12_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_12_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_13_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_13_IMPLEMENTATION_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)
