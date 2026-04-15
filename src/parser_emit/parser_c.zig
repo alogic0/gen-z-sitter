@@ -1,6 +1,7 @@
 const std = @import("std");
 const serialize = @import("../parse_table/serialize.zig");
 const common = @import("common.zig");
+const compat = @import("compat.zig");
 
 pub const EmitError = std.mem.Allocator.Error || std.fs.File.WriteError;
 
@@ -18,14 +19,24 @@ pub fn writeParserC(
     writer: anytype,
     serialized: serialize.SerializedTable,
 ) !void {
+    const compatibility = compat.currentRuntimeCompatibility();
+
     try writer.writeAll("/* generated parser.c skeleton */\n");
     try writer.writeAll("#include <stdbool.h>\n");
     try writer.writeAll("#include <stdint.h>\n\n");
     try writer.print("#define TS_PARSER_BLOCKED {}\n", .{serialized.blocked});
     try writer.print("#define TS_STATE_COUNT {d}\n\n", .{serialized.states.len});
+    try writer.print("#define TS_LANGUAGE_VERSION {d}\n", .{compatibility.language_version});
+    try writer.print("#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION {d}\n\n", .{compatibility.min_compatible_language_version});
     try writer.writeAll("typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;\n");
     try writer.writeAll("typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;\n");
     try writer.writeAll("typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  uint16_t language_version;\n");
+    try writer.writeAll("  uint16_t min_compatible_language_version;\n");
+    try writer.writeAll("  const char *target;\n");
+    try writer.writeAll("  const char *layer;\n");
+    try writer.writeAll("} TSCompatibilityInfo;\n\n");
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  const TSActionEntry *actions;\n");
     try writer.writeAll("  uint16_t action_count;\n");
@@ -38,6 +49,7 @@ pub fn writeParserC(
     try writer.writeAll("  bool blocked;\n");
     try writer.writeAll("  uint16_t state_count;\n");
     try writer.writeAll("  const TSStateTable *states;\n");
+    try writer.writeAll("  const TSCompatibilityInfo *compatibility;\n");
     try writer.writeAll("} TSParser;\n\n");
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  uint16_t action_count;\n");
@@ -61,6 +73,16 @@ pub fn writeParserC(
     try writer.writeAll("  }\n");
     try writer.writeAll("  return a[0] == b[0];\n");
     try writer.writeAll("}\n\n");
+    try writer.writeAll("static const TSCompatibilityInfo ts_compatibility = {\n");
+    try writer.print("  .language_version = {d},\n", .{compatibility.language_version});
+    try writer.print("  .min_compatible_language_version = {d},\n", .{compatibility.min_compatible_language_version});
+    try writer.writeAll("  .target = \"");
+    try writer.writeAll(compat.targetName(compatibility.target));
+    try writer.writeAll("\",\n");
+    try writer.writeAll("  .layer = \"");
+    try writer.writeAll(compat.layerName(compatibility.layer));
+    try writer.writeAll("\",\n");
+    try writer.writeAll("};\n\n");
 
     for (serialized.states, 0..) |serialized_state, index| {
         try writer.print("/* state {d} */\n", .{serialized_state.id});
@@ -122,6 +144,7 @@ pub fn writeParserC(
     try writer.print("  .blocked = {},\n", .{serialized.blocked});
     try writer.writeAll("  .state_count = TS_STATE_COUNT,\n");
     try writer.writeAll("  .states = ts_states,\n");
+    try writer.writeAll("  .compatibility = &ts_compatibility,\n");
     try writer.writeAll("};\n");
     try writer.writeAll("\n");
     try writer.writeAll("static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {\n");
@@ -145,6 +168,26 @@ pub fn writeParserC(
     try writer.writeAll("\n");
     try writer.writeAll("const TSParser *ts_parser_instance(void) {\n");
     try writer.writeAll("  return &ts_parser;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSCompatibilityInfo *ts_parser_compatibility(void) {\n");
+    try writer.writeAll("  return &ts_compatibility;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("uint16_t ts_parser_language_version(void) {\n");
+    try writer.writeAll("  return ts_compatibility.language_version;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("uint16_t ts_parser_min_compatible_language_version(void) {\n");
+    try writer.writeAll("  return ts_compatibility.min_compatible_language_version;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const char *ts_parser_compatibility_target(void) {\n");
+    try writer.writeAll("  return ts_compatibility.target;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const char *ts_parser_compatibility_layer(void) {\n");
+    try writer.writeAll("  return ts_compatibility.layer;\n");
     try writer.writeAll("}\n");
     try writer.writeAll("\n");
     try writer.writeAll("const TSParserRuntime *ts_parser_runtime(void) {\n");
@@ -371,9 +414,19 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\#define TS_PARSER_BLOCKED true
         \\#define TS_STATE_COUNT 1
         \\
+        \\#define TS_LANGUAGE_VERSION 15
+        \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
+        \\
         \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
         \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
         \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+        \\
+        \\typedef struct {
+        \\  uint16_t language_version;
+        \\  uint16_t min_compatible_language_version;
+        \\  const char *target;
+        \\  const char *layer;
+        \\} TSCompatibilityInfo;
         \\
         \\typedef struct {
         \\  const TSActionEntry *actions;
@@ -388,6 +441,7 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  bool blocked;
         \\  uint16_t state_count;
         \\  const TSStateTable *states;
+        \\  const TSCompatibilityInfo *compatibility;
         \\} TSParser;
         \\
         \\typedef struct {
@@ -415,6 +469,13 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  return a[0] == b[0];
         \\}
         \\
+        \\static const TSCompatibilityInfo ts_compatibility = {
+        \\  .language_version = 15,
+        \\  .min_compatible_language_version = 13,
+        \\  .target = "tree-sitter-runtime-surface",
+        \\  .layer = "intermediate",
+        \\};
+        \\
         \\/* state 0 */
         \\static const TSActionEntry ts_state_0_actions[] = {
         \\  { "terminal:0", "shift", 2 },
@@ -440,6 +501,7 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  .blocked = true,
         \\  .state_count = TS_STATE_COUNT,
         \\  .states = ts_states,
+        \\  .compatibility = &ts_compatibility,
         \\};
         \\
         \\static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {
@@ -461,6 +523,26 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\
         \\const TSParser *ts_parser_instance(void) {
         \\  return &ts_parser;
+        \\}
+        \\
+        \\const TSCompatibilityInfo *ts_parser_compatibility(void) {
+        \\  return &ts_compatibility;
+        \\}
+        \\
+        \\uint16_t ts_parser_language_version(void) {
+        \\  return ts_compatibility.language_version;
+        \\}
+        \\
+        \\uint16_t ts_parser_min_compatible_language_version(void) {
+        \\  return ts_compatibility.min_compatible_language_version;
+        \\}
+        \\
+        \\const char *ts_parser_compatibility_target(void) {
+        \\  return ts_compatibility.target;
+        \\}
+        \\
+        \\const char *ts_parser_compatibility_layer(void) {
+        \\  return ts_compatibility.layer;
         \\}
         \\
         \\const TSParserRuntime *ts_parser_runtime(void) {

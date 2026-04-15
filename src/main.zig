@@ -82,6 +82,8 @@ test {
     _ = @import("parse_table/serialize.zig");
     _ = @import("parse_table/pipeline.zig");
     _ = @import("parser_emit/common.zig");
+    _ = @import("parser_emit/compat.zig");
+    _ = @import("parser_emit/compat_checks.zig");
     _ = @import("parser_emit/parser_tables.zig");
     _ = @import("parser_emit/c_tables.zig");
     _ = @import("parser_emit/parser_c.zig");

@@ -938,9 +938,19 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\#define TS_PARSER_BLOCKED false
             \\#define TS_STATE_COUNT 7
             \\
+            \\#define TS_LANGUAGE_VERSION 15
+            \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
+            \\
             \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
             \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
             \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+            \\
+            \\typedef struct {
+            \\  uint16_t language_version;
+            \\  uint16_t min_compatible_language_version;
+            \\  const char *target;
+            \\  const char *layer;
+            \\} TSCompatibilityInfo;
             \\
             \\typedef struct {
             \\  const TSActionEntry *actions;
@@ -955,6 +965,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  bool blocked;
             \\  uint16_t state_count;
             \\  const TSStateTable *states;
+            \\  const TSCompatibilityInfo *compatibility;
             \\} TSParser;
             \\
             \\typedef struct {
@@ -981,6 +992,13 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  }
             \\  return a[0] == b[0];
             \\}
+            \\
+            \\static const TSCompatibilityInfo ts_compatibility = {
+            \\  .language_version = 15,
+            \\  .min_compatible_language_version = 13,
+            \\  .target = "tree-sitter-runtime-surface",
+            \\  .layer = "intermediate",
+            \\};
             \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
@@ -1093,6 +1111,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  .blocked = false,
             \\  .state_count = TS_STATE_COUNT,
             \\  .states = ts_states,
+            \\  .compatibility = &ts_compatibility,
             \\};
             \\
             \\static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {
@@ -1150,6 +1169,26 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\const TSParser *ts_parser_instance(void) {
             \\  return &ts_parser;
+            \\}
+            \\
+            \\const TSCompatibilityInfo *ts_parser_compatibility(void) {
+            \\  return &ts_compatibility;
+            \\}
+            \\
+            \\uint16_t ts_parser_language_version(void) {
+            \\  return ts_compatibility.language_version;
+            \\}
+            \\
+            \\uint16_t ts_parser_min_compatible_language_version(void) {
+            \\  return ts_compatibility.min_compatible_language_version;
+            \\}
+            \\
+            \\const char *ts_parser_compatibility_target(void) {
+            \\  return ts_compatibility.target;
+            \\}
+            \\
+            \\const char *ts_parser_compatibility_layer(void) {
+            \\  return ts_compatibility.layer;
             \\}
             \\
             \\const TSParserRuntime *ts_parser_runtime(void) {
@@ -1345,9 +1384,19 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\#define TS_PARSER_BLOCKED true
             \\#define TS_STATE_COUNT 6
             \\
+            \\#define TS_LANGUAGE_VERSION 15
+            \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
+            \\
             \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
             \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
             \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+            \\
+            \\typedef struct {
+            \\  uint16_t language_version;
+            \\  uint16_t min_compatible_language_version;
+            \\  const char *target;
+            \\  const char *layer;
+            \\} TSCompatibilityInfo;
             \\
             \\typedef struct {
             \\  const TSActionEntry *actions;
@@ -1362,6 +1411,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  bool blocked;
             \\  uint16_t state_count;
             \\  const TSStateTable *states;
+            \\  const TSCompatibilityInfo *compatibility;
             \\} TSParser;
             \\
             \\typedef struct {
@@ -1388,6 +1438,13 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  }
             \\  return a[0] == b[0];
             \\}
+            \\
+            \\static const TSCompatibilityInfo ts_compatibility = {
+            \\  .language_version = 15,
+            \\  .min_compatible_language_version = 13,
+            \\  .target = "tree-sitter-runtime-surface",
+            \\  .layer = "intermediate",
+            \\};
             \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
@@ -1489,6 +1546,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  .blocked = true,
             \\  .state_count = TS_STATE_COUNT,
             \\  .states = ts_states,
+            \\  .compatibility = &ts_compatibility,
             \\};
             \\
             \\static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {
@@ -1540,6 +1598,26 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\const TSParser *ts_parser_instance(void) {
             \\  return &ts_parser;
+            \\}
+            \\
+            \\const TSCompatibilityInfo *ts_parser_compatibility(void) {
+            \\  return &ts_compatibility;
+            \\}
+            \\
+            \\uint16_t ts_parser_language_version(void) {
+            \\  return ts_compatibility.language_version;
+            \\}
+            \\
+            \\uint16_t ts_parser_min_compatible_language_version(void) {
+            \\  return ts_compatibility.min_compatible_language_version;
+            \\}
+            \\
+            \\const char *ts_parser_compatibility_target(void) {
+            \\  return ts_compatibility.target;
+            \\}
+            \\
+            \\const char *ts_parser_compatibility_layer(void) {
+            \\  return ts_compatibility.layer;
             \\}
             \\
             \\const TSParserRuntime *ts_parser_runtime(void) {

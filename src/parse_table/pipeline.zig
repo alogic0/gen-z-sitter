@@ -8,6 +8,7 @@ const serialize = @import("serialize.zig");
 const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
 const c_tables_emit = @import("../parser_emit/c_tables.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
+const compat_checks = @import("../parser_emit/compat_checks.zig");
 const state = @import("state.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
@@ -1042,6 +1043,7 @@ test "generateParserCEmitterDumpFromPrepared matches the metadata-rich parser.c-
     );
 
     try std.testing.expectEqualStrings(fixtures.parseTableMetadataParserCDump().contents, dump);
+    try compat_checks.validateParserCCompatibilitySurface(dump);
 }
 
 test "generateParserCEmitterDumpFromPrepared matches the conflict diagnostic parser.c-like emitter golden fixture" {
@@ -1069,6 +1071,7 @@ test "generateParserCEmitterDumpFromPrepared matches the conflict diagnostic par
     );
 
     try std.testing.expectEqualStrings(fixtures.parseTableConflictParserCDump().contents, dump);
+    try compat_checks.validateParserCCompatibilitySurface(dump);
 }
 
 test "generateParserCEmitterDumpFromPrepared matches the metadata-rich parser.c-like emitter golden fixture through grammar.js" {
