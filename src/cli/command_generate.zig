@@ -5,6 +5,7 @@ const diag = @import("../support/diag.zig");
 const debug_dump = @import("../grammar/debug_dump.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
+const node_type_pipeline = @import("../node_types/pipeline.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
 pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !void {
@@ -61,6 +62,28 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
         defer allocator.free(dump);
         if (!builtin.is_test) {
             try std.fs.File.stdout().writeAll(dump);
+        }
+        return;
+    }
+
+    if (opts.debug_node_types) {
+        var pipeline_arena = std.heap.ArenaAllocator.init(allocator);
+        defer pipeline_arena.deinit();
+
+        const json = node_type_pipeline.generateNodeTypesJsonFromPrepared(pipeline_arena.allocator(), prepared) catch |err| switch (err) {
+            error.InvalidSupertype => {
+                try diag.printStderr(.{
+                    .kind = .usage,
+                    .message = "invalid supertype for node-types computation",
+                    .path = opts.grammar_path,
+                });
+                return error.InvalidArguments;
+            },
+            else => return err,
+        };
+
+        if (!builtin.is_test) {
+            try std.fs.File.stdout().writeAll(json);
         }
         return;
     }
@@ -140,6 +163,24 @@ test "runGenerate supports debug prepared output mode" {
     try runGenerate(std.testing.allocator, .{
         .grammar_path = path,
         .debug_prepared = true,
+    });
+}
+
+test "runGenerate supports debug node types output mode" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.json",
+        .data = fixtures.validResolvedGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    defer std.testing.allocator.free(path);
+
+    try runGenerate(std.testing.allocator, .{
+        .grammar_path = path,
+        .debug_node_types = true,
     });
 }
 

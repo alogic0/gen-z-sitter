@@ -18,6 +18,7 @@ pub const GenerateOptions = struct {
     no_parser: bool = false,
     json_summary: bool = false,
     debug_prepared: bool = false,
+    debug_node_types: bool = false,
     report_states_for_rule: ?[]const u8 = null,
     js_runtime: ?[]const u8 = null,
     optimize_merge_states: bool = true,
@@ -65,6 +66,8 @@ fn parseGenerateArgs(args: []const []const u8) ParseError!GenerateOptions {
             opts.json_summary = true;
         } else if (std.mem.eql(u8, arg, "--debug-prepared")) {
             opts.debug_prepared = true;
+        } else if (std.mem.eql(u8, arg, "--debug-node-types")) {
+            opts.debug_node_types = true;
         } else if (std.mem.eql(u8, arg, "--no-optimize-merge-states")) {
             opts.optimize_merge_states = false;
         } else if (std.mem.eql(u8, arg, "--output")) {
@@ -131,6 +134,7 @@ pub fn helpText() []const u8 {
         \\  --no-parser
         \\  --json-summary
         \\  --debug-prepared
+        \\  --debug-node-types
         \\  --report-states-for-rule <rule>
         \\  --js-runtime <runtime>
         \\  --no-optimize-merge-states
@@ -154,6 +158,12 @@ test "parse generate command with debug prepared flag" {
     const cli = try parseArgs(std.testing.allocator, &.{"zig-tree-sit", "generate", "--debug-prepared", "grammar.json"});
     try std.testing.expect(cli.command == .generate);
     try std.testing.expect(cli.command.generate.debug_prepared);
+}
+
+test "parse generate command with debug node types flag" {
+    const cli = try parseArgs(std.testing.allocator, &.{"zig-tree-sit", "generate", "--debug-node-types", "grammar.json"});
+    try std.testing.expect(cli.command == .generate);
+    try std.testing.expect(cli.command.generate.debug_node_types);
 }
 
 test "reject missing grammar path" {
