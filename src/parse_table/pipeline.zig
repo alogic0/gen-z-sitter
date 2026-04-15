@@ -16,6 +16,7 @@ pub const PipelineError =
     extract_tokens.ExtractTokensError ||
     flatten_grammar.FlattenGrammarError ||
     build.BuildError ||
+    serialize.SerializeError ||
     debug_dump.DebugDumpError ||
     std.json.ParseError(std.json.Scanner) ||
     std.mem.Allocator.Error;
@@ -69,6 +70,16 @@ pub fn generateResolvedActionTableDumpFromPrepared(
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
     return try debug_dump.dumpResolvedActionTableAlloc(allocator, result.resolved_actions);
+}
+
+pub fn generateSerializedTableDumpFromPrepared(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    mode: serialize.SerializeMode,
+) PipelineError![]const u8 {
+    const result = try buildStatesFromPrepared(allocator, prepared);
+    const serialized = try serialize.serializeBuildResult(allocator, result, mode);
+    return try debug_dump.dumpSerializedTableAlloc(allocator, serialized);
 }
 
 test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture" {
@@ -796,6 +807,60 @@ test "buildStatesFromPrepared rejects unresolved conflict grammar in strict seri
         error.UnresolvedDecisions,
         serialize.serializeBuildResult(pipeline_arena.allocator(), result, .strict),
     );
+}
+
+test "generateSerializedTableDumpFromPrepared matches the metadata-rich serialized-table golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableMetadataGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateSerializedTableDumpFromPrepared(
+        pipeline_arena.allocator(),
+        prepared,
+        .strict,
+    );
+
+    try std.testing.expectEqualStrings(fixtures.parseTableMetadataSerializedDump().contents, dump);
+}
+
+test "generateSerializedTableDumpFromPrepared matches the conflict diagnostic serialized-table golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableConflictGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateSerializedTableDumpFromPrepared(
+        pipeline_arena.allocator(),
+        prepared,
+        .diagnostic,
+    );
+
+    try std.testing.expectEqualStrings(fixtures.parseTableConflictSerializedDump().contents, dump);
 }
 
 test "generateResolvedActionTableDumpFromPrepared keeps reduce/reduce conflict groups explicit" {

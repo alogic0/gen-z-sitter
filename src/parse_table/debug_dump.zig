@@ -2,6 +2,7 @@ const std = @import("std");
 const actions = @import("actions.zig");
 const item = @import("item.zig");
 const resolution = @import("resolution.zig");
+const serialize = @import("serialize.zig");
 const state = @import("state.zig");
 
 pub const DebugDumpError = std.mem.Allocator.Error || std.fs.File.WriteError;
@@ -56,6 +57,16 @@ pub fn dumpResolvedActionTableAlloc(
     var out = std.array_list.Managed(u8).init(allocator);
     defer out.deinit();
     try writeResolvedActionTable(out.writer(), resolved_table);
+    return try out.toOwnedSlice();
+}
+
+pub fn dumpSerializedTableAlloc(
+    allocator: std.mem.Allocator,
+    serialized_table: serialize.SerializedTable,
+) DebugDumpError![]const u8 {
+    var out = std.array_list.Managed(u8).init(allocator);
+    defer out.deinit();
+    try writeSerializedTable(out.writer(), serialized_table);
     return try out.toOwnedSlice();
 }
 
@@ -249,6 +260,56 @@ pub fn writeResolvedActionTable(
         }
 
         if (index + 1 < resolved_table.states.len) try writer.writeByte('\n');
+    }
+}
+
+pub fn writeSerializedTable(
+    writer: anytype,
+    serialized_table: serialize.SerializedTable,
+) !void {
+    try writer.print("serialized_table blocked={}\n", .{serialized_table.blocked});
+    for (serialized_table.states, 0..) |serialized_state, index| {
+        try writer.print("state {d}\n", .{serialized_state.id});
+
+        try writer.writeAll("  actions:\n");
+        for (serialized_state.actions) |entry| {
+            try writer.writeAll("    ");
+            try writeSymbol(writer, entry.symbol);
+            try writer.writeAll(" => ");
+            switch (entry.action) {
+                .shift => |target| try writer.print("shift {d}\n", .{target}),
+                .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                .accept => try writer.writeAll("accept\n"),
+            }
+        }
+
+        try writer.writeAll("  gotos:\n");
+        for (serialized_state.gotos) |entry| {
+            try writer.writeAll("    ");
+            try writeSymbol(writer, entry.symbol);
+            try writer.print(" -> {d}\n", .{entry.state});
+        }
+
+        if (serialized_state.unresolved.len > 0) {
+            try writer.writeAll("  unresolved:\n");
+            for (serialized_state.unresolved) |entry| {
+                try writer.writeAll("    ");
+                try writeSymbol(writer, entry.symbol);
+                try writer.writeAll(" (");
+                try writer.writeAll(@tagName(entry.reason));
+                try writer.writeAll(")\n");
+                for (entry.candidate_actions) |candidate| {
+                    try writer.writeAll("      candidate ");
+                    switch (candidate) {
+                        .shift => |target| try writer.print("shift {d}\n", .{target}),
+                        .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                        .accept => try writer.writeAll("accept\n"),
+                    }
+                }
+            }
+        }
+
+        if (index + 1 < serialized_table.states.len) try writer.writeByte('\n');
     }
 }
 
@@ -478,6 +539,51 @@ test "dumpResolvedActionTableAlloc formats chosen and unresolved groups determin
         \\    terminal:1: unresolved (shift_reduce)
         \\      candidate shift 3
         \\      candidate reduce 4
+        \\
+    , dump);
+}
+
+test "dumpSerializedTableAlloc formats serialized tables deterministically" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = true,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]serialize.SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
+                },
+                .gotos = &[_]serialize.SerializedGotoEntry{
+                    .{ .symbol = .{ .non_terminal = 1 }, .state = 3 },
+                },
+                .unresolved = &[_]serialize.SerializedUnresolvedEntry{
+                    .{
+                        .symbol = .{ .terminal = 1 },
+                        .reason = .shift_reduce,
+                        .candidate_actions = &[_]actions.ParseAction{
+                            .{ .shift = 4 },
+                            .{ .reduce = 5 },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const dump = try dumpSerializedTableAlloc(allocator, serialized);
+    defer allocator.free(dump);
+
+    try std.testing.expectEqualStrings(
+        \\serialized_table blocked=true
+        \\state 0
+        \\  actions:
+        \\    terminal:0 => shift 2
+        \\  gotos:
+        \\    non_terminal:1 -> 3
+        \\  unresolved:
+        \\    terminal:1 (shift_reduce)
+        \\      candidate shift 4
+        \\      candidate reduce 5
         \\
     , dump);
 }

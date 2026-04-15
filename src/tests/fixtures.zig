@@ -612,6 +612,94 @@ pub fn parseTableMetadataActionDump() Fixture {
     };
 }
 
+pub fn parseTableMetadataSerializedDump() Fixture {
+    return .{
+        .name = "parse_table_metadata_serialized_dump",
+        .contents =
+            \\serialized_table blocked=false
+            \\state 0
+            \\  actions:
+            \\    terminal:1 => shift 3
+            \\  gotos:
+            \\    non_terminal:0 -> 1
+            \\    non_terminal:1 -> 2
+            \\
+            \\state 1
+            \\  actions:
+            \\  gotos:
+            \\
+            \\state 2
+            \\  actions:
+            \\    terminal:0 => shift 4
+            \\  gotos:
+            \\
+            \\state 3
+            \\  actions:
+            \\    terminal:0 => reduce 2
+            \\  gotos:
+            \\
+            \\state 4
+            \\  actions:
+            \\    terminal:1 => shift 6
+            \\  gotos:
+            \\    non_terminal:1 -> 5
+            \\
+            \\state 5
+            \\  actions:
+            \\  gotos:
+            \\
+            \\state 6
+            \\  actions:
+            \\  gotos:
+            \\
+        ,
+    };
+}
+
+pub fn parseTableConflictSerializedDump() Fixture {
+    return .{
+        .name = "parse_table_conflict_serialized_dump",
+        .contents =
+            \\serialized_table blocked=true
+            \\state 0
+            \\  actions:
+            \\    terminal:1 => shift 3
+            \\  gotos:
+            \\    non_terminal:0 -> 1
+            \\    non_terminal:1 -> 2
+            \\
+            \\state 1
+            \\  actions:
+            \\  gotos:
+            \\
+            \\state 2
+            \\  actions:
+            \\    terminal:0 => shift 4
+            \\  gotos:
+            \\
+            \\state 3
+            \\  actions:
+            \\    terminal:0 => reduce 3
+            \\  gotos:
+            \\
+            \\state 4
+            \\  actions:
+            \\    terminal:1 => shift 3
+            \\  gotos:
+            \\    non_terminal:1 -> 5
+            \\
+            \\state 5
+            \\  actions:
+            \\  gotos:
+            \\  unresolved:
+            \\    terminal:0 (shift_reduce)
+            \\      candidate shift 4
+            \\      candidate reduce 2
+            \\
+        ,
+    };
+}
+
 pub fn parseTableConflictActionTableDump() Fixture {
     return .{
         .name = "parse_table_conflict_action_table_dump",
