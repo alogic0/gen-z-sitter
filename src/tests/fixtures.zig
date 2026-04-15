@@ -210,15 +210,6 @@ pub fn validResolvedNodeTypesJson() Fixture {
             \\    ]
             \\  },
             \\  {
-            \\    "type": "indent",
-            \\    "named": true
-            \\  },
-            \\  {
-            \\    "type": "source_file",
-            \\    "named": true,
-            \\    "root": true
-            \\  },
-            \\  {
             \\    "type": "term",
             \\    "named": true,
             \\    "children": {
@@ -231,6 +222,15 @@ pub fn validResolvedNodeTypesJson() Fixture {
             \\        }
             \\      ]
             \\    }
+            \\  },
+            \\  {
+            \\    "type": "indent",
+            \\    "named": true
+            \\  },
+            \\  {
+            \\    "type": "source_file",
+            \\    "named": true,
+            \\    "root": true
             \\  }
             \\]
             \\
@@ -292,10 +292,6 @@ pub fn fieldChildrenNodeTypesJson() Fixture {
         .contents =
             \\[
             \\  {
-            \\    "type": "+",
-            \\    "named": false
-            \\  },
-            \\  {
             \\    "type": "expr",
             \\    "named": true,
             \\    "children": {
@@ -335,6 +331,10 @@ pub fn fieldChildrenNodeTypesJson() Fixture {
             \\        ]
             \\      }
             \\    }
+            \\  },
+            \\  {
+            \\    "type": "+",
+            \\    "named": false
             \\  }
             \\]
             \\
@@ -387,10 +387,6 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
         .name = "hidden_wrapper_node_types",
         .contents =
             \\[
-            \\  {
-            \\    "type": "+",
-            \\    "named": false
-            \\  },
             \\  {
             \\    "type": "expr",
             \\    "named": true,
@@ -445,6 +441,10 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
             \\        ]
             \\      }
             \\    }
+            \\  },
+            \\  {
+            \\    "type": "+",
+            \\    "named": false
             \\  },
             \\  {
             \\    "type": "term",
@@ -549,10 +549,6 @@ pub fn mixedSemanticsNodeTypesJson() Fixture {
             \\    }
             \\  },
             \\  {
-            \\    "type": "indent",
-            \\    "named": true
-            \\  },
-            \\  {
             \\    "type": "number_literal",
             \\    "named": true,
             \\    "children": {
@@ -607,6 +603,10 @@ pub fn mixedSemanticsNodeTypesJson() Fixture {
             \\        }
             \\      ]
             \\    }
+            \\  },
+            \\  {
+            \\    "type": "indent",
+            \\    "named": true
             \\  }
             \\]
             \\
@@ -1011,14 +1011,6 @@ pub fn hiddenExternalFieldsNodeTypesJson() Fixture {
         .contents =
             \\[
             \\  {
-            \\    "type": "expr",
-            \\    "named": true
-            \\  },
-            \\  {
-            \\    "type": "indent",
-            \\    "named": true
-            \\  },
-            \\  {
             \\    "type": "source_file",
             \\    "named": true,
             \\    "root": true,
@@ -1058,6 +1050,14 @@ pub fn hiddenExternalFieldsNodeTypesJson() Fixture {
             \\        }
             \\      ]
             \\    }
+            \\  },
+            \\  {
+            \\    "type": "expr",
+            \\    "named": true
+            \\  },
+            \\  {
+            \\    "type": "indent",
+            \\    "named": true
             \\  }
             \\]
             \\
@@ -1104,10 +1104,6 @@ pub fn extraAliasedBodyNodeTypesJson() Fixture {
         .name = "extra_aliased_body_node_types",
         .contents =
             \\[
-            \\  {
-            \\    "type": "expr",
-            \\    "named": true
-            \\  },
             \\  {
             \\    "type": "source_file",
             \\    "named": true,
@@ -1163,6 +1159,10 @@ pub fn extraAliasedBodyNodeTypesJson() Fixture {
             \\        }
             \\      ]
             \\    }
+            \\  },
+            \\  {
+            \\    "type": "expr",
+            \\    "named": true
             \\  }
             \\]
             \\

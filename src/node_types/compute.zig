@@ -792,9 +792,19 @@ fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
 }
 
 fn lessThanNodeType(_: void, a: NodeType, b: NodeType) bool {
+    const a_has_subtypes = a.subtypes.len > 0;
+    const b_has_subtypes = b.subtypes.len > 0;
+    if (a_has_subtypes != b_has_subtypes) return a_has_subtypes;
+
+    const a_is_leaf = a.children == null and a.fields.len == 0;
+    const b_is_leaf = b.children == null and b.fields.len == 0;
+    if (a_is_leaf != b_is_leaf) return !a_is_leaf;
+
     const kind_order = std.mem.order(u8, a.kind, b.kind);
     if (kind_order != .eq) return kind_order == .lt;
-    return @intFromBool(a.named) < @intFromBool(b.named);
+    if (a.named != b.named) return @intFromBool(a.named) < @intFromBool(b.named);
+    if (a.root != b.root) return @intFromBool(a.root) < @intFromBool(b.root);
+    return @intFromBool(a.extra) < @intFromBool(b.extra);
 }
 
 fn lessThanNodeTypeRef(_: void, a: NodeTypeRef, b: NodeTypeRef) bool {
@@ -848,14 +858,14 @@ test "computeNodeTypes includes visible syntax and lexical nodes with default al
 
     const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, defaults);
     try std.testing.expectEqual(@as(usize, 4), nodes.len);
-    try std.testing.expectEqualStrings(",", nodes[0].kind);
-    try std.testing.expect(!nodes[0].named);
-    try std.testing.expect(nodes[0].extra);
-    try std.testing.expectEqualStrings("expr", nodes[1].kind);
-    try std.testing.expect(nodes[1].named);
-    try std.testing.expectEqualStrings("identifier", nodes[2].kind);
-    try std.testing.expectEqualStrings("source_file", nodes[3].kind);
-    try std.testing.expect(nodes[3].root);
+    try std.testing.expectEqualStrings("expr", nodes[0].kind);
+    try std.testing.expect(nodes[0].named);
+    try std.testing.expectEqualStrings("source_file", nodes[1].kind);
+    try std.testing.expect(nodes[1].root);
+    try std.testing.expectEqualStrings(",", nodes[2].kind);
+    try std.testing.expect(!nodes[2].named);
+    try std.testing.expect(nodes[2].extra);
+    try std.testing.expectEqualStrings("identifier", nodes[3].kind);
 }
 
 test "computeNodeTypes merges duplicate entries with the same effective type name" {
@@ -1045,10 +1055,10 @@ test "computeNodeTypes computes visible supertype subtypes" {
 
     const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
     try std.testing.expectEqual(@as(usize, 4), nodes.len);
-    try std.testing.expectEqualStrings("expression", nodes[1].kind);
-    try std.testing.expectEqual(@as(usize, 2), nodes[1].subtypes.len);
-    try std.testing.expectEqualStrings("binary_expression", nodes[1].subtypes[0].kind);
-    try std.testing.expectEqualStrings("identifier", nodes[1].subtypes[1].kind);
+    try std.testing.expectEqualStrings("expression", nodes[0].kind);
+    try std.testing.expectEqual(@as(usize, 2), nodes[0].subtypes.len);
+    try std.testing.expectEqualStrings("binary_expression", nodes[0].subtypes[0].kind);
+    try std.testing.expectEqualStrings("identifier", nodes[0].subtypes[1].kind);
 }
 
 test "computeNodeTypes prunes subtype entries when a supertype is already present" {
@@ -1092,6 +1102,44 @@ test "computeNodeTypes prunes subtype entries when a supertype is already presen
     try std.testing.expect(source.children != null);
     try std.testing.expectEqual(@as(usize, 1), source.children.?.types.len);
     try std.testing.expectEqualStrings("expression", source.children.?.types[0].kind);
+}
+
+test "computeNodeTypes orders supertypes before non-leaves and leaves" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var expression_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+    };
+    var statement_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "expression", .kind = .named, .productions = &.{.{ .steps = expression_steps[0..] }} },
+            .{ .name = "statement", .kind = .named, .productions = &.{.{ .steps = statement_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{.{ .non_terminal = 1 }},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{.{ .name = "statement", .kind = .named, .rule = 0 }},
+        .separators = &.{},
+    };
+
+    const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
+    try std.testing.expectEqualStrings("expression", nodes[0].kind);
+    try std.testing.expectEqualStrings("source_file", nodes[1].kind);
+    try std.testing.expectEqualStrings("statement", nodes[2].kind);
 }
 
 test "computeNodeTypes aggregates fields and visible children" {
