@@ -112,6 +112,7 @@ Milestone 13 begins with an explicit scope decision:
 
 - the emitted parser API may grow into a compatibility-oriented runtime-facing surface
 - but it still does not claim upstream Tree-sitter runtime ABI compatibility or full `parser.c` parity
+- compatibility work will be staged through an intermediate compatibility layer before any direct upstream ABI claim
 
 ## Documents
 

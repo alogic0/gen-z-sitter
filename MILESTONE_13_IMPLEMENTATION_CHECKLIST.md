@@ -38,6 +38,22 @@ Milestone 13 uses this emitted API scope as its working contract:
 
 This means Milestone 13 is allowed to deepen the runtime-facing emitted API, but it is still not allowed to silently turn that API into a claimed ABI contract.
 
+## Compatibility Layering Decision
+
+Milestone 13 will stage compatibility work through an intermediate compatibility layer first.
+
+That means:
+
+- the emitted parser surface should keep getting clearer and more compatibility-oriented
+- later milestones may map that surface onto upstream expectations
+- the project does not yet claim direct upstream Tree-sitter C runtime ABI compatibility at the current emitted boundary
+
+Why this is the chosen direction:
+
+- it keeps Milestone 13 focused on making the emitted boundary explicit and testable
+- it avoids prematurely freezing the current emitted API as if it were already the upstream ABI
+- it gives later milestones room to add compatibility shims, naming adjustments, and structural changes without pretending the ABI problem is already solved
+
 ## What Milestone 13 Includes
 
 - decisions about compatibility layering and emitted API scope
