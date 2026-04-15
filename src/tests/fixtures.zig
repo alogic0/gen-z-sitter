@@ -238,6 +238,60 @@ pub fn validResolvedNodeTypesJson() Fixture {
     };
 }
 
+pub fn parseTableTinyGrammarJson() Fixture {
+    return .{
+        .name = "parse_table_tiny",
+        .contents =
+            \\{
+            \\  "name": "parse_table_tiny",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "expr"
+            \\    },
+            \\    "expr": {
+            \\      "type": "STRING",
+            \\      "value": "x"
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
+pub fn parseTableTinyDump() Fixture {
+    return .{
+        .name = "parse_table_tiny_dump",
+        .contents =
+            \\state 0
+            \\  items:
+            \\    #0@0
+            \\    #1@0
+            \\    #2@0
+            \\  transitions:
+            \\    non_terminal:0 -> 1
+            \\    non_terminal:1 -> 2
+            \\    terminal:0 -> 3
+            \\
+            \\state 1
+            \\  items:
+            \\    #0@1
+            \\  transitions:
+            \\
+            \\state 2
+            \\  items:
+            \\    #1@1
+            \\  transitions:
+            \\
+            \\state 3
+            \\  items:
+            \\    #2@1
+            \\  transitions:
+            \\
+        ,
+    };
+}
+
 pub fn fieldChildrenGrammarJson() Fixture {
     return .{
         .name = "field_children",
