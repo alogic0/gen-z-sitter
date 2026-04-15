@@ -1050,6 +1050,44 @@ pub fn parseTableDynamicPrecedenceGrammarJson() Fixture {
     };
 }
 
+pub fn parseTableNegativeDynamicPrecedenceGrammarJson() Fixture {
+    return .{
+        .name = "parse_table_negative_dynamic_precedence",
+        .contents =
+            \\{
+            \\  "name": "parse_table_negative_dynamic_precedence",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "expr"
+            \\    },
+            \\    "expr": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        {
+            \\          "type": "PREC_DYNAMIC",
+            \\          "value": -1,
+            \\          "content": {
+            \\            "type": "SEQ",
+            \\            "members": [
+            \\              { "type": "SYMBOL", "name": "expr" },
+            \\              { "type": "STRING", "value": "+" },
+            \\              { "type": "SYMBOL", "name": "expr" }
+            \\            ]
+            \\          }
+            \\        },
+            \\        {
+            \\          "type": "STRING",
+            \\          "value": "x"
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
 pub fn parseTableNamedPrecedenceGrammarJson() Fixture {
     return .{
         .name = "parse_table_named_precedence",
@@ -1283,6 +1321,37 @@ pub fn parseTableDynamicPrecedenceResolvedActionDump() Fixture {
             \\state 5
             \\  resolved_actions:
             \\    terminal:0: reduce 2
+            \\
+        ,
+    };
+}
+
+pub fn parseTableNegativeDynamicPrecedenceResolvedActionDump() Fixture {
+    return .{
+        .name = "parse_table_negative_dynamic_precedence_resolved_action_dump",
+        .contents =
+            \\state 0
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 1
+            \\  resolved_actions:
+            \\
+            \\state 2
+            \\  resolved_actions:
+            \\    terminal:0: shift 4
+            \\
+            \\state 3
+            \\  resolved_actions:
+            \\    terminal:0: reduce 3
+            \\
+            \\state 4
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 5
+            \\  resolved_actions:
+            \\    terminal:0: shift 4
             \\
         ,
     };
