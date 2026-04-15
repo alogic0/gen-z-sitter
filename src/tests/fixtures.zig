@@ -932,6 +932,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
         .name = "parse_table_metadata_parser_c_dump",
         .contents =
             \\/* generated parser.c skeleton */
+            \\/* top-level layout: ts_language -> parser/runtime/compatibility */
             \\#include <stdbool.h>
             \\#include <stdint.h>
             \\
@@ -1217,44 +1218,63 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  return &ts_language;
             \\}
             \\
+            \\const TSParser *ts_language_parser(const TSLanguage *language) {
+            \\  return language ? language->parser : 0;
+            \\}
+            \\
+            \\const TSParserRuntime *ts_language_runtime(const TSLanguage *language) {
+            \\  return language ? language->runtime : 0;
+            \\}
+            \\
+            \\const TSCompatibilityInfo *ts_language_compatibility(const TSLanguage *language) {
+            \\  return language ? language->compatibility : 0;
+            \\}
+            \\
             \\const TSParser *ts_parser_instance(void) {
-            \\  return &ts_parser;
+            \\  return ts_language_parser(ts_language_instance());
             \\}
             \\
             \\const TSCompatibilityInfo *ts_parser_compatibility(void) {
-            \\  return &ts_compatibility;
+            \\  return ts_language_compatibility(ts_language_instance());
             \\}
             \\
             \\uint16_t ts_parser_language_version(void) {
-            \\  return ts_compatibility.language_version;
+            \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
+            \\  return compatibility ? compatibility->language_version : 0;
             \\}
             \\
             \\uint16_t ts_parser_min_compatible_language_version(void) {
-            \\  return ts_compatibility.min_compatible_language_version;
+            \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
+            \\  return compatibility ? compatibility->min_compatible_language_version : 0;
             \\}
             \\
             \\const char *ts_parser_compatibility_target(void) {
-            \\  return ts_compatibility.target;
+            \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
+            \\  return compatibility ? compatibility->target : 0;
             \\}
             \\
             \\const char *ts_parser_compatibility_layer(void) {
-            \\  return ts_compatibility.layer;
+            \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
+            \\  return compatibility ? compatibility->layer : 0;
             \\}
             \\
             \\const TSParserRuntime *ts_parser_runtime(void) {
-            \\  return &ts_runtime;
+            \\  return ts_language_runtime(ts_language_instance());
             \\}
             \\
             \\bool ts_parser_runtime_is_blocked(void) {
-            \\  return ts_runtime.blocked;
+            \\  const TSParserRuntime *runtime = ts_parser_runtime();
+            \\  return runtime ? runtime->blocked : false;
             \\}
             \\
             \\bool ts_parser_runtime_has_unresolved_states(void) {
-            \\  return ts_runtime.has_unresolved_states;
+            \\  const TSParserRuntime *runtime = ts_parser_runtime();
+            \\  return runtime ? runtime->has_unresolved_states : false;
             \\}
             \\
             \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
-            \\  return state_id < TS_STATE_COUNT ? &ts_runtime_states[state_id] : 0;
+            \\  const TSParserRuntime *runtime = ts_parser_runtime();
+            \\  return runtime and state_id < runtime->state_count ? &runtime->states[state_id] : 0;
             \\}
             \\
             \\bool ts_parser_runtime_state_has_unresolved(uint16_t state_id) {
@@ -1263,23 +1283,28 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\}
             \\
             \\const TSStateTable *ts_parser_state(uint16_t state_id) {
-            \\  return state_id < TS_STATE_COUNT ? &ts_states[state_id] : 0;
+            \\  const TSParser *parser = ts_parser_instance();
+            \\  return parser and state_id < parser->state_count ? &parser->states[state_id] : 0;
             \\}
             \\
             \\bool ts_parser_is_blocked(void) {
-            \\  return ts_parser.blocked;
+            \\  const TSParser *parser = ts_parser_instance();
+            \\  return parser ? parser->blocked : false;
             \\}
             \\
             \\uint16_t ts_parser_symbol_count(void) {
-            \\  return ts_parser.symbol_count;
+            \\  const TSParser *parser = ts_parser_instance();
+            \\  return parser ? parser->symbol_count : 0;
             \\}
             \\
             \\uint16_t ts_parser_state_count(void) {
-            \\  return ts_parser.state_count;
+            \\  const TSParser *parser = ts_parser_instance();
+            \\  return parser ? parser->state_count : 0;
             \\}
             \\
             \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) {
-            \\  return symbol_id < TS_SYMBOL_COUNT ? &ts_symbols[symbol_id] : 0;
+            \\  const TSParser *parser = ts_parser_instance();
+            \\  return parser and symbol_id < parser->symbol_count ? &parser->symbols[symbol_id] : 0;
             \\}
             \\
             \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
@@ -1298,9 +1323,10 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\}
             \\
             \\int16_t ts_parser_find_symbol_id(const char *symbol) {
+            \\  const TSParser *parser = ts_parser_instance();
             \\  uint16_t i = 0;
-            \\  while (i < TS_SYMBOL_COUNT) {
-            \\    if (ts_string_eq(ts_symbols[i].name, symbol)) return (int16_t)i;
+            \\  while (parser and i < parser->symbol_count) {
+            \\    if (ts_string_eq(parser->symbols[i].name, symbol)) return (int16_t)i;
             \\    i += 1;
             \\  }
             \\  return -1;
@@ -1460,6 +1486,7 @@ pub fn parseTableConflictParserCDump() Fixture {
         .name = "parse_table_conflict_parser_c_dump",
         .contents =
             \\/* generated parser.c skeleton */
+            \\/* top-level layout: ts_language -> parser/runtime/compatibility */
             \\#include <stdbool.h>
             \\#include <stdint.h>
             \\
@@ -1728,44 +1755,63 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  return &ts_language;
             \\}
             \\
+            \\const TSParser *ts_language_parser(const TSLanguage *language) {
+            \\  return language ? language->parser : 0;
+            \\}
+            \\
+            \\const TSParserRuntime *ts_language_runtime(const TSLanguage *language) {
+            \\  return language ? language->runtime : 0;
+            \\}
+            \\
+            \\const TSCompatibilityInfo *ts_language_compatibility(const TSLanguage *language) {
+            \\  return language ? language->compatibility : 0;
+            \\}
+            \\
             \\const TSParser *ts_parser_instance(void) {
-            \\  return &ts_parser;
+            \\  return ts_language_parser(ts_language_instance());
             \\}
             \\
             \\const TSCompatibilityInfo *ts_parser_compatibility(void) {
-            \\  return &ts_compatibility;
+            \\  return ts_language_compatibility(ts_language_instance());
             \\}
             \\
             \\uint16_t ts_parser_language_version(void) {
-            \\  return ts_compatibility.language_version;
+            \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
+            \\  return compatibility ? compatibility->language_version : 0;
             \\}
             \\
             \\uint16_t ts_parser_min_compatible_language_version(void) {
-            \\  return ts_compatibility.min_compatible_language_version;
+            \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
+            \\  return compatibility ? compatibility->min_compatible_language_version : 0;
             \\}
             \\
             \\const char *ts_parser_compatibility_target(void) {
-            \\  return ts_compatibility.target;
+            \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
+            \\  return compatibility ? compatibility->target : 0;
             \\}
             \\
             \\const char *ts_parser_compatibility_layer(void) {
-            \\  return ts_compatibility.layer;
+            \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
+            \\  return compatibility ? compatibility->layer : 0;
             \\}
             \\
             \\const TSParserRuntime *ts_parser_runtime(void) {
-            \\  return &ts_runtime;
+            \\  return ts_language_runtime(ts_language_instance());
             \\}
             \\
             \\bool ts_parser_runtime_is_blocked(void) {
-            \\  return ts_runtime.blocked;
+            \\  const TSParserRuntime *runtime = ts_parser_runtime();
+            \\  return runtime ? runtime->blocked : false;
             \\}
             \\
             \\bool ts_parser_runtime_has_unresolved_states(void) {
-            \\  return ts_runtime.has_unresolved_states;
+            \\  const TSParserRuntime *runtime = ts_parser_runtime();
+            \\  return runtime ? runtime->has_unresolved_states : false;
             \\}
             \\
             \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
-            \\  return state_id < TS_STATE_COUNT ? &ts_runtime_states[state_id] : 0;
+            \\  const TSParserRuntime *runtime = ts_parser_runtime();
+            \\  return runtime and state_id < runtime->state_count ? &runtime->states[state_id] : 0;
             \\}
             \\
             \\bool ts_parser_runtime_state_has_unresolved(uint16_t state_id) {
@@ -1774,23 +1820,28 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\}
             \\
             \\const TSStateTable *ts_parser_state(uint16_t state_id) {
-            \\  return state_id < TS_STATE_COUNT ? &ts_states[state_id] : 0;
+            \\  const TSParser *parser = ts_parser_instance();
+            \\  return parser and state_id < parser->state_count ? &parser->states[state_id] : 0;
             \\}
             \\
             \\bool ts_parser_is_blocked(void) {
-            \\  return ts_parser.blocked;
+            \\  const TSParser *parser = ts_parser_instance();
+            \\  return parser ? parser->blocked : false;
             \\}
             \\
             \\uint16_t ts_parser_symbol_count(void) {
-            \\  return ts_parser.symbol_count;
+            \\  const TSParser *parser = ts_parser_instance();
+            \\  return parser ? parser->symbol_count : 0;
             \\}
             \\
             \\uint16_t ts_parser_state_count(void) {
-            \\  return ts_parser.state_count;
+            \\  const TSParser *parser = ts_parser_instance();
+            \\  return parser ? parser->state_count : 0;
             \\}
             \\
             \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) {
-            \\  return symbol_id < TS_SYMBOL_COUNT ? &ts_symbols[symbol_id] : 0;
+            \\  const TSParser *parser = ts_parser_instance();
+            \\  return parser and symbol_id < parser->symbol_count ? &parser->symbols[symbol_id] : 0;
             \\}
             \\
             \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
@@ -1809,9 +1860,10 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\}
             \\
             \\int16_t ts_parser_find_symbol_id(const char *symbol) {
+            \\  const TSParser *parser = ts_parser_instance();
             \\  uint16_t i = 0;
-            \\  while (i < TS_SYMBOL_COUNT) {
-            \\    if (ts_string_eq(ts_symbols[i].name, symbol)) return (int16_t)i;
+            \\  while (parser and i < parser->symbol_count) {
+            \\    if (ts_string_eq(parser->symbols[i].name, symbol)) return (int16_t)i;
             \\    i += 1;
             \\  }
             \\  return -1;
