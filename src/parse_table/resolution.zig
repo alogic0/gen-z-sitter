@@ -1123,3 +1123,98 @@ test "resolveActionTable uses shift-side integer precedence from the current sta
     try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(6)[0].kind);
     try std.testing.expect(switch (resolved.groupsForState(6)[0].chosen.?) { .shift => |id| id == 7, else => false });
 }
+
+test "resolveActionTable uses shift-side named precedence from the current state when available" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const reduce_steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .non_terminal = 1 },
+            .precedence = .{ .name = "sum" },
+        },
+    };
+    const shift_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+        .{
+            .symbol = .{ .terminal = 0 },
+            .precedence = .{ .name = "product" },
+        },
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = reduce_steps[0..] },
+        .{ .lhs = 1, .steps = shift_steps[0..] },
+    };
+
+    const parse_items = [_]item.ParseItem{
+        .{
+            .production_id = 1,
+            .step_index = 1,
+            .lookahead = .{ .terminal = 0 },
+        },
+        .{
+            .production_id = 2,
+            .step_index = 1,
+            .lookahead = null,
+        },
+    };
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 6,
+            .items = parse_items[0..],
+            .transitions = &.{},
+            .conflicts = &.{},
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 6,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const precedence_orderings = [_][]const syntax_ir.PrecedenceEntry{
+        &[_]syntax_ir.PrecedenceEntry{
+            .{ .name = "sum" },
+            .{ .name = "product" },
+        },
+    };
+
+    const resolved = try resolveActionTableWithContext(
+        allocator,
+        productions[0..],
+        precedence_orderings[0..],
+        parse_states[0..],
+        grouped,
+    );
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(6)[0].kind);
+    try std.testing.expect(switch (resolved.groupsForState(6)[0].chosen.?) { .shift => |id| id == 7, else => false });
+}
