@@ -279,7 +279,7 @@ pub fn fieldChildrenNodeTypesJson() Fixture {
             \\[
             \\  {
             \\    "type": "+",
-            \\    "named": true
+            \\    "named": false
             \\  },
             \\  {
             \\    "type": "expr",
@@ -327,7 +327,7 @@ pub fn fieldChildrenNodeTypesJson() Fixture {
             \\      "types": [
             \\        {
             \\          "type": "+",
-            \\          "named": true
+            \\          "named": false
             \\        },
             \\        {
             \\          "type": "expr",
@@ -393,7 +393,7 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
             \\[
             \\  {
             \\    "type": "+",
-            \\    "named": true
+            \\    "named": false
             \\  },
             \\  {
             \\    "type": "expr",
@@ -455,7 +455,7 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
             \\      "types": [
             \\        {
             \\          "type": "+",
-            \\          "named": true
+            \\          "named": false
             \\        },
             \\        {
             \\          "type": "expr",

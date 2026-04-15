@@ -318,9 +318,10 @@ const Extractor = struct {
         if (self.findLexicalVariable(rule_id)) |index| return index;
 
         const name = self.lexicalNameForRule(rule_id, preferred_name);
+        const kind = self.lexicalKindForRule(rule_id, preferred_name);
         self.lexical_variables.append(.{
             .name = name,
-            .kind = .named,
+            .kind = kind,
             .rule = rule_id,
         }) catch return null;
         return @intCast(self.lexical_variables.items.len - 1);
@@ -414,6 +415,14 @@ const Extractor = struct {
             else => preferred_name,
         };
     }
+
+    fn lexicalKindForRule(self: *Extractor, rule_id: ir_rules.RuleId, preferred_name: []const u8) lexical_ir.VariableKind {
+        return switch (self.prepared.rules[@intCast(rule_id)]) {
+            .string, .pattern => if (shouldUseLiteralLexicalName(preferred_name)) .anonymous else .named,
+            .metadata => |metadata| self.lexicalKindForRule(metadata.inner, preferred_name),
+            else => .named,
+        };
+    }
 };
 
 fn shouldUseLiteralLexicalName(preferred_name: []const u8) bool {
@@ -470,8 +479,11 @@ test "extractTokens uses literal token names inside hidden wrappers" {
     const extracted = try extractTokens(extract_arena.allocator(), prepared);
 
     try std.testing.expectEqualStrings("+", extracted.lexical.variables[0].name);
+    try std.testing.expectEqual(lexical_ir.VariableKind.anonymous, extracted.lexical.variables[0].kind);
     try std.testing.expectEqualStrings("expr", extracted.lexical.variables[1].name);
+    try std.testing.expectEqual(lexical_ir.VariableKind.named, extracted.lexical.variables[1].kind);
     try std.testing.expectEqualStrings("term", extracted.lexical.variables[2].name);
+    try std.testing.expectEqual(lexical_ir.VariableKind.named, extracted.lexical.variables[2].kind);
 }
 
 test "extractTokens expands repeat rules into auxiliary syntax variables" {
