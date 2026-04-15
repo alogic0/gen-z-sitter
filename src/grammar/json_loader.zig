@@ -27,6 +27,9 @@ pub const LoadedJsonGrammar = struct {
 };
 
 pub fn loadGrammarJson(gpa: std.mem.Allocator, path: []const u8) LoadError!LoadedJsonGrammar {
+    if (isDirectory(path)) {
+        return error.InvalidPath;
+    }
     if (std.mem.endsWith(u8, path, "/") or std.mem.endsWith(u8, path, "\\")) {
         return error.InvalidPath;
     }
@@ -52,6 +55,20 @@ pub fn loadGrammarJson(gpa: std.mem.Allocator, path: []const u8) LoadError!Loade
         .arena = arena,
         .grammar = grammar,
     };
+}
+
+fn isDirectory(path: []const u8) bool {
+    const dir = if (std.fs.path.isAbsolute(path))
+        std.fs.openDirAbsolute(path, .{})
+    else
+        std.fs.cwd().openDir(path, .{});
+    if (dir) |opened_dir| {
+        var opened = opened_dir;
+        opened.close();
+        return true;
+    } else |_| {
+        return false;
+    }
 }
 
 fn parseTopLevel(allocator: std.mem.Allocator, value: std.json.Value) LoadError!raw.RawGrammar {
@@ -375,4 +392,30 @@ test "loadGrammarJson rejects invalid precedence value type" {
     defer loaded.deinit();
 
     try std.testing.expectEqual(@as(usize, 1), loaded.grammar.precedences.len);
+}
+
+test "loadGrammarJson rejects malformed json" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.json",
+        .data = fixtures.malformedGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expectError(error.JsonParseFailure, loadGrammarJson(std.testing.allocator, path));
+}
+
+test "loadGrammarJson rejects an actual directory path" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.makePath("grammar.json");
+    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expectError(error.InvalidPath, loadGrammarJson(std.testing.allocator, path));
 }

@@ -67,6 +67,80 @@ pub fn invalidPrecedenceGrammarJson() Fixture {
     };
 }
 
+pub fn malformedGrammarJson() Fixture {
+    return .{
+        .name = "malformed",
+        .contents = "{",
+    };
+}
+
+pub fn missingNameGrammarJson() Fixture {
+    return .{
+        .name = "missing_name",
+        .contents =
+            \\{
+            \\  "rules": {
+            \\    "source_file": { "type": "BLANK" }
+            \\  }
+            \\}
+        ,
+    };
+}
+
+pub fn missingRulesGrammarJson() Fixture {
+    return .{
+        .name = "missing_rules",
+        .contents =
+            \\{
+            \\  "name": "basic"
+            \\}
+        ,
+    };
+}
+
+pub fn emptyNameGrammarJson() Fixture {
+    return .{
+        .name = "empty_name",
+        .contents =
+            \\{
+            \\  "name": "",
+            \\  "rules": {
+            \\    "source_file": { "type": "BLANK" }
+            \\  }
+            \\}
+        ,
+    };
+}
+
+pub fn emptyRulesGrammarJson() Fixture {
+    return .{
+        .name = "empty_rules",
+        .contents =
+            \\{
+            \\  "name": "basic",
+            \\  "rules": {}
+            \\}
+        ,
+    };
+}
+
+pub fn invalidReservedGrammarJson() Fixture {
+    return .{
+        .name = "invalid_reserved",
+        .contents =
+            \\{
+            \\  "name": "basic",
+            \\  "rules": {
+            \\    "source_file": { "type": "BLANK" }
+            \\  },
+            \\  "reserved": {
+            \\    "global": { "type": "BLANK" }
+            \\  }
+            \\}
+        ,
+    };
+}
+
 test "basic fixture is non-empty" {
     const fixture = basicGrammarJson();
     try std.testing.expect(fixture.contents.len > 0);

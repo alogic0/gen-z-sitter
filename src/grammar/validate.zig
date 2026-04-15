@@ -82,3 +82,41 @@ test "validateRawGrammar rejects empty string in extras" {
 
     try std.testing.expectError(error.InvalidExtra, validateRawGrammar(&grammar));
 }
+
+test "validateRawGrammar rejects empty rules" {
+    const grammar = raw.RawGrammar{
+        .name = "basic",
+        .rules = &.{},
+        .precedences = &.{},
+        .conflicts = &.{},
+        .externals = &.{},
+        .extras = &.{},
+        .inline_rules = &.{},
+        .supertypes = &.{},
+        .word = null,
+        .reserved = &.{},
+    };
+
+    try std.testing.expectError(error.EmptyRules, validateRawGrammar(&grammar));
+}
+
+test "validateRawGrammar rejects non string or symbol precedence entries" {
+    const blank_rule = raw.RawRule{ .blank = {} };
+    const grammar = raw.RawGrammar{
+        .name = "basic",
+        .rules = &.{.{
+            .name = "source_file",
+            .rule = &blank_rule,
+        }},
+        .precedences = &.{&.{&blank_rule}},
+        .conflicts = &.{},
+        .externals = &.{},
+        .extras = &.{},
+        .inline_rules = &.{},
+        .supertypes = &.{},
+        .word = null,
+        .reserved = &.{},
+    };
+
+    try std.testing.expectError(error.UnexpectedPrecedenceEntry, validateRawGrammar(&grammar));
+}

@@ -92,3 +92,15 @@ test "runGenerate succeeds for a valid grammar.json file" {
         .grammar_path = path,
     });
 }
+
+test "runGenerate maps js grammars to NotImplemented" {
+    try std.testing.expectError(error.NotImplemented, runGenerate(std.testing.allocator, .{
+        .grammar_path = "grammar.js",
+    }));
+}
+
+test "runGenerate maps unsupported extension to InvalidArguments" {
+    try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, .{
+        .grammar_path = "grammar.txt",
+    }));
+}
