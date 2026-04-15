@@ -342,7 +342,17 @@ const Extractor = struct {
         const key = RepeatKey{ .rule_id = inner, .at_least_one = at_least_one };
         if (self.repeat_cache.get(key)) |symbol_index| return symbol_index;
 
-        const symbol_index: u32 = @intCast(self.prepared.variables.len + self.auxiliary_variables.items.len);
+        const auxiliary_index = self.auxiliary_variables.items.len;
+        const symbol_index: u32 = @intCast(self.prepared.variables.len + auxiliary_index);
+        try self.auxiliary_variables.append(.{
+            .name = "",
+            .kind = .auxiliary,
+            .productions = &.{},
+        });
+        errdefer _ = self.auxiliary_variables.pop();
+        try self.repeat_cache.put(key, symbol_index);
+        errdefer _ = self.repeat_cache.remove(key);
+
         const inner_productions = try self.extractProductions(variable_name, inner);
         const expansion = try expand_repeats.createRepeatAuxiliary(
             self.allocator,
@@ -351,8 +361,7 @@ const Extractor = struct {
             inner_productions,
             at_least_one,
         );
-        try self.auxiliary_variables.append(expansion.variable);
-        try self.repeat_cache.put(key, symbol_index);
+        self.auxiliary_variables.items[auxiliary_index] = expansion.variable;
         return symbol_index;
     }
 
@@ -580,4 +589,50 @@ test "extractTokens reuses one auxiliary variable for duplicated repeat content"
     try std.testing.expectEqualStrings("left_repeat2", extracted.syntax.variables[2].name);
     try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[0].productions[0].steps[1].symbol.non_terminal);
     try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[1].productions[0].steps[1].symbol.non_terminal);
+}
+
+test "extractTokens assigns distinct auxiliary symbols for nested repeats" {
+    const item_rule = ir_rules.Rule{ .string = "item" };
+    const inner_repeat = ir_rules.Rule{ .repeat = 0 };
+    const pair_rule = ir_rules.Rule{ .seq = &.{ 0, 1 } };
+    const outer_repeat = ir_rules.Rule{ .repeat = 2 };
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "nested-repeat",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 3,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{ item_rule, inner_repeat, pair_rule, outer_repeat },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 3), extracted.syntax.variables.len);
+    try std.testing.expectEqualStrings("source_file_repeat1", extracted.syntax.variables[1].name);
+    try std.testing.expectEqualStrings("source_file_repeat2", extracted.syntax.variables[2].name);
+    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[1].productions[2].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[2].productions[1].steps[0].symbol.non_terminal);
 }
