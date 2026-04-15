@@ -1147,6 +1147,115 @@ pub fn hiddenExternalFieldsNodeTypesJson() Fixture {
     };
 }
 
+pub fn extraAliasedBodyGrammarJson() Fixture {
+    return .{
+        .name = "extra_aliased_body",
+        .contents =
+            \\{
+            \\  "name": "extra_aliased_body",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "space" },
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "body",
+            \\          "content": {
+            \\            "type": "ALIAS",
+            \\            "named": true,
+            \\            "value": "statement",
+            \\            "content": { "type": "SYMBOL", "name": "expr" }
+            \\          }
+            \\        }
+            \\      ]
+            \\    },
+            \\    "expr": { "type": "STRING", "value": "x" },
+            \\    "space": { "type": "STRING", "value": " " }
+            \\  },
+            \\  "extras": [
+            \\    { "type": "SYMBOL", "name": "space" }
+            \\  ]
+            \\}
+        ,
+    };
+}
+
+pub fn extraAliasedBodyNodeTypesJson() Fixture {
+    return .{
+        .name = "extra_aliased_body_node_types",
+        .contents =
+            \\[
+            \\  {
+            \\    "type": "expr",
+            \\    "named": true
+            \\  },
+            \\  {
+            \\    "type": "source_file",
+            \\    "named": true,
+            \\    "root": true,
+            \\    "fields": {
+            \\      "body": {
+            \\        "multiple": false,
+            \\        "required": true,
+            \\        "types": [
+            \\          {
+            \\            "type": "statement",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      }
+            \\    },
+            \\    "children": {
+            \\      "multiple": true,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "space",
+            \\          "named": true
+            \\        },
+            \\        {
+            \\          "type": "statement",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "space",
+            \\    "named": true,
+            \\    "extra": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "space",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "statement",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "expr",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\]
+            \\
+        ,
+    };
+}
+
 pub fn undefinedSymbolGrammarJson() Fixture {
     return .{
         .name = "undefined_symbol",

@@ -101,11 +101,14 @@ Implemented and passing:
   - hidden top-level repeat promotion in place
   - removal of promoted hidden repeats from `variables_to_inline`
   - nested repeat auxiliary allocation without symbol-index collisions
+  - mixed `choice` / `seq` repeat regression coverage
+  - deterministic auxiliary naming coverage
 - grammar flattening:
   - `src/grammar/prepare/flatten_grammar.zig`
   - duplicate production deduplication
   - metadata preservation
   - empty-string validation outside the start rule
+  - auxiliary-repeat empty-production allowance
   - recursive-inline rejection
 - default alias extraction:
   - `src/grammar/prepare/extract_default_aliases.zig`
@@ -120,37 +123,45 @@ Implemented and passing:
 - CLI and integration:
   - debug preview path
   - `generate --output <dir>` writes `node-types.json`
-  - exact golden coverage for multiple curated grammars
+  - exact golden coverage for multiple curated grammars, including:
+    - hidden wrappers
+    - mixed semantics
+    - repeat-heavy choice/sequence shapes
+    - alternative field aggregation
+    - hidden-wrapper alternative field aggregation
+    - hidden-wrapper external field aggregation
+    - extras plus alias-visible children
 
 Still remaining:
 
-- finish the last `extract_tokens.zig` parity audit passes and document any intentionally deferred edge cases
-- improve `compute.zig` parity for harder aggregation edge cases that are not already covered by the current goldens
-- add one or two more upstream-style golden fixtures if needed after closeout review
-- update docs and do a formal Milestone 3 completion review
+- finish the last `extract_tokens.zig` audit passes and either implement or explicitly defer the remaining upstream edge cases
+- decide whether any remaining `compute.zig` differences from upstream should be fixed in Milestone 3 or documented as Milestone 4+ work
+- do a final closeout review against current goldens, CLI coverage, and upstream expectations
+- update docs to mark Milestone 3 complete if the remaining deltas are acceptable
 
 ## Remaining Critical Path
 
 Milestone 3 is no longer blocked on missing subsystems. The shortest path to completion is:
 
-1. finish `extract_tokens.zig` parity cleanup
-2. tighten remaining `compute.zig` parity gaps exposed by the stronger mixed-semantics fixture
-3. add one more mixed artifact-level golden only if that review exposes an uncovered class of mismatch
+1. finish the last `extract_tokens.zig` parity audit and record any intentional deferrals
+2. review current `compute.zig` behavior against the now-broader golden set and fix only the mismatches worth closing in Milestone 3
+3. add another golden fixture only if that review still reveals an uncovered artifact class
 4. update docs and mark Milestone 3 complete if the remaining deltas are acceptable
 
 ## Remaining Work From Current Code State
 
 The remaining work is mostly semantic tightening and proof, not new architecture.
 
-### 1. `extract_tokens.zig` parity cleanup
+### 1. `extract_tokens.zig` closeout audit
 
 Keep auditing symbol-bearing collections so every reference follows the extracted graph or fails explicitly.
 
 Remaining checks to decide and implement:
 
-- any remaining symbol-wrapper paths that still copy `convertSymbol` blindly instead of following extracted lexicalization
 - reserved-word and word-token interactions if upstream extraction treats some combinations specially
 - external-token corner cases beyond the current visibility and alias coverage
+- document any symbol-wrapper paths that intentionally stay syntax-side because changing them would collapse alias or visibility boundaries
+- decide whether any upstream extraction mismatches are real bugs or acceptable Milestone 3 deferrals
 
 Done when:
 
@@ -160,12 +171,11 @@ Done when:
 
 ### 2. repeat-expansion confidence
 
-The implementation is good enough for current pipelines, but still light on tricky mixed-shape coverage.
+The implementation now has real mixed-shape and artifact-level coverage.
 
 Remaining:
 
-- add at least one upstream-style regression with nested repeats inside a mixed `choice` / `seq` shape
-- verify auxiliary naming remains deterministic in snapshot-like output
+- no further repeat work unless another closeout review exposes a mismatch
 
 Done when:
 
@@ -177,11 +187,12 @@ Most major functionality exists, but some upstream semantics still need stronger
 
 Remaining:
 
-- hidden-node inheritance in trickier nested cases
-- child aggregation across mixed visible/hidden/aliased paths
-- field aggregation across alternative productions with more varied shapes
-- supertype behavior in more edge-case structures beyond the now-implemented upstream hidden-supertype emission rule
-- external-token interactions with child and field aggregation where relevant
+- review current behavior for any still-questionable cases around:
+  - alias materialization boundaries
+  - lexical node self-child emission
+  - hidden-node inheritance in cases not already covered by current goldens
+  - supertype behavior beyond the implemented hidden-supertype emission rule
+- decide which of those should be fixed now versus documented as Milestone 4+ work
 
 Done when:
 
@@ -189,27 +200,30 @@ Done when:
 
 ### 4. stronger golden fixtures
 
-Current goldens are useful but still small.
+Current goldens are broad enough that this is now a closeout task, not a buildout task.
 
-Add fixtures that combine:
+Current coverage already includes:
 
-- aliases and default aliases
+- aliases and alias-visible children
 - externals
 - extras
 - supertypes
 - hidden wrappers
+- repeat-heavy choice/sequence shapes
 - multiple fields across alternatives
+- optional fields inherited through hidden wrappers
+- external fields inherited through hidden wrappers
 
 Done when:
 
-- at least one or two “mixed semantics” fixtures exercise several of these behaviors at once and stay stable
+- no additional uncovered artifact class is found during closeout review
 
 ### 5. Milestone 3 closeout
 
 Before declaring completion:
 
 - update this checklist and `README.md` to reflect the real end state
-- decide whether the remaining parity gaps are acceptable for Milestone 3 or should be pushed into Milestone 4+
+- decide which remaining parity gaps are acceptable for Milestone 3 and which are explicitly deferred to Milestone 4+
 - document any explicitly deferred extraction or node-type mismatches
 
 ## Status By Task Group
@@ -261,9 +275,8 @@ Remaining:
   - remaining word-token edge cases
   - reserved-word token restrictions
   - external-token behavior
-  - any remaining symbol-wrapper paths that should follow extracted lexicalization
-  - tokenized inline-target behavior
   - any remaining supertype edge cases worth rejecting earlier
+  - whether any still-syntax-side symbol-wrapper paths are intentional or should be reworked later
 
 Exit criteria:
 
@@ -273,7 +286,7 @@ Exit criteria:
 
 Status:
 
-- substantially done, with a few confidence gaps remaining
+- done for Milestone 3 unless closeout review finds a mismatch
 
 Already implemented:
 
@@ -284,8 +297,7 @@ Already implemented:
 
 Remaining:
 
-- add at least one upstream-style regression with a nested repeat inside a sequence/choice mix
-- review naming behavior against upstream `expand_repeats.rs` if auxiliary numbering becomes visible in later snapshots
+- none unless another fixture exposes a mismatch
 
 Exit criteria:
 
@@ -328,8 +340,8 @@ Already implemented:
 
 Remaining:
 
-- add stronger mixed-semantic coverage where aliases interact with hidden wrappers, externals, and fields in the same fixture
 - decide whether a dedicated `variable_info` IR is still warranted or unnecessary for Milestone 3
+- document current alias-materialization behavior if it remains intentionally different from upstream in any uncovered edge case
 
 Exit criteria:
 
@@ -354,9 +366,8 @@ Already implemented:
 
 Remaining:
 
-- evaluate whether one more mixed-semantics golden is needed beyond the current hidden-wrapper and mixed-semantics fixtures
-- additional hidden/alias/supertype aggregation edge cases
-- final review against upstream expectations rather than only internal current-output goldens
+- perform a final review against upstream expectations rather than only internal current-output goldens
+- decide whether any remaining alias-materialization or lexical-node-shape differences should be fixed now or documented as Milestone 4+ work
 
 Exit criteria:
 
@@ -768,9 +779,10 @@ Milestone 3 is complete when:
 
 From the current code state, implementation should continue with:
 
-1. finish the last `extract_tokens.zig` audit passes and document any intentionally deferred edge cases
-2. use the current mixed-semantics fixture to tighten any remaining `compute.zig` aggregation gaps
-3. add one more mixed-semantic golden only if that work reveals a missing uncovered artifact class
-4. update docs and perform a Milestone 3 completion review
+1. audit `extract_tokens.zig` one final time against upstream and record any intentional Milestone 3 deferrals
+2. review the current golden set for any remaining `compute.zig` behavior that still looks upstream-questionable
+3. fix only the parity gaps that are still worth closing in Milestone 3
+4. add another golden fixture only if that review reveals a still-uncovered artifact class
+5. update docs and perform a Milestone 3 completion review
 
 That is the shortest path from the current code state into a clean Milestone 3 closeout.
