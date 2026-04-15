@@ -4237,6 +4237,20 @@ pub fn hiddenExternalFieldsExternalScannerDump() Fixture {
     };
 }
 
+pub fn hiddenExternalFieldsValidInput() Fixture {
+    return .{
+        .name = "hidden_external_fields_valid_input",
+        .contents = "  x",
+    };
+}
+
+pub fn hiddenExternalFieldsInvalidInput() Fixture {
+    return .{
+        .name = "hidden_external_fields_invalid_input",
+        .contents = "  y",
+    };
+}
+
 pub fn extraAliasedBodyGrammarJson() Fixture {
     return .{
         .name = "extra_aliased_body",

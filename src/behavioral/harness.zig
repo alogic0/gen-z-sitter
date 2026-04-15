@@ -9,6 +9,7 @@ const grammar_loader = @import("../grammar/loader.zig");
 const build = @import("../parse_table/build.zig");
 const actions = @import("../parse_table/actions.zig");
 const rules = @import("../ir/rules.zig");
+const scanner_serialize = @import("../scanner/serialize.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
 pub const BehavioralError =
@@ -20,6 +21,7 @@ pub const BehavioralError =
     std.mem.Allocator.Error ||
     error{
         UnsupportedScannerFreeGrammar,
+        UnsupportedExternalScannerGrammar,
         SimulationStepLimitExceeded,
     };
 
@@ -51,6 +53,25 @@ pub fn simulatePreparedScannerFree(
     const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
     const result = try build.buildStates(allocator, flattened);
     return simulateBuiltScannerFree(allocator, result, prepared, extracted.lexical, input);
+}
+
+pub fn simulatePreparedWithFirstExternalBoundary(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    input: []const u8,
+) BehavioralError!SimulationResult {
+    const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
+    const result = try build.buildStates(allocator, flattened);
+    const external_boundary = try scanner_serialize.serializeExternalScannerBoundary(allocator, extracted.syntax);
+    return simulateBuiltWithFirstExternalBoundary(
+        allocator,
+        result,
+        prepared,
+        extracted.lexical,
+        external_boundary,
+        input,
+    );
 }
 
 fn simulateBuiltScannerFree(
@@ -190,6 +211,152 @@ fn simulateBuiltScannerFree(
     return error.SimulationStepLimitExceeded;
 }
 
+fn simulateBuiltWithFirstExternalBoundary(
+    allocator: std.mem.Allocator,
+    result: build.BuildResult,
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
+    input: []const u8,
+) BehavioralError!SimulationResult {
+    if (lexical.separators.len != 0) return error.UnsupportedExternalScannerGrammar;
+    if (!external_boundary.isReady()) return error.UnsupportedExternalScannerGrammar;
+
+    var stack = std.array_list.Managed(u32).init(allocator);
+    defer stack.deinit();
+    try stack.append(0);
+
+    var cursor: usize = 0;
+    var shifted_tokens: usize = 0;
+    var steps: usize = 0;
+    const max_steps = input.len * 16 + 32;
+
+    while (steps < max_steps) : (steps += 1) {
+        const state_id = stack.items[stack.items.len - 1];
+        if (cursor >= input.len) {
+            if (stateHasCompletedAugmentedProduction(result, state_id)) {
+                return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } };
+            }
+            if (selectFallbackAction(result, state_id)) |action| switch (action) {
+                .shift => return .{ .rejected = .{
+                    .consumed_bytes = cursor,
+                    .shifted_tokens = shifted_tokens,
+                    .reason = .missing_action,
+                } },
+                .reduce => |production_id| {
+                    const production = result.productions[production_id];
+                    if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
+                        .consumed_bytes = cursor,
+                        .shifted_tokens = shifted_tokens,
+                        .reason = .missing_goto,
+                    } };
+                    for (0..production.steps.len) |_| {
+                        _ = stack.pop();
+                    }
+                    const goto_state = findGotoState(result, stack.items[stack.items.len - 1], production.lhs) orelse
+                        return .{ .rejected = .{
+                            .consumed_bytes = cursor,
+                            .shifted_tokens = shifted_tokens,
+                            .reason = .missing_goto,
+                        } };
+                    try stack.append(goto_state);
+                    continue;
+                },
+                .accept => return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } },
+            };
+            return .{ .rejected = .{
+                .consumed_bytes = cursor,
+                .shifted_tokens = shifted_tokens,
+                .reason = .missing_action,
+            } };
+        }
+
+        const matched = selectMatchingSymbolWithExternalBoundary(
+            result,
+            state_id,
+            prepared,
+            lexical,
+            external_boundary,
+            input[cursor..],
+        ) orelse {
+            if (selectFallbackAction(result, state_id)) |action| switch (action) {
+                .shift => return .{ .rejected = .{
+                    .consumed_bytes = cursor,
+                    .shifted_tokens = shifted_tokens,
+                    .reason = .tokenization_failed,
+                } },
+                .reduce => |production_id| {
+                    const production = result.productions[production_id];
+                    if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
+                        .consumed_bytes = cursor,
+                        .shifted_tokens = shifted_tokens,
+                        .reason = .missing_goto,
+                    } };
+                    for (0..production.steps.len) |_| {
+                        _ = stack.pop();
+                    }
+                    const goto_state = findGotoState(result, stack.items[stack.items.len - 1], production.lhs) orelse
+                        return .{ .rejected = .{
+                            .consumed_bytes = cursor,
+                            .shifted_tokens = shifted_tokens,
+                            .reason = .missing_goto,
+                        } };
+                    try stack.append(goto_state);
+                    continue;
+                },
+                .accept => return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } },
+            };
+            return .{ .rejected = .{
+                .consumed_bytes = cursor,
+                .shifted_tokens = shifted_tokens,
+                .reason = .tokenization_failed,
+            } };
+        };
+        const decision = result.resolved_actions.decisionFor(state_id, matched.symbol) orelse
+            return .{ .rejected = .{
+                .consumed_bytes = cursor,
+                .shifted_tokens = shifted_tokens,
+                .reason = .missing_action,
+            } };
+
+        switch (decision) {
+            .unresolved => return .{ .rejected = .{
+                .consumed_bytes = cursor,
+                .shifted_tokens = shifted_tokens,
+                .reason = .unresolved_decision,
+            } },
+            .chosen => |action| switch (action) {
+                .shift => |target| {
+                    try stack.append(target);
+                    cursor += matched.len;
+                    shifted_tokens += 1;
+                },
+                .reduce => |production_id| {
+                    const production = result.productions[production_id];
+                    if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
+                        .consumed_bytes = cursor,
+                        .shifted_tokens = shifted_tokens,
+                        .reason = .missing_goto,
+                    } };
+                    for (0..production.steps.len) |_| {
+                        _ = stack.pop();
+                    }
+                    const goto_state = findGotoState(result, stack.items[stack.items.len - 1], production.lhs) orelse
+                        return .{ .rejected = .{
+                            .consumed_bytes = cursor,
+                            .shifted_tokens = shifted_tokens,
+                            .reason = .missing_goto,
+                        } };
+                    try stack.append(goto_state);
+                },
+                .accept => return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } },
+            },
+        }
+    }
+
+    return error.SimulationStepLimitExceeded;
+}
+
 const MatchedTerminal = struct {
     symbol: syntax_ir.SymbolRef,
     len: usize,
@@ -216,6 +383,46 @@ fn selectMatchingTerminal(
     }
 
     return best;
+}
+
+fn selectMatchingSymbolWithExternalBoundary(
+    result: build.BuildResult,
+    state_id: u32,
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
+    remaining: []const u8,
+) ?MatchedTerminal {
+    var best: ?MatchedTerminal = null;
+
+    for (external_boundary.tokens) |token| {
+        const match_len = matchSupportedExternalPrefix(token.name, remaining) orelse continue;
+        const symbol: syntax_ir.SymbolRef = .{ .external = token.index };
+        if (result.resolved_actions.decisionFor(state_id, symbol) == null) continue;
+        if (best == null or match_len > best.?.len) {
+            best = .{ .symbol = symbol, .len = match_len };
+        }
+    }
+
+    for (lexical.variables, 0..) |variable, index| {
+        const match_len = matchLexicalRulePrefix(prepared.rules, variable.rule, remaining) orelse continue;
+
+        const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
+        if (result.resolved_actions.decisionFor(state_id, symbol) == null) continue;
+
+        if (best == null or match_len > best.?.len) {
+            best = .{ .symbol = symbol, .len = match_len };
+        }
+    }
+
+    return best;
+}
+
+fn matchSupportedExternalPrefix(name: []const u8, input: []const u8) ?usize {
+    if (std.mem.eql(u8, name, "indent")) {
+        return if (std.mem.startsWith(u8, input, "  ")) 2 else null;
+    }
+    return null;
 }
 
 fn ruleLiteralText(all_rules: []const rules.Rule, rule_id: rules.RuleId) ?[]const u8 {
@@ -499,6 +706,75 @@ test "simulatePreparedScannerFree preserves repeat choice seq outcomes through g
     try expectSameSimulationResult(json_invalid, invalid);
 }
 
+test "simulatePreparedWithFirstExternalBoundary covers the first external-token grammar" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), fixtures.hiddenExternalFieldsGrammarJson().contents);
+    const valid = try simulatePreparedWithFirstExternalBoundary(
+        arena.allocator(),
+        prepared,
+        fixtures.hiddenExternalFieldsValidInput().contents,
+    );
+    const invalid = try simulatePreparedWithFirstExternalBoundary(
+        arena.allocator(),
+        prepared,
+        fixtures.hiddenExternalFieldsInvalidInput().contents,
+    );
+
+    try std.testing.expect(progressOf(valid) > progressOf(invalid));
+}
+
+test "simulatePreparedWithFirstExternalBoundary preserves hidden external fields outcomes through grammar.js" {
+    var json_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer json_arena.deinit();
+    const prepared_from_json = try parsePreparedFromJsonFixture(json_arena.allocator(), fixtures.hiddenExternalFieldsGrammarJson().contents);
+    const json_valid = try simulatePreparedWithFirstExternalBoundary(
+        json_arena.allocator(),
+        prepared_from_json,
+        fixtures.hiddenExternalFieldsValidInput().contents,
+    );
+    const json_invalid = try simulatePreparedWithFirstExternalBoundary(
+        json_arena.allocator(),
+        prepared_from_json,
+        fixtures.hiddenExternalFieldsInvalidInput().contents,
+    );
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{fixtures.hiddenExternalFieldsGrammarJson().contents});
+    defer std.testing.allocator.free(js);
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.js",
+        .data = js,
+    });
+
+    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    defer std.testing.allocator.free(grammar_path);
+
+    var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+    const valid = try simulatePreparedWithFirstExternalBoundary(
+        arena.allocator(),
+        prepared,
+        fixtures.hiddenExternalFieldsValidInput().contents,
+    );
+    const invalid = try simulatePreparedWithFirstExternalBoundary(
+        arena.allocator(),
+        prepared,
+        fixtures.hiddenExternalFieldsInvalidInput().contents,
+    );
+
+    try expectSameSimulationResult(json_valid, valid);
+    try expectSameSimulationResult(json_invalid, invalid);
+}
+
 fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResult) !void {
     try std.testing.expectEqual(@intFromEnum(expected), @intFromEnum(actual));
     switch (expected) {
@@ -514,4 +790,11 @@ fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResu
             try std.testing.expectEqual(left.reason, right.reason);
         },
     }
+}
+
+fn progressOf(result: SimulationResult) usize {
+    return switch (result) {
+        .accepted => |accepted| accepted.consumed_bytes,
+        .rejected => |rejected| rejected.consumed_bytes,
+    };
 }

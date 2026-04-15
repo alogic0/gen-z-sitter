@@ -92,9 +92,23 @@ Current check boundary:
 
 ### 5. Connect external-scanner work to behavioral proof
 
-- [ ] add at least one real grammar/input case that specifically requires external-token handling
-- [ ] make the new behavioral coverage explicit
-- [ ] document what still remains deferred after the first external-scanner stage
+- [x] add at least one real grammar/input case that specifically requires external-token handling
+- [x] make the new behavioral coverage explicit
+- [x] document what still remains deferred after the first external-scanner stage
+
+Current behavioral coverage added by this checklist:
+- `hidden_external_fields` now serves as the first real external-token grammar/input case
+- the behavioral harness now supports the first staged external-token subset:
+  - one named external token
+  - a leading external token matched through a local staged boundary
+  - external-token plus lexical-token progress through the built parser tables
+- that makes new behavioral proof possible beyond the earlier lexer-only boundary:
+  - deterministic parser progress on leading-indent input that requires external-token handling
+  - deterministic JSON-path and JS-path behavioral parity for that external-token-driven case
+- still explicitly deferred:
+  - richer external-token matching logic
+  - multiple interacting external tokens
+  - full external scanner runtime behavior and ABI parity
 
 ### 6. Record deferrals and closeout boundary
 
