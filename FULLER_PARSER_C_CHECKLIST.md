@@ -6,9 +6,9 @@ Its purpose is not to claim full upstream parity. Its purpose is to make the emi
 
 ## Goal
 
-- [ ] make the emitted `parser.c` stop feeling like a diagnostic wrapper over `SerializedTable`
-- [ ] make the emitted `parser.c` feel like a coherent language-centered runtime artifact
-- [ ] keep ready/blocked behavior explicit and deterministic while the emitted surface becomes more upstream-shaped
+- [x] make the emitted `parser.c` stop feeling like a diagnostic wrapper over `SerializedTable`
+- [x] make the emitted `parser.c` feel like a coherent language-centered runtime artifact
+- [x] keep ready/blocked behavior explicit and deterministic while the emitted surface becomes more upstream-shaped
 
 ## Implementation Sequence
 
@@ -73,22 +73,34 @@ Current result for this stage:
 
 ### 6. Closeout review
 
-- [ ] review the remaining gap between the current emitted `parser.c` and the intended staged runtime surface
-- [ ] explicitly defer anything that belongs to fuller runtime ABI compatibility or later upstream-like codegen work
-- [ ] document the completion boundary for this checklist in the later-work docs
+- [x] review the remaining gap between the current emitted `parser.c` and the intended staged runtime surface
+- [x] explicitly defer anything that belongs to fuller runtime ABI compatibility or later upstream-like codegen work
+- [x] document the completion boundary for this checklist in the later-work docs
+
+Closeout decision:
+- this checklist is complete
+- the current emitted parser.c is now a language-centered, compile-smoke-checked, compatibility-checked staged runtime artifact
+- it is intentionally still short of full upstream `parser.c` parity and full C runtime ABI compatibility
+
+Deferred beyond this checklist:
+- fuller upstream-shaped parser output and layout details beyond the current staged boundary
+- full runtime ABI compatibility rather than the current staged compatibility layer
+- lexer/scanner emission and external scanner integration
+- parse-table compression/minimization
+- broader behavioral equivalence and real-grammar compatibility proof
 
 ## Exit Criteria
 
-- [ ] the emitted artifact is centered around `TSLanguage` as the real top-level boundary
-- [ ] the emitted translation unit has a coherent parser/runtime/symbol layout, not only scattered helper-oriented structures
-- [ ] the most important remaining string-heavy surfaces are either removed or explicitly justified as staged compatibility helpers
-- [ ] emitted ready and blocked `parser.c` artifacts still have exact deterministic goldens
-- [ ] emitted `parser.c` passes a basic compile smoke test
-- [ ] remaining differences from fuller upstream-style `parser.c` are explicitly documented as deferred
+- [x] the emitted artifact is centered around `TSLanguage` as the real top-level boundary
+- [x] the emitted translation unit has a coherent parser/runtime/symbol layout, not only scattered helper-oriented structures
+- [x] the most important remaining string-heavy surfaces are either removed or explicitly justified as staged compatibility helpers
+- [x] emitted ready and blocked `parser.c` artifacts still have exact deterministic goldens
+- [x] emitted `parser.c` passes a basic compile smoke test
+- [x] remaining differences from fuller upstream-style `parser.c` are explicitly documented as deferred
 
 ## Explicit Non-Goals For This Checklist
 
-- [ ] do not claim full upstream `parser.c` parity
-- [ ] do not take on lexer/scanner emission here
-- [ ] do not take on runtime ABI compatibility in full here
-- [ ] do not start parse-table compression/minimization here
+- [x] do not claim full upstream `parser.c` parity
+- [x] do not take on lexer/scanner emission here
+- [x] do not take on runtime ABI compatibility in full here
+- [x] do not start parse-table compression/minimization here

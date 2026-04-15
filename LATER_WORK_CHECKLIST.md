@@ -6,7 +6,7 @@ Use this file for follow-on implementation once the active milestone work in [MA
 
 ## Fuller Generator Parity
 
-- [ ] fuller parser output closer to upstream `parser.c`
+- [x] fuller parser output closer to upstream `parser.c`
 - [ ] lexer/scanner emission
 - [ ] external scanner integration
 - [ ] parse-table compression/minimization
