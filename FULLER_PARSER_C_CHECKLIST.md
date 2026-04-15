@@ -62,9 +62,14 @@ Current result for this stage:
 
 ### 5. Keep artifacts and checks in sync
 
-- [ ] update exact ready parser.c goldens as the emitted layout improves
-- [ ] update exact blocked parser.c goldens as the emitted layout improves
-- [ ] extend compatibility checks where the richer emitted surface should now be required
+- [x] update exact ready parser.c goldens as the emitted layout improves
+- [x] update exact blocked parser.c goldens as the emitted layout improves
+- [x] extend compatibility checks where the richer emitted surface should now be required
+
+Current result for this stage:
+- ready and blocked parser.c-like goldens have been updated alongside each layout change in this checklist
+- compatibility checks now require not only the earlier parser/runtime surface, but also the richer symbol metadata and language-centered accessors
+- the emitted parser.c surface is now enforced by both exact artifacts and structural compatibility checks, not only by one or the other
 
 ### 6. Closeout review
 
