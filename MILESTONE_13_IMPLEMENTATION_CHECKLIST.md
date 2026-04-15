@@ -111,8 +111,31 @@ Implemented now:
   - parser/runtime accessors
   - state and entry lookup helpers
   - predicate helpers
+- Milestone 13 now also adds:
+  - a compatibility-layering decision
+  - a richer runtime summary/output layer beyond the Milestone 12 helper/query surface
+  - explicit blocked-state helpers at the runtime-facing layer
 
 This means the “exact richer-output artifacts” item is already satisfied by the current parser.c emitter path rather than needing a separate artifact format.
+
+## Review Result
+
+The emitted parser boundary is strong enough to begin compatibility-oriented work.
+
+Why:
+
+- the emitted API scope is explicit
+- compatibility layering is explicit
+- parser output is richer than the Milestone 12 helper/query boundary
+- ready and blocked richer outputs are pinned by exact real-path goldens
+- blocked behavior is explicit both in emitted data and in emitted helper/query APIs
+
+What remains deferred beyond Milestone 13:
+
+- direct upstream Tree-sitter C runtime ABI compatibility
+- full `parser.c` parity
+- lexer/scanner and external scanner work
+- parse-table compression/minimization
 
 ## Exit Criteria
 
@@ -122,3 +145,20 @@ Milestone 13 is complete when:
 - parser output is richer than the Milestone 12 helper/query surface
 - ready and blocked outputs are pinned by exact real-path goldens
 - the next milestone can focus on compatibility targets rather than first deciding the emitted API scope
+
+## Completion State
+
+Milestone 13 is complete.
+
+Completed in this milestone:
+
+- emitted API scope decision before any ABI claim
+- explicit compatibility-layering decision through an intermediate layer
+- richer parser output beyond the Milestone 12 helper/query layer
+- exact ready/blocked artifacts for the richer runtime-facing parser surface
+- explicit blocked-output behavior at the richer runtime-facing layer
+
+Deferred to the next milestone:
+
+- direct ABI compatibility work
+- fuller parser output closer to upstream `parser.c`

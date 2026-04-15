@@ -102,17 +102,21 @@ Milestone 12 includes:
   - symbol-based lookup
   - predicate helpers
 
-The next parser-generation work is now Milestone 13:
+Milestone 13 is complete and establishes the first compatibility-oriented parser boundary.
 
-- runtime-facing parser output and compatibility boundary work
-- decisions about ABI targeting and compatibility layering
-- fuller parser output beyond the Milestone 12 query/helper layer
+Milestone 13 includes:
 
-Milestone 13 begins with an explicit scope decision:
+- an explicit emitted API scope before any ABI claim
+- compatibility layering through an intermediate layer rather than a direct upstream ABI claim
+- richer parser output beyond the Milestone 12 helper/query layer
+- exact ready/blocked artifacts for the richer runtime-facing parser surface
+- explicit blocked-output behavior at the richer runtime-facing layer
 
-- the emitted parser API may grow into a compatibility-oriented runtime-facing surface
-- but it still does not claim upstream Tree-sitter runtime ABI compatibility or full `parser.c` parity
-- compatibility work will be staged through an intermediate compatibility layer before any direct upstream ABI claim
+The next parser-generation work is now Milestone 14:
+
+- `grammar.js` end-to-end support through a `node` subprocess path
+- keeping `grammar.json` as the native/core path
+- deterministic end-to-end emission through the JS loading path
 
 ## Documents
 
