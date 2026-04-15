@@ -4,6 +4,7 @@ const args = @import("args.zig");
 const diag = @import("../support/diag.zig");
 const debug_dump = @import("../grammar/debug_dump.zig");
 const grammar_loader = @import("../grammar/loader.zig");
+const fs_support = @import("../support/fs.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const node_type_pipeline = @import("../node_types/pipeline.zig");
 const fixtures = @import("../tests/fixtures.zig");
@@ -86,6 +87,35 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
             try std.fs.File.stdout().writeAll(json);
         }
         return;
+    }
+
+    if (opts.output_dir) |output_dir| {
+        try fs_support.ensureDir(output_dir);
+
+        var pipeline_arena = std.heap.ArenaAllocator.init(allocator);
+        defer pipeline_arena.deinit();
+
+        const json = node_type_pipeline.generateNodeTypesJsonFromPrepared(pipeline_arena.allocator(), prepared) catch |err| switch (err) {
+            error.InvalidSupertype => {
+                try diag.printStderr(.{
+                    .kind = .usage,
+                    .message = "invalid supertype for node-types computation",
+                    .path = opts.grammar_path,
+                });
+                return error.InvalidArguments;
+            },
+            else => return err,
+        };
+
+        const output_path = try std.fs.path.join(allocator, &.{ output_dir, "node-types.json" });
+        defer allocator.free(output_path);
+        try fs_support.writeFile(output_path, json);
+
+        try diag.printStdout(.{
+            .kind = .info,
+            .message = "wrote node-types.json",
+            .path = output_path,
+        });
     }
 
     try diag.printStdout(.{
@@ -182,6 +212,35 @@ test "runGenerate supports debug node types output mode" {
         .grammar_path = path,
         .debug_node_types = true,
     });
+}
+
+test "runGenerate writes node-types.json when output directory is provided" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.json",
+        .data = fixtures.validResolvedGrammarJson().contents,
+    });
+    try tmp.dir.makePath("out");
+
+    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    defer std.testing.allocator.free(grammar_path);
+    const output_dir = try tmp.dir.realpathAlloc(std.testing.allocator, "out");
+    defer std.testing.allocator.free(output_dir);
+
+    try runGenerate(std.testing.allocator, .{
+        .grammar_path = grammar_path,
+        .output_dir = output_dir,
+    });
+
+    const node_types_path = try std.fs.path.join(std.testing.allocator, &.{ output_dir, "node-types.json" });
+    defer std.testing.allocator.free(node_types_path);
+
+    const written = try std.fs.cwd().readFileAlloc(std.testing.allocator, node_types_path, 1024 * 1024);
+    defer std.testing.allocator.free(written);
+
+    try std.testing.expect(std.mem.indexOf(u8, written, "\"type\": \"source_file\"") != null);
 }
 
 test "runGenerate maps js grammars to NotImplemented" {
