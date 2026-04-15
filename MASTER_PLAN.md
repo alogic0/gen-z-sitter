@@ -787,14 +787,11 @@ This checklist covers only work that is still outstanding from the current proje
 - [ ] compare parse-tree behavior and failure behavior
 - [ ] classify and document any remaining semantic mismatches
 
-### Later Work: Fuller generator parity
+### Later Work
 
-- [ ] fuller parser output closer to upstream `parser.c`
-- [ ] lexer/scanner emission
-- [ ] external scanner integration
-- [ ] parse-table compression/minimization
-- [ ] broader real-grammar/repo compatibility coverage
-- [ ] compatibility polish and ergonomics after correctness is credible
+The longer-tail generator work is tracked separately in:
+
+- [LATER_WORK_CHECKLIST.md](./LATER_WORK_CHECKLIST.md)
 
 ## Risks
 
