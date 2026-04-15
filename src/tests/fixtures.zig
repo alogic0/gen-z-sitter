@@ -1068,6 +1068,46 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  return state and index < state->unresolved_count ? &state->unresolved[index] : 0;
             \\}
             \\
+            \\const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {
+            \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
+            \\  return entry ? entry->symbol : 0;
+            \\}
+            \\
+            \\const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {
+            \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
+            \\  return entry ? entry->kind : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {
+            \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
+            \\  return entry ? entry->value : 0;
+            \\}
+            \\
+            \\const char *ts_parser_goto_symbol(uint16_t state_id, uint16_t index) {
+            \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
+            \\  return entry ? entry->symbol : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_goto_target(uint16_t state_id, uint16_t index) {
+            \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
+            \\  return entry ? entry->state : 0;
+            \\}
+            \\
+            \\const char *ts_parser_unresolved_symbol(uint16_t state_id, uint16_t index) {
+            \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
+            \\  return entry ? entry->symbol : 0;
+            \\}
+            \\
+            \\const char *ts_parser_unresolved_reason(uint16_t state_id, uint16_t index) {
+            \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
+            \\  return entry ? entry->reason : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
+            \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
+            \\  return entry ? entry->candidates : 0;
+            \\}
+            \\
         ,
     };
 }
@@ -1263,6 +1303,46 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {
             \\  const TSStateTable *state = ts_parser_state(state_id);
             \\  return state and index < state->unresolved_count ? &state->unresolved[index] : 0;
+            \\}
+            \\
+            \\const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {
+            \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
+            \\  return entry ? entry->symbol : 0;
+            \\}
+            \\
+            \\const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {
+            \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
+            \\  return entry ? entry->kind : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {
+            \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
+            \\  return entry ? entry->value : 0;
+            \\}
+            \\
+            \\const char *ts_parser_goto_symbol(uint16_t state_id, uint16_t index) {
+            \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
+            \\  return entry ? entry->symbol : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_goto_target(uint16_t state_id, uint16_t index) {
+            \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
+            \\  return entry ? entry->state : 0;
+            \\}
+            \\
+            \\const char *ts_parser_unresolved_symbol(uint16_t state_id, uint16_t index) {
+            \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
+            \\  return entry ? entry->symbol : 0;
+            \\}
+            \\
+            \\const char *ts_parser_unresolved_reason(uint16_t state_id, uint16_t index) {
+            \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
+            \\  return entry ? entry->reason : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
+            \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
+            \\  return entry ? entry->candidates : 0;
             \\}
             \\
         ,
