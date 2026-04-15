@@ -57,6 +57,7 @@ test {
     _ = @import("grammar/parse_grammar.zig");
     _ = @import("grammar/debug_dump.zig");
     _ = @import("grammar/normalize.zig");
+    _ = @import("grammar/prepare/extract_tokens.zig");
     _ = @import("ir/symbols.zig");
     _ = @import("ir/rules.zig");
     _ = @import("ir/grammar_ir.zig");
