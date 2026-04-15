@@ -612,6 +612,42 @@ pub fn parseTableMetadataActionDump() Fixture {
     };
 }
 
+pub fn parseTableConflictActionTableDump() Fixture {
+    return .{
+        .name = "parse_table_conflict_action_table_dump",
+        .contents =
+            \\state 0
+            \\  actions:
+            \\    terminal:1 => shift 3
+            \\
+            \\state 1
+            \\  actions:
+            \\
+            \\state 2
+            \\  actions:
+            \\    terminal:0 => shift 4
+            \\
+            \\state 3
+            \\  actions:
+            \\    terminal:0 => reduce 3
+            \\
+            \\state 4
+            \\  actions:
+            \\    terminal:1 => shift 3
+            \\
+            \\state 5
+            \\  actions:
+            \\    terminal:0 => shift 4
+            \\    terminal:0 => reduce 2
+            \\  conflicts:
+            \\    shift_reduce on terminal:0
+            \\      #2@1
+            \\      #2@3
+            \\
+        ,
+    };
+}
+
 pub fn parseTableReuseGrammarJson() Fixture {
     return .{
         .name = "parse_table_reuse",
