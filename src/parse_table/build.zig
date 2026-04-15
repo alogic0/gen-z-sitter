@@ -41,6 +41,13 @@ pub const BuildResult = struct {
     ) std.mem.Allocator.Error![]const resolution.UnresolvedDecisionRef {
         return self.resolved_actions.unresolvedDecisionsAlloc(allocator);
     }
+
+    pub fn chosenDecisionsAlloc(
+        self: BuildResult,
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error![]const resolution.ChosenDecisionRef {
+        return self.resolved_actions.chosenDecisionsAlloc(allocator);
+    }
 };
 
 pub fn buildStates(

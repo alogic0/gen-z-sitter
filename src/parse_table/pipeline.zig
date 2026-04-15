@@ -495,6 +495,8 @@ test "buildStatesFromPrepared supports metadata-rich grammar through the real pr
     try std.testing.expect(result.resolved_actions.groupsForState(result.states[0].id).len > 0);
     try std.testing.expect(result.isSerializationReady());
     try std.testing.expect(!result.hasUnresolvedDecisions());
+    const chosen = try result.chosenDecisionsAlloc(pipeline_arena.allocator());
+    try std.testing.expect(chosen.len > 0);
 }
 
 test "resolveActionTableSkeleton leaves the first precedence-sensitive grammar unresolved" {

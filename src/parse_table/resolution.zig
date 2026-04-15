@@ -23,6 +23,13 @@ pub const UnresolvedDecisionRef = struct {
     candidate_actions: []const actions.ParseAction,
 };
 
+pub const ChosenDecisionRef = struct {
+    state_id: state.StateId,
+    symbol: syntax_ir.SymbolRef,
+    action: actions.ParseAction,
+    candidate_actions: []const actions.ParseAction,
+};
+
 pub const ResolvedActionGroup = struct {
     symbol: @import("../ir/syntax_grammar.zig").SymbolRef,
     candidate_actions: []const actions.ParseAction,
@@ -147,6 +154,44 @@ pub const ResolvedActionTable = struct {
                         };
                         index += 1;
                     },
+                }
+            }
+        }
+        return refs;
+    }
+
+    pub fn countChosenDecisions(self: ResolvedActionTable) usize {
+        var count: usize = 0;
+        for (self.states) |resolved| {
+            for (resolved.groups) |group| {
+                switch (group.decision) {
+                    .chosen => count += 1,
+                    .unresolved => {},
+                }
+            }
+        }
+        return count;
+    }
+
+    pub fn chosenDecisionsAlloc(
+        self: ResolvedActionTable,
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error![]const ChosenDecisionRef {
+        const refs = try allocator.alloc(ChosenDecisionRef, self.countChosenDecisions());
+        var index: usize = 0;
+        for (self.states) |resolved| {
+            for (resolved.groups) |group| {
+                switch (group.decision) {
+                    .chosen => |action| {
+                        refs[index] = .{
+                            .state_id = resolved.state_id,
+                            .symbol = group.symbol,
+                            .action = action,
+                            .candidate_actions = group.candidate_actions,
+                        };
+                        index += 1;
+                    },
+                    .unresolved => {},
                 }
             }
         }
@@ -601,6 +646,18 @@ test "resolveActionTableSkeleton is serialization-ready when every group is chos
 
     try std.testing.expect(!resolved.hasUnresolvedDecisions());
     try std.testing.expect(resolved.isSerializationReady());
+    const chosen = try resolved.chosenDecisionsAlloc(allocator);
+    defer allocator.free(chosen);
+    try std.testing.expectEqual(@as(usize, 1), chosen.len);
+    try std.testing.expectEqual(@as(state.StateId, 1), chosen[0].state_id);
+    try std.testing.expect(switch (chosen[0].symbol) {
+        .terminal => |id| id == 0,
+        else => false,
+    });
+    try std.testing.expect(switch (chosen[0].action) {
+        .shift => |id| id == 3,
+        else => false,
+    });
 }
 
 test "resolveActionTableSkeleton exposes structured unresolved decision refs" {
