@@ -112,21 +112,39 @@ Current behavioral coverage added by this checklist:
 
 ### 6. Record deferrals and closeout boundary
 
-- [ ] document what remains deferred to broader compatibility hardening
-- [ ] document what remains deferred to richer scanner/runtime parity work
-- [ ] decide whether the first external-scanner stage is strong enough to close the checklist
+- [x] document what remains deferred to broader compatibility hardening
+- [x] document what remains deferred to richer scanner/runtime parity work
+- [x] decide whether the first external-scanner stage is strong enough to close the checklist
+
+Closeout decision:
+- this checklist is complete as the first staged external-scanner boundary
+- delivered now:
+  - a ready external-token subset for a single leading named external token
+  - deterministic serialized external-scanner artifacts
+  - explicit blocked handling for richer external-token grammar shapes
+  - structural external-scanner boundary checks
+  - external-token behavioral proof on `hidden_external_fields`
+- explicitly deferred to broader compatibility hardening:
+  - richer emitted scanner/runtime contracts
+  - compatibility-oriented checks beyond the serialized external-scanner boundary
+  - runtime ABI claims that depend on fuller scanner integration
+- explicitly deferred to richer scanner/runtime parity work:
+  - multiple interacting external tokens
+  - richer external-token matching logic
+  - emitted scanner C/runtime output
+  - full external scanner lifecycle and ABI parity
 
 ## Exit Criteria
 
-- [ ] at least one external-scanner-driven grammar shape is supported end to end
-- [ ] deterministic artifacts exist for the supported external-scanner subset
-- [ ] the emitted/runtime external-scanner boundary has structural proof, and compile proof if applicable
-- [ ] the new behavioral coverage enabled by external-token handling is explicit
-- [ ] remaining scanner/runtime and compatibility gaps are documented rather than implicit
+- [x] at least one external-scanner-driven grammar shape is supported end to end
+- [x] deterministic artifacts exist for the supported external-scanner subset
+- [x] the emitted/runtime external-scanner boundary has structural proof, and compile proof if applicable
+- [x] the new behavioral coverage enabled by external-token handling is explicit
+- [x] remaining scanner/runtime and compatibility gaps are documented rather than implicit
 
 ## Explicit Non-Goals For This Checklist
 
-- [ ] do not claim full upstream external-scanner ABI parity here
-- [ ] do not fold broad compatibility hardening into the first external-scanner stage
-- [ ] do not take on parse-table compression/minimization here
-- [ ] do not broaden into general real-grammar/repo compatibility until this boundary is real
+- [x] do not claim full upstream external-scanner ABI parity here
+- [x] do not fold broad compatibility hardening into the first external-scanner stage
+- [x] do not take on parse-table compression/minimization here
+- [x] do not broaden into general real-grammar/repo compatibility until this boundary is real

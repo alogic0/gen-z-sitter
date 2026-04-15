@@ -33,7 +33,7 @@ Current completed boundary:
 ### 3. Lexer / Scanner Path
 
 - [x] implement lexer/scanner emission beyond parser-table-only coverage
-- [ ] add external scanner integration support
+- [x] add external scanner integration support
 - [x] prove the lexer/scanner path on real grammar cases that cannot be covered by the current parser-only boundary
 - [x] document any staged compatibility limits in the emitted scanner/runtime surface
 
@@ -43,6 +43,7 @@ Promoted execution checklist:
 - [x] decide that compatibility hardening should follow the first lexer/scanner and external-scanner stages rather than run in parallel
 - [x] promote external-scanner integration into its own implementation checklist:
   - [EXTERNAL_SCANNER_CHECKLIST.md](./EXTERNAL_SCANNER_CHECKLIST.md)
+- [x] complete that first external-scanner checklist before broader compatibility hardening
 
 ### 4. Compatibility Hardening
 
@@ -68,6 +69,7 @@ Promoted execution checklist:
   - first lexer/scanner boundary
   - then first external-scanner boundary
   - then broader compatibility hardening
+- [x] make broader compatibility hardening the next concrete direction after the first external-scanner stage
 
 ## Guiding Rule
 

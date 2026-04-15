@@ -138,7 +138,7 @@ The next parser-generation work is now Milestone 16:
 - compiled-parser comparison against upstream generated output
 - classification of remaining semantic mismatches
 
-The next promoted execution checklist after the first behavioral-equivalence stage is:
+The promoted lexer/scanner execution checklists are now complete:
 
 - [LEXER_SCANNER_CHECKLIST.md](./LEXER_SCANNER_CHECKLIST.md)
   - first lexer/scanner emission boundary
@@ -148,6 +148,13 @@ The next promoted execution checklist after the first behavioral-equivalence sta
   - first external-scanner integration boundary
   - deterministic external-token artifacts
   - staged proof before broader compatibility hardening and fuller scanner/runtime parity
+
+The next recommended direction after those completed stages is:
+
+- compatibility hardening
+  - document the remaining runtime-surface mismatches against expected Tree-sitter contracts
+  - shrink the emitted compatibility gaps that still block credible runtime use
+  - make ABI and compatibility-layer boundaries explicit and testable
 
 ## Documents
 

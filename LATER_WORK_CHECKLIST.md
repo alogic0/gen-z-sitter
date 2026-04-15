@@ -8,7 +8,7 @@ Use this file for follow-on implementation once the active milestone work in [MA
 
 - [x] fuller parser output closer to upstream `parser.c`
 - [x] lexer/scanner emission
-- [ ] external scanner integration
+- [x] external scanner integration
 - [ ] parse-table compression/minimization
 - [ ] broader real-grammar/repo compatibility coverage
 - [ ] compatibility polish and ergonomics after correctness is credible
@@ -17,6 +17,7 @@ Immediate promotion candidates after the first behavioral-equivalence stage:
 - [x] turn `lexer/scanner emission` into a dedicated execution checklist
 - [x] decide whether `external scanner integration` stays coupled to that same checklist or becomes a separate follow-on checklist
 - [x] make `external scanner integration` a separate follow-on checklist
+- [x] complete the first external-scanner follow-on checklist
 - [ ] decide whether `broader real-grammar/repo compatibility coverage` waits on lexer/scanner support or starts with parser-only repo cases first
 
 Promoted checklist:
