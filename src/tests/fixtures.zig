@@ -1012,6 +1012,70 @@ pub fn parseTablePrecedenceGrammarJson() Fixture {
     };
 }
 
+pub fn parseTablePrecedenceResolvedActionDump() Fixture {
+    return .{
+        .name = "parse_table_precedence_resolved_action_dump",
+        .contents =
+            \\state 0
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 1
+            \\  resolved_actions:
+            \\
+            \\state 2
+            \\  resolved_actions:
+            \\    terminal:0: shift 4
+            \\
+            \\state 3
+            \\  resolved_actions:
+            \\    terminal:0: reduce 3
+            \\
+            \\state 4
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 5
+            \\  resolved_actions:
+            \\    terminal:0: reduce 2
+            \\
+        ,
+    };
+}
+
+pub fn parseTableConflictResolvedActionDump() Fixture {
+    return .{
+        .name = "parse_table_conflict_resolved_action_dump",
+        .contents =
+            \\state 0
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 1
+            \\  resolved_actions:
+            \\
+            \\state 2
+            \\  resolved_actions:
+            \\    terminal:0: shift 4
+            \\
+            \\state 3
+            \\  resolved_actions:
+            \\    terminal:0: reduce 3
+            \\
+            \\state 4
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 5
+            \\  resolved_actions:
+            \\    terminal:0: unresolved
+            \\      candidate shift 4
+            \\      candidate reduce 2
+            \\
+        ,
+    };
+}
+
 pub fn fieldChildrenGrammarJson() Fixture {
     return .{
         .name = "field_children",
