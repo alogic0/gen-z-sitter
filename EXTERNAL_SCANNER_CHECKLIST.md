@@ -41,9 +41,23 @@ Current first supported external-scanner boundary:
 
 ### 2. Introduce external-scanner IR and serialization boundary
 
-- [ ] define the minimal external-scanner IR needed beyond the current blocked lexical boundary
-- [ ] keep that IR deterministic and emitter-oriented
-- [ ] preserve explicit blockers for unsupported external-scanner features rather than hiding them
+- [x] define the minimal external-scanner IR needed beyond the current blocked lexical boundary
+- [x] keep that IR deterministic and emitter-oriented
+- [x] preserve explicit blockers for unsupported external-scanner features rather than hiding them
+
+Current external-scanner serialization boundary:
+- `src/scanner/serialize.zig` is the first external-scanner-oriented serialization boundary
+- the ready subset now serializes:
+  - external-token inventory
+  - deterministic external-token uses across syntax productions
+  - the first supported ready shape around a single leading external token
+- the blocked subset stays explicit instead of implicit:
+  - multiple external tokens
+  - extras coupled to external-token handling
+  - aliased external-token steps
+  - non-leading external-token steps
+  - multiple external-token steps in one production
+- this stage still does not emit scanner C code or claim full external-scanner runtime parity
 
 ### 3. Add deterministic external-scanner artifacts
 
