@@ -26,6 +26,15 @@ pub fn generateStateDumpFromPrepared(
     return try debug_dump.dumpStatesAlloc(allocator, result.states);
 }
 
+pub fn buildStatesFromPrepared(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+) PipelineError!build.BuildResult {
+    const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
+    return try build.buildStates(allocator, flattened);
+}
+
 test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
@@ -47,4 +56,37 @@ test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture
     const dump = try generateStateDumpFromPrepared(pipeline_arena.allocator(), prepared);
 
     try std.testing.expectEqualStrings(fixtures.parseTableTinyDump().contents, dump);
+}
+
+test "buildStatesFromPrepared reports a focused shift/reduce conflict fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableConflictGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
+
+    var saw_shift_reduce = false;
+    for (result.states) |parse_state| {
+        for (parse_state.conflicts) |conflict| {
+            if (conflict.kind == .shift_reduce) {
+                saw_shift_reduce = true;
+                try std.testing.expect(conflict.symbol != null);
+            }
+        }
+    }
+
+    try std.testing.expect(saw_shift_reduce);
 }

@@ -292,6 +292,40 @@ pub fn parseTableTinyDump() Fixture {
     };
 }
 
+pub fn parseTableConflictGrammarJson() Fixture {
+    return .{
+        .name = "parse_table_conflict",
+        .contents =
+            \\{
+            \\  "name": "parse_table_conflict",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "expr"
+            \\    },
+            \\    "expr": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        {
+            \\          "type": "SEQ",
+            \\          "members": [
+            \\            { "type": "SYMBOL", "name": "expr" },
+            \\            { "type": "STRING", "value": "+" },
+            \\            { "type": "SYMBOL", "name": "expr" }
+            \\          ]
+            \\        },
+            \\        {
+            \\          "type": "STRING",
+            \\          "value": "x"
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
 pub fn fieldChildrenGrammarJson() Fixture {
     return .{
         .name = "field_children",

@@ -2,6 +2,7 @@ const std = @import("std");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 const item = @import("item.zig");
 const state = @import("state.zig");
+const conflicts = @import("conflicts.zig");
 const rules = @import("../ir/rules.zig");
 
 pub const BuildError = error{
@@ -88,13 +89,21 @@ fn constructStates(
         .id = 0,
         .items = start_items,
         .transitions = &.{},
+        .conflicts = &.{},
     });
 
     var next_state_index: usize = 0;
     while (next_state_index < states.items.len) : (next_state_index += 1) {
         const transitions = try collectTransitionsForState(allocator, productions, &states, states.items[next_state_index].items);
+        const detected_conflicts = try conflicts.detectConflicts(
+            allocator,
+            productions,
+            states.items[next_state_index].items,
+            transitions,
+        );
         const mutable_states = states.items;
         mutable_states[next_state_index].transitions = transitions;
+        mutable_states[next_state_index].conflicts = detected_conflicts;
     }
 
     state.sortStates(states.items);
@@ -127,12 +136,67 @@ fn collectTransitionsForState(
             .id = new_id,
             .items = advanced_items,
             .transitions = &.{},
+            .conflicts = &.{},
         });
         try transitions.append(.{ .symbol = symbol, .state = new_id });
     }
 
     state.sortTransitions(transitions.items);
     return try transitions.toOwnedSlice();
+}
+
+test "buildStates records LR(0)-style conflicts for an ambiguous expression grammar" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var recursive_expr_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+        .{ .symbol = .{ .terminal = 1 } },
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var literal_expr_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{
+                .name = "expr",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = recursive_expr_steps[0..] },
+                    .{ .steps = literal_expr_steps[0..] },
+                },
+            },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const result = try buildStates(arena.allocator(), grammar);
+
+    var saw_shift_reduce = false;
+    var saw_reduce_reduce = false;
+    for (result.states) |parse_state| {
+        for (parse_state.conflicts) |conflict| {
+            switch (conflict.kind) {
+                .shift_reduce => saw_shift_reduce = true,
+                .reduce_reduce => saw_reduce_reduce = true,
+            }
+        }
+    }
+
+    try std.testing.expect(saw_shift_reduce);
+    try std.testing.expect(!saw_reduce_reduce);
 }
 
 fn closure(

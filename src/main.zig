@@ -72,6 +72,7 @@ test {
     _ = @import("node_types/render_json.zig");
     _ = @import("parse_table/item.zig");
     _ = @import("parse_table/state.zig");
+    _ = @import("parse_table/conflicts.zig");
     _ = @import("parse_table/debug_dump.zig");
     _ = @import("parse_table/build.zig");
     _ = @import("parse_table/pipeline.zig");
