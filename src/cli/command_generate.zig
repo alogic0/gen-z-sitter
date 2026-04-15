@@ -301,6 +301,35 @@ test "runGenerate writes hidden wrapper node-types.json when output directory is
     try std.testing.expectEqualStrings(fixtures.hiddenWrapperNodeTypesJson().contents, written);
 }
 
+test "runGenerate writes extra aliased body node-types.json when output directory is provided" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.json",
+        .data = fixtures.extraAliasedBodyGrammarJson().contents,
+    });
+    try tmp.dir.makePath("out");
+
+    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    defer std.testing.allocator.free(grammar_path);
+    const output_dir = try tmp.dir.realpathAlloc(std.testing.allocator, "out");
+    defer std.testing.allocator.free(output_dir);
+
+    try runGenerate(std.testing.allocator, .{
+        .grammar_path = grammar_path,
+        .output_dir = output_dir,
+    });
+
+    const node_types_path = try std.fs.path.join(std.testing.allocator, &.{ output_dir, "node-types.json" });
+    defer std.testing.allocator.free(node_types_path);
+
+    const written = try std.fs.cwd().readFileAlloc(std.testing.allocator, node_types_path, 1024 * 1024);
+    defer std.testing.allocator.free(written);
+
+    try std.testing.expectEqualStrings(fixtures.extraAliasedBodyNodeTypesJson().contents, written);
+}
+
 test "runGenerate maps js grammars to NotImplemented" {
     try std.testing.expectError(error.NotImplemented, runGenerate(std.testing.allocator, .{
         .grammar_path = "grammar.js",

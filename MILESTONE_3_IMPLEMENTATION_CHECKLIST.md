@@ -194,6 +194,22 @@ Remaining:
   - supertype behavior beyond the implemented hidden-supertype emission rule
 - decide which of those should be fixed now versus documented as Milestone 4+ work
 
+Current closeout decision:
+
+- keep alias materialization in Milestone 3 as-is
+  - upstream also materializes aliases and default aliases into visible node-type entries
+  - current fixtures for `statement`, `rhs`, and related alias-visible children are treated as acceptable Milestone 3 behavior
+- defer `children_without_fields` parity to Milestone 4+
+  - upstream `node_types.rs` serializes `children` from `children_without_fields`, not from the full visible-child set
+  - `src/node_types/compute.zig` currently aggregates all visible children into `children`
+  - fixing this would intentionally change many current goldens and CLI outputs
+- defer named lexical node merge parity to Milestone 4+
+  - upstream adds named lexical and external nodes as leaf entries and weakens required field/child flags when names collide
+  - `src/node_types/compute.zig` currently merges same-name entries and can leave lexical nodes with self-child shapes like `term -> term` or `space -> space`
+  - this is a real upstream mismatch, but not a Milestone 3 blocker because the artifact path is now stable and extensively covered
+- keep hidden-supertype emission in Milestone 3
+  - this already matches upstream behavior and should not be revisited in closeout unless another fixture exposes a regression
+
 Done when:
 
 - additional tricky fixtures do not force structural changes to node-type aggregation
@@ -225,6 +241,12 @@ Before declaring completion:
 - update this checklist and `README.md` to reflect the real end state
 - decide which remaining parity gaps are acceptable for Milestone 3 and which are explicitly deferred to Milestone 4+
 - document any explicitly deferred extraction or node-type mismatches
+
+Current explicit Milestone 4+ deferrals:
+
+- `src/node_types/compute.zig` should eventually distinguish `children_without_fields` from the full visible-child set, matching upstream `node_types.rs`
+- `src/node_types/compute.zig` should eventually stop materializing named lexical collisions as self-child node shapes during duplicate-node merging
+- any additional upstream-sensitive cleanup that depends on those two changes should wait until that larger node-type parity pass
 
 ## Status By Task Group
 
@@ -368,6 +390,12 @@ Remaining:
 
 - perform a final review against upstream expectations rather than only internal current-output goldens
 - decide whether any remaining alias-materialization or lexical-node-shape differences should be fixed now or documented as Milestone 4+ work
+
+Decision after review:
+
+- alias-materialization behavior is acceptable for Milestone 3
+- `children_without_fields` parity is deferred to Milestone 4+
+- lexical self-child parity is deferred to Milestone 4+
 
 Exit criteria:
 
@@ -781,7 +809,7 @@ From the current code state, implementation should continue with:
 
 1. audit `extract_tokens.zig` one final time against upstream and record any intentional Milestone 3 deferrals
 2. review the current golden set for any remaining `compute.zig` behavior that still looks upstream-questionable
-3. fix only the parity gaps that are still worth closing in Milestone 3
+3. fix only the parity gaps that are still worth closing in Milestone 3 and record the rest as Milestone 4+ deferrals
 4. add another golden fixture only if that review reveals a still-uncovered artifact class
 5. update docs and perform a Milestone 3 completion review
 

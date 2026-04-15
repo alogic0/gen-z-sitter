@@ -271,17 +271,6 @@ const Extractor = struct {
         return try result.toOwnedSlice();
     }
 
-    fn convertSymbolList(self: *Extractor, symbols: []const ir_symbols.SymbolId) ExtractTokensError![]const syntax_ir.SymbolRef {
-        var result = std.array_list.Managed(syntax_ir.SymbolRef).init(self.allocator);
-        defer result.deinit();
-
-        for (symbols) |symbol| {
-            try result.append(try self.convertSymbol(symbol));
-        }
-
-        return try result.toOwnedSlice();
-    }
-
     fn extractVariablesToInline(self: *Extractor) ExtractTokensError![]const syntax_ir.SymbolRef {
         var result = std.array_list.Managed(syntax_ir.SymbolRef).init(self.allocator);
         defer result.deinit();
@@ -371,6 +360,9 @@ const Extractor = struct {
         const rule = self.prepared.rules[@intCast(rule_id)];
         return switch (rule) {
             .blank => try self.singleProduction(&.{}),
+            // Direct symbol productions intentionally stay syntax-side. Rewriting them
+            // to terminals would collapse alias and visibility boundaries that later
+            // node-type computation still needs to observe.
             .symbol => |symbol| try self.singleStepProductions(.{
                 .symbol = try self.convertSymbol(symbol),
             }),
@@ -1288,6 +1280,118 @@ test "extractTokens rewrites tokenized inline symbols to extracted terminals" {
     const extracted = try extractTokens(arena.allocator(), prepared);
     try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables_to_inline.len);
     try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables_to_inline[0].terminal);
+}
+
+test "extractTokens keeps direct symbol productions syntax-side for tokenized rules" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "direct-symbol-boundary",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+            .{
+                .name = "term",
+                .symbol = ir_symbols.SymbolId.nonTerminal(1),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{ .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) }, .{ .string = "x" } },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(1),
+                .name = "term",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
+    try std.testing.expectEqualStrings("term", extracted.lexical.variables[0].name);
+    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
+}
+
+test "extractTokens keeps aliased tokenized symbol productions syntax-side" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "aliased-symbol-boundary",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+            .{
+                .name = "term",
+                .symbol = ir_symbols.SymbolId.nonTerminal(1),
+                .kind = .named,
+                .rule = 2,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{
+            .{ .metadata = .{
+                .inner = 1,
+                .data = .{
+                    .alias = .{ .value = "rhs", .named = true },
+                },
+            } },
+            .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) },
+            .{ .string = "x" },
+        },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(1),
+                .name = "term",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    const step = extracted.syntax.variables[0].productions[0].steps[0];
+    try std.testing.expectEqual(@as(u32, 1), step.symbol.non_terminal);
+    try std.testing.expect(step.alias != null);
+    try std.testing.expectEqualStrings("rhs", step.alias.?.value);
 }
 
 test "extractTokens rejects external inline symbols" {
