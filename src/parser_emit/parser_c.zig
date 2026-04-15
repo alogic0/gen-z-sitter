@@ -76,6 +76,11 @@ pub fn writeParserC(
     try writer.writeAll("  const TSParser *parser;\n");
     try writer.writeAll("  const TSRuntimeStateInfo *states;\n");
     try writer.writeAll("} TSParserRuntime;\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  const TSParser *parser;\n");
+    try writer.writeAll("  const TSParserRuntime *runtime;\n");
+    try writer.writeAll("  const TSCompatibilityInfo *compatibility;\n");
+    try writer.writeAll("} TSLanguage;\n\n");
     try writer.writeAll("static bool ts_string_eq(const char *a, const char *b) {\n");
     try writer.writeAll("  if (!a or !b) return false;\n");
     try writer.writeAll("  while (a[0] != 0 and b[0] != 0) {\n");
@@ -190,6 +195,16 @@ pub fn writeParserC(
     try writer.writeAll("  .parser = &ts_parser,\n");
     try writer.writeAll("  .states = ts_runtime_states,\n");
     try writer.writeAll("};\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("static const TSLanguage ts_language = {\n");
+    try writer.writeAll("  .parser = &ts_parser,\n");
+    try writer.writeAll("  .runtime = &ts_runtime,\n");
+    try writer.writeAll("  .compatibility = &ts_compatibility,\n");
+    try writer.writeAll("};\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSLanguage *ts_language_instance(void) {\n");
+    try writer.writeAll("  return &ts_language;\n");
+    try writer.writeAll("}\n");
     try writer.writeAll("\n");
     try writer.writeAll("const TSParser *ts_parser_instance(void) {\n");
     try writer.writeAll("  return &ts_parser;\n");
@@ -622,6 +637,12 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  const TSRuntimeStateInfo *states;
         \\} TSParserRuntime;
         \\
+        \\typedef struct {
+        \\  const TSParser *parser;
+        \\  const TSParserRuntime *runtime;
+        \\  const TSCompatibilityInfo *compatibility;
+        \\} TSLanguage;
+        \\
         \\static bool ts_string_eq(const char *a, const char *b) {
         \\  if (!a or !b) return false;
         \\  while (a[0] != 0 and b[0] != 0) {
@@ -703,6 +724,16 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  .parser = &ts_parser,
         \\  .states = ts_runtime_states,
         \\};
+        \\
+        \\static const TSLanguage ts_language = {
+        \\  .parser = &ts_parser,
+        \\  .runtime = &ts_runtime,
+        \\  .compatibility = &ts_compatibility,
+        \\};
+        \\
+        \\const TSLanguage *ts_language_instance(void) {
+        \\  return &ts_language;
+        \\}
         \\
         \\const TSParser *ts_parser_instance(void) {
         \\  return &ts_parser;

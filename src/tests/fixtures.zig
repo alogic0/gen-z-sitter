@@ -992,6 +992,12 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  const TSRuntimeStateInfo *states;
             \\} TSParserRuntime;
             \\
+            \\typedef struct {
+            \\  const TSParser *parser;
+            \\  const TSParserRuntime *runtime;
+            \\  const TSCompatibilityInfo *compatibility;
+            \\} TSLanguage;
+            \\
             \\static bool ts_string_eq(const char *a, const char *b) {
             \\  if (!a or !b) return false;
             \\  while (a[0] != 0 and b[0] != 0) {
@@ -1200,6 +1206,16 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  .parser = &ts_parser,
             \\  .states = ts_runtime_states,
             \\};
+            \\
+            \\static const TSLanguage ts_language = {
+            \\  .parser = &ts_parser,
+            \\  .runtime = &ts_runtime,
+            \\  .compatibility = &ts_compatibility,
+            \\};
+            \\
+            \\const TSLanguage *ts_language_instance(void) {
+            \\  return &ts_language;
+            \\}
             \\
             \\const TSParser *ts_parser_instance(void) {
             \\  return &ts_parser;
@@ -1504,6 +1520,12 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  const TSRuntimeStateInfo *states;
             \\} TSParserRuntime;
             \\
+            \\typedef struct {
+            \\  const TSParser *parser;
+            \\  const TSParserRuntime *runtime;
+            \\  const TSCompatibilityInfo *compatibility;
+            \\} TSLanguage;
+            \\
             \\static bool ts_string_eq(const char *a, const char *b) {
             \\  if (!a or !b) return false;
             \\  while (a[0] != 0 and b[0] != 0) {
@@ -1695,6 +1717,16 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  .parser = &ts_parser,
             \\  .states = ts_runtime_states,
             \\};
+            \\
+            \\static const TSLanguage ts_language = {
+            \\  .parser = &ts_parser,
+            \\  .runtime = &ts_runtime,
+            \\  .compatibility = &ts_compatibility,
+            \\};
+            \\
+            \\const TSLanguage *ts_language_instance(void) {
+            \\  return &ts_language;
+            \\}
             \\
             \\const TSParser *ts_parser_instance(void) {
             \\  return &ts_parser;
