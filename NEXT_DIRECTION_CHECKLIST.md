@@ -13,6 +13,16 @@ The goal is to bias the project toward real generated-parser usefulness, not mor
 - [x] add corpus-oriented checks that exercise generated parsers end to end
 - [x] document the current behavioral-equivalence boundary and known gaps
 
+Current completed boundary:
+- first staged behavioral equivalence is now in place for a scanner-free real-language-style grammar
+- current proof includes:
+  - deterministic JSON-path and JS-path emitted output
+  - deterministic parser-walk behavior
+  - explicit failure classification on invalid input
+- broader equivalence still belongs to later sections here:
+  - `Lexer / Scanner Path`
+  - `Compatibility Hardening`
+
 ### 2. Fuller `parser.c` Output
 
 - [x] move emitted `parser.c` closer to an actually runtime-consumable Tree-sitter artifact

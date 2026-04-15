@@ -18,3 +18,4 @@ Use this file for follow-on implementation once the active milestone work in [MA
 - These items are intentionally separated from the active milestone checklist.
 - They are still real project work, but they should not dilute the milestone-by-milestone closeout process in `MASTER_PLAN.md`.
 - When one of these becomes the next concrete implementation target, it should usually be promoted into its own milestone checklist first.
+- The completed behavioral-equivalence stage establishes only the first scanner-free parser-walk boundary; broader real-grammar/repo coverage remains active later work here.
