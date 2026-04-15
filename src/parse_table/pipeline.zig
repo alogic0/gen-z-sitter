@@ -113,3 +113,29 @@ test "generateStateDumpFromPrepared matches the conflict parser-state golden fix
 
     try std.testing.expectEqualStrings(fixtures.parseTableConflictDump().contents, dump);
 }
+
+test "buildStatesFromPrepared reuses identical advanced states deterministically" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableReuseGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqual(@as(usize, 5), result.states.len);
+    const first_terminal_state = result.states[0].transitions[2].state;
+    const repeated_terminal_state = result.states[2].transitions[1].state;
+    try std.testing.expectEqual(first_terminal_state, repeated_terminal_state);
+}

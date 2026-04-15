@@ -386,6 +386,30 @@ pub fn parseTableConflictDump() Fixture {
     };
 }
 
+pub fn parseTableReuseGrammarJson() Fixture {
+    return .{
+        .name = "parse_table_reuse",
+        .contents =
+            \\{
+            \\  "name": "parse_table_reuse",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "expr" },
+            \\        { "type": "SYMBOL", "name": "expr" }
+            \\      ]
+            \\    },
+            \\    "expr": {
+            \\      "type": "STRING",
+            \\      "value": "x"
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
 pub fn fieldChildrenGrammarJson() Fixture {
     return .{
         .name = "field_children",
