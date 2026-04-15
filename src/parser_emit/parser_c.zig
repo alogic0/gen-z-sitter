@@ -1,5 +1,6 @@
 const std = @import("std");
 const serialize = @import("../parse_table/serialize.zig");
+const common = @import("common.zig");
 
 pub const EmitError = std.mem.Allocator.Error || std.fs.File.WriteError;
 
@@ -32,13 +33,12 @@ pub fn writeParserC(
         try writer.print("static const TSActionEntry ts_state_{d}_actions[] = {{\n", .{serialized_state.id});
         for (serialized_state.actions) |entry| {
             try writer.writeAll("  { ");
-            try writeQuotedSymbol(writer, entry.symbol);
+            try common.writeQuotedSymbol(writer, entry.symbol);
             try writer.writeAll(", ");
-            switch (entry.action) {
-                .shift => |target| try writer.print("\"shift\", {d}", .{target}),
-                .reduce => |production_id| try writer.print("\"reduce\", {d}", .{production_id}),
-                .accept => try writer.writeAll("\"accept\", 0"),
-            }
+            try writer.writeByte('"');
+            try common.writeActionKind(writer, entry.action);
+            try writer.writeAll("\", ");
+            try common.writeActionValue(writer, entry.action);
             try writer.writeAll(" },\n");
         }
         try writer.writeAll("};\n");
@@ -46,7 +46,7 @@ pub fn writeParserC(
         try writer.print("static const TSGotoEntry ts_state_{d}_gotos[] = {{\n", .{serialized_state.id});
         for (serialized_state.gotos) |entry| {
             try writer.writeAll("  { ");
-            try writeQuotedSymbol(writer, entry.symbol);
+            try common.writeQuotedSymbol(writer, entry.symbol);
             try writer.print(", {d} }},\n", .{entry.state});
         }
         try writer.writeAll("};\n");
@@ -55,24 +55,15 @@ pub fn writeParserC(
             try writer.print("static const TSUnresolvedEntry ts_state_{d}_unresolved[] = {{\n", .{serialized_state.id});
             for (serialized_state.unresolved) |entry| {
                 try writer.writeAll("  { ");
-                try writeQuotedSymbol(writer, entry.symbol);
-                try writer.print(", \"{s}\", {d} }},\n", .{
-                    @tagName(entry.reason),
-                    entry.candidate_actions.len,
-                });
+                try common.writeQuotedSymbol(writer, entry.symbol);
+                try writer.writeAll(", \"");
+                try common.writeUnresolvedReason(writer, entry.reason);
+                try writer.print("\", {d} }},\n", .{entry.candidate_actions.len});
             }
             try writer.writeAll("};\n");
         }
 
         if (index + 1 < serialized.states.len) try writer.writeByte('\n');
-    }
-}
-
-fn writeQuotedSymbol(writer: anytype, symbol: @import("../ir/syntax_grammar.zig").SymbolRef) !void {
-    switch (symbol) {
-        .non_terminal => |symbol_index| try writer.print("\"non_terminal:{d}\"", .{symbol_index}),
-        .terminal => |symbol_index| try writer.print("\"terminal:{d}\"", .{symbol_index}),
-        .external => |symbol_index| try writer.print("\"external:{d}\"", .{symbol_index}),
     }
 }
 

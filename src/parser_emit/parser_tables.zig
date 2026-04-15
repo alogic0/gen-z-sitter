@@ -1,5 +1,6 @@
 const std = @import("std");
 const serialize = @import("../parse_table/serialize.zig");
+const common = @import("common.zig");
 
 pub const EmitError = std.mem.Allocator.Error || std.fs.File.WriteError;
 
@@ -25,40 +26,29 @@ pub fn writeSerializedTable(
 
         for (serialized_state.actions) |entry| {
             try writer.writeAll("  action ");
-            try writeSymbol(writer, entry.symbol);
+            try common.writeSymbol(writer, entry.symbol);
             try writer.writeByte(' ');
-            switch (entry.action) {
-                .shift => |target| try writer.print("shift {d}\n", .{target}),
-                .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
-                .accept => try writer.writeAll("accept\n"),
-            }
+            try common.writeActionWithValue(writer, entry.action);
+            try writer.writeByte('\n');
         }
 
         for (serialized_state.gotos) |entry| {
             try writer.writeAll("  goto ");
-            try writeSymbol(writer, entry.symbol);
+            try common.writeSymbol(writer, entry.symbol);
             try writer.print(" {d}\n", .{entry.state});
         }
 
         for (serialized_state.unresolved) |entry| {
             try writer.writeAll("  unresolved ");
-            try writeSymbol(writer, entry.symbol);
+            try common.writeSymbol(writer, entry.symbol);
             try writer.writeByte(' ');
-            try writer.writeAll(@tagName(entry.reason));
+            try common.writeUnresolvedReason(writer, entry.reason);
             try writer.print(" candidates={d}\n", .{entry.candidate_actions.len});
         }
 
         try writer.writeAll("}");
         if (index + 1 < serialized.states.len) try writer.writeByte('\n');
         if (index + 1 < serialized.states.len) try writer.writeByte('\n');
-    }
-}
-
-fn writeSymbol(writer: anytype, symbol: @import("../ir/syntax_grammar.zig").SymbolRef) !void {
-    switch (symbol) {
-        .non_terminal => |symbol_index| try writer.print("non_terminal:{d}", .{symbol_index}),
-        .terminal => |symbol_index| try writer.print("terminal:{d}", .{symbol_index}),
-        .external => |symbol_index| try writer.print("external:{d}", .{symbol_index}),
     }
 }
 

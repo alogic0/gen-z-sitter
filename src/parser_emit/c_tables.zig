@@ -1,5 +1,6 @@
 const std = @import("std");
 const serialize = @import("../parse_table/serialize.zig");
+const common = @import("common.zig");
 
 pub const EmitError = std.mem.Allocator.Error || std.fs.File.WriteError;
 
@@ -29,13 +30,9 @@ pub fn writeCTableSkeleton(
         });
         for (serialized_state.actions, 0..) |entry, action_index| {
             try writer.print("/* action[{d}] ", .{action_index});
-            try writeSymbol(writer, entry.symbol);
+            try common.writeSymbol(writer, entry.symbol);
             try writer.writeAll(" ");
-            switch (entry.action) {
-                .shift => |target| try writer.print("shift {d}", .{target}),
-                .reduce => |production_id| try writer.print("reduce {d}", .{production_id}),
-                .accept => try writer.writeAll("accept"),
-            }
+            try common.writeActionWithValue(writer, entry.action);
             try writer.writeAll(" */\n");
         }
 
@@ -45,7 +42,7 @@ pub fn writeCTableSkeleton(
         });
         for (serialized_state.gotos, 0..) |entry, goto_index| {
             try writer.print("/* goto[{d}] ", .{goto_index});
-            try writeSymbol(writer, entry.symbol);
+            try common.writeSymbol(writer, entry.symbol);
             try writer.print(" -> {d} */\n", .{entry.state});
         }
 
@@ -56,23 +53,14 @@ pub fn writeCTableSkeleton(
             });
             for (serialized_state.unresolved, 0..) |entry, unresolved_index| {
                 try writer.print("/* unresolved[{d}] ", .{unresolved_index});
-                try writeSymbol(writer, entry.symbol);
-                try writer.print(" {s} candidates={d} */\n", .{
-                    @tagName(entry.reason),
-                    entry.candidate_actions.len,
-                });
+                try common.writeSymbol(writer, entry.symbol);
+                try writer.writeByte(' ');
+                try common.writeUnresolvedReason(writer, entry.reason);
+                try writer.print(" candidates={d} */\n", .{entry.candidate_actions.len});
             }
         }
 
         if (index + 1 < serialized.states.len) try writer.writeByte('\n');
-    }
-}
-
-fn writeSymbol(writer: anytype, symbol: @import("../ir/syntax_grammar.zig").SymbolRef) !void {
-    switch (symbol) {
-        .non_terminal => |symbol_index| try writer.print("non_terminal:{d}", .{symbol_index}),
-        .terminal => |symbol_index| try writer.print("terminal:{d}", .{symbol_index}),
-        .external => |symbol_index| try writer.print("external:{d}", .{symbol_index}),
     }
 }
 
