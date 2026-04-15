@@ -44,10 +44,11 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
     defer parse_arena.deinit();
 
     const prepared = parse_grammar.parseRawGrammar(parse_arena.allocator(), &loaded.json.grammar) catch |err| {
+        const diagnostic = parse_grammar.errorDiagnostic(err);
         try diag.printStderr(.{
             .kind = .usage,
-            .message = parse_grammar.errorMessage(err),
-            .note = parse_grammar.errorNote(err),
+            .message = diagnostic.summary,
+            .note = diagnostic.note,
             .path = opts.grammar_path,
         });
         return error.InvalidArguments;

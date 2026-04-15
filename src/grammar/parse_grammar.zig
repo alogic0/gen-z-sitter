@@ -6,8 +6,28 @@ const ir_rules = @import("../ir/rules.zig");
 const ir = @import("../ir/grammar_ir.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
-pub threadlocal var last_error_message: ?[]const u8 = null;
-pub threadlocal var last_error_note: ?[]const u8 = null;
+pub const SemanticDiagnosticKind = enum {
+    hidden_start_rule,
+    undefined_symbol,
+    undefined_supertype,
+    undefined_conflict,
+    undefined_word_token,
+    undeclared_precedence,
+    conflicting_precedence_ordering,
+    out_of_memory,
+};
+
+pub const SemanticDiagnostic = struct {
+    kind: SemanticDiagnosticKind,
+    summary: []const u8,
+    note: ?[]const u8 = null,
+    symbol_name: ?[]const u8 = null,
+    rule_name: ?[]const u8 = null,
+    precedence_name: ?[]const u8 = null,
+    other_precedence_name: ?[]const u8 = null,
+};
+
+pub threadlocal var last_error_diagnostic: ?SemanticDiagnostic = null;
 
 pub const ParseGrammarError = error{
     HiddenStartRule,
@@ -21,27 +41,59 @@ pub const ParseGrammarError = error{
 };
 
 pub fn parseRawGrammar(allocator: std.mem.Allocator, grammar: *const raw.RawGrammar) ParseGrammarError!ir.PreparedGrammar {
-    last_error_message = null;
-    last_error_note = null;
+    last_error_diagnostic = null;
     var builder = Builder.init(allocator, grammar);
     return builder.build();
 }
 
 pub fn errorMessage(err: ParseGrammarError) []const u8 {
-    return last_error_message orelse switch (err) {
-        error.HiddenStartRule => "start rule must be visible",
-        error.UndefinedSymbol => "undefined symbol",
-        error.UndefinedSupertype => "undefined supertype",
-        error.UndefinedConflict => "undefined conflict member",
-        error.UndefinedWordToken => "undefined word token",
-        error.UndeclaredPrecedence => "undeclared precedence",
-        error.ConflictingPrecedenceOrdering => "conflicting precedence orderings",
-        error.OutOfMemory => "out of memory while lowering grammar",
-    };
+    return errorDiagnostic(err).summary;
 }
 
-pub fn errorNote(_: ParseGrammarError) ?[]const u8 {
-    return last_error_note;
+pub fn errorNote(err: ParseGrammarError) ?[]const u8 {
+    return errorDiagnostic(err).note;
+}
+
+pub fn errorDiagnostic(err: ParseGrammarError) SemanticDiagnostic {
+    return last_error_diagnostic orelse defaultDiagnostic(err);
+}
+
+fn defaultDiagnostic(err: ParseGrammarError) SemanticDiagnostic {
+    return switch (err) {
+        error.HiddenStartRule => .{
+            .kind = .hidden_start_rule,
+            .summary = "start rule must be visible",
+            .note = "A grammar's start rule must be visible.",
+        },
+        error.UndefinedSymbol => .{
+            .kind = .undefined_symbol,
+            .summary = "undefined symbol",
+        },
+        error.UndefinedSupertype => .{
+            .kind = .undefined_supertype,
+            .summary = "undefined supertype",
+        },
+        error.UndefinedConflict => .{
+            .kind = .undefined_conflict,
+            .summary = "undefined conflict member",
+        },
+        error.UndefinedWordToken => .{
+            .kind = .undefined_word_token,
+            .summary = "undefined word token",
+        },
+        error.UndeclaredPrecedence => .{
+            .kind = .undeclared_precedence,
+            .summary = "undeclared precedence",
+        },
+        error.ConflictingPrecedenceOrdering => .{
+            .kind = .conflicting_precedence_ordering,
+            .summary = "conflicting precedence orderings",
+        },
+        error.OutOfMemory => .{
+            .kind = .out_of_memory,
+            .summary = "out of memory while lowering grammar",
+        },
+    };
 }
 
 const Builder = struct {
@@ -59,8 +111,12 @@ const Builder = struct {
 
     fn build(self: *Builder) ParseGrammarError!ir.PreparedGrammar {
         if (self.grammar.rules.len > 0 and isHidden(self.grammar.rules[0].name)) {
-            last_error_message = "start rule must be visible";
-            last_error_note = "A grammar's start rule must be visible.";
+            last_error_diagnostic = .{
+                .kind = .hidden_start_rule,
+                .summary = "start rule must be visible",
+                .note = "A grammar's start rule must be visible.",
+                .rule_name = self.grammar.rules[0].name,
+            };
             return error.HiddenStartRule;
         }
 
@@ -454,65 +510,95 @@ const Builder = struct {
     }
 
     fn failUndefinedSymbol(self: *Builder, name: []const u8) ParseGrammarError {
-        self.setError("undefined symbol", "Undefined symbol `{s}`", .{name}, "Undefined symbol");
+        self.setDiagnostic(.{
+            .kind = .undefined_symbol,
+            .summary = "undefined symbol",
+            .note = self.allocNote("Undefined symbol `{s}`", .{name}, "Undefined symbol"),
+            .symbol_name = name,
+        });
         return error.UndefinedSymbol;
     }
 
     fn failUndefinedSupertype(self: *Builder, name: []const u8) ParseGrammarError {
-        self.setError(
-            "undefined supertype",
-            "Undefined symbol `{s}` in grammar's supertypes array",
-            .{name},
-            "Undefined symbol in grammar's supertypes array",
-        );
+        self.setDiagnostic(.{
+            .kind = .undefined_supertype,
+            .summary = "undefined supertype",
+            .note = self.allocNote(
+                "Undefined symbol `{s}` in grammar's supertypes array",
+                .{name},
+                "Undefined symbol in grammar's supertypes array",
+            ),
+            .symbol_name = name,
+        });
         return error.UndefinedSupertype;
     }
 
     fn failUndefinedConflict(self: *Builder, name: []const u8) ParseGrammarError {
-        self.setError(
-            "undefined conflict member",
-            "Undefined symbol `{s}` in grammar's conflicts array",
-            .{name},
-            "Undefined symbol in grammar's conflicts array",
-        );
+        self.setDiagnostic(.{
+            .kind = .undefined_conflict,
+            .summary = "undefined conflict member",
+            .note = self.allocNote(
+                "Undefined symbol `{s}` in grammar's conflicts array",
+                .{name},
+                "Undefined symbol in grammar's conflicts array",
+            ),
+            .symbol_name = name,
+        });
         return error.UndefinedConflict;
     }
 
     fn failUndefinedWordToken(self: *Builder, name: []const u8) ParseGrammarError {
-        self.setError(
-            "undefined word token",
-            "Undefined symbol `{s}` as grammar's word token",
-            .{name},
-            "Undefined symbol as grammar's word token",
-        );
+        self.setDiagnostic(.{
+            .kind = .undefined_word_token,
+            .summary = "undefined word token",
+            .note = self.allocNote(
+                "Undefined symbol `{s}` as grammar's word token",
+                .{name},
+                "Undefined symbol as grammar's word token",
+            ),
+            .symbol_name = name,
+        });
         return error.UndefinedWordToken;
     }
 
     fn failUndeclaredPrecedence(self: *Builder, precedence_name: []const u8, rule_name: []const u8) ParseGrammarError {
-        self.setError(
-            "undeclared precedence",
-            "Undeclared precedence '{s}' in rule '{s}'",
-            .{ precedence_name, rule_name },
-            "Undeclared precedence used in grammar rule",
-        );
+        self.setDiagnostic(.{
+            .kind = .undeclared_precedence,
+            .summary = "undeclared precedence",
+            .note = self.allocNote(
+                "Undeclared precedence '{s}' in rule '{s}'",
+                .{ precedence_name, rule_name },
+                "Undeclared precedence used in grammar rule",
+            ),
+            .rule_name = rule_name,
+            .precedence_name = precedence_name,
+        });
         return error.UndeclaredPrecedence;
     }
 
     fn failConflictingPrecedenceOrdering(self: *Builder, left: OrderingEntry, right: OrderingEntry) ParseGrammarError {
         const left_text = left.displayName();
         const right_text = right.displayName();
-        self.setError(
-            "conflicting precedence orderings",
-            "Conflicting orderings for precedences {s} and {s}",
-            .{ left_text, right_text },
-            "Conflicting orderings for precedences",
-        );
+        self.setDiagnostic(.{
+            .kind = .conflicting_precedence_ordering,
+            .summary = "conflicting precedence orderings",
+            .note = self.allocNote(
+                "Conflicting orderings for precedences {s} and {s}",
+                .{ left_text, right_text },
+                "Conflicting orderings for precedences",
+            ),
+            .precedence_name = left_text,
+            .other_precedence_name = right_text,
+        });
         return error.ConflictingPrecedenceOrdering;
     }
 
-    fn setError(self: *Builder, summary: []const u8, comptime fmt: []const u8, args: anytype, fallback_note: []const u8) void {
-        last_error_message = summary;
-        last_error_note = std.fmt.allocPrint(self.allocator, fmt, args) catch fallback_note;
+    fn allocNote(self: *Builder, comptime fmt: []const u8, args: anytype, fallback_note: []const u8) []const u8 {
+        return std.fmt.allocPrint(self.allocator, fmt, args) catch fallback_note;
+    }
+
+    fn setDiagnostic(_: *Builder, diagnostic: SemanticDiagnostic) void {
+        last_error_diagnostic = diagnostic;
     }
 };
 
@@ -725,8 +811,11 @@ test "parseRawGrammar rejects conflicting precedence orderings" {
 
     const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
     try std.testing.expectError(error.ConflictingPrecedenceOrdering, parseRawGrammar(parse_arena.allocator(), &raw_grammar));
-    try std.testing.expectEqualStrings("conflicting precedence orderings", errorMessage(error.ConflictingPrecedenceOrdering));
-    try std.testing.expectEqualStrings("Conflicting orderings for precedences a and b", errorNote(error.ConflictingPrecedenceOrdering).?);
+    const diagnostic = errorDiagnostic(error.ConflictingPrecedenceOrdering);
+    try std.testing.expectEqualStrings("conflicting precedence orderings", diagnostic.summary);
+    try std.testing.expectEqualStrings("Conflicting orderings for precedences a and b", diagnostic.note.?);
+    try std.testing.expectEqualStrings("a", diagnostic.precedence_name.?);
+    try std.testing.expectEqualStrings("b", diagnostic.other_precedence_name.?);
 }
 
 test "parseRawGrammar prefers internal symbols over duplicate external names" {
@@ -757,8 +846,10 @@ test "parseRawGrammar stores a readable undefined symbol message" {
 
     const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
     try std.testing.expectError(error.UndefinedSymbol, parseRawGrammar(parse_arena.allocator(), &raw_grammar));
-    try std.testing.expectEqualStrings("undefined symbol", errorMessage(error.UndefinedSymbol));
-    try std.testing.expectEqualStrings("Undefined symbol `missing`", errorNote(error.UndefinedSymbol).?);
+    const diagnostic = errorDiagnostic(error.UndefinedSymbol);
+    try std.testing.expectEqualStrings("undefined symbol", diagnostic.summary);
+    try std.testing.expectEqualStrings("Undefined symbol `missing`", diagnostic.note.?);
+    try std.testing.expectEqualStrings("missing", diagnostic.symbol_name.?);
 }
 
 test "parseRawGrammar merges nested metadata wrappers" {
