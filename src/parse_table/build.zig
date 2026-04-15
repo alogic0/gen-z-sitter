@@ -34,6 +34,13 @@ pub const BuildResult = struct {
     pub fn isSerializationReady(self: BuildResult) bool {
         return self.resolved_actions.isSerializationReady();
     }
+
+    pub fn unresolvedDecisionsAlloc(
+        self: BuildResult,
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error![]const resolution.UnresolvedDecisionRef {
+        return self.resolved_actions.unresolvedDecisionsAlloc(allocator);
+    }
 };
 
 pub fn buildStates(

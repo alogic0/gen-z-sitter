@@ -727,6 +727,9 @@ test "generateResolvedActionTableDumpFromPrepared keeps unresolved conflict grou
 
     try std.testing.expect(!result.isSerializationReady());
     try std.testing.expect(result.hasUnresolvedDecisions());
+    const unresolved = try result.unresolvedDecisionsAlloc(pipeline_arena.allocator());
+    try std.testing.expectEqual(@as(usize, 1), unresolved.len);
+    try std.testing.expectEqual(resolution.UnresolvedReason.shift_reduce, unresolved[0].reason);
     try std.testing.expectEqualStrings(fixtures.parseTableConflictResolvedActionDump().contents, dump);
 }
 

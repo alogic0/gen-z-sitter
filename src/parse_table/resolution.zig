@@ -16,6 +16,13 @@ pub const ResolvedDecision = union(enum) {
     unresolved: UnresolvedReason,
 };
 
+pub const UnresolvedDecisionRef = struct {
+    state_id: state.StateId,
+    symbol: syntax_ir.SymbolRef,
+    reason: UnresolvedReason,
+    candidate_actions: []const actions.ParseAction,
+};
+
 pub const ResolvedActionGroup = struct {
     symbol: @import("../ir/syntax_grammar.zig").SymbolRef,
     candidate_actions: []const actions.ParseAction,
@@ -106,6 +113,44 @@ pub const ResolvedActionTable = struct {
 
     pub fn isSerializationReady(self: ResolvedActionTable) bool {
         return !self.hasUnresolvedDecisions();
+    }
+
+    pub fn countUnresolvedDecisions(self: ResolvedActionTable) usize {
+        var count: usize = 0;
+        for (self.states) |resolved| {
+            for (resolved.groups) |group| {
+                switch (group.decision) {
+                    .chosen => {},
+                    .unresolved => count += 1,
+                }
+            }
+        }
+        return count;
+    }
+
+    pub fn unresolvedDecisionsAlloc(
+        self: ResolvedActionTable,
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error![]const UnresolvedDecisionRef {
+        const refs = try allocator.alloc(UnresolvedDecisionRef, self.countUnresolvedDecisions());
+        var index: usize = 0;
+        for (self.states) |resolved| {
+            for (resolved.groups) |group| {
+                switch (group.decision) {
+                    .chosen => {},
+                    .unresolved => |reason| {
+                        refs[index] = .{
+                            .state_id = resolved.state_id,
+                            .symbol = group.symbol,
+                            .reason = reason,
+                            .candidate_actions = group.candidate_actions,
+                        };
+                        index += 1;
+                    },
+                }
+            }
+        }
+        return refs;
     }
 };
 
@@ -556,6 +601,48 @@ test "resolveActionTableSkeleton is serialization-ready when every group is chos
 
     try std.testing.expect(!resolved.hasUnresolvedDecisions());
     try std.testing.expect(resolved.isSerializationReady());
+}
+
+test "resolveActionTableSkeleton exposes structured unresolved decision refs" {
+    const allocator = std.testing.allocator;
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 2,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTableSkeleton(allocator, grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    const refs = try resolved.unresolvedDecisionsAlloc(allocator);
+    defer allocator.free(refs);
+
+    try std.testing.expectEqual(@as(usize, 1), refs.len);
+    try std.testing.expectEqual(@as(state.StateId, 2), refs[0].state_id);
+    try std.testing.expectEqual(UnresolvedReason.shift_reduce, refs[0].reason);
+    try std.testing.expect(switch (refs[0].symbol) {
+        .terminal => |id| id == 0,
+        else => false,
+    });
+    try std.testing.expectEqual(@as(usize, 2), refs[0].candidate_actions.len);
 }
 
 test "resolveActionTable keeps reduce/reduce pairs unresolved" {
