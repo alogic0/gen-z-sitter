@@ -1116,6 +1116,79 @@ pub fn parseTableAssociativityResolvedActionDump() Fixture {
     };
 }
 
+pub fn parseTableRightAssociativityGrammarJson() Fixture {
+    return .{
+        .name = "parse_table_right_associativity",
+        .contents =
+            \\{
+            \\  "name": "parse_table_right_associativity",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "expr"
+            \\    },
+            \\    "expr": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        {
+            \\          "type": "PREC_RIGHT",
+            \\          "value": 0,
+            \\          "content": {
+            \\            "type": "SEQ",
+            \\            "members": [
+            \\              { "type": "SYMBOL", "name": "expr" },
+            \\              { "type": "STRING", "value": "+" },
+            \\              { "type": "SYMBOL", "name": "expr" }
+            \\            ]
+            \\          }
+            \\        },
+            \\        {
+            \\          "type": "PREC",
+            \\          "value": 0,
+            \\          "content": {
+            \\            "type": "STRING",
+            \\            "value": "x"
+            \\          }
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
+pub fn parseTableRightAssociativityResolvedActionDump() Fixture {
+    return .{
+        .name = "parse_table_right_associativity_resolved_action_dump",
+        .contents =
+            \\state 0
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 1
+            \\  resolved_actions:
+            \\
+            \\state 2
+            \\  resolved_actions:
+            \\    terminal:0: shift 4
+            \\
+            \\state 3
+            \\  resolved_actions:
+            \\    terminal:0: reduce 3
+            \\
+            \\state 4
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 5
+            \\  resolved_actions:
+            \\    terminal:0: shift 4
+            \\
+        ,
+    };
+}
+
 pub fn parseTableConflictResolvedActionDump() Fixture {
     return .{
         .name = "parse_table_conflict_resolved_action_dump",
