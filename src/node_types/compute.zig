@@ -769,6 +769,42 @@ test "computeNodeTypes includes visible external tokens with real names" {
     try std.testing.expect(nodes[1].named);
 }
 
+test "computeNodeTypes applies default aliases to external tokens" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = &.{} }} },
+        },
+        .external_tokens = &.{
+            .{ .name = "template_chars", .kind = .named },
+        },
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{},
+        .separators = &.{},
+    };
+    const defaults = alias_ir.AliasMap{
+        .entries = &.{.{
+            .target = .{ .symbol = .{ .external = 0 } },
+            .alias = .{ .value = "template_chunk", .named = true },
+        }},
+    };
+
+    const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, defaults);
+    try std.testing.expectEqual(@as(usize, 2), nodes.len);
+    try std.testing.expectEqualStrings("source_file", nodes[0].kind);
+    try std.testing.expectEqualStrings("template_chunk", nodes[1].kind);
+    try std.testing.expect(nodes[1].named);
+}
+
 test "computeNodeTypes computes visible supertype subtypes" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

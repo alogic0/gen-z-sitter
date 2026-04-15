@@ -456,3 +456,47 @@ test "extractDefaultAliases does not promote aliases for inlined variables" {
     try std.testing.expect(result.defaults.findForSymbol(.{ .non_terminal = 0 }) == null);
     try std.testing.expectEqualStrings("expr", result.syntax.variables[0].productions[0].steps[0].alias.?.value);
 }
+
+test "extractDefaultAliases promotes always-aliased external tokens" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var prod1_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .external = 0 }, .alias = .{ .value = "template_chunk", .named = true } },
+    };
+    var prod2_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .external = 0 }, .alias = .{ .value = "template_chunk", .named = true } },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = prod1_steps[0..] },
+                    .{ .steps = prod2_steps[0..] },
+                },
+            },
+        },
+        .external_tokens = &.{
+            .{ .name = "template_chars", .kind = .named },
+        },
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{},
+        .separators = &.{},
+    };
+
+    const result = try extractDefaultAliases(arena.allocator(), syntax, lexical);
+    const default_alias = result.defaults.findForSymbol(.{ .external = 0 }).?;
+    try std.testing.expectEqualStrings("template_chunk", default_alias.value);
+    try std.testing.expect(default_alias.named);
+    try std.testing.expect(result.syntax.variables[0].productions[0].steps[0].alias == null);
+    try std.testing.expect(result.syntax.variables[0].productions[1].steps[0].alias == null);
+}
