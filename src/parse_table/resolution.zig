@@ -31,6 +31,11 @@ pub const ResolvedActionTable = struct {
     }
 };
 
+const ProductionResolutionMetadata = struct {
+    max_integer_precedence: ?i32 = null,
+    associativity: ?@import("../ir/rules.zig").Assoc = null,
+};
+
 pub fn resolveActionTableSkeleton(
     allocator: std.mem.Allocator,
     grouped_table: actions.GroupedActionTable,
@@ -95,17 +100,31 @@ fn resolveShiftReduce(
 
     if (production_id >= productions.len) return null;
     const production = productions[production_id];
+    const metadata = extractResolutionMetadata(production.steps);
 
-    for (production.steps) |step| {
-        switch (step.precedence) {
-            .integer => |value| {
-                if (value > 0) return reduce_action;
-            },
-            else => {},
-        }
+    if (metadata.max_integer_precedence) |value| {
+        if (value > 0) return reduce_action;
     }
 
     return null;
+}
+
+fn extractResolutionMetadata(steps: []const syntax_ir.ProductionStep) ProductionResolutionMetadata {
+    var metadata = ProductionResolutionMetadata{};
+    for (steps) |step| {
+        switch (step.precedence) {
+            .integer => |value| {
+                if (metadata.max_integer_precedence == null or value > metadata.max_integer_precedence.?) {
+                    metadata.max_integer_precedence = value;
+                }
+            },
+            else => {},
+        }
+        if (step.associativity != .none and metadata.associativity == null) {
+            metadata.associativity = step.associativity;
+        }
+    }
+    return metadata;
 }
 
 fn isShift(action: actions.ParseAction) bool {
@@ -239,4 +258,22 @@ test "resolveActionTable chooses reduce for a positive integer precedence shift/
 
     try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
     try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .reduce => |id| id == 1, else => false });
+}
+
+test "extractResolutionMetadata captures integer precedence and associativity" {
+    const steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .non_terminal = 0 },
+            .precedence = .{ .integer = 1 },
+            .associativity = .left,
+        },
+        .{
+            .symbol = .{ .terminal = 1 },
+            .precedence = .{ .integer = 2 },
+        },
+    };
+
+    const metadata = extractResolutionMetadata(steps[0..]);
+    try std.testing.expectEqual(@as(i32, 2), metadata.max_integer_precedence.?);
+    try std.testing.expectEqual(@import("../ir/rules.zig").Assoc.left, metadata.associativity.?);
 }
