@@ -47,9 +47,7 @@ const ConstructedStates = struct {
 
 fn validateSupportedSubset(grammar: syntax_ir.SyntaxGrammar) BuildError!void {
     for (grammar.variables) |variable| {
-        for (variable.productions) |production| {
-            if (production.dynamic_precedence != 0) return error.UnsupportedFeature;
-        }
+        for (variable.productions) |_| {}
     }
 }
 
@@ -499,7 +497,7 @@ test "buildStates allows inert step metadata in the current supported subset" {
     try std.testing.expectEqual(@as(state.StateId, 2), result.states[0].transitions[1].state);
 }
 
-test "buildStates still rejects dynamic precedence before conflict resolution exists" {
+test "buildStates accepts dynamic precedence metadata in the current supported subset" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -524,5 +522,6 @@ test "buildStates still rejects dynamic precedence before conflict resolution ex
         .word_token = null,
     };
 
-    try std.testing.expectError(error.UnsupportedFeature, buildStates(arena.allocator(), grammar));
+    const result = try buildStates(arena.allocator(), grammar);
+    try std.testing.expect(result.states.len > 0);
 }

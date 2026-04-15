@@ -34,6 +34,7 @@ pub const ResolvedActionTable = struct {
 const ProductionResolutionMetadata = struct {
     max_integer_precedence: ?i32 = null,
     associativity: ?@import("../ir/rules.zig").Assoc = null,
+    dynamic_precedence: i32 = 0,
 };
 
 pub fn resolveActionTableSkeleton(
@@ -101,7 +102,9 @@ fn resolveShiftReduce(
 
     if (production_id >= productions.len) return null;
     const production = productions[production_id];
-    const metadata = extractResolutionMetadata(production.steps);
+    const metadata = extractResolutionMetadata(production);
+
+    if (metadata.dynamic_precedence > 0) return reduce_action;
 
     if (metadata.max_integer_precedence) |value| {
         if (value > 0) return reduce_action;
@@ -117,9 +120,11 @@ fn resolveShiftReduce(
     return null;
 }
 
-fn extractResolutionMetadata(steps: []const syntax_ir.ProductionStep) ProductionResolutionMetadata {
-    var metadata = ProductionResolutionMetadata{};
-    for (steps) |step| {
+fn extractResolutionMetadata(production: anytype) ProductionResolutionMetadata {
+    var metadata = ProductionResolutionMetadata{
+        .dynamic_precedence = production.dynamic_precedence,
+    };
+    for (production.steps) |step| {
         switch (step.precedence) {
             .integer => |value| {
                 if (metadata.max_integer_precedence == null or value > metadata.max_integer_precedence.?) {
@@ -387,7 +392,67 @@ test "extractResolutionMetadata captures integer precedence and associativity" {
         },
     };
 
-    const metadata = extractResolutionMetadata(steps[0..]);
+    const production = struct {
+        steps: []const syntax_ir.ProductionStep,
+        dynamic_precedence: i32,
+    }{
+        .steps = steps[0..],
+        .dynamic_precedence = 7,
+    };
+
+    const metadata = extractResolutionMetadata(production);
     try std.testing.expectEqual(@as(i32, 2), metadata.max_integer_precedence.?);
     try std.testing.expectEqual(@import("../ir/rules.zig").Assoc.left, metadata.associativity.?);
+    try std.testing.expectEqual(@as(i32, 7), metadata.dynamic_precedence);
+}
+
+test "resolveActionTable chooses reduce for positive dynamic precedence shift/reduce pair" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{
+            .lhs = 1,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .non_terminal = 1 } },
+            },
+            .dynamic_precedence = 5,
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 3,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTable(allocator, productions[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
+    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .reduce => |id| id == 1, else => false });
 }
