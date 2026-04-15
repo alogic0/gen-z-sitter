@@ -493,6 +493,8 @@ test "buildStatesFromPrepared supports metadata-rich grammar through the real pr
     try std.testing.expect(result.states[0].transitions.len >= 2);
     try std.testing.expectEqual(result.states.len, result.resolved_actions.states.len);
     try std.testing.expect(result.resolved_actions.groupsForState(result.states[0].id).len > 0);
+    try std.testing.expect(result.isSerializationReady());
+    try std.testing.expect(!result.hasUnresolvedDecisions());
 }
 
 test "resolveActionTableSkeleton leaves the first precedence-sensitive grammar unresolved" {
@@ -720,8 +722,11 @@ test "generateResolvedActionTableDumpFromPrepared keeps unresolved conflict grou
 
     const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
     const dump = try generateResolvedActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
 
+    try std.testing.expect(!result.isSerializationReady());
+    try std.testing.expect(result.hasUnresolvedDecisions());
     try std.testing.expectEqualStrings(fixtures.parseTableConflictResolvedActionDump().contents, dump);
 }
 

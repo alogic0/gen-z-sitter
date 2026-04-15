@@ -49,6 +49,16 @@ pub const ResolvedStateActions = struct {
         }
         return null;
     }
+
+    pub fn hasUnresolvedDecisions(self: ResolvedStateActions) bool {
+        for (self.groups) |group| {
+            switch (group.decision) {
+                .chosen => {},
+                .unresolved => return true,
+            }
+        }
+        return false;
+    }
 };
 
 pub const ResolvedActionTable = struct {
@@ -85,6 +95,17 @@ pub const ResolvedActionTable = struct {
             return &.{};
         }
         return &.{};
+    }
+
+    pub fn hasUnresolvedDecisions(self: ResolvedActionTable) bool {
+        for (self.states) |resolved| {
+            if (resolved.hasUnresolvedDecisions()) return true;
+        }
+        return false;
+    }
+
+    pub fn isSerializationReady(self: ResolvedActionTable) bool {
+        return !self.hasUnresolvedDecisions();
     }
 };
 
@@ -501,6 +522,40 @@ test "resolveActionTableSkeleton leaves multi-candidate groups unresolved" {
         else => false,
     });
     try std.testing.expectEqual(@as(usize, 2), resolved.candidateActionsFor(2, .{ .terminal = 0 }).len);
+    try std.testing.expect(resolved.hasUnresolvedDecisions());
+    try std.testing.expect(!resolved.isSerializationReady());
+}
+
+test "resolveActionTableSkeleton is serialization-ready when every group is chosen" {
+    const allocator = std.testing.allocator;
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 1,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 3 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTableSkeleton(allocator, grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try std.testing.expect(!resolved.hasUnresolvedDecisions());
+    try std.testing.expect(resolved.isSerializationReady());
 }
 
 test "resolveActionTable keeps reduce/reduce pairs unresolved" {

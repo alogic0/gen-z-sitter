@@ -26,6 +26,14 @@ pub const BuildResult = struct {
     states: []const state.ParseState,
     actions: actions.ActionTable,
     resolved_actions: resolution.ResolvedActionTable,
+
+    pub fn hasUnresolvedDecisions(self: BuildResult) bool {
+        return self.resolved_actions.hasUnresolvedDecisions();
+    }
+
+    pub fn isSerializationReady(self: BuildResult) bool {
+        return self.resolved_actions.isSerializationReady();
+    }
 };
 
 pub fn buildStates(
