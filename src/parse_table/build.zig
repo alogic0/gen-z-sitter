@@ -5,6 +5,7 @@ const first = @import("first.zig");
 const item = @import("item.zig");
 const state = @import("state.zig");
 const conflicts = @import("conflicts.zig");
+const resolution = @import("resolution.zig");
 const rules = @import("../ir/rules.zig");
 
 pub const BuildError = error{
@@ -24,6 +25,7 @@ pub const BuildResult = struct {
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
     states: []const state.ParseState,
     actions: actions.ActionTable,
+    resolved_actions: resolution.ResolvedActionTable,
 };
 
 pub fn buildStates(
@@ -35,11 +37,19 @@ pub fn buildStates(
     const first_sets = try first.computeFirstSets(allocator, grammar);
     const productions = try collectProductions(allocator, grammar);
     const constructed = try constructStates(allocator, productions, first_sets);
+    const grouped_actions = try actions.groupActionTable(allocator, constructed.actions);
+    const resolved_actions = try resolution.resolveActionTableWithPrecedence(
+        allocator,
+        productions,
+        grammar.precedence_orderings,
+        grouped_actions,
+    );
     return .{
         .productions = productions,
         .precedence_orderings = grammar.precedence_orderings,
         .states = constructed.states,
         .actions = constructed.actions,
+        .resolved_actions = resolved_actions,
     };
 }
 

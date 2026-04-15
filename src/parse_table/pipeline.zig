@@ -67,14 +67,7 @@ pub fn generateResolvedActionTableDumpFromPrepared(
     prepared: grammar_ir.PreparedGrammar,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const grouped = try actions.groupActionTable(allocator, result.actions);
-    const resolved = try resolution.resolveActionTableWithPrecedence(
-        allocator,
-        result.productions,
-        result.precedence_orderings,
-        grouped,
-    );
-    return try debug_dump.dumpResolvedActionTableAlloc(allocator, resolved);
+    return try debug_dump.dumpResolvedActionTableAlloc(allocator, result.resolved_actions);
 }
 
 test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture" {
@@ -498,6 +491,8 @@ test "buildStatesFromPrepared supports metadata-rich grammar through the real pr
 
     try std.testing.expectEqual(@as(usize, 7), result.states.len);
     try std.testing.expect(result.states[0].transitions.len >= 2);
+    try std.testing.expectEqual(result.states.len, result.resolved_actions.states.len);
+    try std.testing.expect(result.resolved_actions.groupsForState(result.states[0].id).len > 0);
 }
 
 test "resolveActionTableSkeleton leaves the first precedence-sensitive grammar unresolved" {
