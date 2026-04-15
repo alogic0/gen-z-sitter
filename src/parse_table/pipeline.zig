@@ -559,6 +559,29 @@ test "generateResolvedActionTableDumpFromPrepared chooses reduce for the first p
     try std.testing.expectEqualStrings(fixtures.parseTablePrecedenceResolvedActionDump().contents, dump);
 }
 
+test "generateResolvedActionTableDumpFromPrepared chooses reduce for the first dynamic-precedence grammar" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableDynamicPrecedenceGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateResolvedActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.parseTableDynamicPrecedenceResolvedActionDump().contents, dump);
+}
+
 test "generateResolvedActionTableDumpFromPrepared keeps unresolved conflict groups explicit" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
@@ -603,6 +626,29 @@ test "generateResolvedActionTableDumpFromPrepared resolves the first associativi
     const dump = try generateResolvedActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
 
     try std.testing.expectEqualStrings(fixtures.parseTableAssociativityResolvedActionDump().contents, dump);
+}
+
+test "generateResolvedActionTableDumpFromPrepared keeps equal-precedence non-associative conflicts unresolved" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableNonAssociativeGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateResolvedActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.parseTableNonAssociativeResolvedActionDump().contents, dump);
 }
 
 test "generateResolvedActionTableDumpFromPrepared resolves the first right-associativity-sensitive grammar" {

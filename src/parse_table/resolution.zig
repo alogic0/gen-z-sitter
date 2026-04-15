@@ -228,6 +228,7 @@ test "resolveActionTable chooses reduce for a positive integer precedence shift/
         lhs: u32,
         steps: []const syntax_ir.ProductionStep,
         augmented: bool = false,
+        dynamic_precedence: i32 = 0,
     };
 
     const productions = [_]ProductionInfo{
@@ -280,6 +281,7 @@ test "resolveActionTable chooses reduce for equal-precedence left associativity"
         lhs: u32,
         steps: []const syntax_ir.ProductionStep,
         augmented: bool = false,
+        dynamic_precedence: i32 = 0,
     };
 
     const productions = [_]ProductionInfo{
@@ -333,6 +335,7 @@ test "resolveActionTable chooses shift for equal-precedence right associativity"
         lhs: u32,
         steps: []const syntax_ir.ProductionStep,
         augmented: bool = false,
+        dynamic_precedence: i32 = 0,
     };
 
     const productions = [_]ProductionInfo{
@@ -377,6 +380,61 @@ test "resolveActionTable chooses shift for equal-precedence right associativity"
 
     try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
     try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .shift => |id| id == 4, else => false });
+}
+
+test "resolveActionTable keeps equal-precedence non-associative conflicts unresolved" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{
+            .lhs = 1,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{
+                    .symbol = .{ .non_terminal = 1 },
+                    .precedence = .{ .integer = 0 },
+                    .associativity = .none,
+                },
+            },
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 3,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTable(allocator, productions[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(3)[0].kind);
+    try std.testing.expectEqual(@as(?actions.ParseAction, null), resolved.groupsForState(3)[0].chosen);
+    try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(3)[0].candidates.len);
 }
 
 test "extractResolutionMetadata captures integer precedence and associativity" {

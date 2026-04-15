@@ -1012,9 +1012,78 @@ pub fn parseTablePrecedenceGrammarJson() Fixture {
     };
 }
 
+pub fn parseTableDynamicPrecedenceGrammarJson() Fixture {
+    return .{
+        .name = "parse_table_dynamic_precedence",
+        .contents =
+            \\{
+            \\  "name": "parse_table_dynamic_precedence",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "expr"
+            \\    },
+            \\    "expr": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        {
+            \\          "type": "PREC_DYNAMIC",
+            \\          "value": 1,
+            \\          "content": {
+            \\            "type": "SEQ",
+            \\            "members": [
+            \\              { "type": "SYMBOL", "name": "expr" },
+            \\              { "type": "STRING", "value": "+" },
+            \\              { "type": "SYMBOL", "name": "expr" }
+            \\            ]
+            \\          }
+            \\        },
+            \\        {
+            \\          "type": "STRING",
+            \\          "value": "x"
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
 pub fn parseTablePrecedenceResolvedActionDump() Fixture {
     return .{
         .name = "parse_table_precedence_resolved_action_dump",
+        .contents =
+            \\state 0
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 1
+            \\  resolved_actions:
+            \\
+            \\state 2
+            \\  resolved_actions:
+            \\    terminal:0: shift 4
+            \\
+            \\state 3
+            \\  resolved_actions:
+            \\    terminal:0: reduce 3
+            \\
+            \\state 4
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 5
+            \\  resolved_actions:
+            \\    terminal:0: reduce 2
+            \\
+        ,
+    };
+}
+
+pub fn parseTableDynamicPrecedenceResolvedActionDump() Fixture {
+    return .{
+        .name = "parse_table_dynamic_precedence_resolved_action_dump",
         .contents =
             \\state 0
             \\  resolved_actions:
@@ -1085,6 +1154,48 @@ pub fn parseTableAssociativityGrammarJson() Fixture {
     };
 }
 
+pub fn parseTableNonAssociativeGrammarJson() Fixture {
+    return .{
+        .name = "parse_table_non_associative",
+        .contents =
+            \\{
+            \\  "name": "parse_table_non_associative",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "expr"
+            \\    },
+            \\    "expr": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        {
+            \\          "type": "PREC",
+            \\          "value": 0,
+            \\          "content": {
+            \\            "type": "SEQ",
+            \\            "members": [
+            \\              { "type": "SYMBOL", "name": "expr" },
+            \\              { "type": "STRING", "value": "+" },
+            \\              { "type": "SYMBOL", "name": "expr" }
+            \\            ]
+            \\          }
+            \\        },
+            \\        {
+            \\          "type": "PREC",
+            \\          "value": 0,
+            \\          "content": {
+            \\            "type": "STRING",
+            \\            "value": "x"
+            \\          }
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
 pub fn parseTableAssociativityResolvedActionDump() Fixture {
     return .{
         .name = "parse_table_associativity_resolved_action_dump",
@@ -1111,6 +1222,39 @@ pub fn parseTableAssociativityResolvedActionDump() Fixture {
             \\state 5
             \\  resolved_actions:
             \\    terminal:0: reduce 2
+            \\
+        ,
+    };
+}
+
+pub fn parseTableNonAssociativeResolvedActionDump() Fixture {
+    return .{
+        .name = "parse_table_non_associative_resolved_action_dump",
+        .contents =
+            \\state 0
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 1
+            \\  resolved_actions:
+            \\
+            \\state 2
+            \\  resolved_actions:
+            \\    terminal:0: shift 4
+            \\
+            \\state 3
+            \\  resolved_actions:
+            \\    terminal:0: reduce 3
+            \\
+            \\state 4
+            \\  resolved_actions:
+            \\    terminal:1: shift 3
+            \\
+            \\state 5
+            \\  resolved_actions:
+            \\    terminal:0: unresolved
+            \\      candidate shift 4
+            \\      candidate reduce 2
             \\
         ,
     };

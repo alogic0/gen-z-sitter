@@ -16,6 +16,7 @@ pub const ProductionInfo = struct {
     lhs: u32,
     steps: []const syntax_ir.ProductionStep,
     augmented: bool = false,
+    dynamic_precedence: i32 = 0,
 };
 
 pub const BuildResult = struct {
@@ -46,9 +47,7 @@ const ConstructedStates = struct {
 };
 
 fn validateSupportedSubset(grammar: syntax_ir.SyntaxGrammar) BuildError!void {
-    for (grammar.variables) |variable| {
-        for (variable.productions) |_| {}
-    }
+    _ = grammar;
 }
 
 fn collectProductions(
@@ -71,6 +70,7 @@ fn collectProductions(
             try productions.append(.{
                 .lhs = @intCast(variable_index),
                 .steps = production.steps,
+                .dynamic_precedence = production.dynamic_precedence,
             });
         }
     }
