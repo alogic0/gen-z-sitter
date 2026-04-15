@@ -152,7 +152,7 @@ fn clonePrecedenceOrderings(
 fn validateEmptyStrings(variables: []const syntax_ir.SyntaxVariable) FlattenGrammarError!void {
     for (variables, 0..) |variable, index| {
         for (variable.productions) |production| {
-            if (production.steps.len == 0 and index != 0) {
+            if (production.steps.len == 0 and index != 0 and variable.kind != .auxiliary) {
                 return error.EmptyString;
             }
         }
@@ -306,6 +306,49 @@ test "flattenGrammar allows empty string on the start rule" {
     const flattened = try flattenGrammar(arena.allocator(), grammar);
     try std.testing.expectEqual(@as(usize, 1), flattened.variables.len);
     try std.testing.expectEqual(@as(usize, 0), flattened.variables[0].productions[0].steps.len);
+}
+
+test "flattenGrammar allows empty string on auxiliary repeat variables" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var start_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var repeat_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = start_steps[0..] },
+                },
+            },
+            .{
+                .name = "source_file_repeat1",
+                .kind = .auxiliary,
+                .productions = &.{
+                    .{ .steps = &.{} },
+                    .{ .steps = repeat_steps[0..] },
+                },
+            },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const flattened = try flattenGrammar(arena.allocator(), grammar);
+    try std.testing.expectEqual(@as(usize, 2), flattened.variables.len);
+    try std.testing.expectEqual(@as(usize, 2), flattened.variables[1].productions.len);
 }
 
 test "flattenGrammar rejects recursive inline variables" {

@@ -1204,6 +1204,42 @@ test "extractTokens assigns distinct auxiliary symbols for nested repeats" {
     try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[2].productions[1].steps[0].symbol.non_terminal);
 }
 
+test "extractTokens keeps deterministic auxiliary naming for mixed repeat choice and sequence shapes" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var extract_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer extract_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.repeatChoiceSeqGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw_grammar = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw_grammar);
+    const extracted = try extractTokens(extract_arena.allocator(), prepared);
+
+    try std.testing.expectEqual(@as(usize, 7), extracted.syntax.variables.len);
+    try std.testing.expectEqualStrings("source_file", extracted.syntax.variables[0].name);
+    try std.testing.expectEqualStrings("_entry", extracted.syntax.variables[1].name);
+    try std.testing.expectEqualStrings("identifier", extracted.syntax.variables[2].name);
+    try std.testing.expectEqualStrings("number_literal", extracted.syntax.variables[3].name);
+    try std.testing.expectEqualStrings("source_file_repeat4", extracted.syntax.variables[4].name);
+    try std.testing.expectEqualStrings("_entry_repeat5", extracted.syntax.variables[5].name);
+    try std.testing.expectEqualStrings("_entry_repeat6", extracted.syntax.variables[6].name);
+
+    try std.testing.expectEqual(@as(u32, 4), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 5), extracted.syntax.variables[1].productions[0].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 6), extracted.syntax.variables[1].productions[1].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 3), extracted.syntax.variables[5].productions[1].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[6].productions[0].steps[1].symbol.non_terminal);
+}
+
 test "extractTokens rewrites tokenized inline symbols to extracted terminals" {
     const prepared = prepared_ir.PreparedGrammar{
         .grammar_name = "inline-token-rewrite",

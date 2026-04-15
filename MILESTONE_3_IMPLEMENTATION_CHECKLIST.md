@@ -124,9 +124,9 @@ Implemented and passing:
 
 Still remaining:
 
-- tighten `extract_tokens.zig` parity on the remaining symbol-bearing collections and stage checks
-- improve `compute.zig` parity for harder aggregation and hidden-node cases
-- add stronger upstream-style golden fixtures that stress mixed semantics together
+- finish the last `extract_tokens.zig` parity audit passes and document any intentionally deferred edge cases
+- improve `compute.zig` parity for harder aggregation edge cases that are not already covered by the current goldens
+- add one or two more upstream-style golden fixtures if needed after closeout review
 - update docs and do a formal Milestone 3 completion review
 
 ## Remaining Critical Path
@@ -134,8 +134,8 @@ Still remaining:
 Milestone 3 is no longer blocked on missing subsystems. The shortest path to completion is:
 
 1. finish `extract_tokens.zig` parity cleanup
-2. add stronger artifact-level golden fixtures for mixed semantics
-3. tighten remaining `compute.zig` parity gaps that those fixtures expose
+2. tighten remaining `compute.zig` parity gaps exposed by the stronger mixed-semantics fixture
+3. add one more mixed artifact-level golden only if that review exposes an uncovered class of mismatch
 4. update docs and mark Milestone 3 complete if the remaining deltas are acceptable
 
 ## Remaining Work From Current Code State
@@ -148,9 +148,6 @@ Keep auditing symbol-bearing collections so every reference follows the extracte
 
 Remaining checks to decide and implement:
 
-- `variables_to_inline` extracted-graph behavior for tokenized non-terminals:
-  - rewrite to extracted terminal
-  - or reject explicitly if inline targets must stay syntax-only
 - any remaining symbol-wrapper paths that still copy `convertSymbol` blindly instead of following extracted lexicalization
 - reserved-word and word-token interactions if upstream extraction treats some combinations specially
 - external-token corner cases beyond the current visibility and alias coverage
@@ -183,7 +180,7 @@ Remaining:
 - hidden-node inheritance in trickier nested cases
 - child aggregation across mixed visible/hidden/aliased paths
 - field aggregation across alternative productions with more varied shapes
-- supertype behavior in more edge-case structures
+- supertype behavior in more edge-case structures beyond the now-implemented upstream hidden-supertype emission rule
 - external-token interactions with child and field aggregation where relevant
 
 Done when:
@@ -357,7 +354,7 @@ Already implemented:
 
 Remaining:
 
-- stronger mixed-semantics golden coverage
+- evaluate whether one more mixed-semantics golden is needed beyond the current hidden-wrapper and mixed-semantics fixtures
 - additional hidden/alias/supertype aggregation edge cases
 - final review against upstream expectations rather than only internal current-output goldens
 
@@ -379,7 +376,7 @@ Already implemented:
 
 Remaining:
 
-- add more mixed-semantic golden fixtures
+- add more mixed-semantic golden fixtures only if the closeout review exposes a missing artifact class
 - decide whether any additional user-facing output mode is needed before Milestone 3 closeout
 
 Exit criteria:
@@ -771,10 +768,9 @@ Milestone 3 is complete when:
 
 From the current code state, implementation should continue with:
 
-1. decide and implement extracted-graph behavior for tokenized `variables_to_inline`
-2. audit `extract_tokens.zig` for any remaining symbol-wrapper paths that still preserve stale pre-extraction references
-3. add one stronger mixed-semantic golden fixture covering aliases, externals, extras, and supertypes together
-4. use that fixture to tighten any remaining `compute.zig` aggregation gaps
-5. update docs and perform a Milestone 3 completion review
+1. finish the last `extract_tokens.zig` audit passes and document any intentionally deferred edge cases
+2. use the current mixed-semantics fixture to tighten any remaining `compute.zig` aggregation gaps
+3. add one more mixed-semantic golden only if that work reveals a missing uncovered artifact class
+4. update docs and perform a Milestone 3 completion review
 
 That is the shortest path from the current code state into a clean Milestone 3 closeout.

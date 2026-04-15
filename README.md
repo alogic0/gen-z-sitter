@@ -2,7 +2,7 @@
 
 This directory contains planning documents for a Zig rewrite of the Tree-sitter generator/tooling stack.
 
-It now contains a working Zig project through Milestone 2 of the front-end rewrite.
+It now contains a working Zig project through the main Milestone 3 `node-types.json` pipeline, with remaining work focused on parity cleanup and closeout.
 
 ## Documents
 
