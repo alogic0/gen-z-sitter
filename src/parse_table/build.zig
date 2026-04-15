@@ -1,4 +1,5 @@
 const std = @import("std");
+const actions = @import("actions.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 const first = @import("first.zig");
 const item = @import("item.zig");
@@ -41,13 +42,6 @@ fn validateSupportedSubset(grammar: syntax_ir.SyntaxGrammar) BuildError!void {
     for (grammar.variables) |variable| {
         for (variable.productions) |production| {
             if (production.dynamic_precedence != 0) return error.UnsupportedFeature;
-            for (production.steps) |step| {
-                if (step.alias != null) return error.UnsupportedFeature;
-                if (step.field_name != null) return error.UnsupportedFeature;
-                if (step.precedence != .none) return error.UnsupportedFeature;
-                if (step.associativity != .none) return error.UnsupportedFeature;
-                if (step.reserved_context_name != null) return error.UnsupportedFeature;
-            }
         }
     }
 }
@@ -98,14 +92,15 @@ fn constructStates(
     var next_state_index: usize = 0;
     while (next_state_index < states.items.len) : (next_state_index += 1) {
         const transitions = try collectTransitionsForState(allocator, productions, first_sets, &states, states.items[next_state_index].items);
-        const detected_conflicts = try conflicts.detectConflicts(
-            allocator,
-            productions,
-            states.items[next_state_index].items,
-            transitions,
-        );
         const mutable_states = states.items;
         mutable_states[next_state_index].transitions = transitions;
+
+        const state_actions = try actions.buildActionsForState(allocator, productions, mutable_states[next_state_index]);
+        const detected_conflicts = try conflicts.detectConflictsFromActions(
+            allocator,
+            mutable_states[next_state_index],
+            state_actions,
+        );
         mutable_states[next_state_index].conflicts = detected_conflicts;
     }
 
@@ -451,17 +446,55 @@ fn hasTerminalLookahead(parse_item: item.ParseItem, terminal_index: u32) bool {
     return false;
 }
 
-test "buildStates rejects metadata-heavy syntax not in the current supported subset" {
+test "buildStates allows inert step metadata in the current supported subset" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
     var source_steps = [_]syntax_ir.ProductionStep{
-        .{ .symbol = .{ .terminal = 0 }, .field_name = "lhs" },
+        .{
+            .symbol = .{ .terminal = 0 },
+            .alias = .{ .value = "token", .named = true },
+            .field_name = "lhs",
+            .precedence = .{ .integer = 1 },
+            .associativity = .left,
+            .reserved_context_name = "global",
+        },
     };
 
     const grammar = syntax_ir.SyntaxGrammar{
         .variables = &.{
             .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const result = try buildStates(arena.allocator(), grammar);
+
+    try std.testing.expectEqual(@as(usize, 3), result.states.len);
+    try std.testing.expectEqual(@as(state.StateId, 2), result.states[0].transitions[1].state);
+}
+
+test "buildStates still rejects dynamic precedence before conflict resolution exists" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .kind = .named,
+                .productions = &.{.{ .steps = source_steps[0..], .dynamic_precedence = 1 }},
+            },
         },
         .external_tokens = &.{},
         .extra_symbols = &.{},

@@ -355,10 +355,6 @@ pub fn parseTableConflictDump() Fixture {
             \\    #2@1 ?terminal:0
             \\  transitions:
             \\    terminal:0 -> 4
-            \\  conflicts:
-            \\    shift_reduce on terminal:0
-            \\      #1@1
-            \\      #2@1
             \\
             \\state 3
             \\  items:
@@ -388,8 +384,85 @@ pub fn parseTableConflictDump() Fixture {
             \\    terminal:0 -> 4
             \\  conflicts:
             \\    shift_reduce on terminal:0
-            \\      #2@3
             \\      #2@1
+            \\      #2@3
+            \\
+        ,
+    };
+}
+
+pub fn parseTableConflictActionDump() Fixture {
+    return .{
+        .name = "parse_table_conflict_action_dump",
+        .contents =
+            \\state 0
+            \\  items:
+            \\    #0@0
+            \\    #1@0
+            \\    #2@0
+            \\    #2@0 ?terminal:0
+            \\    #3@0
+            \\    #3@0 ?terminal:0
+            \\  transitions:
+            \\    non_terminal:0 -> 1
+            \\    non_terminal:1 -> 2
+            \\    terminal:1 -> 3
+            \\  actions:
+            \\    terminal:1 => shift 3
+            \\
+            \\state 1
+            \\  items:
+            \\    #0@1
+            \\  transitions:
+            \\  actions:
+            \\
+            \\state 2
+            \\  items:
+            \\    #1@1
+            \\    #2@1
+            \\    #2@1 ?terminal:0
+            \\  transitions:
+            \\    terminal:0 -> 4
+            \\  actions:
+            \\    terminal:0 => shift 4
+            \\
+            \\state 3
+            \\  items:
+            \\    #3@1
+            \\    #3@1 ?terminal:0
+            \\  transitions:
+            \\  actions:
+            \\    terminal:0 => reduce 3
+            \\
+            \\state 4
+            \\  items:
+            \\    #2@0
+            \\    #2@0 ?terminal:0
+            \\    #2@2
+            \\    #2@2 ?terminal:0
+            \\    #3@0
+            \\    #3@0 ?terminal:0
+            \\  transitions:
+            \\    non_terminal:1 -> 5
+            \\    terminal:1 -> 3
+            \\  actions:
+            \\    terminal:1 => shift 3
+            \\
+            \\state 5
+            \\  items:
+            \\    #2@1
+            \\    #2@1 ?terminal:0
+            \\    #2@3
+            \\    #2@3 ?terminal:0
+            \\  transitions:
+            \\    terminal:0 -> 4
+            \\  actions:
+            \\    terminal:0 => shift 4
+            \\    terminal:0 => reduce 2
+            \\  conflicts:
+            \\    shift_reduce on terminal:0
+            \\      #2@1
+            \\      #2@3
             \\
         ,
     };
@@ -427,6 +500,13 @@ pub fn parseTableReduceReduceGrammarJson() Fixture {
             \\  "name": "parse_table_reduce_reduce",
             \\  "rules": {
             \\    "source_file": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "start" },
+            \\        { "type": "STRING", "value": "+" }
+            \\      ]
+            \\    },
+            \\    "start": {
             \\      "type": "CHOICE",
             \\      "members": [
             \\        { "type": "SYMBOL", "name": "lhs" },
@@ -442,6 +522,44 @@ pub fn parseTableReduceReduceGrammarJson() Fixture {
             \\      "name": "atom"
             \\    },
             \\    "atom": {
+            \\      "type": "STRING",
+            \\      "value": "x"
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
+pub fn parseTableMetadataGrammarJson() Fixture {
+    return .{
+        .name = "parse_table_metadata",
+        .contents =
+            \\{
+            \\  "name": "parse_table_metadata",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "lhs",
+            \\          "content": { "type": "SYMBOL", "name": "expr" }
+            \\        },
+            \\        {
+            \\          "type": "PREC_LEFT",
+            \\          "value": 1,
+            \\          "content": { "type": "STRING", "value": "+" }
+            \\        },
+            \\        {
+            \\          "type": "ALIAS",
+            \\          "named": true,
+            \\          "value": "rhs",
+            \\          "content": { "type": "SYMBOL", "name": "expr" }
+            \\        }
+            \\      ]
+            \\    },
+            \\    "expr": {
             \\      "type": "STRING",
             \\      "value": "x"
             \\    }

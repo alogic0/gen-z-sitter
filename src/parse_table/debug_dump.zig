@@ -18,22 +18,22 @@ pub fn dumpStatesAlloc(
 pub fn dumpStatesWithActionsAlloc(
     allocator: std.mem.Allocator,
     states: []const state.ParseState,
-    per_state_actions: []const []const actions.ActionEntry,
+    action_table: actions.ActionTable,
 ) DebugDumpError![]const u8 {
     var out = std.array_list.Managed(u8).init(allocator);
     defer out.deinit();
-    try writeStatesWithActions(out.writer(), states, per_state_actions);
+    try writeStatesWithActions(out.writer(), states, action_table);
     return try out.toOwnedSlice();
 }
 
 pub fn writeStates(writer: anytype, states: []const state.ParseState) !void {
-    try writeStatesWithActions(writer, states, &.{});
+    try writeStatesWithActions(writer, states, .{ .states = &.{} });
 }
 
 pub fn writeStatesWithActions(
     writer: anytype,
     states: []const state.ParseState,
-    per_state_actions: []const []const actions.ActionEntry,
+    action_table: actions.ActionTable,
 ) !void {
     for (states, 0..) |parse_state, index| {
         try writer.print("state {d}\n", .{parse_state.id});
@@ -52,9 +52,10 @@ pub fn writeStatesWithActions(
             }
         }
 
-        if (per_state_actions.len > 0) {
+        const state_actions = action_table.entriesForState(parse_state.id);
+        if (action_table.states.len > 0) {
             try writer.writeAll("  actions:\n");
-            for (per_state_actions[parse_state.id]) |entry| {
+            for (state_actions) |entry| {
                 try writer.writeAll("    ");
                 try writeSymbol(writer, entry.symbol);
                 try writer.writeAll(" => ");
@@ -150,14 +151,19 @@ test "dumpStatesWithActionsAlloc formats parser actions deterministically" {
             },
         },
     };
-    const per_state_actions = [_][]const actions.ActionEntry{
-        &[_]actions.ActionEntry{
-            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
-            .{ .symbol = .{ .external = 1 }, .action = .{ .accept = {} } },
+    const action_table = actions.ActionTable{
+        .states = &[_]actions.StateActions{
+            .{
+                .state_id = 0,
+                .entries = &[_]actions.ActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
+                    .{ .symbol = .{ .external = 1 }, .action = .{ .accept = {} } },
+                },
+            },
         },
     };
 
-    const dump = try dumpStatesWithActionsAlloc(allocator, states[0..], per_state_actions[0..]);
+    const dump = try dumpStatesWithActionsAlloc(allocator, states[0..], action_table);
     defer allocator.free(dump);
 
     try std.testing.expectEqualStrings(

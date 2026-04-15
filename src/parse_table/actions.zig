@@ -38,6 +38,22 @@ pub const ActionEntry = struct {
     action: ParseAction,
 };
 
+pub const StateActions = struct {
+    state_id: state.StateId,
+    entries: []const ActionEntry,
+};
+
+pub const ActionTable = struct {
+    states: []const StateActions,
+
+    pub fn entriesForState(self: ActionTable, state_id: state.StateId) []const ActionEntry {
+        for (self.states) |state_actions| {
+            if (state_actions.state_id == state_id) return state_actions.entries;
+        }
+        return &.{};
+    }
+};
+
 pub fn buildActionsForState(
     allocator: std.mem.Allocator,
     productions: anytype,
@@ -76,6 +92,21 @@ pub fn buildActionsForState(
 
     sortActionEntries(entries.items);
     return try entries.toOwnedSlice();
+}
+
+pub fn buildActionTable(
+    allocator: std.mem.Allocator,
+    productions: anytype,
+    parse_states: []const state.ParseState,
+) std.mem.Allocator.Error!ActionTable {
+    const state_entries = try allocator.alloc(StateActions, parse_states.len);
+    for (parse_states, 0..) |parse_state, index| {
+        state_entries[index] = .{
+            .state_id = parse_state.id,
+            .entries = try buildActionsForState(allocator, productions, parse_state),
+        };
+    }
+    return .{ .states = state_entries };
 }
 
 pub fn sortActionEntries(entries: []ActionEntry) void {
@@ -214,4 +245,60 @@ test "buildActionsForState derives shift reduce and accept actions" {
     try std.testing.expect(switch (entries[1].action) { .reduce => |id| id == 1, else => false });
     try std.testing.expectEqual(@as(u32, 2), entries[2].symbol.external);
     try std.testing.expect(switch (entries[2].action) { .accept => true, else => false });
+}
+
+test "buildActionTable keeps per-state actions addressable by state id" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{
+            .lhs = std.math.maxInt(u32),
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .non_terminal = 0 } },
+            },
+            .augmented = true,
+        },
+        .{
+            .lhs = 0,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .terminal = 0 } },
+            },
+        },
+    };
+
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 2,
+            .items = &[_]item.ParseItem{
+                item.ParseItem.withLookahead(1, 1, .{ .terminal = 0 }),
+            },
+            .transitions = &[_]state.Transition{},
+        },
+        .{
+            .id = 7,
+            .items = &[_]item.ParseItem{
+                item.ParseItem.withLookahead(0, 1, .{ .external = 1 }),
+            },
+            .transitions = &[_]state.Transition{},
+        },
+    };
+
+    const table = try buildActionTable(allocator, productions[0..], parse_states[0..]);
+    defer {
+        for (table.states) |state_actions| allocator.free(state_actions.entries);
+        allocator.free(table.states);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), table.states.len);
+    try std.testing.expectEqual(@as(usize, 1), table.entriesForState(2).len);
+    try std.testing.expectEqual(@as(u32, 0), table.entriesForState(2)[0].symbol.terminal);
+    try std.testing.expect(switch (table.entriesForState(2)[0].action) { .reduce => |id| id == 1, else => false });
+    try std.testing.expectEqual(@as(usize, 1), table.entriesForState(7).len);
+    try std.testing.expect(switch (table.entriesForState(7)[0].action) { .accept => true, else => false });
 }

@@ -42,19 +42,8 @@ pub fn generateStateActionDumpFromPrepared(
     prepared: grammar_ir.PreparedGrammar,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const per_state_actions = try buildActionsForStates(allocator, result);
-    return try debug_dump.dumpStatesWithActionsAlloc(allocator, result.states, per_state_actions);
-}
-
-fn buildActionsForStates(
-    allocator: std.mem.Allocator,
-    result: build.BuildResult,
-) std.mem.Allocator.Error![]const []const actions.ActionEntry {
-    const per_state_actions = try allocator.alloc([]const actions.ActionEntry, result.states.len);
-    for (result.states, 0..) |parse_state, index| {
-        per_state_actions[index] = try actions.buildActionsForState(allocator, result.productions, parse_state);
-    }
-    return per_state_actions;
+    const action_table = try actions.buildActionTable(allocator, result.productions, result.states);
+    return try debug_dump.dumpStatesWithActionsAlloc(allocator, result.states, action_table);
 }
 
 test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture" {
@@ -190,6 +179,29 @@ test "generateStateDumpFromPrepared matches the conflict parser-state golden fix
     try std.testing.expectEqualStrings(fixtures.parseTableConflictDump().contents, dump);
 }
 
+test "generateStateActionDumpFromPrepared matches the conflict parser-state action golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableConflictGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateStateActionDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.parseTableConflictActionDump().contents, dump);
+}
+
 test "buildStatesFromPrepared reuses identical advanced states deterministically" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
@@ -239,11 +251,36 @@ test "buildStatesFromPrepared reports a focused reduce/reduce conflict fixture" 
         for (parse_state.conflicts) |conflict| {
             if (conflict.kind == .reduce_reduce) {
                 saw_reduce_reduce = true;
-                try std.testing.expect(conflict.symbol == null);
+                try std.testing.expect(conflict.symbol != null);
+                try std.testing.expectEqual(@as(u32, 0), conflict.symbol.?.terminal);
                 try std.testing.expectEqual(@as(usize, 2), conflict.items.len);
             }
         }
     }
 
     try std.testing.expect(saw_reduce_reduce);
+}
+
+test "buildStatesFromPrepared supports metadata-rich grammar through the real preparation path" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableMetadataGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqual(@as(usize, 7), result.states.len);
+    try std.testing.expect(result.states[0].transitions.len >= 2);
 }
