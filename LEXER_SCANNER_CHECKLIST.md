@@ -6,9 +6,9 @@ Its purpose is to move the project beyond parser-table-only coverage and establi
 
 ## Goal
 
-- [ ] emit a first deterministic lexer/scanner surface beyond parser-table-only generation
-- [ ] cover scanner-driven grammars that the current behavioral-equivalence boundary cannot support
-- [ ] keep the first lexer/scanner stage narrow enough to verify locally and close cleanly
+- [x] emit a first deterministic lexer/scanner surface beyond parser-table-only generation
+- [x] cover scanner-driven grammars that the current behavioral-equivalence boundary cannot support
+- [x] keep the first lexer/scanner stage narrow enough to verify locally and close cleanly
 
 ## Implementation Sequence
 
@@ -104,21 +104,42 @@ Current behavioral coverage added by this checklist:
 
 ### 6. Record deferrals and closeout boundary
 
-- [ ] document what remains deferred to external scanner integration
-- [ ] document what remains deferred to broader compatibility hardening
-- [ ] decide whether this first lexer/scanner boundary is strong enough to close the checklist
+- [x] document what remains deferred to external scanner integration
+- [x] document what remains deferred to broader compatibility hardening
+- [x] decide whether this first lexer/scanner boundary is strong enough to close the checklist
+
+Closeout decision:
+- this checklist is complete as the first staged lexer/scanner boundary
+- delivered now:
+  - a ready lexical subset for string and simple pattern terminals
+  - deterministic serialized lexical artifacts
+  - explicit blocked handling for separators and external-token grammar shapes
+  - structural lexer-boundary checks
+  - lexer-driven behavioral proof on `repeat_choice_seq`
+- explicitly deferred:
+  - broader regex/pattern support
+  - emitted lexer C output
+  - external scanner integration
+  - runtime ABI claims that depend on a full scanner surface
+  - broader compatibility hardening after this first lexer boundary
+- those deferrals map directly to:
+  - `NEXT_DIRECTION_CHECKLIST.md`
+    - `Compatibility Hardening`
+  - `LATER_WORK_CHECKLIST.md`
+    - `external scanner integration`
+    - `broader real-grammar/repo compatibility coverage`
 
 ## Exit Criteria
 
-- [ ] at least one lexer/scanner-driven grammar shape is supported end to end
-- [ ] deterministic lexer/scanner artifacts exist for the supported subset
-- [ ] the emitted lexer/scanner boundary has structural proof, and compile proof if applicable
-- [ ] the new behavioral coverage enabled by lexer/scanner support is explicit
-- [ ] external-scanner and broader compatibility gaps are documented rather than implicit
+- [x] at least one lexer/scanner-driven grammar shape is supported end to end
+- [x] deterministic lexer/scanner artifacts exist for the supported subset
+- [x] the emitted lexer/scanner boundary has structural proof, and compile proof if applicable
+- [x] the new behavioral coverage enabled by lexer/scanner support is explicit
+- [x] external-scanner and broader compatibility gaps are documented rather than implicit
 
 ## Explicit Non-Goals For This Checklist
 
-- [ ] do not claim full external scanner integration here
-- [ ] do not claim full Tree-sitter runtime ABI compatibility here
-- [ ] do not fold broad compatibility hardening into the first lexer/scanner boundary
-- [ ] do not take on parse-table compression/minimization here
+- [x] do not claim full external scanner integration here
+- [x] do not claim full Tree-sitter runtime ABI compatibility here
+- [x] do not fold broad compatibility hardening into the first lexer/scanner boundary
+- [x] do not take on parse-table compression/minimization here

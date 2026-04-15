@@ -144,6 +144,10 @@ The next promoted execution checklist after the first behavioral-equivalence sta
   - first lexer/scanner emission boundary
   - deterministic lexer/scanner artifacts
   - staged proof before external scanner integration and broader compatibility hardening
+- [EXTERNAL_SCANNER_CHECKLIST.md](./EXTERNAL_SCANNER_CHECKLIST.md)
+  - first external-scanner integration boundary
+  - deterministic external-token artifacts
+  - staged proof before broader compatibility hardening and fuller scanner/runtime parity
 
 ## Documents
 
@@ -164,6 +168,7 @@ The next promoted execution checklist after the first behavioral-equivalence sta
 - [MILESTONE_15_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_15_IMPLEMENTATION_CHECKLIST.md)
 - [BEHAVIORAL_EQUIVALENCE_CHECKLIST.md](./BEHAVIORAL_EQUIVALENCE_CHECKLIST.md)
 - [LEXER_SCANNER_CHECKLIST.md](./LEXER_SCANNER_CHECKLIST.md)
+- [EXTERNAL_SCANNER_CHECKLIST.md](./EXTERNAL_SCANNER_CHECKLIST.md)
 - [NEXT_DIRECTION_CHECKLIST.md](./NEXT_DIRECTION_CHECKLIST.md)
 - [LATER_WORK_CHECKLIST.md](./LATER_WORK_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)

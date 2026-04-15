@@ -32,14 +32,17 @@ Current completed boundary:
 
 ### 3. Lexer / Scanner Path
 
-- [ ] implement lexer/scanner emission beyond parser-table-only coverage
+- [x] implement lexer/scanner emission beyond parser-table-only coverage
 - [ ] add external scanner integration support
-- [ ] prove the lexer/scanner path on real grammar cases that cannot be covered by the current parser-only boundary
-- [ ] document any staged compatibility limits in the emitted scanner/runtime surface
+- [x] prove the lexer/scanner path on real grammar cases that cannot be covered by the current parser-only boundary
+- [x] document any staged compatibility limits in the emitted scanner/runtime surface
 
 Promoted execution checklist:
 - [x] [LEXER_SCANNER_CHECKLIST.md](./LEXER_SCANNER_CHECKLIST.md)
-- [ ] use that checklist as the active implementation plan before deciding whether compatibility hardening runs in parallel or after it
+- [x] use that checklist as the active implementation plan before deciding whether compatibility hardening runs in parallel or after it
+- [x] decide that compatibility hardening should follow the first lexer/scanner and external-scanner stages rather than run in parallel
+- [x] promote external-scanner integration into its own implementation checklist:
+  - [EXTERNAL_SCANNER_CHECKLIST.md](./EXTERNAL_SCANNER_CHECKLIST.md)
 
 ### 4. Compatibility Hardening
 
@@ -60,7 +63,11 @@ Promoted execution checklist:
 - [x] implement that milestone before broadening into more optimization or ergonomics work
 - [x] promote behavioral equivalence into a dedicated checklist with concrete exit criteria
 - [x] promote `Lexer / Scanner Path` into a dedicated implementation checklist
-- [ ] decide whether `Compatibility Hardening` should run in parallel with the lexer/scanner checklist or immediately after it
+- [x] decide whether `Compatibility Hardening` should run in parallel with the lexer/scanner checklist or immediately after it
+- [x] prefer the sequence:
+  - first lexer/scanner boundary
+  - then first external-scanner boundary
+  - then broader compatibility hardening
 
 ## Guiding Rule
 
