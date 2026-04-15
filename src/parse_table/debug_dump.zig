@@ -25,7 +25,11 @@ pub fn writeStates(writer: anytype, states: []const state.ParseState) !void {
 
         try writer.writeAll("  transitions:\n");
         for (parse_state.transitions) |transition| {
-            try writer.print("    {s}:{d} -> {d}\n", .{ @tagName(transition.symbol.kind), transition.symbol.index, transition.state });
+            switch (transition.symbol) {
+                .non_terminal => |symbol_index| try writer.print("    non_terminal:{d} -> {d}\n", .{ symbol_index, transition.state }),
+                .terminal => |symbol_index| try writer.print("    terminal:{d} -> {d}\n", .{ symbol_index, transition.state }),
+                .external => |symbol_index| try writer.print("    external:{d} -> {d}\n", .{ symbol_index, transition.state }),
+            }
         }
 
         if (parse_state.conflicts.len > 0) {
@@ -33,7 +37,11 @@ pub fn writeStates(writer: anytype, states: []const state.ParseState) !void {
             for (parse_state.conflicts) |conflict| {
                 try writer.print("    {s}", .{@tagName(conflict.kind)});
                 if (conflict.symbol) |symbol| {
-                    try writer.print(" on {s}:{d}", .{ @tagName(symbol.kind), symbol.index });
+                    switch (symbol) {
+                        .non_terminal => |symbol_index| try writer.print(" on non_terminal:{d}", .{symbol_index}),
+                        .terminal => |symbol_index| try writer.print(" on terminal:{d}", .{symbol_index}),
+                        .external => |symbol_index| try writer.print(" on external:{d}", .{symbol_index}),
+                    }
                 }
                 try writer.writeByte('\n');
                 for (conflict.items) |parse_item| {
@@ -50,22 +58,22 @@ test "dumpStatesAlloc formats parser states deterministically" {
     const allocator = std.testing.allocator;
     const conflict_items = [_]item.ParseItem{
         item.ParseItem.init(0, 1),
-        item.ParseItem.withLookahead(2, 0, .{ .kind = .external, .index = 5 }),
+        item.ParseItem.withLookahead(2, 0, .{ .external = 5 }),
     };
     const states = [_]state.ParseState{
         .{
             .id = 0,
             .items = &[_]item.ParseItem{
                 item.ParseItem.init(0, 0),
-                item.ParseItem.withLookahead(1, 2, .{ .kind = .non_terminal, .index = 4 }),
+                item.ParseItem.withLookahead(1, 2, .{ .non_terminal = 4 }),
             },
             .transitions = &[_]state.Transition{
-                .{ .symbol = .{ .kind = .non_terminal, .index = 3 }, .state = 1 },
+                .{ .symbol = .{ .non_terminal = 3 }, .state = 1 },
             },
             .conflicts = &[_]state.Conflict{
                 .{
                     .kind = .shift_reduce,
-                    .symbol = .{ .kind = .external, .index = 7 },
+                    .symbol = .{ .external = 7 },
                     .items = conflict_items[0..],
                 },
             },

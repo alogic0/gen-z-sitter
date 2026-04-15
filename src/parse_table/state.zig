@@ -1,11 +1,11 @@
 const std = @import("std");
 const item = @import("item.zig");
-const symbols = @import("../ir/symbols.zig");
+const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const StateId = u32;
 
 pub const Transition = struct {
-    symbol: symbols.SymbolId,
+    symbol: syntax_ir.SymbolRef,
     state: StateId,
 };
 
@@ -16,7 +16,7 @@ pub const ConflictKind = enum {
 
 pub const Conflict = struct {
     kind: ConflictKind,
-    symbol: ?symbols.SymbolId = null,
+    symbol: ?syntax_ir.SymbolRef = null,
     items: []const item.ParseItem,
 };
 
@@ -48,14 +48,27 @@ fn lessThanTransition(_: void, a: Transition, b: Transition) bool {
     return a.state < b.state;
 }
 
-fn symbolLessThan(a: symbols.SymbolId, b: symbols.SymbolId) bool {
-    if (a.kind != b.kind) return @intFromEnum(a.kind) < @intFromEnum(b.kind);
-    return a.index < b.index;
+fn symbolLessThan(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
+    return switch (a) {
+        .non_terminal => |index| switch (b) {
+            .non_terminal => |other| index < other,
+            else => true,
+        },
+        .terminal => |index| switch (b) {
+            .non_terminal => false,
+            .terminal => |other| index < other,
+            .external => true,
+        },
+        .external => |index| switch (b) {
+            .external => |other| index < other,
+            else => false,
+        },
+    };
 }
 
 test "state helpers sort items and transitions deterministically" {
     var items = [_]item.ParseItem{
-        item.ParseItem.withLookahead(1, 1, symbols.SymbolId.external(5)),
+        item.ParseItem.withLookahead(1, 1, .{ .external = 5 }),
         item.ParseItem.init(0, 2),
         item.ParseItem.init(0, 1),
     };
@@ -65,12 +78,12 @@ test "state helpers sort items and transitions deterministically" {
     try std.testing.expectEqual(@as(u16, 2), items[1].step_index);
 
     var transitions = [_]Transition{
-        .{ .symbol = symbols.SymbolId.external(7), .state = 3 },
-        .{ .symbol = symbols.SymbolId.nonTerminal(2), .state = 9 },
-        .{ .symbol = symbols.SymbolId.nonTerminal(2), .state = 1 },
+        .{ .symbol = .{ .external = 7 }, .state = 3 },
+        .{ .symbol = .{ .non_terminal = 2 }, .state = 9 },
+        .{ .symbol = .{ .non_terminal = 2 }, .state = 1 },
     };
     sortTransitions(transitions[0..]);
-    try std.testing.expectEqual(symbols.SymbolKind.non_terminal, transitions[0].symbol.kind);
+    try std.testing.expectEqual(@as(u32, 2), transitions[0].symbol.non_terminal);
     try std.testing.expectEqual(@as(StateId, 1), transitions[0].state);
-    try std.testing.expectEqual(symbols.SymbolKind.external, transitions[2].symbol.kind);
+    try std.testing.expectEqual(@as(u32, 7), transitions[2].symbol.external);
 }
