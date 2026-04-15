@@ -333,6 +333,17 @@ pub fn normalizedListsGrammarJson() Fixture {
             \\    ["term", "expr", "expr"],
             \\    ["expr", "term"]
             \\  ],
+            \\  "precedences": [
+            \\    [
+            \\      { "type": "STRING", "value": "a" },
+            \\      { "type": "STRING", "value": "b" },
+            \\      { "type": "STRING", "value": "a" }
+            \\    ],
+            \\    [
+            \\      { "type": "STRING", "value": "a" },
+            \\      { "type": "STRING", "value": "b" }
+            \\    ]
+            \\  ],
             \\  "reserved": {
             \\    "global": [
             \\      { "type": "STRING", "value": "yield" },

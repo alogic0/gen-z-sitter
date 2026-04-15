@@ -1,5 +1,20 @@
 # Milestone 2 Implementation Checklist
 
+## Status
+
+Milestone 2 is complete in the current Zig project state.
+
+Completed outcomes:
+
+- `PreparedGrammar` IR exists and is exercised in tests
+- raw grammar lowering is implemented in `src/grammar/parse_grammar.zig`
+- semantic validation covers hidden start rules, undefined references, undeclared named precedences, and conflicting precedence orderings
+- metadata wrappers are merged into canonical lowered metadata rules
+- semantic lists are normalized through `src/grammar/normalize.zig`
+- deterministic prepared-grammar dumping exists in `src/grammar/debug_dump.zig`
+- structured semantic diagnostics exist and are surfaced by the CLI
+- `zig build` and `zig build test` pass
+
 ## Goal
 
 Implement the first semantic lowering stage after raw loading:

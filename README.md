@@ -2,13 +2,14 @@
 
 This directory contains planning documents for a Zig rewrite of the Tree-sitter generator/tooling stack.
 
-It now also contains the initial Zig project scaffold for Milestone 0.
+It now contains a working Zig project through Milestone 2 of the front-end rewrite.
 
 ## Documents
 
 - [MASTER_PLAN.md](./MASTER_PLAN.md)
 - [MILESTONE_1_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_1_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_2_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_2_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_3_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_3_IMPLEMENTATION_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)
@@ -22,15 +23,17 @@ It now also contains the initial Zig project scaffold for Milestone 0.
 - `zig build test`
 - `zig build run -- help`
 - `zig build run -- generate path/to/grammar.json`
+- `zig build run -- generate --debug-prepared path/to/grammar.json`
 
 ## Suggested Reading Order
 
 1. master plan
 2. milestone 1 checklist
 3. milestone 2 checklist
-4. architecture
-5. compatibility matrix
-6. prepared grammar IR
-7. test strategy
-8. milestone 0 task list
-9. parse-table algorithm plan
+4. milestone 3 checklist
+5. architecture
+6. compatibility matrix
+7. prepared grammar IR
+8. test strategy
+9. milestone 0 task list
+10. parse-table algorithm plan

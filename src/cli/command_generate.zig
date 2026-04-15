@@ -1,6 +1,8 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const args = @import("args.zig");
 const diag = @import("../support/diag.zig");
+const debug_dump = @import("../grammar/debug_dump.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const fixtures = @import("../tests/fixtures.zig");
@@ -53,6 +55,15 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
         });
         return error.InvalidArguments;
     };
+
+    if (opts.debug_prepared) {
+        const dump = try debug_dump.dumpPreparedGrammar(allocator, prepared);
+        defer allocator.free(dump);
+        if (!builtin.is_test) {
+            try std.fs.File.stdout().writeAll(dump);
+        }
+        return;
+    }
 
     try diag.printStdout(.{
         .kind = .info,
@@ -111,6 +122,24 @@ test "runGenerate succeeds for a valid grammar.json file" {
 
     try runGenerate(std.testing.allocator, .{
         .grammar_path = path,
+    });
+}
+
+test "runGenerate supports debug prepared output mode" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.json",
+        .data = fixtures.validResolvedGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    defer std.testing.allocator.free(path);
+
+    try runGenerate(std.testing.allocator, .{
+        .grammar_path = path,
+        .debug_prepared = true,
     });
 }
 

@@ -35,7 +35,7 @@ The Zig project scaffold already exists in this directory and passes:
 
 Milestone 0 is effectively complete: build system, CLI skeleton, diagnostics, helper modules, and basic tests are wired.
 
-Milestone 2 is underway. The current Zig implementation already has a first `PreparedGrammar` lowering pass plus semantic checks modeled on upstream `prepare_grammar/intern_symbols.rs`.
+Milestone 2 is complete. The current Zig implementation has a working `PreparedGrammar` lowering pass, normalization, deterministic debug dumping, and structured semantic diagnostics modeled on upstream `prepare_grammar` and `intern_symbols` behavior.
 
 ## Top-Level Strategy
 

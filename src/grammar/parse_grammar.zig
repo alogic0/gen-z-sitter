@@ -127,7 +127,7 @@ const Builder = struct {
         const external_tokens = try self.buildExternalTokens();
         const extra_rules = try self.lowerRuleList(self.grammar.extras);
         const expected_conflicts = try normalize.normalizeConflictSets(self.allocator, try self.resolveConflicts());
-        const precedence_orderings = try self.resolvePrecedences();
+        const precedence_orderings = try normalize.normalizePrecedenceOrderings(self.allocator, try self.resolvePrecedences());
         const variables_to_inline = try normalize.normalizeSymbolList(self.allocator, try self.resolveInlineRules());
         const supertype_symbols = try normalize.normalizeSymbolList(self.allocator, try self.resolveSupertypes());
         const word_token = try self.resolveWordToken();
@@ -640,10 +640,17 @@ fn validatePrecedenceOrderingPairs(
     pairs: *std.array_list.Managed(PrecedencePairOrdering),
     ordering: raw.PrecedenceList,
 ) ParseGrammarError!void {
-    for (ordering, 0..) |entry1_rule, i| {
-        const entry1 = try lowerRawPrecedenceEntry(entry1_rule);
-        for (ordering[(i + 1)..]) |entry2_rule| {
-            const entry2 = try lowerRawPrecedenceEntry(entry2_rule);
+    var normalized = std.array_list.Managed(OrderingEntry).init(builder.allocator);
+    defer normalized.deinit();
+
+    for (ordering) |entry_rule| {
+        const entry = try lowerRawPrecedenceEntry(entry_rule);
+        if (containsOrderingEntry(normalized.items, entry)) continue;
+        try normalized.append(entry);
+    }
+
+    for (normalized.items, 0..) |entry1, i| {
+        for (normalized.items[(i + 1)..]) |entry2| {
             if (precedenceEntryEql(entry1, entry2)) continue;
 
             var left = entry1;
@@ -671,6 +678,13 @@ fn validatePrecedenceOrderingPairs(
             }
         }
     }
+}
+
+fn containsOrderingEntry(existing: []const OrderingEntry, candidate: OrderingEntry) bool {
+    for (existing) |entry| {
+        if (precedenceEntryEql(entry, candidate)) return true;
+    }
+    return false;
 }
 
 fn lowerRawPrecedenceEntry(entry: *const raw.RawRule) ParseGrammarError!OrderingEntry {
@@ -899,6 +913,11 @@ test "parseRawGrammar normalizes semantic lists" {
     try std.testing.expectEqual(@as(usize, 2), prepared.expected_conflicts[0].len);
     try std.testing.expectEqual(@as(u32, 1), prepared.expected_conflicts[0][0].index);
     try std.testing.expectEqual(@as(u32, 2), prepared.expected_conflicts[0][1].index);
+
+    try std.testing.expectEqual(@as(usize, 1), prepared.precedence_orderings.len);
+    try std.testing.expectEqual(@as(usize, 2), prepared.precedence_orderings[0].len);
+    try std.testing.expectEqualStrings("a", prepared.precedence_orderings[0][0].name);
+    try std.testing.expectEqualStrings("b", prepared.precedence_orderings[0][1].name);
 
     try std.testing.expectEqual(@as(usize, 1), prepared.reserved_word_sets.len);
     try std.testing.expectEqual(@as(usize, 2), prepared.reserved_word_sets[0].members.len);
