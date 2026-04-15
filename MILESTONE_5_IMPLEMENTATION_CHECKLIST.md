@@ -56,13 +56,54 @@ By the end of Milestone 5, the repository should have:
 - small focused fixtures proving state construction and conflict reporting
 - a milestone closeout note describing the supported subset and what remains before `parser.c`
 
+## Current Status
+
+Milestone 5 now has the core parser-table foundation in place:
+
+- `src/parse_table/item.zig`
+  - parser item identity, deterministic comparison, and debug formatting
+- `src/parse_table/state.zig`
+  - parser states, transitions, conflict storage, and stable ordering helpers
+- `src/parse_table/debug_dump.zig`
+  - deterministic textual dump format for states, items, transitions, and conflicts
+- `src/parse_table/build.zig`
+  - first narrow LR(0)-style canonical state construction over `SyntaxGrammar`
+  - explicit supported-subset rejection for metadata-heavy productions
+  - deterministic state interning and numbering
+- `src/parse_table/conflicts.zig`
+  - structured narrow LR(0)-style shift/reduce and reduce/reduce conflict detection
+- `src/parse_table/pipeline.zig`
+  - real path from `PreparedGrammar` through extraction, flattening, state construction, and dump generation
+- `src/tests/fixtures.zig`
+  - focused parser-table fixtures for:
+    - a tiny non-conflicting grammar
+    - an intentional conflict grammar
+    - a deterministic state-reuse grammar
+
+The artifact layer is also in place:
+
+- exact parser-state dump golden for a minimal grammar
+- exact parser-state dump golden for a conflict grammar
+- focused state-reuse proof for deterministic interning
+
+So the remaining Milestone 5 work is no longer “build parser-table foundations”.
+It is mostly:
+
+- review and document the current supported subset explicitly
+- decide whether Milestone 5 is complete enough to close now, or whether one more focused fixture is needed
+- record the deferrals for later milestones, especially:
+  - broader grammar support
+  - richer lookahead/FIRST-set behavior
+  - conflict resolution instead of only conflict representation
+  - eventual parse-table serialization / `parser.c` emission
+
 ## Main Targets
 
 ### 1. Parse item and state IR
 
 Current state:
 
-- the project stops at `PreparedGrammar`, extraction, flattening, aliases, and `node-types.json`
+- implemented
 
 Target state:
 
@@ -79,7 +120,7 @@ Expected impact:
 
 Current state:
 
-- no canonical parse-state construction exists yet
+- implemented for a deliberately narrow LR(0)-style supported subset
 
 Target state:
 
@@ -96,7 +137,7 @@ Expected impact:
 
 Current state:
 
-- conflicts are validated earlier in the front-end, but there is no table-layer conflict model yet
+- implemented for the current narrow LR(0)-style builder
 
 Target state:
 
@@ -176,6 +217,10 @@ Acceptance criteria:
 
 - conflicts are structured and testable, not only surfaced as generic errors
 
+Status:
+
+- implemented
+
 ### 5. `src/parse_table/debug_dump.zig`
 
 Purpose:
@@ -190,6 +235,10 @@ Implement:
 Acceptance criteria:
 
 - fixture-based exact goldens can pin parser-state output for small grammars
+
+Status:
+
+- implemented with both minimal and conflict-state exact goldens
 
 ### 6. `src/tests/fixtures.zig`
 
@@ -207,7 +256,13 @@ Acceptance criteria:
 
 - each fixture exists to prove one concrete table-building behavior
 
+Status:
+
+- implemented for minimal state construction, conflict reporting, and deterministic state reuse
+
 ## Recommended Implementation Sequence
+
+Completed:
 
 1. Add `src/parse_table/item.zig` and `src/parse_table/state.zig`.
 2. Add a tiny debug dump format before full construction so the IR shape is inspectable early.
@@ -215,7 +270,17 @@ Acceptance criteria:
 4. Add one exact golden dump for a minimal grammar.
 5. Add structured conflict representation in `conflicts.zig`.
 6. Add one conflict fixture and exact dump or focused assertion.
-7. Review the supported subset and decide what must expand before Milestone 6.
+7. Add explicit deterministic state-reuse coverage.
+
+Remaining:
+
+1. Review the supported subset and document it in milestone closeout terms.
+2. Decide whether Milestone 5 should close now or after one more focused proof fixture.
+3. Record the main Milestone 6+ deferrals:
+   - richer lookahead/FIRST-set behavior
+   - broader grammar support
+   - conflict resolution
+   - parse-table serialization and `parser.c` emission
 
 ## Risks
 
@@ -234,3 +299,13 @@ Milestone 5 is complete when:
 - `zig build` passes
 - `zig build test` passes
 - the remaining gap to `parser.c` generation is mostly code emission and broader grammar support, not missing parser-state foundations
+
+Current closeout assessment:
+
+- all core parser-table foundations in this checklist are implemented
+- exact artifact coverage exists for both non-conflicting and conflicting state graphs
+- deterministic state reuse is explicitly covered
+- `zig build` passes
+- `zig build test` passes
+
+So Milestone 5 is close to completion. The remaining work is a supported-subset closeout decision, not a missing core subsystem.

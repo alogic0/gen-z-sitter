@@ -410,6 +410,38 @@ pub fn parseTableReuseGrammarJson() Fixture {
     };
 }
 
+pub fn parseTableReduceReduceGrammarJson() Fixture {
+    return .{
+        .name = "parse_table_reduce_reduce",
+        .contents =
+            \\{
+            \\  "name": "parse_table_reduce_reduce",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "lhs" },
+            \\        { "type": "SYMBOL", "name": "rhs" }
+            \\      ]
+            \\    },
+            \\    "lhs": {
+            \\      "type": "SYMBOL",
+            \\      "name": "atom"
+            \\    },
+            \\    "rhs": {
+            \\      "type": "SYMBOL",
+            \\      "name": "atom"
+            \\    },
+            \\    "atom": {
+            \\      "type": "STRING",
+            \\      "value": "x"
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
 pub fn fieldChildrenGrammarJson() Fixture {
     return .{
         .name = "field_children",

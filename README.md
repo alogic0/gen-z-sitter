@@ -4,6 +4,16 @@ This directory contains planning documents for a Zig rewrite of the Tree-sitter 
 
 Milestone 3 is complete. Milestone 4 is also complete: the deferred `node-types.json` parity work has been implemented, including the later post-processing cleanup around supertypes and final node ordering.
 
+Milestone 5 is well underway and now has the core parser-table foundation in place:
+
+- parser item/state IR
+- deterministic narrow LR(0)-style state construction
+- structured conflict reporting
+- exact parser-state dump goldens for both simple and conflict grammars
+- deterministic state-reuse coverage
+
+The remaining Milestone 5 work is mainly closeout around the currently supported subset and explicit deferrals to later parser-generation milestones.
+
 ## Documents
 
 - [MASTER_PLAN.md](./MASTER_PLAN.md)
