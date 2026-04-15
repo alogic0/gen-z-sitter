@@ -85,9 +85,22 @@ Current check boundary:
 
 ### 5. Connect lexer/scanner work to behavioral proof
 
-- [ ] add at least one real grammar/input case that specifically requires the new lexer/scanner boundary
-- [ ] document what behavioral coverage becomes newly possible because of lexer/scanner support
-- [ ] make any remaining external-scanner-only gaps explicit
+- [x] add at least one real grammar/input case that specifically requires the new lexer/scanner boundary
+- [x] document what behavioral coverage becomes newly possible because of lexer/scanner support
+- [x] make any remaining external-scanner-only gaps explicit
+
+Current behavioral coverage added by this checklist:
+- `repeat_choice_seq` now serves as the first real lexer-driven grammar/input case
+- the behavioral harness now supports the first staged lexical subset:
+  - string terminals
+  - simple `[a-z]+`-style pattern terminals
+- that makes new behavioral proof possible beyond the earlier scanner-free literal-only boundary:
+  - lexer-driven parser-walk progress on valid pattern-token input
+  - deterministic JSON-path and JS-path behavioral parity for that lexer-driven case
+- still explicitly deferred:
+  - broader regex/pattern coverage
+  - external-token and external-scanner-driven behavior
+  - runtime claims that depend on a full external scanner surface
 
 ### 6. Record deferrals and closeout boundary
 

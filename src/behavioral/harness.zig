@@ -205,15 +205,13 @@ fn selectMatchingTerminal(
     var best: ?MatchedTerminal = null;
 
     for (lexical.variables, 0..) |variable, index| {
-        const literal = ruleLiteralText(prepared.rules, variable.rule) orelse return null;
-        if (literal.len == 0) continue;
-        if (!std.mem.startsWith(u8, remaining, literal)) continue;
+        const match_len = matchLexicalRulePrefix(prepared.rules, variable.rule, remaining) orelse continue;
 
         const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
         if (result.resolved_actions.decisionFor(state_id, symbol) == null) continue;
 
-        if (best == null or literal.len > best.?.len) {
-            best = .{ .symbol = symbol, .len = literal.len };
+        if (best == null or match_len > best.?.len) {
+            best = .{ .symbol = symbol, .len = match_len };
         }
     }
 
@@ -226,6 +224,45 @@ fn ruleLiteralText(all_rules: []const rules.Rule, rule_id: rules.RuleId) ?[]cons
         .metadata => |metadata| ruleLiteralText(all_rules, metadata.inner),
         else => null,
     };
+}
+
+fn matchLexicalRulePrefix(
+    all_rules: []const rules.Rule,
+    rule_id: rules.RuleId,
+    input: []const u8,
+) ?usize {
+    return switch (all_rules[rule_id]) {
+        .string => |value| if (std.mem.startsWith(u8, input, value)) value.len else null,
+        .pattern => |pattern| matchSupportedPatternPrefix(pattern, input),
+        .metadata => |metadata| matchLexicalRulePrefix(all_rules, metadata.inner, input),
+        else => null,
+    };
+}
+
+fn matchSupportedPatternPrefix(pattern: rules.Pattern, input: []const u8) ?usize {
+    const value = pattern.value;
+    if (value.len < 5) return null;
+    if (value[0] != '[') return null;
+    if (value[value.len - 2] != ']' or value[value.len - 1] != '+') return null;
+
+    const body = value[1 .. value.len - 2];
+    if (body.len != 3 or body[1] != '-') return null;
+
+    const range_start = body[0];
+    const range_end = body[2];
+    const case_insensitive = if (pattern.flags) |flags|
+        std.mem.indexOfScalar(u8, flags, 'i') != null
+    else
+        false;
+
+    var len: usize = 0;
+    while (len < input.len) : (len += 1) {
+        var ch = input[len];
+        if (case_insensitive and ch >= 'A' and ch <= 'Z') ch = std.ascii.toLower(ch);
+        if (ch < range_start or ch > range_end) break;
+    }
+
+    return if (len > 0) len else null;
 }
 
 fn findGotoState(result: build.BuildResult, state_id: u32, lhs: u32) ?u32 {
@@ -389,6 +426,77 @@ test "simulatePreparedScannerFree preserves behavioral config outcomes through g
 
     try expectSameSimulationResult(json_valid, valid_result);
     try expectSameSimulationResult(json_invalid, invalid_result);
+}
+
+test "simulatePreparedScannerFree covers the first lexer-driven repeat choice seq grammar" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), fixtures.repeatChoiceSeqGrammarJson().contents);
+    const valid = try simulatePreparedScannerFree(arena.allocator(), prepared, fixtures.repeatChoiceSeqValidInput().contents);
+    const invalid = try simulatePreparedScannerFree(arena.allocator(), prepared, fixtures.repeatChoiceSeqInvalidInput().contents);
+
+    const valid_progress = switch (valid) {
+        .accepted => |accepted| accepted.consumed_bytes,
+        .rejected => |rejected| rejected.consumed_bytes,
+    };
+    const invalid_progress = switch (invalid) {
+        .accepted => |accepted| accepted.consumed_bytes,
+        .rejected => |rejected| rejected.consumed_bytes,
+    };
+
+    try std.testing.expect(valid_progress > invalid_progress);
+}
+
+test "simulatePreparedScannerFree preserves repeat choice seq outcomes through grammar.js" {
+    var json_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer json_arena.deinit();
+    const prepared_from_json = try parsePreparedFromJsonFixture(json_arena.allocator(), fixtures.repeatChoiceSeqGrammarJson().contents);
+    const json_valid = try simulatePreparedScannerFree(
+        json_arena.allocator(),
+        prepared_from_json,
+        fixtures.repeatChoiceSeqValidInput().contents,
+    );
+    const json_invalid = try simulatePreparedScannerFree(
+        json_arena.allocator(),
+        prepared_from_json,
+        fixtures.repeatChoiceSeqInvalidInput().contents,
+    );
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{fixtures.repeatChoiceSeqGrammarJson().contents});
+    defer std.testing.allocator.free(js);
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.js",
+        .data = js,
+    });
+
+    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    defer std.testing.allocator.free(grammar_path);
+
+    var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+
+    const valid = try simulatePreparedScannerFree(
+        arena.allocator(),
+        prepared,
+        fixtures.repeatChoiceSeqValidInput().contents,
+    );
+    const invalid = try simulatePreparedScannerFree(
+        arena.allocator(),
+        prepared,
+        fixtures.repeatChoiceSeqInvalidInput().contents,
+    );
+
+    try expectSameSimulationResult(json_valid, valid);
+    try expectSameSimulationResult(json_invalid, invalid);
 }
 
 fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResult) !void {

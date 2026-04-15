@@ -3849,6 +3849,20 @@ pub fn repeatChoiceSeqLexicalDump() Fixture {
     };
 }
 
+pub fn repeatChoiceSeqValidInput() Fixture {
+    return .{
+        .name = "repeat_choice_seq_valid_input",
+        .contents = "abc42",
+    };
+}
+
+pub fn repeatChoiceSeqInvalidInput() Fixture {
+    return .{
+        .name = "repeat_choice_seq_invalid_input",
+        .contents = "42",
+    };
+}
+
 pub fn alternativeFieldsGrammarJson() Fixture {
     return .{
         .name = "alternative_fields",
