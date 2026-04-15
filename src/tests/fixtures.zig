@@ -392,7 +392,7 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
         .contents =
             \\[
             \\  {
-            \\    "type": "_pair",
+            \\    "type": "+",
             \\    "named": true
             \\  },
             \\  {
@@ -454,7 +454,7 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
             \\      "required": true,
             \\      "types": [
             \\        {
-            \\          "type": "_pair",
+            \\          "type": "+",
             \\          "named": true
             \\        },
             \\        {

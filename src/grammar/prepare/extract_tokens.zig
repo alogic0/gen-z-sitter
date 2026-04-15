@@ -408,13 +408,18 @@ const Extractor = struct {
 
     fn lexicalNameForRule(self: *Extractor, rule_id: ir_rules.RuleId, preferred_name: []const u8) []const u8 {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
-            .string => |value| if (std.mem.eql(u8, preferred_name, "source_file")) value else preferred_name,
-            .pattern => |pattern| if (std.mem.eql(u8, preferred_name, "source_file")) pattern.value else preferred_name,
+            .string => |value| if (shouldUseLiteralLexicalName(preferred_name)) value else preferred_name,
+            .pattern => |pattern| if (shouldUseLiteralLexicalName(preferred_name)) pattern.value else preferred_name,
             .metadata => |metadata| self.lexicalNameForRule(metadata.inner, preferred_name),
             else => preferred_name,
         };
     }
 };
+
+fn shouldUseLiteralLexicalName(preferred_name: []const u8) bool {
+    return std.mem.eql(u8, preferred_name, "source_file") or
+        (preferred_name.len > 0 and preferred_name[0] == '_');
+}
 
 const RepeatKey = struct {
     rule_id: ir_rules.RuleId,
@@ -447,6 +452,26 @@ test "extractTokens splits simple prepared grammar into syntax and lexical parts
     try std.testing.expectEqualStrings("term", extracted.lexical.variables[1].name);
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.separators.len);
     try std.testing.expectEqual(@as(usize, 0), extracted.syntax.extra_symbols.len);
+}
+
+test "extractTokens uses literal token names inside hidden wrappers" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var extract_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer extract_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), fixtures.hiddenWrapperGrammarJson().contents, .{});
+    defer parsed.deinit();
+
+    const raw_grammar = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw_grammar);
+    const extracted = try extractTokens(extract_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings("+", extracted.lexical.variables[0].name);
+    try std.testing.expectEqualStrings("expr", extracted.lexical.variables[1].name);
+    try std.testing.expectEqualStrings("term", extracted.lexical.variables[2].name);
 }
 
 test "extractTokens expands repeat rules into auxiliary syntax variables" {
