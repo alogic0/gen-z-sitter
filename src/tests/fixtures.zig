@@ -222,6 +222,94 @@ pub fn hiddenStartGrammarJson() Fixture {
     };
 }
 
+pub fn undeclaredPrecedenceGrammarJson() Fixture {
+    return .{
+        .name = "undeclared_precedence",
+        .contents =
+            \\{
+            \\  "name": "basic",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "PREC_LEFT",
+            \\      "value": "missing_level",
+            \\      "content": { "type": "STRING", "value": "x" }
+            \\    }
+            \\  },
+            \\  "precedences": [
+            \\    [
+            \\      { "type": "STRING", "value": "declared_level" }
+            \\    ]
+            \\  ]
+            \\}
+        ,
+    };
+}
+
+pub fn duplicateInternalExternalGrammarJson() Fixture {
+    return .{
+        .name = "duplicate_internal_external",
+        .contents =
+            \\{
+            \\  "name": "basic",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "x" },
+            \\        { "type": "SYMBOL", "name": "y" },
+            \\        { "type": "SYMBOL", "name": "z" }
+            \\      ]
+            \\    },
+            \\    "x": { "type": "STRING", "value": "a" },
+            \\    "y": { "type": "STRING", "value": "b" }
+            \\  },
+            \\  "externals": [
+            \\    { "type": "SYMBOL", "name": "y" },
+            \\    { "type": "SYMBOL", "name": "z" }
+            \\  ]
+            \\}
+        ,
+    };
+}
+
+pub fn nestedMetadataGrammarJson() Fixture {
+    return .{
+        .name = "nested_metadata",
+        .contents =
+            \\{
+            \\  "name": "basic",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "FIELD",
+            \\      "name": "lhs",
+            \\      "content": {
+            \\        "type": "ALIAS",
+            \\        "named": true,
+            \\        "value": "renamed",
+            \\        "content": {
+            \\          "type": "PREC_LEFT",
+            \\          "value": 3,
+            \\          "content": {
+            \\            "type": "PREC_DYNAMIC",
+            \\            "value": 7,
+            \\            "content": {
+            \\              "type": "IMMEDIATE_TOKEN",
+            \\              "content": {
+            \\                "type": "RESERVED",
+            \\                "context_name": "global",
+            \\                "content": { "type": "STRING", "value": "x" }
+            \\              }
+            \\            }
+            \\          }
+            \\        }
+            \\      }
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
 test "basic fixture is non-empty" {
     const fixture = basicGrammarJson();
     try std.testing.expect(fixture.contents.len > 0);

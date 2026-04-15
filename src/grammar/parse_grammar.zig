@@ -11,6 +11,7 @@ pub const ParseGrammarError = error{
     UndefinedSupertype,
     UndefinedConflict,
     UndefinedWordToken,
+    UndeclaredPrecedence,
     OutOfMemory,
 };
 
@@ -36,6 +37,8 @@ const Builder = struct {
         if (self.grammar.rules.len > 0 and isHidden(self.grammar.rules[0].name)) {
             return error.HiddenStartRule;
         }
+
+        try self.validateNamedPrecedences();
 
         var symbols = try self.buildSymbols();
         var variables = try self.buildVariables();
@@ -70,6 +73,67 @@ const Builder = struct {
             .word_token = word_token,
             .reserved_word_sets = reserved_word_sets,
         };
+    }
+
+    fn validateNamedPrecedences(self: *Builder) ParseGrammarError!void {
+        var declared = std.StringHashMap(void).init(self.allocator);
+        defer declared.deinit();
+
+        for (self.grammar.precedences) |ordering| {
+            for (ordering) |entry| {
+                switch (entry.*) {
+                    .string => |name| try declared.put(name, {}),
+                    else => {},
+                }
+            }
+        }
+
+        for (self.grammar.rules) |entry| {
+            try self.validateRulePrecedences(entry.rule, &declared);
+        }
+        for (self.grammar.externals) |entry| {
+            try self.validateRulePrecedences(entry, &declared);
+        }
+        for (self.grammar.extras) |entry| {
+            try self.validateRulePrecedences(entry, &declared);
+        }
+        for (self.grammar.reserved) |reserved_set| {
+            for (reserved_set.members) |member| {
+                try self.validateRulePrecedences(member, &declared);
+            }
+        }
+    }
+
+    fn validateRulePrecedences(
+        self: *Builder,
+        rule: *const raw.RawRule,
+        declared: *const std.StringHashMap(void),
+    ) ParseGrammarError!void {
+        switch (rule.*) {
+            .alias => |alias| try self.validateRulePrecedences(alias.content, declared),
+            .field => |field| try self.validateRulePrecedences(field.content, declared),
+            .choice => |members| for (members) |member| try self.validateRulePrecedences(member, declared),
+            .seq => |members| for (members) |member| try self.validateRulePrecedences(member, declared),
+            .repeat => |inner| try self.validateRulePrecedences(inner, declared),
+            .repeat1 => |inner| try self.validateRulePrecedences(inner, declared),
+            .prec_dynamic => |prec| try self.validateRulePrecedences(prec.content, declared),
+            .prec_left => |prec| {
+                try validatePrecedenceValueDeclared(prec.value, declared);
+                try self.validateRulePrecedences(prec.content, declared);
+            },
+            .prec_right => |prec| {
+                try validatePrecedenceValueDeclared(prec.value, declared);
+                try self.validateRulePrecedences(prec.content, declared);
+            },
+            .prec => |prec| {
+                try validatePrecedenceValueDeclared(prec.value, declared);
+                try self.validateRulePrecedences(prec.content, declared);
+            },
+            .token => |inner| try self.validateRulePrecedences(inner, declared),
+            .immediate_token => |inner| try self.validateRulePrecedences(inner, declared),
+            .reserved => |reserved| try self.validateRulePrecedences(reserved.content, declared),
+            .blank, .string, .pattern, .symbol => {},
+        }
     }
 
     fn buildSymbols(self: *Builder) ParseGrammarError![]ir_symbols.SymbolInfo {
@@ -358,6 +422,20 @@ fn lowerPrecedenceValue(value: raw.RawPrecedenceValue) ir_rules.PrecedenceValue 
     };
 }
 
+fn validatePrecedenceValueDeclared(
+    value: raw.RawPrecedenceValue,
+    declared: *const std.StringHashMap(void),
+) ParseGrammarError!void {
+    switch (value) {
+        .integer => {},
+        .name => |name| {
+            if (!declared.contains(name)) {
+                return error.UndeclaredPrecedence;
+            }
+        },
+    }
+}
+
 fn mergeMetadata(existing: ir_rules.Metadata, patch: ir_rules.Metadata) ir_rules.Metadata {
     var merged = existing;
     if (patch.field_name) |field_name| merged.field_name = field_name;
@@ -399,6 +477,8 @@ test "parseRawGrammar lowers a valid grammar into prepared grammar" {
     try std.testing.expectEqual(@as(usize, 1), prepared.variables_to_inline.len);
     try std.testing.expectEqual(@as(usize, 1), prepared.expected_conflicts.len);
     try std.testing.expectEqual(@as(usize, 1), prepared.reserved_word_sets.len);
+    try std.testing.expectEqual(ir.VariableKind.hidden, prepared.variables[1].kind);
+    try std.testing.expect(!prepared.symbols[1].visible);
 }
 
 test "parseRawGrammar rejects undefined symbol references" {
@@ -425,4 +505,72 @@ test "parseRawGrammar rejects hidden start rule" {
 
     const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
     try std.testing.expectError(error.HiddenStartRule, parseRawGrammar(parse_arena.allocator(), &raw_grammar));
+}
+
+test "parseRawGrammar rejects undeclared named precedence values" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), fixtures.undeclaredPrecedenceGrammarJson().contents, .{});
+    defer parsed.deinit();
+
+    const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
+    try std.testing.expectError(error.UndeclaredPrecedence, parseRawGrammar(parse_arena.allocator(), &raw_grammar));
+}
+
+test "parseRawGrammar prefers internal symbols over duplicate external names" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), fixtures.duplicateInternalExternalGrammarJson().contents, .{});
+    defer parsed.deinit();
+
+    const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parseRawGrammar(parse_arena.allocator(), &raw_grammar);
+    const symbol = getTerminalSymbol(prepared, prepared.external_tokens[0].rule);
+
+    try std.testing.expectEqual(ir_symbols.SymbolKind.non_terminal, symbol.kind);
+    try std.testing.expectEqual(@as(u32, 2), symbol.index);
+}
+
+test "parseRawGrammar merges nested metadata wrappers" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), fixtures.nestedMetadataGrammarJson().contents, .{});
+    defer parsed.deinit();
+
+    const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parseRawGrammar(parse_arena.allocator(), &raw_grammar);
+    const metadata = getMetadataRule(prepared, prepared.variables[0].rule);
+
+    try std.testing.expectEqualStrings("lhs", metadata.data.field_name.?);
+    try std.testing.expectEqualStrings("renamed", metadata.data.alias.?.value);
+    try std.testing.expect(metadata.data.alias.?.named);
+    try std.testing.expectEqual(ir_rules.Assoc.left, metadata.data.associativity);
+    try std.testing.expectEqual(@as(i32, 7), metadata.data.dynamic_precedence);
+    try std.testing.expect(metadata.data.token);
+    try std.testing.expect(metadata.data.immediate_token);
+    try std.testing.expectEqualStrings("global", metadata.data.reserved_context_name.?);
+}
+
+fn getMetadataRule(prepared: ir.PreparedGrammar, rule_id: ir_rules.RuleId) ir_rules.MetadataRule {
+    return switch (prepared.rules[@intCast(rule_id)]) {
+        .metadata => |metadata| metadata,
+        else => unreachable,
+    };
+}
+
+fn getTerminalSymbol(prepared: ir.PreparedGrammar, rule_id: ir_rules.RuleId) ir_symbols.SymbolId {
+    return switch (prepared.rules[@intCast(rule_id)]) {
+        .symbol => |symbol| symbol,
+        .metadata => |metadata| getTerminalSymbol(prepared, metadata.inner),
+        else => unreachable,
+    };
 }
