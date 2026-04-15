@@ -2,7 +2,7 @@
 
 This directory contains planning documents for a Zig rewrite of the Tree-sitter generator/tooling stack.
 
-Milestone 3 is complete. Milestone 4 is in closeout review: the two main deferred `node-types.json` parity targets are implemented, and the remaining work is limited to smaller upstream post-processing differences documented in the Milestone 4 checklist.
+Milestone 3 is complete. Milestone 4 is also complete: the deferred `node-types.json` parity work has been implemented, including the later post-processing cleanup around supertypes and final node ordering.
 
 ## Documents
 
@@ -11,6 +11,7 @@ Milestone 3 is complete. Milestone 4 is in closeout review: the two main deferre
 - [MILESTONE_2_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_2_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_3_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_3_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_4_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_4_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_5_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_5_IMPLEMENTATION_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)

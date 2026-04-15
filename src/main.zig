@@ -70,6 +70,9 @@ test {
     _ = @import("node_types/compute.zig");
     _ = @import("node_types/pipeline.zig");
     _ = @import("node_types/render_json.zig");
+    _ = @import("parse_table/item.zig");
+    _ = @import("parse_table/state.zig");
+    _ = @import("parse_table/debug_dump.zig");
     _ = @import("support/diag.zig");
     _ = @import("support/fs.zig");
     _ = @import("support/json.zig");

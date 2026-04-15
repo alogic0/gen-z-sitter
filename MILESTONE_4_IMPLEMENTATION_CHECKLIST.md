@@ -55,24 +55,23 @@ By the end of Milestone 4, the repository should have:
 
 ## Current Status
 
+Milestone 4 is complete.
+
 Implemented:
 
 - `children_without_fields` now drives emitted `NodeType.children`
 - hidden-wrapper inheritance preserves the field-vs-unfielded distinction
 - named lexical collisions now weaken requiredness instead of leaving the old hard-required merged shape
 - named external collisions now follow the same emission-time weakening rule
-- curated fixtures, pipeline tests, and CLI file-output tests cover both the broad artifact set and a focused external-collision case
+- upstream-style supertype pruning now removes subtype entries from field and child type lists when the corresponding supertype is present
+- final node ordering now prioritizes supertypes first, then non-leaves, then leaves, while remaining deterministic
+- curated fixtures, pipeline tests, and CLI file-output tests cover both the broad artifact set and focused collision cases
 
 Closeout review result against upstream `node_types.rs`:
 
-- the two explicit Milestone 3 deferrals are now implemented
-- the remaining observable differences are smaller post-processing details, not the original Milestone 4 blockers
-
-Remaining follow-up before closing Milestone 4 cleanly:
-
-- decide whether to implement upstream-style supertype pruning in rendered field and child type lists
-- decide whether to adopt upstream-style final node ordering more closely, or keep the current deterministic ordering and document the difference
-- record those decisions in the final Milestone 4 closeout note
+- the explicit Milestone 3 deferrals are implemented
+- the main upstream post-processing differences identified during Milestone 4 review are implemented
+- any remaining differences are no longer Milestone 4 blockers
 
 ## Main Parity Targets
 
@@ -201,8 +200,7 @@ Acceptance criteria:
 
 Status against the sequence:
 
-- steps 1 through 6 are complete
-- step 7 is complete as a review pass; the remaining work is to either implement or explicitly defer the two smaller post-processing differences identified in that review
+- steps 1 through 7 are complete
 
 ## Risks
 
@@ -212,14 +210,15 @@ Status against the sequence:
 
 ## Exit Criteria
 
-Milestone 4 is complete when:
+Milestone 4 closeout state:
 
-- `children_without_fields` parity is implemented or a narrower final deferral is documented with justification
-- named lexical/external collision parity no longer produces the current self-child artifacts
+- `children_without_fields` parity is implemented
+- named lexical/external collision parity no longer produces the earlier self-child artifacts
+- upstream-style supertype pruning is implemented
+- upstream-style final node ordering is implemented
 - `zig build` passes
 - `zig build test` passes
 - the curated pipeline and CLI goldens reflect the corrected semantics intentionally
-- the remaining known gaps, if any, are small enough to move on to later generator milestones
 
 ## Review Findings
 
@@ -228,9 +227,9 @@ The closeout review against upstream `tree-sitter/crates/generate/src/node_types
 - our `children` output now matches the upstream `children_without_fields` boundary rather than the older full-visible-child behavior
 - our named lexical and external collision handling now matches the upstream rule of weakening requiredness on existing node entries instead of preserving the earlier hard-required merged shape
 
-The remaining differences worth tracking are:
+The main Milestone 4 review items that were initially still open are now closed:
 
-- upstream applies a `process_supertypes` pass that removes subtype entries from field and child lists when the containing supertype is already present
-- upstream performs a more specialized final ordering pass for supertypes and leaf entries than our current deterministic lexical ordering
+- upstream `process_supertypes`-style pruning is implemented
+- upstream-style final ordering priorities are implemented
 
-These are narrower than the original Milestone 4 blockers and can either be finished in Milestone 4 closeout or documented as later parity cleanup.
+Later milestones can focus again on broader generator work instead of `node-types.json` parity cleanup.
