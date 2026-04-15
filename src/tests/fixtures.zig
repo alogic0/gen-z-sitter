@@ -197,7 +197,17 @@ pub fn validResolvedNodeTypesJson() Fixture {
             \\[
             \\  {
             \\    "type": "expr",
-            \\    "named": true
+            \\    "named": true,
+            \\    "subtypes": [
+            \\      {
+            \\        "type": "expr",
+            \\        "named": true
+            \\      },
+            \\      {
+            \\        "type": "term",
+            \\        "named": true
+            \\      }
+            \\    ]
             \\  },
             \\  {
             \\    "type": "indent",
@@ -546,6 +556,20 @@ pub fn mixedSemanticsNodeTypesJson() Fixture {
         .name = "mixed_semantics_node_types",
         .contents =
             \\[
+            \\  {
+            \\    "type": "expression",
+            \\    "named": true,
+            \\    "subtypes": [
+            \\      {
+            \\        "type": "identifier",
+            \\        "named": true
+            \\      },
+            \\      {
+            \\        "type": "number_literal",
+            \\        "named": true
+            \\      }
+            \\    ]
+            \\  },
             \\  {
             \\    "type": "identifier",
             \\    "named": true,

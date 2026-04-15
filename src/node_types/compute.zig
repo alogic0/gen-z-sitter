@@ -90,12 +90,25 @@ pub fn computeNodeTypes(
 
     for (syntax.variables, 0..) |variable, index| {
         const symbol: syntax_ir.SymbolRef = .{ .non_terminal = @intCast(index) };
-        if (!isVisibleSyntaxVariable(variable)) continue;
         const summary = try summary_context.get(index);
-        const subtype_refs = if (containsSymbolRef(syntax.supertype_symbols, symbol))
+        const is_supertype = containsSymbolRef(syntax.supertype_symbols, symbol);
+        const subtype_refs = if (is_supertype)
             try computeSupertypeRefs(allocator, symbol, summary)
         else
             &.{};
+
+        if (is_supertype) {
+            try nodes.append(.{
+                .kind = variable.name,
+                .named = true,
+                .root = index == 0,
+                .extra = containsSymbolRef(syntax.extra_symbols, symbol),
+                .subtypes = subtype_refs,
+            });
+            continue;
+        }
+
+        if (!isVisibleSyntaxVariable(variable)) continue;
 
         try nodes.append(.{
             .kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults),
