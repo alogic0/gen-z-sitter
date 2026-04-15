@@ -28,12 +28,21 @@ Milestone 6 is complete and includes:
 - action-derived conflict reporting
 - exact state, action-table, and grouped-action-table goldens across tiny, conflict, reduce/reduce, and metadata-rich fixtures
 
-Milestone 7 is the next semantic step:
+Milestone 7 is complete and implements a real supported resolution subset:
 
-- precedence-aware conflict resolution
-- associativity-aware conflict resolution
-- dynamic precedence support
-- resolved action-table artifacts
+- integer precedence in both directions
+- named precedence in both directions when directly ordered against the conflicted symbol
+- dynamic precedence in both directions
+- dynamic-versus-named precedence priority on the reduce side
+- equal-precedence associativity handling
+- explicit unresolved classification for shift/reduce and reduce/reduce cases
+
+The next parser-generation work is now Milestone 8:
+
+- whether shift-side precedence semantics need one more expansion now
+- whether reduce/reduce resolution stays deferred
+- whether builder-owned resolved actions are required before closeout
+- and how far parser-decision semantics should be stabilized before table serialization work
 
 ## Documents
 
@@ -45,6 +54,7 @@ Milestone 7 is the next semantic step:
 - [MILESTONE_5_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_5_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_6_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_6_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_7_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_7_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_8_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_8_IMPLEMENTATION_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)

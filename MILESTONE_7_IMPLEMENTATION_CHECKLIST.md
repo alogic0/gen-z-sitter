@@ -11,6 +11,52 @@ Implement the next parser-generation milestone after Milestone 6:
 
 Milestone 7 is the bridge between “the parser-table layer can expose unresolved problems” and “the parser-table layer can make the same supported decisions as upstream Tree-sitter”.
 
+## Current Status
+
+Milestone 7 is complete.
+
+Implemented now:
+
+- resolved-action table IR in `src/parse_table/resolution.zig`
+- exact resolved-action dump artifacts in `src/parse_table/debug_dump.zig` and `src/parse_table/pipeline.zig`
+- structured unresolved classification:
+  - `shift_reduce`
+  - `reduce_reduce`
+  - `multiple_candidates`
+  - `unsupported_action_mix`
+- integer precedence resolution:
+  - positive => `reduce`
+  - negative => `shift`
+- named precedence resolution in both directions when a grammar precedence ordering directly compares:
+  - the conflicted shift symbol
+  - the reduce production's named precedence
+- dynamic precedence resolution in both directions:
+  - positive => `reduce`
+  - negative => `shift`
+- explicit priority that dynamic precedence currently outranks named precedence on the reduce side
+- associativity resolution for equal integer precedence:
+  - left => `reduce`
+  - right => `shift`
+  - none => unresolved
+- exact resolved-action goldens for:
+  - precedence-sensitive grammar
+  - named-precedence reduce case
+  - named-precedence shift case
+  - dynamic-precedence reduce case
+  - dynamic-precedence shift case
+  - dynamic-vs-named priority case
+  - negative integer precedence shift case
+  - unresolved shift/reduce case
+  - unresolved reduce/reduce case
+  - associativity-sensitive left/right cases
+  - equal-precedence non-associative unresolved case
+
+What this means:
+
+- Milestone 7 is no longer blocked on infrastructure
+- the supported shift/reduce resolution subset is real, implemented, and artifact-tested
+- the remaining work belongs to the next milestone rather than to Milestone 7 closeout
+
 ## What Milestone 7 Includes
 
 - precedence- and associativity-aware action resolution
@@ -87,6 +133,101 @@ What Milestone 6 deliberately does not provide:
 
 So Milestone 7 should extend the existing action/conflict layer rather than replace it.
 
+## Remaining Work For The Next Milestone
+
+These are the real remaining semantic gaps after Milestone 7, ordered by importance.
+
+### 1. Shift-side precedence is still simplified
+
+Current behavior:
+
+- the resolver compares reduce-side metadata against:
+  - the default shift precedence of `0`
+  - or a conflicted shift symbol through grammar precedence orderings
+
+What is still missing:
+
+- a richer notion of shift-side precedence derived from the shifted item's own production context rather than only the lookahead/action symbol
+
+Why it matters:
+
+- this is the biggest remaining semantic simplification versus upstream conflict resolution
+- more complex grammars may need shift-side production precedence, not just symbol ordering
+
+### 2. Reduce/reduce remains intentionally unresolved
+
+Current behavior:
+
+- reduce/reduce conflicts are classified and preserved explicitly
+
+What is still missing:
+
+- any resolution policy for reduce/reduce based on precedence or other parser-table semantics
+
+Why it matters:
+
+- this is a real semantic boundary, not a bug
+- it is intentionally deferred beyond Milestone 7
+
+### 3. Builder output still exposes raw actions, not builder-owned resolved actions
+
+Current behavior:
+
+- `BuildResult` includes:
+  - productions
+  - precedence orderings
+  - raw states
+  - raw actions
+- resolution is applied in the pipeline layer
+
+What is still missing:
+
+- builder-owned resolved actions in `BuildResult`, or an equivalent first-class resolved surface at build time
+
+Why it matters:
+
+- this is a clean boundary improvement before later table serialization work
+
+### 4. Combined-priority policy is still intentionally narrow
+
+Current behavior:
+
+- dynamic precedence currently outranks named precedence on the reduce side
+
+What is still missing:
+
+- a broader documented priority policy across:
+  - integer precedence
+  - named precedence
+  - dynamic precedence
+  - associativity
+
+Why it matters:
+
+- the current subset is useful and test-covered
+- but the remaining precedence-combination matrix is not yet exhaustively modeled or documented
+
+## Closeout Notes
+
+Milestone 7 intentionally stops at a supported, well-tested shift/reduce resolution subset.
+
+Implemented and stable in this milestone:
+
+- integer precedence in both directions
+- named precedence in both directions when directly ordered against the conflicted symbol
+- dynamic precedence in both directions
+- dynamic precedence outranking named precedence on the reduce side in the current supported subset
+- equal-precedence associativity handling
+- explicit unresolved classification for shift/reduce and reduce/reduce cases
+- exact resolved-action goldens for resolved and unresolved cases through the real preparation pipeline
+
+Deferred to the next milestone:
+
+- richer shift-side precedence semantics
+- any reduce/reduce resolution policy
+- builder-owned resolved actions as a build-time boundary
+- broader precedence-priority policy beyond the currently tested subset
+
 ## Main Targets
 
 ### 1. Precedence / associativity semantics
@@ -112,34 +253,31 @@ Expected impact:
 
 Current state:
 
-- `dynamic_precedence` is still rejected
+- implemented for the current supported shift/reduce subset
+- positive and negative dynamic precedence both affect resolution
+- dynamic precedence currently outranks named precedence on the reduce side
 
 Target state:
 
-- decide whether Milestone 7 supports the full intended dynamic-precedence subset or a narrower first slice
-- route dynamic precedence into the same decision layer as other conflict-resolution rules
+- completed for the current supported subset
 
 Expected impact:
 
-- removes the last explicit “accepted-but-unsupported” metadata boundary from the parser-table layer
-- aligns the parser front-end more closely with real Tree-sitter grammar semantics
+- the old “accepted-but-unsupported” boundary is gone for the current shift/reduce subset
+- the remaining work is now policy refinement, not first-time support
 
 ### 3. Resolved-action IR
 
 Current state:
 
-- actions exist
-- conflicts exist
-- grouped actions exist
-- but the main artifact still represents unresolved action sets
+- implemented
+- resolved-action IR exists
+- resolved and unresolved outcomes are dumped explicitly
+- unresolved groups now carry structured reasons
 
 Target state:
 
-- add a resolved-action representation, or an equivalent resolved view layered over the current action table
-- distinguish:
-  - raw candidate actions
-  - resolved action decisions
-  - remaining unresolved conflicts
+- completed for the current milestone at the pipeline/debug-artifact layer
 
 Expected impact:
 
@@ -150,13 +288,14 @@ Expected impact:
 
 Current state:
 
+- the broadened supported subset is now real for the current expression-style conflict cases
 - inert metadata is accepted
-- precedence-like semantics are not honored yet
+- precedence-like semantics are honored in the supported subset
 
 Target state:
 
-- support practical grammar families that depend on precedence/associativity to avoid ambiguity
-- keep unsupported areas explicit instead of silently behaving incorrectly
+- completed for the intended Milestone 7 subset
+- remaining broadening work is deferred
 
 Expected impact:
 
@@ -267,13 +406,8 @@ Acceptance criteria:
 
 ## Recommended Implementation Order
 
-1. Add one precedence-sensitive grammar fixture and define the intended resolved outcome.
-2. Add resolved-action IR/helpers in `src/parse_table/actions.zig`.
-3. Add a resolution pass in `src/parse_table/conflicts.zig` and/or `src/parse_table/build.zig`.
-4. Expose a resolved-action dump in `src/parse_table/debug_dump.zig`.
-5. Add end-to-end golden tests in `src/parse_table/pipeline.zig`.
-6. Add associativity and dynamic-precedence fixtures only after the first precedence case is stable.
-7. Do a closeout review documenting what conflict-resolution semantics are implemented and what still remains.
+1. Milestone 7 is complete.
+2. The next step is Milestone 8 planning and implementation for the remaining parser-decision semantics and build-time resolved-action boundary work.
 
 ## Risks
 
@@ -285,7 +419,8 @@ Acceptance criteria:
 
 Milestone 7 is complete when:
 
-- precedence- and associativity-sensitive conflicts can be resolved in at least the intended supported subset
-- the parser-table layer distinguishes raw candidate actions from resolved parser decisions cleanly
-- exact goldens prove resolved outcomes through the full preparation pipeline
+- precedence-, named-precedence-, dynamic-precedence-, and associativity-sensitive shift/reduce conflicts are resolved in the intended supported subset
+- the parser-table layer distinguishes raw candidate actions from resolved parser decisions cleanly at the resolved-artifact layer
+- unresolved groups carry explicit reason classification
+- exact goldens prove resolved and unresolved outcomes through the full preparation pipeline
 - remaining unsupported conflict-resolution semantics are explicitly documented for the next milestone
