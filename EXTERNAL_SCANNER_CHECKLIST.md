@@ -61,9 +61,18 @@ Current external-scanner serialization boundary:
 
 ### 3. Add deterministic external-scanner artifacts
 
-- [ ] add exact artifacts for the first supported external-token grammar
-- [ ] cover both ready and explicitly blocked external-scanner cases where applicable
-- [ ] keep output deterministic across `grammar.json` and `grammar.js` load paths where supported
+- [x] add exact artifacts for the first supported external-token grammar
+- [x] cover both ready and explicitly blocked external-scanner cases where applicable
+- [x] keep output deterministic across `grammar.json` and `grammar.js` load paths where supported
+
+Current artifact boundary:
+- exact external-scanner dumps now exist for:
+  - ready external-token grammar: `hidden_external_fields`
+  - blocked external-token grammar: `mixed_semantics`
+- the ready external-scanner dump is required to remain stable across:
+  - `grammar.json`
+  - `grammar.js`
+- this stage still stops at deterministic serialized external-scanner artifacts, not emitted scanner C code
 
 ### 4. Add emitted or runtime-facing external-scanner checks
 

@@ -3711,6 +3711,22 @@ pub fn mixedSemanticsLexicalDump() Fixture {
     };
 }
 
+pub fn mixedSemanticsExternalScannerDump() Fixture {
+    return .{
+        .name = "mixed_semantics_external_scanner_dump",
+        .contents =
+            \\blocked true
+            \\tokens 1
+            \\token 0 index 0 indent named
+            \\uses 1
+            \\use 0 external 0 variable _wrapped_expression production 0 step 0 field null
+            \\unsupported_features 1
+            \\feature 0 extra_symbols 1
+            \\
+        ,
+    };
+}
+
 pub fn repeatChoiceSeqGrammarJson() Fixture {
     return .{
         .name = "repeat_choice_seq",
@@ -4201,6 +4217,21 @@ pub fn hiddenExternalFieldsNodeTypesJson() Fixture {
             \\    "named": true
             \\  }
             \\]
+            \\
+        ,
+    };
+}
+
+pub fn hiddenExternalFieldsExternalScannerDump() Fixture {
+    return .{
+        .name = "hidden_external_fields_external_scanner_dump",
+        .contents =
+            \\blocked false
+            \\tokens 1
+            \\token 0 index 0 indent named
+            \\uses 1
+            \\use 0 external 0 variable _with_indent production 0 step 0 field lead
+            \\unsupported_features 0
             \\
         ,
     };
