@@ -41,16 +41,28 @@ Current result for this stage:
 
 ### 3. Compare behavior, not just text
 
-- [ ] define a staged comparison target for generated parser behavior
-- [ ] compare successful parse behavior on representative corpus inputs
-- [ ] compare failure behavior on representative invalid inputs
-- [ ] make any intentionally deferred behavior mismatches explicit
+- [x] define a staged comparison target for generated parser behavior
+- [x] compare successful parser-walk behavior on representative corpus inputs
+- [x] compare failure behavior on representative invalid inputs
+- [x] make any intentionally deferred behavior mismatches explicit
+
+Current result for this stage:
+- a first deterministic behavioral harness now simulates scanner-free parser walks over the built parser tables for `behavioral_config`
+- the valid input is required to make non-trivial parser progress through that harness
+- the invalid input is required to fail through that harness with an explicit classified failure reason
+- `grammar.json` and `grammar.js` loading paths are now required to produce the same behavioral result for both valid and invalid inputs
+- this stage still intentionally treats deterministic parser-walk progress and classified failure as the supported behavioral boundary, not as a claim of full parse acceptance or full runtime equivalence
 
 ### 4. Add corpus-oriented harness coverage
 
-- [ ] add a small harness that can run corpus-style inputs through the current generated-parser boundary
-- [ ] keep the first harness deterministic and local to the repo
-- [ ] avoid broad runtime/ABI claims beyond what the current emitted parser boundary actually supports
+- [x] add a small harness that can run corpus-style inputs through the current generated-parser boundary
+- [x] keep the first harness deterministic and local to the repo
+- [x] avoid broad runtime/ABI claims beyond what the current emitted parser boundary actually supports
+
+Current harness boundary:
+- the first harness is local to the repo and runs directly from prepared grammar to built parser tables
+- it covers both `grammar.json` and `grammar.js` loading paths for the same config-language comparison target
+- it does not claim full Tree-sitter runtime ABI behavior, external scanner support, broad corpus parity, or full acceptance semantics beyond the current staged parser-table/runtime surface
 
 ### 5. Record the current behavioral boundary
 

@@ -48,6 +48,7 @@ pub fn main() !void {
 }
 
 test {
+    _ = @import("behavioral/harness.zig");
     _ = @import("cli/args.zig");
     _ = @import("cli/command_generate.zig");
     _ = @import("grammar/raw_grammar.zig");
