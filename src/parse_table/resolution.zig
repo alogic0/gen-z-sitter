@@ -11,7 +11,7 @@ pub const ResolutionKind = enum {
 pub const UnresolvedReason = enum {
     multiple_candidates,
     shift_reduce,
-    reduce_reduce,
+    reduce_reduce_deferred,
     unsupported_action_mix,
 };
 
@@ -119,7 +119,7 @@ fn chooseResolvedAction(
         if (isReduce(first) and isReduce(second)) {
             return .{
                 .chosen = null,
-                .reason = .reduce_reduce,
+                .reason = .reduce_reduce_deferred,
             };
         }
     }
@@ -364,7 +364,7 @@ test "resolveActionTable keeps reduce/reduce pairs unresolved" {
 
     try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(4)[0].kind);
     try std.testing.expectEqual(@as(?actions.ParseAction, null), resolved.groupsForState(4)[0].chosen);
-    try std.testing.expectEqual(UnresolvedReason.reduce_reduce, resolved.groupsForState(4)[0].reason.?);
+    try std.testing.expectEqual(UnresolvedReason.reduce_reduce_deferred, resolved.groupsForState(4)[0].reason.?);
     try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(4)[0].candidates.len);
 }
 

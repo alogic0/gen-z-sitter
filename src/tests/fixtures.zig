@@ -1797,7 +1797,7 @@ pub fn parseTableReduceReduceResolvedActionDump() Fixture {
             \\
             \\state 5
             \\  resolved_actions:
-            \\    terminal:0: unresolved (reduce_reduce)
+            \\    terminal:0: unresolved (reduce_reduce_deferred)
             \\      candidate reduce 4
             \\      candidate reduce 5
             \\
