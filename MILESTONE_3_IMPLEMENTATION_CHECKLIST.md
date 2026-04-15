@@ -132,69 +132,15 @@ Implemented and passing:
     - hidden-wrapper external field aggregation
     - extras plus alias-visible children
 
-Still remaining:
+Milestone 3 status:
 
-- finish the last `extract_tokens.zig` audit passes and either implement or explicitly defer the remaining upstream edge cases
-- decide whether any remaining `compute.zig` differences from upstream should be fixed in Milestone 3 or documented as Milestone 4+ work
-- do a final closeout review against current goldens, CLI coverage, and upstream expectations
-- update docs to mark Milestone 3 complete if the remaining deltas are acceptable
+- complete
+- the `node-types.json` pipeline, CLI path, and curated golden coverage are in place
+- the remaining known mismatches are explicitly deferred to Milestone 4+
 
-## Remaining Critical Path
+## Milestone 4+ Deferrals
 
-Milestone 3 is no longer blocked on missing subsystems. The shortest path to completion is:
-
-1. finish the last `extract_tokens.zig` parity audit and record any intentional deferrals
-2. review current `compute.zig` behavior against the now-broader golden set and fix only the mismatches worth closing in Milestone 3
-3. add another golden fixture only if that review still reveals an uncovered artifact class
-4. update docs and mark Milestone 3 complete if the remaining deltas are acceptable
-
-## Remaining Work From Current Code State
-
-The remaining work is mostly semantic tightening and proof, not new architecture.
-
-### 1. `extract_tokens.zig` closeout audit
-
-Keep auditing symbol-bearing collections so every reference follows the extracted graph or fails explicitly.
-
-Remaining checks to decide and implement:
-
-- reserved-word and word-token interactions if upstream extraction treats some combinations specially
-- external-token corner cases beyond the current visibility and alias coverage
-- document any symbol-wrapper paths that intentionally stay syntax-side because changing them would collapse alias or visibility boundaries
-- decide whether any upstream extraction mismatches are real bugs or acceptable Milestone 3 deferrals
-
-Done when:
-
-- all symbol-bearing extracted collections either:
-  - track the extracted symbol graph, or
-  - fail with a dedicated extraction-stage error
-
-### 2. repeat-expansion confidence
-
-The implementation now has real mixed-shape and artifact-level coverage.
-
-Remaining:
-
-- no further repeat work unless another closeout review exposes a mismatch
-
-Done when:
-
-- repeat expansion is no longer an obvious source of downstream artifact mismatch risk
-
-### 3. `compute.zig` parity cleanup
-
-Most major functionality exists, but some upstream semantics still need stronger proof and possibly refinement.
-
-Remaining:
-
-- review current behavior for any still-questionable cases around:
-  - alias materialization boundaries
-  - lexical node self-child emission
-  - hidden-node inheritance in cases not already covered by current goldens
-  - supertype behavior beyond the implemented hidden-supertype emission rule
-- decide which of those should be fixed now versus documented as Milestone 4+ work
-
-Current closeout decision:
+The following parity gaps were reviewed during Milestone 3 closeout and intentionally deferred:
 
 - keep alias materialization in Milestone 3 as-is
   - upstream also materializes aliases and default aliases into visible node-type entries
@@ -210,13 +156,7 @@ Current closeout decision:
 - keep hidden-supertype emission in Milestone 3
   - this already matches upstream behavior and should not be revisited in closeout unless another fixture exposes a regression
 
-Done when:
-
-- additional tricky fixtures do not force structural changes to node-type aggregation
-
-### 4. stronger golden fixtures
-
-Current goldens are broad enough that this is now a closeout task, not a buildout task.
+The following Milestone 3 conclusions should remain true unless a later regression is found:
 
 Current coverage already includes:
 
@@ -230,19 +170,7 @@ Current coverage already includes:
 - optional fields inherited through hidden wrappers
 - external fields inherited through hidden wrappers
 
-Done when:
-
-- no additional uncovered artifact class is found during closeout review
-
-### 5. Milestone 3 closeout
-
-Before declaring completion:
-
-- update this checklist and `README.md` to reflect the real end state
-- decide which remaining parity gaps are acceptable for Milestone 3 and which are explicitly deferred to Milestone 4+
-- document any explicitly deferred extraction or node-type mismatches
-
-Current explicit Milestone 4+ deferrals:
+Explicit Milestone 4+ deferrals:
 
 - `src/node_types/compute.zig` should eventually distinguish `children_without_fields` from the full visible-child set, matching upstream `node_types.rs`
 - `src/node_types/compute.zig` should eventually stop materializing named lexical collisions as self-child node shapes during duplicate-node merging
@@ -269,7 +197,7 @@ Exit criteria:
 
 Status:
 
-- implemented and in parity cleanup
+- complete for Milestone 3
 
 Already implemented:
 
@@ -293,12 +221,8 @@ Already implemented:
 
 Remaining:
 
-- compare `extract_tokens.zig` more closely against upstream `extract_tokens.rs` for:
-  - remaining word-token edge cases
-  - reserved-word token restrictions
-  - external-token behavior
-  - any remaining supertype edge cases worth rejecting earlier
-  - whether any still-syntax-side symbol-wrapper paths are intentional or should be reworked later
+- none for Milestone 3
+- later work can revisit reserved-word restrictions, external-token corner cases, and any extraction behavior that depends on broader parser-generation parity
 
 Exit criteria:
 
@@ -329,7 +253,7 @@ Exit criteria:
 
 Status:
 
-- implemented in initial form
+- complete for Milestone 3
 
 Already implemented:
 
@@ -341,8 +265,8 @@ Already implemented:
 
 Remaining:
 
-- compare more closely against upstream flattening behavior for nested structure normalization if future fixtures expose gaps
-- decide whether a dedicated flattened IR is still needed or whether the current `SyntaxGrammar` form is sufficient
+- none for Milestone 3
+- later work can revisit flattening normalization only if later parser-generation milestones expose a concrete need
 
 Exit criteria:
 
@@ -352,7 +276,7 @@ Exit criteria:
 
 Status:
 
-- implemented, with room for more parity proof
+- complete for Milestone 3
 
 Already implemented:
 
@@ -362,8 +286,8 @@ Already implemented:
 
 Remaining:
 
-- decide whether a dedicated `variable_info` IR is still warranted or unnecessary for Milestone 3
-- document current alias-materialization behavior if it remains intentionally different from upstream in any uncovered edge case
+- decide whether a dedicated `variable_info` IR becomes useful in a later parser-generation milestone
+- revisit alias-materialization only if later upstream parity work requires it
 
 Exit criteria:
 
@@ -373,7 +297,7 @@ Exit criteria:
 
 Status:
 
-- implemented and usable, with parity cleanup remaining
+- complete for Milestone 3, with explicit Milestone 4+ deferrals
 
 Already implemented:
 
@@ -388,14 +312,9 @@ Already implemented:
 
 Remaining:
 
-- perform a final review against upstream expectations rather than only internal current-output goldens
-- decide whether any remaining alias-materialization or lexical-node-shape differences should be fixed now or documented as Milestone 4+ work
-
-Decision after review:
-
-- alias-materialization behavior is acceptable for Milestone 3
 - `children_without_fields` parity is deferred to Milestone 4+
 - lexical self-child parity is deferred to Milestone 4+
+- any deeper node-type parity work now belongs to the next milestone
 
 Exit criteria:
 
@@ -405,7 +324,7 @@ Exit criteria:
 
 Status:
 
-- implemented
+- complete for Milestone 3
 
 Already implemented:
 
@@ -415,8 +334,8 @@ Already implemented:
 
 Remaining:
 
-- add more mixed-semantic golden fixtures only if the closeout review exposes a missing artifact class
-- decide whether any additional user-facing output mode is needed before Milestone 3 closeout
+- no further Milestone 3 work
+- later milestones can extend CLI output modes if parser-generation artifacts need them
 
 Exit criteria:
 
@@ -805,12 +724,11 @@ Milestone 3 is complete when:
 
 ## Immediate Next Command Sequence
 
-From the current code state, implementation should continue with:
+Milestone 3 closeout result:
 
-1. audit `extract_tokens.zig` one final time against upstream and record any intentional Milestone 3 deferrals
-2. review the current golden set for any remaining `compute.zig` behavior that still looks upstream-questionable
-3. fix only the parity gaps that are still worth closing in Milestone 3 and record the rest as Milestone 4+ deferrals
-4. add another golden fixture only if that review reveals a still-uncovered artifact class
-5. update docs and perform a Milestone 3 completion review
+1. the `node-types.json` pipeline is implemented
+2. the CLI artifact path is implemented
+3. the current curated golden set is broad enough for Milestone 3 confidence
+4. the remaining known parity gaps are explicitly deferred to Milestone 4+
 
-That is the shortest path from the current code state into a clean Milestone 3 closeout.
+Milestone 4 should pick up from the deferrals listed above rather than reopening Milestone 3 work.
