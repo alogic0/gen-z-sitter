@@ -1103,6 +1103,59 @@ pub fn parseTableNamedPrecedenceGrammarJson() Fixture {
     };
 }
 
+pub fn parseTableNamedPrecedenceShiftGrammarJson() Fixture {
+    return .{
+        .name = "parse_table_named_precedence_shift",
+        .contents =
+            \\{
+            \\  "name": "parse_table_named_precedence_shift",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "expr"
+            \\    },
+            \\    "expr": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        {
+            \\          "type": "PREC_LEFT",
+            \\          "value": "sum",
+            \\          "content": {
+            \\            "type": "SEQ",
+            \\            "members": [
+            \\              { "type": "SYMBOL", "name": "expr" },
+            \\              { "type": "SYMBOL", "name": "plus" },
+            \\              { "type": "SYMBOL", "name": "expr" }
+            \\            ]
+            \\          }
+            \\        },
+            \\        {
+            \\          "type": "PREC",
+            \\          "value": "atom",
+            \\          "content": {
+            \\            "type": "STRING",
+            \\            "value": "x"
+            \\          }
+            \\        }
+            \\      ]
+            \\    },
+            \\    "plus": {
+            \\      "type": "STRING",
+            \\      "value": "+"
+            \\    }
+            \\  },
+            \\  "precedences": [
+            \\    [
+            \\      { "type": "STRING", "value": "sum" },
+            \\      { "type": "SYMBOL", "name": "plus" },
+            \\      { "type": "STRING", "value": "atom" }
+            \\    ]
+            \\  ]
+            \\}
+        ,
+    };
+}
+
 pub fn parseTablePrecedenceResolvedActionDump() Fixture {
     return .{
         .name = "parse_table_precedence_resolved_action_dump",
@@ -1164,6 +1217,41 @@ pub fn parseTableNamedPrecedenceResolvedActionDump() Fixture {
             \\state 6
             \\  resolved_actions:
             \\    terminal:1: reduce 2
+            \\
+        ,
+    };
+}
+
+pub fn parseTableNamedPrecedenceShiftResolvedActionDump() Fixture {
+    return .{
+        .name = "parse_table_named_precedence_shift_resolved_action_dump",
+        .contents =
+            \\state 0
+            \\  resolved_actions:
+            \\    terminal:0: shift 3
+            \\
+            \\state 1
+            \\  resolved_actions:
+            \\
+            \\state 2
+            \\  resolved_actions:
+            \\    terminal:1: shift 5
+            \\
+            \\state 3
+            \\  resolved_actions:
+            \\    terminal:1: reduce 3
+            \\
+            \\state 4
+            \\  resolved_actions:
+            \\    terminal:0: shift 3
+            \\
+            \\state 5
+            \\  resolved_actions:
+            \\    terminal:0: reduce 4
+            \\
+            \\state 6
+            \\  resolved_actions:
+            \\    terminal:1: shift 5
             \\
         ,
     };
