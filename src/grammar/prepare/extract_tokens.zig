@@ -10,6 +10,7 @@ const json_loader = @import("../json_loader.zig");
 const parse_grammar = @import("../parse_grammar.zig");
 
 pub const ExtractTokensError = error{
+    InvalidSupertypeSymbol,
     UnsupportedRuleShape,
     OutOfMemory,
 };
@@ -55,7 +56,7 @@ const Extractor = struct {
         const expected_conflicts = try self.convertConflictSets();
         const precedence_orderings = try self.convertPrecedenceOrderings();
         const variables_to_inline = try self.extractVariablesToInline();
-        const supertype_symbols = try self.convertSymbolList(self.prepared.supertype_symbols);
+        const supertype_symbols = try self.extractSupertypeSymbols();
         const word_token = if (self.prepared.word_token) |word| try self.convertSymbol(word) else null;
 
         return .{
@@ -221,6 +222,20 @@ const Extractor = struct {
         for (self.prepared.variables_to_inline) |symbol| {
             if (self.isPromotedTopLevelRepeatSymbol(symbol)) continue;
             try result.append(try self.convertSymbol(symbol));
+        }
+
+        return try result.toOwnedSlice();
+    }
+
+    fn extractSupertypeSymbols(self: *Extractor) ExtractTokensError![]const syntax_ir.SymbolRef {
+        var result = std.array_list.Managed(syntax_ir.SymbolRef).init(self.allocator);
+        defer result.deinit();
+
+        for (self.prepared.supertype_symbols) |symbol| {
+            switch (symbol.kind) {
+                .non_terminal => try result.append(.{ .non_terminal = symbol.index }),
+                .external => return error.InvalidSupertypeSymbol,
+            }
         }
 
         return try result.toOwnedSlice();
@@ -618,6 +633,55 @@ test "extractTokens carries external token metadata into syntax grammar" {
     try std.testing.expectEqual(syntax_ir.VariableKind.hidden, extracted.syntax.external_tokens[0].kind);
     try std.testing.expectEqualStrings("template_chars", extracted.syntax.external_tokens[1].name);
     try std.testing.expectEqual(syntax_ir.VariableKind.named, extracted.syntax.external_tokens[1].kind);
+}
+
+test "extractTokens rejects external supertype symbols" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "bad-supertype",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+        },
+        .external_tokens = &.{
+            .{
+                .name = "template_chars",
+                .symbol = ir_symbols.SymbolId.external(0),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .rules = &.{.{ .blank = {} }, .{ .blank = {} }},
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.external(0),
+                .name = "template_chars",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{ir_symbols.SymbolId.external(0)},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(error.InvalidSupertypeSymbol, extractTokens(arena.allocator(), prepared));
 }
 
 test "extractTokens promotes hidden top-level repeats in place and removes them from inline symbols" {
