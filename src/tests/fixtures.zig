@@ -762,6 +762,132 @@ pub fn repeatChoiceSeqNodeTypesJson() Fixture {
     };
 }
 
+pub fn alternativeFieldsGrammarJson() Fixture {
+    return .{
+        .name = "alternative_fields",
+        .contents =
+            \\{
+            \\  "name": "alternative_fields",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        {
+            \\          "type": "SEQ",
+            \\          "members": [
+            \\            {
+            \\              "type": "FIELD",
+            \\              "name": "left",
+            \\              "content": { "type": "SYMBOL", "name": "expr" }
+            \\            },
+            \\            {
+            \\              "type": "FIELD",
+            \\              "name": "right",
+            \\              "content": { "type": "SYMBOL", "name": "term" }
+            \\            }
+            \\          ]
+            \\        },
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "left",
+            \\          "content": { "type": "SYMBOL", "name": "expr" }
+            \\        }
+            \\      ]
+            \\    },
+            \\    "expr": {
+            \\      "type": "TOKEN",
+            \\      "content": { "type": "PATTERN", "value": "[a-z]+" }
+            \\    },
+            \\    "term": {
+            \\      "type": "STRING",
+            \\      "value": "42"
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
+pub fn alternativeFieldsNodeTypesJson() Fixture {
+    return .{
+        .name = "alternative_fields_node_types",
+        .contents =
+            \\[
+            \\  {
+            \\    "type": "expr",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "expr",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "source_file",
+            \\    "named": true,
+            \\    "root": true,
+            \\    "fields": {
+            \\      "left": {
+            \\        "multiple": false,
+            \\        "required": true,
+            \\        "types": [
+            \\          {
+            \\            "type": "expr",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      },
+            \\      "right": {
+            \\        "multiple": false,
+            \\        "required": false,
+            \\        "types": [
+            \\          {
+            \\            "type": "term",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      }
+            \\    },
+            \\    "children": {
+            \\      "multiple": true,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "expr",
+            \\          "named": true
+            \\        },
+            \\        {
+            \\          "type": "term",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "term",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "term",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\]
+            \\
+        ,
+    };
+}
+
 pub fn undefinedSymbolGrammarJson() Fixture {
     return .{
         .name = "undefined_symbol",
