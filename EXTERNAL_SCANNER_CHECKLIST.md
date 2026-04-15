@@ -76,9 +76,19 @@ Current artifact boundary:
 
 ### 4. Add emitted or runtime-facing external-scanner checks
 
-- [ ] add structural checks for the first external-scanner boundary
-- [ ] add compile-oriented or smoke-oriented proof if this stage reaches emitted scanner/runtime code
-- [ ] keep checks aligned with the staged compatibility boundary rather than claiming full upstream scanner ABI support
+- [x] add structural checks for the first external-scanner boundary
+- [x] add compile-oriented or smoke-oriented proof if this stage reaches emitted scanner/runtime code
+- [x] keep checks aligned with the staged compatibility boundary rather than claiming full upstream scanner ABI support
+
+Current check boundary:
+- `src/scanner/checks.zig` now validates the serialized external-scanner surface directly
+- ready external-scanner surfaces must:
+  - contain external-token inventory
+  - contain at least one external-token use
+  - avoid unsupported-feature blockers
+- blocked external-scanner surfaces must:
+  - carry explicit unsupported-feature information
+- compile-oriented proof is intentionally recorded as not yet applicable at this stage because the current external-scanner boundary stops at serialized and dumped artifacts rather than emitted scanner C output
 
 ### 5. Connect external-scanner work to behavioral proof
 

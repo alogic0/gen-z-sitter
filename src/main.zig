@@ -73,6 +73,7 @@ test {
     _ = @import("lexer/pipeline.zig");
     _ = @import("lexer/serialize.zig");
     _ = @import("scanner/debug_dump.zig");
+    _ = @import("scanner/checks.zig");
     _ = @import("scanner/pipeline.zig");
     _ = @import("scanner/serialize.zig");
     _ = @import("ir/aliases.zig");

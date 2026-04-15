@@ -1,5 +1,6 @@
 const std = @import("std");
 const grammar_ir = @import("../ir/grammar_ir.zig");
+const scanner_checks = @import("checks.zig");
 const scanner_serialize = @import("serialize.zig");
 const scanner_dump = @import("debug_dump.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
@@ -12,6 +13,7 @@ pub const PipelineError =
     extract_tokens.ExtractTokensError ||
     grammar_loader.LoaderError ||
     parse_grammar.ParseGrammarError ||
+    scanner_checks.ExternalScannerCheckError ||
     scanner_serialize.SerializeError ||
     scanner_dump.DebugDumpError ||
     std.json.ParseError(std.json.Scanner) ||
@@ -23,6 +25,7 @@ pub fn generateSerializedExternalScannerDumpFromPrepared(
 ) PipelineError![]const u8 {
     const extracted = try extract_tokens.extractTokens(allocator, prepared);
     const serialized = try scanner_serialize.serializeExternalScannerBoundary(allocator, extracted.syntax);
+    try scanner_checks.validateSerializedExternalScannerBoundary(serialized);
     return try scanner_dump.dumpSerializedExternalScannerAlloc(allocator, serialized);
 }
 
