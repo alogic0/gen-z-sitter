@@ -152,16 +152,20 @@ pub fn writeGroupedActionTableAlloc(
     states: []const state.ParseState,
     action_table: actions.ActionTable,
 ) !void {
+    const grouped_table = try actions.groupActionTable(allocator, action_table);
+    defer {
+        for (grouped_table.states) |grouped_state| {
+            for (grouped_state.groups) |group| allocator.free(group.entries);
+            allocator.free(grouped_state.groups);
+        }
+        allocator.free(grouped_table.states);
+    }
+
     for (states, 0..) |parse_state, index| {
         try writer.print("state {d}\n", .{parse_state.id});
         try writer.writeAll("  actions:\n");
 
-        const grouped = try actions.groupActionsForState(allocator, parse_state.id, action_table.entriesForState(parse_state.id));
-        defer {
-            for (grouped.groups) |group| allocator.free(group.entries);
-            allocator.free(grouped.groups);
-        }
-        for (grouped.groups) |group| {
+        for (grouped_table.groupsForState(parse_state.id)) |group| {
             try writer.writeAll("    ");
             try writeSymbol(writer, group.symbol);
             try writer.writeAll(":\n");
