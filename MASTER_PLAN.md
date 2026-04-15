@@ -739,6 +739,63 @@ The next practical step is Milestone 12:
 4. pin the richer ready/blocked outputs through exact real-path goldens
 5. stop short of claiming runtime ABI compatibility or full upstream `parser.c` parity
 
+## Remaining Work Checklist
+
+This checklist covers only work that is still outstanding from the current project state.
+
+### Milestone 12: Richer parser output boundary
+
+- [x] deepen `src/parser_emit/parser_c.zig` beyond the current broader parser.c-like skeleton
+- [x] define the next emitted runtime-facing API layer without reopening `SerializedTable`
+- [x] keep blocked-output behavior explicit at the richer emitted boundary
+- [x] update exact real-path parser.c-like goldens for:
+- [x] one ready grammar
+- [x] one blocked grammar
+- [ ] review whether the richer emitted boundary is sufficient to close Milestone 12
+- [ ] document the Milestone 12 completion boundary and remaining deferrals
+
+### Milestone 13: Runtime-facing parser output and compatibility boundary
+
+- [ ] decide the intended runtime-facing emitted API scope before any ABI claim
+- [ ] expand emitted parser output beyond the Milestone 12 query/helper layer
+- [ ] decide whether the project will target upstream C runtime ABI compatibility directly, or stage that through an intermediate compatibility layer
+- [ ] add exact artifacts for the richer runtime-facing emitted parser surface
+- [ ] define blocked-output behavior for that richer runtime-facing surface
+- [ ] review whether the emitted parser boundary is strong enough to begin compatibility work
+
+### Milestone 14: `grammar.js` end-to-end support
+
+- [ ] add subprocess-based `node` loading for `grammar.js`
+- [ ] keep `grammar.json` as the native/core path
+- [ ] add end-to-end tests that start from `grammar.js`
+- [ ] verify emitted `grammar.json`, `node-types.json`, and parser output remain deterministic through the JS path
+- [ ] keep non-Node JS runtimes deferred unless they become necessary
+
+### Milestone 15: Parser/runtime compatibility work
+
+- [ ] define the first concrete compatibility target against upstream generated parser behavior
+- [ ] add compatibility checks for parser output structure and runtime-facing expectations
+- [ ] decide how ABI/version handling should be centralized
+- [ ] close the most important remaining gaps between the emitted parser surface and the expected C runtime contract
+- [ ] document which compatibility mismatches are still deferred
+
+### Milestone 16: Behavioral equivalence and corpus verification
+
+- [ ] add harness support for comparing Zig-generated and Rust-generated parser behavior
+- [ ] compile generated parsers for curated grammars
+- [ ] run shared corpus inputs through both generated parsers
+- [ ] compare parse-tree behavior and failure behavior
+- [ ] classify and document any remaining semantic mismatches
+
+### Later Work: Fuller generator parity
+
+- [ ] fuller parser output closer to upstream `parser.c`
+- [ ] lexer/scanner emission
+- [ ] external scanner integration
+- [ ] parse-table compression/minimization
+- [ ] broader real-grammar/repo compatibility coverage
+- [ ] compatibility polish and ergonomics after correctness is credible
+
 ## Risks
 
 ### Algorithmic mismatch
