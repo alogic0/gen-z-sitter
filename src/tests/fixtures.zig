@@ -223,7 +223,7 @@ pub fn validResolvedNodeTypesJson() Fixture {
             \\    "named": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "term",
@@ -300,7 +300,7 @@ pub fn fieldChildrenNodeTypesJson() Fixture {
             \\    "named": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "expr",
@@ -396,7 +396,7 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
             \\    "named": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "expr",
@@ -539,7 +539,7 @@ pub fn mixedSemanticsNodeTypesJson() Fixture {
             \\    "named": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "identifier",
@@ -557,7 +557,7 @@ pub fn mixedSemanticsNodeTypesJson() Fixture {
             \\    "named": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "number_literal",
@@ -599,7 +599,7 @@ pub fn mixedSemanticsNodeTypesJson() Fixture {
             \\    "extra": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "space",
@@ -674,7 +674,7 @@ pub fn repeatChoiceSeqNodeTypesJson() Fixture {
             \\    "named": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "identifier",
@@ -688,7 +688,7 @@ pub fn repeatChoiceSeqNodeTypesJson() Fixture {
             \\    "named": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "number_literal",
@@ -778,7 +778,7 @@ pub fn alternativeFieldsNodeTypesJson() Fixture {
             \\    "named": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "expr",
@@ -819,7 +819,7 @@ pub fn alternativeFieldsNodeTypesJson() Fixture {
             \\    "named": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "term",
@@ -891,7 +891,7 @@ pub fn hiddenAlternativeFieldsNodeTypesJson() Fixture {
             \\    "named": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "expr",
@@ -1141,7 +1141,7 @@ pub fn extraAliasedBodyNodeTypesJson() Fixture {
             \\    "extra": true,
             \\    "children": {
             \\      "multiple": false,
-            \\      "required": true,
+            \\      "required": false,
             \\      "types": [
             \\        {
             \\          "type": "space",

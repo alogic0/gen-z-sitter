@@ -123,22 +123,44 @@ pub fn computeNodeTypes(
 
     for (lexical.variables, 0..) |variable, index| {
         const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
-        if (!isVisibleLexicalVariable(variable, defaults.findForSymbol(symbol))) continue;
+        const alias = defaults.findForSymbol(symbol);
+        if (!isVisibleLexicalVariable(variable, alias)) continue;
+        const kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults);
+        const named = isNamedLexicalVariable(variable, alias);
+
+        if (named) {
+            if (findNodeIndex(nodes.items, kind, named)) |existing_index| {
+                weakenNodeForNamedLeaf(&nodes.items[existing_index]);
+                nodes.items[existing_index].extra = nodes.items[existing_index].extra or containsSymbolRef(syntax.extra_symbols, symbol);
+                continue;
+            }
+        }
 
         try nodes.append(.{
-            .kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults),
-            .named = isNamedLexicalVariable(variable, defaults.findForSymbol(symbol)),
+            .kind = kind,
+            .named = named,
             .extra = containsSymbolRef(syntax.extra_symbols, symbol),
         });
     }
 
     for (syntax.external_tokens, 0..) |token, index| {
         const symbol: syntax_ir.SymbolRef = .{ .external = @intCast(index) };
-        if (!isVisibleExternalToken(token, defaults.findForSymbol(symbol))) continue;
+        const alias = defaults.findForSymbol(symbol);
+        if (!isVisibleExternalToken(token, alias)) continue;
+        const kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults);
+        const named = isNamedExternalToken(token, alias);
+
+        if (named) {
+            if (findNodeIndex(nodes.items, kind, named)) |existing_index| {
+                weakenNodeForNamedLeaf(&nodes.items[existing_index]);
+                nodes.items[existing_index].extra = nodes.items[existing_index].extra or containsSymbolRef(syntax.extra_symbols, symbol);
+                continue;
+            }
+        }
 
         try nodes.append(.{
-            .kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults),
-            .named = isNamedExternalToken(token, defaults.findForSymbol(symbol)),
+            .kind = kind,
+            .named = named,
             .extra = containsSymbolRef(syntax.extra_symbols, symbol),
         });
     }
@@ -535,6 +557,23 @@ fn mergeNodeTypeRefs(
     return try merged.toOwnedSlice();
 }
 
+fn findNodeIndex(nodes: []const NodeType, kind: []const u8, named: bool) ?usize {
+    for (nodes, 0..) |node, index| {
+        if (node.named == named and std.mem.eql(u8, node.kind, kind)) return index;
+    }
+    return null;
+}
+
+fn weakenNodeForNamedLeaf(node: *NodeType) void {
+    if (node.children) |*children| {
+        children.quantity.required = false;
+    }
+    const fields = @constCast(node.fields);
+    for (fields) |*field| {
+        field.info.quantity.required = false;
+    }
+}
+
 fn isVisibleChild(
     symbol: syntax_ir.SymbolRef,
     syntax: syntax_ir.SyntaxGrammar,
@@ -794,6 +833,49 @@ test "computeNodeTypes merges duplicate entries with the same effective type nam
     try std.testing.expect(expr.children != null);
     try std.testing.expectEqual(@as(usize, 1), expr.children.?.types.len);
     try std.testing.expectEqualStrings("expr", expr.children.?.types[0].kind);
+    try std.testing.expect(!expr.children.?.quantity.required);
+}
+
+test "computeNodeTypes weakens requiredness for named external collisions" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var statement_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .external = 0 }, .field_name = "body" },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "statement", .kind = .named, .productions = &.{.{ .steps = statement_steps[0..] }} },
+        },
+        .external_tokens = &.{
+            .{ .name = "statement", .kind = .named },
+        },
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{},
+        .separators = &.{},
+    };
+    const defaults = alias_ir.AliasMap{
+        .entries = &.{.{
+            .target = .{ .symbol = .{ .external = 0 } },
+            .alias = .{ .value = "statement", .named = true },
+        }},
+    };
+
+    const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, defaults);
+    const statement = findNodeByKind(nodes, "statement").?;
+    try std.testing.expectEqual(@as(usize, 1), statement.fields.len);
+    try std.testing.expect(!statement.fields[0].info.quantity.required);
 }
 
 test "computeNodeTypes includes visible external tokens with real names" {
