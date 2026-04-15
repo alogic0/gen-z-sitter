@@ -14,9 +14,26 @@ Its purpose is to move the project beyond parser-table-only coverage and establi
 
 ### 1. Define the first supported lexer/scanner boundary
 
-- [ ] choose the first scanner-driven grammar shape to support
-- [ ] decide which part belongs to emitted lexer logic versus deferred external-scanner work
-- [ ] document the first supported lexer/scanner comparison surface for this stage
+- [x] choose the first scanner-driven grammar shape to support
+- [x] decide which part belongs to emitted lexer logic versus deferred external-scanner work
+- [x] document the first supported lexer/scanner comparison surface for this stage
+
+Current first supported lexer/scanner boundary:
+- support first:
+  - pattern-based lexical tokens that lower to the existing lexical grammar
+  - mixed string and pattern terminals with no external scanner dependency
+  - real prepared-grammar inputs that already exist in the repo, centered on:
+    - `repeat_choice_seq`
+    - similar pattern-token fixtures already used by extraction and parser-table coverage
+- explicitly defer from this first stage:
+  - grammars whose practical tokenization depends on external tokens
+  - full external scanner integration
+  - runtime claims that require upstream external-scanner ABI behavior
+- staged comparison surface for this checklist:
+  - ready path:
+    - scanner-free emitted lexer support for pattern/string terminals
+  - explicitly blocked path:
+    - external-token grammar shapes that are recognized but still deferred to later external-scanner work
 
 ### 2. Introduce lexer-facing IR and serialization boundary
 
