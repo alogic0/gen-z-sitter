@@ -26,6 +26,14 @@ pub fn writeParserC(
     try writer.writeAll("typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;\n");
     try writer.writeAll("typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;\n");
     try writer.writeAll("typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  const TSActionEntry *actions;\n");
+    try writer.writeAll("  uint16_t action_count;\n");
+    try writer.writeAll("  const TSGotoEntry *gotos;\n");
+    try writer.writeAll("  uint16_t goto_count;\n");
+    try writer.writeAll("  const TSUnresolvedEntry *unresolved;\n");
+    try writer.writeAll("  uint16_t unresolved_count;\n");
+    try writer.writeAll("} TSStateTable;\n\n");
 
     for (serialized.states, 0..) |serialized_state, index| {
         try writer.print("/* state {d} */\n", .{serialized_state.id});
@@ -65,6 +73,23 @@ pub fn writeParserC(
 
         if (index + 1 < serialized.states.len) try writer.writeByte('\n');
     }
+
+    try writer.writeAll("static const TSStateTable ts_states[TS_STATE_COUNT] = {\n");
+    for (serialized.states) |serialized_state| {
+        try writer.writeAll("  {\n");
+        try writer.print("    .actions = ts_state_{d}_actions,\n", .{serialized_state.id});
+        try writer.print("    .action_count = {d},\n", .{serialized_state.actions.len});
+        try writer.print("    .gotos = ts_state_{d}_gotos,\n", .{serialized_state.id});
+        try writer.print("    .goto_count = {d},\n", .{serialized_state.gotos.len});
+        if (serialized_state.unresolved.len > 0) {
+            try writer.print("    .unresolved = ts_state_{d}_unresolved,\n", .{serialized_state.id});
+        } else {
+            try writer.writeAll("    .unresolved = 0,\n");
+        }
+        try writer.print("    .unresolved_count = {d},\n", .{serialized_state.unresolved.len});
+        try writer.writeAll("  },\n");
+    }
+    try writer.writeAll("};\n");
 }
 
 test "emitParserCAlloc formats parser C skeletons deterministically" {
@@ -109,6 +134,15 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
         \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
         \\
+        \\typedef struct {
+        \\  const TSActionEntry *actions;
+        \\  uint16_t action_count;
+        \\  const TSGotoEntry *gotos;
+        \\  uint16_t goto_count;
+        \\  const TSUnresolvedEntry *unresolved;
+        \\  uint16_t unresolved_count;
+        \\} TSStateTable;
+        \\
         \\/* state 0 */
         \\static const TSActionEntry ts_state_0_actions[] = {
         \\  { "terminal:0", "shift", 2 },
@@ -118,6 +152,16 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\};
         \\static const TSUnresolvedEntry ts_state_0_unresolved[] = {
         \\  { "terminal:1", "shift_reduce", 2 },
+        \\};
+        \\static const TSStateTable ts_states[TS_STATE_COUNT] = {
+        \\  {
+        \\    .actions = ts_state_0_actions,
+        \\    .action_count = 1,
+        \\    .gotos = ts_state_0_gotos,
+        \\    .goto_count = 1,
+        \\    .unresolved = ts_state_0_unresolved,
+        \\    .unresolved_count = 1,
+        \\  },
         \\};
         \\
     , emitted);

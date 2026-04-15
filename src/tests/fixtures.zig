@@ -879,6 +879,15 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
             \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
             \\
+            \\typedef struct {
+            \\  const TSActionEntry *actions;
+            \\  uint16_t action_count;
+            \\  const TSGotoEntry *gotos;
+            \\  uint16_t goto_count;
+            \\  const TSUnresolvedEntry *unresolved;
+            \\  uint16_t unresolved_count;
+            \\} TSStateTable;
+            \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
             \\  { "terminal:1", "shift", 3 },
@@ -927,6 +936,64 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\};
             \\static const TSGotoEntry ts_state_6_gotos[] = {
             \\};
+            \\static const TSStateTable ts_states[TS_STATE_COUNT] = {
+            \\  {
+            \\    .actions = ts_state_0_actions,
+            \\    .action_count = 1,
+            \\    .gotos = ts_state_0_gotos,
+            \\    .goto_count = 2,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\  {
+            \\    .actions = ts_state_1_actions,
+            \\    .action_count = 0,
+            \\    .gotos = ts_state_1_gotos,
+            \\    .goto_count = 0,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\  {
+            \\    .actions = ts_state_2_actions,
+            \\    .action_count = 1,
+            \\    .gotos = ts_state_2_gotos,
+            \\    .goto_count = 0,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\  {
+            \\    .actions = ts_state_3_actions,
+            \\    .action_count = 1,
+            \\    .gotos = ts_state_3_gotos,
+            \\    .goto_count = 0,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\  {
+            \\    .actions = ts_state_4_actions,
+            \\    .action_count = 1,
+            \\    .gotos = ts_state_4_gotos,
+            \\    .goto_count = 1,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\  {
+            \\    .actions = ts_state_5_actions,
+            \\    .action_count = 0,
+            \\    .gotos = ts_state_5_gotos,
+            \\    .goto_count = 0,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\  {
+            \\    .actions = ts_state_6_actions,
+            \\    .action_count = 0,
+            \\    .gotos = ts_state_6_gotos,
+            \\    .goto_count = 0,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\};
             \\
         ,
     };
@@ -946,6 +1013,15 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
             \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
             \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+            \\
+            \\typedef struct {
+            \\  const TSActionEntry *actions;
+            \\  uint16_t action_count;
+            \\  const TSGotoEntry *gotos;
+            \\  uint16_t goto_count;
+            \\  const TSUnresolvedEntry *unresolved;
+            \\  uint16_t unresolved_count;
+            \\} TSStateTable;
             \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
@@ -991,6 +1067,56 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\};
             \\static const TSUnresolvedEntry ts_state_5_unresolved[] = {
             \\  { "terminal:0", "shift_reduce", 2 },
+            \\};
+            \\static const TSStateTable ts_states[TS_STATE_COUNT] = {
+            \\  {
+            \\    .actions = ts_state_0_actions,
+            \\    .action_count = 1,
+            \\    .gotos = ts_state_0_gotos,
+            \\    .goto_count = 2,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\  {
+            \\    .actions = ts_state_1_actions,
+            \\    .action_count = 0,
+            \\    .gotos = ts_state_1_gotos,
+            \\    .goto_count = 0,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\  {
+            \\    .actions = ts_state_2_actions,
+            \\    .action_count = 1,
+            \\    .gotos = ts_state_2_gotos,
+            \\    .goto_count = 0,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\  {
+            \\    .actions = ts_state_3_actions,
+            \\    .action_count = 1,
+            \\    .gotos = ts_state_3_gotos,
+            \\    .goto_count = 0,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\  {
+            \\    .actions = ts_state_4_actions,
+            \\    .action_count = 1,
+            \\    .gotos = ts_state_4_gotos,
+            \\    .goto_count = 1,
+            \\    .unresolved = 0,
+            \\    .unresolved_count = 0,
+            \\  },
+            \\  {
+            \\    .actions = ts_state_5_actions,
+            \\    .action_count = 0,
+            \\    .gotos = ts_state_5_gotos,
+            \\    .goto_count = 0,
+            \\    .unresolved = ts_state_5_unresolved,
+            \\    .unresolved_count = 1,
+            \\  },
             \\};
             \\
         ,
