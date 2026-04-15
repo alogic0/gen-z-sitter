@@ -354,6 +354,142 @@ pub fn fieldChildrenNodeTypesJson() Fixture {
     };
 }
 
+pub fn hiddenWrapperGrammarJson() Fixture {
+    return .{
+        .name = "hidden_wrapper",
+        .contents =
+            \\{
+            \\  "name": "hidden_wrapper",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "_pair"
+            \\    },
+            \\    "_pair": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "left",
+            \\          "content": { "type": "SYMBOL", "name": "expr" }
+            \\        },
+            \\        { "type": "STRING", "value": "+" },
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "right",
+            \\          "content": {
+            \\            "type": "ALIAS",
+            \\            "named": true,
+            \\            "value": "rhs",
+            \\            "content": { "type": "SYMBOL", "name": "term" }
+            \\          }
+            \\        }
+            \\      ]
+            \\    },
+            \\    "expr": { "type": "STRING", "value": "x" },
+            \\    "term": { "type": "STRING", "value": "y" }
+            \\  }
+            \\}
+        ,
+    };
+}
+
+pub fn hiddenWrapperNodeTypesJson() Fixture {
+    return .{
+        .name = "hidden_wrapper_node_types",
+        .contents =
+            \\[
+            \\  {
+            \\    "type": "_pair",
+            \\    "named": true
+            \\  },
+            \\  {
+            \\    "type": "expr",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\    "type": "expr",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "expr",
+            \\    "named": true
+            \\  },
+            \\  {
+            \\    "type": "rhs",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\    "type": "term",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "source_file",
+            \\    "named": true,
+            \\    "root": true,
+            \\    "fields": {
+            \\      "left": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\    "type": "expr",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    },
+            \\      "right": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\    "type": "rhs",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\    },
+            \\    "children": {
+            \\      "multiple": true,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\    "type": "_pair",
+            \\          "named": true
+            \\        },
+            \\        {
+            \\    "type": "expr",
+            \\          "named": true
+            \\        },
+            \\        {
+            \\    "type": "rhs",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "term",
+            \\    "named": true
+            \\  }
+            \\]
+            \\
+        ,
+    };
+}
+
 pub fn undefinedSymbolGrammarJson() Fixture {
     return .{
         .name = "undefined_symbol",
