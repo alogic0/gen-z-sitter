@@ -765,9 +765,9 @@ This checklist covers only work that is still outstanding from the current proje
 
 ### Milestone 14: `grammar.js` end-to-end support
 
-- [ ] add subprocess-based `node` loading for `grammar.js`
-- [ ] keep `grammar.json` as the native/core path
-- [ ] add end-to-end tests that start from `grammar.js`
+- [x] add subprocess-based `node` loading for `grammar.js`
+- [x] keep `grammar.json` as the native/core path
+- [x] add end-to-end tests that start from `grammar.js`
 - [ ] verify emitted `grammar.json`, `node-types.json`, and parser output remain deterministic through the JS path
 - [ ] keep non-Node JS runtimes deferred unless they become necessary
 

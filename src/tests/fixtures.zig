@@ -31,6 +31,20 @@ pub fn validBlankGrammarJson() Fixture {
     };
 }
 
+pub fn validBlankGrammarJs() Fixture {
+    return .{
+        .name = "valid_blank_js",
+        .contents =
+            \\module.exports = {
+            \\  "name": "basic",
+            \\  "rules": {
+            \\    "source_file": { "type": "BLANK" }
+            \\  }
+            \\};
+        ,
+    };
+}
+
 pub fn invalidExtraGrammarJson() Fixture {
     return .{
         .name = "invalid_extra",
@@ -186,6 +200,55 @@ pub fn validResolvedGrammarJson() Fixture {
             \\    ]
             \\  }
             \\}
+        ,
+    };
+}
+
+pub fn validResolvedGrammarJs() Fixture {
+    return .{
+        .name = "valid_resolved_js",
+        .contents =
+            \\module.exports = {
+            \\  "name": "basic",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "expr" }
+            \\      ]
+            \\    },
+            \\    "expr": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        { "type": "STRING", "value": "x" },
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "rhs",
+            \\          "content": { "type": "SYMBOL", "name": "term" }
+            \\        }
+            \\      ]
+            \\    },
+            \\    "term": {
+            \\      "type": "TOKEN",
+            \\      "content": { "type": "PATTERN", "value": "[a-z]+" }
+            \\    }
+            \\  },
+            \\  "externals": [
+            \\    { "type": "SYMBOL", "name": "indent" }
+            \\  ],
+            \\  "extras": [
+            \\    { "type": "STRING", "value": " " }
+            \\  ],
+            \\  "inline": ["term", "missing_inline"],
+            \\  "supertypes": ["expr"],
+            \\  "conflicts": [["expr", "term"]],
+            \\  "word": "term",
+            \\  "reserved": {
+            \\    "global": [
+            \\      { "type": "STRING", "value": "for" }
+            \\    ]
+            \\  }
+            \\};
         ,
     };
 }

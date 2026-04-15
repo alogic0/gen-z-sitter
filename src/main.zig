@@ -52,6 +52,7 @@ test {
     _ = @import("cli/command_generate.zig");
     _ = @import("grammar/raw_grammar.zig");
     _ = @import("grammar/json_loader.zig");
+    _ = @import("grammar/js_loader.zig");
     _ = @import("grammar/validate.zig");
     _ = @import("grammar/loader.zig");
     _ = @import("grammar/parse_grammar.zig");

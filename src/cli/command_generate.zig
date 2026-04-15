@@ -16,14 +16,6 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
 
     var loaded = grammar_loader.loadGrammarFile(allocator, opts.grammar_path) catch |err| {
         switch (err) {
-            error.UnsupportedJsGrammar => {
-                try diag.printStderr(.{
-                    .kind = .unimplemented,
-                    .message = grammar_loader.errorMessage(err),
-                    .path = opts.grammar_path,
-                });
-                return error.NotImplemented;
-            },
             error.OutOfMemory => {
                 try diag.printStderr(.{
                     .kind = .internal,
@@ -34,7 +26,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
             },
             else => {
                 try diag.printStderr(.{
-                    .kind = if (err == error.IoFailure) .io else .usage,
+                    .kind = if (err == error.IoFailure or err == error.ProcessFailure) .io else .usage,
                     .message = grammar_loader.errorMessage(err),
                     .path = opts.grammar_path,
                 });
@@ -120,7 +112,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
 
     try diag.printStdout(.{
         .kind = .info,
-        .message = "loaded grammar.json successfully",
+        .message = "loaded grammar successfully",
         .path = opts.grammar_path,
     });
     try diag.printStdout(.{
@@ -359,10 +351,50 @@ test "runGenerate writes external collision node-types.json when output director
     try std.testing.expectEqualStrings(fixtures.externalCollisionNodeTypesJson().contents, written);
 }
 
-test "runGenerate maps js grammars to NotImplemented" {
-    try std.testing.expectError(error.NotImplemented, runGenerate(std.testing.allocator, .{
-        .grammar_path = "grammar.js",
-    }));
+test "runGenerate succeeds for a valid grammar.js file" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.js",
+        .data = fixtures.validBlankGrammarJs().contents,
+    });
+
+    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    defer std.testing.allocator.free(path);
+
+    try runGenerate(std.testing.allocator, .{
+        .grammar_path = path,
+    });
+}
+
+test "runGenerate writes node-types.json from grammar.js when output directory is provided" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.js",
+        .data = fixtures.validResolvedGrammarJs().contents,
+    });
+    try tmp.dir.makePath("out");
+
+    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    defer std.testing.allocator.free(grammar_path);
+    const output_dir = try tmp.dir.realpathAlloc(std.testing.allocator, "out");
+    defer std.testing.allocator.free(output_dir);
+
+    try runGenerate(std.testing.allocator, .{
+        .grammar_path = grammar_path,
+        .output_dir = output_dir,
+    });
+
+    const node_types_path = try std.fs.path.join(std.testing.allocator, &.{ output_dir, "node-types.json" });
+    defer std.testing.allocator.free(node_types_path);
+
+    const written = try std.fs.cwd().readFileAlloc(std.testing.allocator, node_types_path, 1024 * 1024);
+    defer std.testing.allocator.free(written);
+
+    try std.testing.expectEqualStrings(fixtures.validResolvedNodeTypesJson().contents, written);
 }
 
 test "runGenerate maps unsupported extension to InvalidArguments" {

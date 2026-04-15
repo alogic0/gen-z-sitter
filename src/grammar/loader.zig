@@ -1,11 +1,10 @@
 const std = @import("std");
 const json_loader = @import("json_loader.zig");
+const js_loader = @import("js_loader.zig");
 const validate = @import("validate.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
-pub const LoaderError = json_loader.LoadError || validate.ValidationError || error{
-    UnsupportedJsGrammar,
-};
+pub const LoaderError = json_loader.LoadError || js_loader.LoadError || validate.ValidationError;
 
 pub const LoadedGrammar = struct {
     json: json_loader.LoadedJsonGrammar,
@@ -17,15 +16,23 @@ pub const LoadedGrammar = struct {
 };
 
 pub fn loadGrammarFile(allocator: std.mem.Allocator, path: []const u8) LoaderError!LoadedGrammar {
-    if (std.mem.endsWith(u8, path, ".js")) {
-        return error.UnsupportedJsGrammar;
+    if (std.mem.endsWith(u8, path, ".json")) {
+        var loaded = try json_loader.loadGrammarJson(allocator, path);
+        errdefer loaded.deinit();
+        try validate.validateRawGrammar(&loaded.grammar);
+
+        return .{ .json = loaded };
     }
 
-    var loaded = try json_loader.loadGrammarJson(allocator, path);
-    errdefer loaded.deinit();
-    try validate.validateRawGrammar(&loaded.grammar);
+    if (std.mem.endsWith(u8, path, ".js")) {
+        var loaded = try js_loader.loadGrammarJs(allocator, path);
+        errdefer loaded.deinit();
+        try validate.validateRawGrammar(&loaded.grammar);
 
-    return .{ .json = loaded };
+        return .{ .json = loaded };
+    }
+
+    return error.UnsupportedExtension;
 }
 
 pub fn errorMessage(err: LoaderError) []const u8 {
@@ -39,17 +46,32 @@ pub fn errorMessage(err: LoaderError) []const u8 {
         error.InvalidRuleShape => "grammar.json contains an invalid rule shape",
         error.InvalidReservedWordSet => "reserved word sets must be arrays",
         error.InvalidPrecedenceValue => "invalid precedence value",
+        error.ProcessFailure => "failed to execute node for grammar.js loading",
         error.OutOfMemory => "out of memory while loading grammar.json",
         error.EmptyName => "grammar name must not be empty",
         error.EmptyRules => "grammar must contain at least one rule",
         error.InvalidExtra => "rules in the `extras` array must not contain empty strings",
         error.UnexpectedPrecedenceEntry => "invalid rule in precedences array; only strings and symbols are allowed",
-        error.UnsupportedJsGrammar => "grammar.js loading is deferred in Milestone 1",
     };
 }
 
-test "loadGrammarFile rejects .js grammars for now" {
-    try std.testing.expectError(error.UnsupportedJsGrammar, loadGrammarFile(std.testing.allocator, "grammar.js"));
+test "loadGrammarFile loads grammar.js through node" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.js",
+        .data = fixtures.validResolvedGrammarJs().contents,
+    });
+
+    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    defer std.testing.allocator.free(path);
+
+    var loaded = try loadGrammarFile(std.testing.allocator, path);
+    defer loaded.deinit();
+
+    try std.testing.expectEqualStrings("basic", loaded.json.grammar.name);
+    try std.testing.expectEqual(@as(usize, 3), loaded.json.grammar.ruleCount());
 }
 
 test "loadGrammarFile rejects empty string extra" {

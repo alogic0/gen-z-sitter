@@ -38,12 +38,26 @@ pub fn loadGrammarJson(gpa: std.mem.Allocator, path: []const u8) LoadError!Loade
     }
 
     var arena = std.heap.ArenaAllocator.init(gpa);
-    errdefer arena.deinit();
     const allocator = arena.allocator();
 
     const contents = support_fs.readFileAlloc(allocator, path, 16 * 1024 * 1024) catch {
+        arena.deinit();
         return error.IoFailure;
     };
+
+    return loadGrammarJsonFromSliceWithArena(arena, contents);
+}
+
+pub fn loadGrammarJsonFromSlice(gpa: std.mem.Allocator, contents: []const u8) LoadError!LoadedJsonGrammar {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    errdefer arena.deinit();
+    return loadGrammarJsonFromSliceWithArena(arena, contents);
+}
+
+fn loadGrammarJsonFromSliceWithArena(arena: std.heap.ArenaAllocator, contents: []const u8) LoadError!LoadedJsonGrammar {
+    var owned_arena = arena;
+    errdefer owned_arena.deinit();
+    const allocator = owned_arena.allocator();
 
     var parsed = std.json.parseFromSlice(std.json.Value, allocator, contents, .{}) catch {
         return error.JsonParseFailure;
@@ -52,7 +66,7 @@ pub fn loadGrammarJson(gpa: std.mem.Allocator, path: []const u8) LoadError!Loade
 
     const grammar = try parseTopLevel(allocator, parsed.value);
     return .{
-        .arena = arena,
+        .arena = owned_arena,
         .grammar = grammar,
     };
 }
@@ -418,4 +432,12 @@ test "loadGrammarJson rejects an actual directory path" {
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.InvalidPath, loadGrammarJson(std.testing.allocator, path));
+}
+
+test "loadGrammarJsonFromSlice loads a valid grammar document" {
+    var loaded = try loadGrammarJsonFromSlice(std.testing.allocator, fixtures.validBlankGrammarJson().contents);
+    defer loaded.deinit();
+
+    try std.testing.expectEqualStrings("basic", loaded.grammar.name);
+    try std.testing.expectEqual(@as(usize, 1), loaded.grammar.ruleCount());
 }
