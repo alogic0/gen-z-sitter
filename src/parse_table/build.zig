@@ -21,6 +21,7 @@ pub const ProductionInfo = struct {
 
 pub const BuildResult = struct {
     productions: []const ProductionInfo,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
     states: []const state.ParseState,
     actions: actions.ActionTable,
 };
@@ -36,6 +37,7 @@ pub fn buildStates(
     const constructed = try constructStates(allocator, productions, first_sets);
     return .{
         .productions = productions,
+        .precedence_orderings = grammar.precedence_orderings,
         .states = constructed.states,
         .actions = constructed.actions,
     };

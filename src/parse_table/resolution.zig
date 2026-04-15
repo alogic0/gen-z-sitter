@@ -41,6 +41,7 @@ pub const ResolvedActionTable = struct {
 
 const ProductionResolutionMetadata = struct {
     max_integer_precedence: ?i32 = null,
+    named_precedence: ?[]const u8 = null,
     associativity: ?@import("../ir/rules.zig").Assoc = null,
     dynamic_precedence: i32 = 0,
 };
@@ -57,11 +58,20 @@ pub fn resolveActionTable(
     productions: anytype,
     grouped_table: actions.GroupedActionTable,
 ) std.mem.Allocator.Error!ResolvedActionTable {
+    return try resolveActionTableWithPrecedence(allocator, productions, &.{}, grouped_table);
+}
+
+pub fn resolveActionTableWithPrecedence(
+    allocator: std.mem.Allocator,
+    productions: anytype,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    grouped_table: actions.GroupedActionTable,
+) std.mem.Allocator.Error!ResolvedActionTable {
     const states = try allocator.alloc(ResolvedStateActions, grouped_table.states.len);
     for (grouped_table.states, 0..) |grouped_state, state_index| {
         const groups = try allocator.alloc(ResolvedActionGroup, grouped_state.groups.len);
         for (grouped_state.groups, 0..) |group, group_index| {
-            const decision = chooseResolvedAction(productions, group.entries);
+            const decision = chooseResolvedAction(productions, precedence_orderings, group.entries);
             groups[group_index] = .{
                 .symbol = group.symbol,
                 .kind = if (decision.chosen != null) .chosen else .unresolved,
@@ -85,6 +95,7 @@ const ResolutionDecision = struct {
 
 fn chooseResolvedAction(
     productions: anytype,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
     candidates: []const actions.ActionEntry,
 ) ResolutionDecision {
     if (candidates.len == 1) return .{ .chosen = candidates[0].action };
@@ -95,13 +106,13 @@ fn chooseResolvedAction(
 
         if (isShift(first) and isReduce(second)) {
             return .{
-                .chosen = resolveShiftReduce(productions, first, second),
+                .chosen = resolveShiftReduce(productions, precedence_orderings, candidates[0].symbol, first, second),
                 .reason = .shift_reduce,
             };
         }
         if (isReduce(first) and isShift(second)) {
             return .{
-                .chosen = resolveShiftReduce(productions, second, first),
+                .chosen = resolveShiftReduce(productions, precedence_orderings, candidates[0].symbol, second, first),
                 .reason = .shift_reduce,
             };
         }
@@ -121,6 +132,8 @@ fn chooseResolvedAction(
 
 fn resolveShiftReduce(
     productions: anytype,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    shift_symbol: syntax_ir.SymbolRef,
     shift_action: actions.ParseAction,
     reduce_action: actions.ParseAction,
 ) ?actions.ParseAction {
@@ -134,6 +147,12 @@ fn resolveShiftReduce(
     const metadata = extractResolutionMetadata(production);
 
     if (metadata.dynamic_precedence > 0) return reduce_action;
+
+    if (metadata.named_precedence) |name| {
+        if (compareNamedPrecedence(precedence_orderings, name, shift_symbol)) |reduce_wins| {
+            return if (reduce_wins) reduce_action else shift_action;
+        }
+    }
 
     if (metadata.max_integer_precedence) |value| {
         if (value > 0) return reduce_action;
@@ -161,6 +180,9 @@ fn extractResolutionMetadata(production: anytype) ProductionResolutionMetadata {
                     metadata.max_integer_precedence = value;
                 }
             },
+            .name => |value| {
+                if (metadata.named_precedence == null) metadata.named_precedence = value;
+            },
             else => {},
         }
         if (step.associativity != .none and metadata.associativity == null) {
@@ -168,6 +190,51 @@ fn extractResolutionMetadata(production: anytype) ProductionResolutionMetadata {
         }
     }
     return metadata;
+}
+
+fn compareNamedPrecedence(
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    reduce_name: []const u8,
+    shift_symbol: syntax_ir.SymbolRef,
+) ?bool {
+    for (precedence_orderings) |ordering| {
+        var reduce_index: ?usize = null;
+        var shift_index: ?usize = null;
+
+        for (ordering, 0..) |entry, index| {
+            switch (entry) {
+                .name => |name| {
+                    if (std.mem.eql(u8, name, reduce_name)) reduce_index = index;
+                },
+                .symbol => |symbol| {
+                    if (symbolRefEql(symbol, shift_symbol)) shift_index = index;
+                },
+            }
+        }
+
+        if (reduce_index != null and shift_index != null) {
+            return shift_index.? < reduce_index.?;
+        }
+    }
+
+    return null;
+}
+
+fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
+    return switch (a) {
+        .non_terminal => |index| switch (b) {
+            .non_terminal => |other| index == other,
+            else => false,
+        },
+        .terminal => |index| switch (b) {
+            .terminal => |other| index == other,
+            else => false,
+        },
+        .external => |index| switch (b) {
+            .external => |other| index == other,
+            else => false,
+        },
+    };
 }
 
 fn isShift(action: actions.ParseAction) bool {
@@ -341,6 +408,66 @@ test "resolveActionTable chooses reduce for a positive integer precedence shift/
     };
 
     const resolved = try resolveActionTable(allocator, productions[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
+    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .reduce => |id| id == 1, else => false });
+}
+
+test "resolveActionTable chooses reduce for named precedence ordered above the conflicted symbol" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{
+            .lhs = 1,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{
+                    .symbol = .{ .non_terminal = 1 },
+                    .precedence = .{ .name = "sum" },
+                },
+            },
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 3,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const precedence_orderings = [_][]const syntax_ir.PrecedenceEntry{
+        &[_]syntax_ir.PrecedenceEntry{
+            .{ .symbol = .{ .terminal = 0 } },
+            .{ .name = "sum" },
+        },
+    };
+
+    const resolved = try resolveActionTableWithPrecedence(allocator, productions[0..], precedence_orderings[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
             for (resolved_state.groups) |group| allocator.free(group.candidates);

@@ -68,7 +68,12 @@ pub fn generateResolvedActionTableDumpFromPrepared(
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
     const grouped = try actions.groupActionTable(allocator, result.actions);
-    const resolved = try resolution.resolveActionTable(allocator, result.productions, grouped);
+    const resolved = try resolution.resolveActionTableWithPrecedence(
+        allocator,
+        result.productions,
+        result.precedence_orderings,
+        grouped,
+    );
     return try debug_dump.dumpResolvedActionTableAlloc(allocator, resolved);
 }
 
@@ -557,6 +562,29 @@ test "generateResolvedActionTableDumpFromPrepared chooses reduce for the first p
     const dump = try generateResolvedActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
 
     try std.testing.expectEqualStrings(fixtures.parseTablePrecedenceResolvedActionDump().contents, dump);
+}
+
+test "generateResolvedActionTableDumpFromPrepared chooses reduce for the first named-precedence grammar" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableNamedPrecedenceGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateResolvedActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.parseTableNamedPrecedenceResolvedActionDump().contents, dump);
 }
 
 test "generateResolvedActionTableDumpFromPrepared chooses reduce for the first dynamic-precedence grammar" {
