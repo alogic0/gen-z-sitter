@@ -110,6 +110,15 @@ Closeout decision:
   - broad ecosystem corpus parity
 - those are later checklist items, not blockers for closing this first behavioral stage
 
+Next follow-on checklist items after this stage:
+- `NEXT_DIRECTION_CHECKLIST.md`
+  - `Lexer / Scanner Path`
+  - `Compatibility Hardening`
+- `LATER_WORK_CHECKLIST.md`
+  - `lexer/scanner emission`
+  - `external scanner integration`
+  - `broader real-grammar/repo compatibility coverage`
+
 ## Exit Criteria
 
 - [x] at least one real-grammar path is exercised end to end through generation and parser-oriented output

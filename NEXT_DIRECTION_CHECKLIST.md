@@ -55,6 +55,8 @@ Current completed boundary:
 - [x] promote `fuller parser output closer to upstream parser.c` into a dedicated milestone with concrete exit criteria
 - [x] implement that milestone before broadening into more optimization or ergonomics work
 - [x] promote behavioral equivalence into a dedicated checklist with concrete exit criteria
+- [ ] promote `Lexer / Scanner Path` into a dedicated implementation checklist
+- [ ] decide whether `Compatibility Hardening` should run in parallel with the lexer/scanner checklist or immediately after it
 
 ## Guiding Rule
 
