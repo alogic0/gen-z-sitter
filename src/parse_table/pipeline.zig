@@ -656,6 +656,29 @@ test "generateResolvedActionTableDumpFromPrepared chooses shift for the first ne
     try std.testing.expectEqualStrings(fixtures.parseTableNegativeDynamicPrecedenceResolvedActionDump().contents, dump);
 }
 
+test "generateResolvedActionTableDumpFromPrepared lets dynamic precedence outrank named precedence" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableDynamicBeatsNamedPrecedenceGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateResolvedActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.parseTableDynamicBeatsNamedPrecedenceResolvedActionDump().contents, dump);
+}
+
 test "generateResolvedActionTableDumpFromPrepared chooses shift for the first negative-precedence grammar" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
