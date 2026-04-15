@@ -6,17 +6,38 @@ Its purpose is to move the project from a serialized lexical boundary with expli
 
 ## Goal
 
-- [ ] support the first external-token grammar shape beyond the current blocked-only lexical boundary
-- [ ] keep the first external-scanner stage narrow enough to verify locally and close cleanly
-- [ ] avoid claiming full upstream scanner ABI parity before the emitted/runtime contract is explicit
+- [x] support the first external-token grammar shape beyond the current blocked-only lexical boundary
+- [x] keep the first external-scanner stage narrow enough to verify locally and close cleanly
+- [x] avoid claiming full upstream scanner ABI parity before the emitted/runtime contract is explicit
 
 ## Implementation Sequence
 
 ### 1. Define the first supported external-scanner boundary
 
-- [ ] choose the first external-token grammar shape to support
-- [ ] decide which scanner/runtime behaviors stay deferred from this first external-scanner stage
-- [ ] document the first supported external-scanner comparison surface
+- [x] choose the first external-token grammar shape to support
+- [x] decide which scanner/runtime behaviors stay deferred from this first external-scanner stage
+- [x] document the first supported external-scanner comparison surface
+
+Current first supported external-scanner boundary:
+- support first:
+  - a single named external token whose presence changes the visible parse shape
+  - a grammar centered on `hidden_external_fields`
+  - a ready path where the external token behaves like an optional leading marker before an aliased body field
+- why this boundary:
+  - it is smaller and cleaner than `mixed_semantics`
+  - it is more genuinely external-token-driven than `external_collision`
+  - it exercises real parse-shape consequences of an external token without dragging in broader lexer or collision semantics
+- explicitly defer from this first stage:
+  - multiple interacting external tokens
+  - extras/separators coupled with external-token handling
+  - broader regex/lexer behavior beyond the already-completed first lexer stage
+  - emitted external-scanner C/runtime code that tries to match upstream ABI shape fully
+  - broader runtime contracts such as full scanner lifecycle parity
+- staged comparison surface for this checklist:
+  - ready path:
+    - `hidden_external_fields` through prepared grammar, syntax grammar, and the first external-scanner boundary artifacts
+  - explicitly blocked path:
+    - grammars that still require richer external-scanner behavior than a single optional leading token
 
 ### 2. Introduce external-scanner IR and serialization boundary
 
