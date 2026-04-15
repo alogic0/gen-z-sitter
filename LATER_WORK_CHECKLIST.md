@@ -14,9 +14,12 @@ Use this file for follow-on implementation once the active milestone work in [MA
 - [ ] compatibility polish and ergonomics after correctness is credible
 
 Immediate promotion candidates after the first behavioral-equivalence stage:
-- [ ] turn `lexer/scanner emission` into a dedicated execution checklist
+- [x] turn `lexer/scanner emission` into a dedicated execution checklist
 - [ ] decide whether `external scanner integration` stays coupled to that same checklist or becomes a separate follow-on checklist
 - [ ] decide whether `broader real-grammar/repo compatibility coverage` waits on lexer/scanner support or starts with parser-only repo cases first
+
+Promoted checklist:
+- [x] [LEXER_SCANNER_CHECKLIST.md](./LEXER_SCANNER_CHECKLIST.md)
 
 ## Notes
 

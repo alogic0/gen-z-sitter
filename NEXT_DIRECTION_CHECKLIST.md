@@ -37,6 +37,10 @@ Current completed boundary:
 - [ ] prove the lexer/scanner path on real grammar cases that cannot be covered by the current parser-only boundary
 - [ ] document any staged compatibility limits in the emitted scanner/runtime surface
 
+Promoted execution checklist:
+- [x] [LEXER_SCANNER_CHECKLIST.md](./LEXER_SCANNER_CHECKLIST.md)
+- [ ] use that checklist as the active implementation plan before deciding whether compatibility hardening runs in parallel or after it
+
 ### 4. Compatibility Hardening
 
 - [ ] document the remaining runtime-surface mismatches against expected Tree-sitter contracts
@@ -55,7 +59,7 @@ Current completed boundary:
 - [x] promote `fuller parser output closer to upstream parser.c` into a dedicated milestone with concrete exit criteria
 - [x] implement that milestone before broadening into more optimization or ergonomics work
 - [x] promote behavioral equivalence into a dedicated checklist with concrete exit criteria
-- [ ] promote `Lexer / Scanner Path` into a dedicated implementation checklist
+- [x] promote `Lexer / Scanner Path` into a dedicated implementation checklist
 - [ ] decide whether `Compatibility Hardening` should run in parallel with the lexer/scanner checklist or immediately after it
 
 ## Guiding Rule

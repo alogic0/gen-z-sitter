@@ -138,6 +138,13 @@ The next parser-generation work is now Milestone 16:
 - compiled-parser comparison against upstream generated output
 - classification of remaining semantic mismatches
 
+The next promoted execution checklist after the first behavioral-equivalence stage is:
+
+- [LEXER_SCANNER_CHECKLIST.md](./LEXER_SCANNER_CHECKLIST.md)
+  - first lexer/scanner emission boundary
+  - deterministic lexer/scanner artifacts
+  - staged proof before external scanner integration and broader compatibility hardening
+
 ## Documents
 
 - [MASTER_PLAN.md](./MASTER_PLAN.md)
@@ -155,6 +162,10 @@ The next parser-generation work is now Milestone 16:
 - [MILESTONE_12_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_12_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_13_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_13_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_15_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_15_IMPLEMENTATION_CHECKLIST.md)
+- [BEHAVIORAL_EQUIVALENCE_CHECKLIST.md](./BEHAVIORAL_EQUIVALENCE_CHECKLIST.md)
+- [LEXER_SCANNER_CHECKLIST.md](./LEXER_SCANNER_CHECKLIST.md)
+- [NEXT_DIRECTION_CHECKLIST.md](./NEXT_DIRECTION_CHECKLIST.md)
+- [LATER_WORK_CHECKLIST.md](./LATER_WORK_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)
