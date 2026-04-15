@@ -121,7 +121,7 @@ pub fn computeNodeTypes(
     }
 
     std.mem.sort(NodeType, nodes.items, {}, lessThanNodeType);
-    return try nodes.toOwnedSlice();
+    return try mergeDuplicateNodeTypes(allocator, nodes.items);
 }
 
 fn computeSupertypeRefs(
@@ -359,6 +359,121 @@ fn addNodeTypeRef(list: *std.array_list.Managed(NodeTypeRef), candidate: NodeTyp
     }
 }
 
+fn mergeDuplicateNodeTypes(
+    allocator: std.mem.Allocator,
+    nodes: []const NodeType,
+) ComputeNodeTypesError![]const NodeType {
+    var merged = std.array_list.Managed(NodeType).init(allocator);
+    defer merged.deinit();
+
+    for (nodes) |node| {
+        if (merged.items.len > 0 and sameNodeTypeKey(merged.items[merged.items.len - 1], node)) {
+            merged.items[merged.items.len - 1] = try mergeNodeType(allocator, merged.items[merged.items.len - 1], node);
+            continue;
+        }
+        try merged.append(node);
+    }
+
+    return try merged.toOwnedSlice();
+}
+
+fn mergeNodeType(
+    allocator: std.mem.Allocator,
+    left: NodeType,
+    right: NodeType,
+) ComputeNodeTypesError!NodeType {
+    return .{
+        .kind = left.kind,
+        .named = left.named,
+        .root = left.root or right.root,
+        .extra = left.extra or right.extra,
+        .fields = try mergeFields(allocator, left.fields, right.fields),
+        .children = try mergeChildInfo(allocator, left.children, right.children),
+        .subtypes = try mergeNodeTypeRefs(allocator, left.subtypes, right.subtypes),
+    };
+}
+
+fn mergeFields(
+    allocator: std.mem.Allocator,
+    left: []const Field,
+    right: []const Field,
+) ComputeNodeTypesError![]const Field {
+    if (left.len == 0) return right;
+    if (right.len == 0) return left;
+
+    var merged = std.array_list.Managed(Field).init(allocator);
+    defer merged.deinit();
+
+    var i: usize = 0;
+    var j: usize = 0;
+    while (i < left.len or j < right.len) {
+        if (i == left.len) {
+            try merged.append(right[j]);
+            j += 1;
+            continue;
+        }
+        if (j == right.len) {
+            try merged.append(left[i]);
+            i += 1;
+            continue;
+        }
+
+        const order = std.mem.order(u8, left[i].name, right[j].name);
+        switch (order) {
+            .lt => {
+                try merged.append(left[i]);
+                i += 1;
+            },
+            .gt => {
+                try merged.append(right[j]);
+                j += 1;
+            },
+            .eq => {
+                try merged.append(.{
+                    .name = left[i].name,
+                    .info = (try mergeChildInfo(allocator, left[i].info, right[j].info)).?,
+                });
+                i += 1;
+                j += 1;
+            },
+        }
+    }
+
+    return try merged.toOwnedSlice();
+}
+
+fn mergeChildInfo(
+    allocator: std.mem.Allocator,
+    left: ?ChildInfo,
+    right: ?ChildInfo,
+) ComputeNodeTypesError!?ChildInfo {
+    if (left == null) return right;
+    if (right == null) return left;
+
+    return .{
+        .quantity = ChildQuantity.mergeAlternatives(left.?.quantity, right.?.quantity),
+        .types = try mergeNodeTypeRefs(allocator, left.?.types, right.?.types),
+    };
+}
+
+fn mergeNodeTypeRefs(
+    allocator: std.mem.Allocator,
+    left: []const NodeTypeRef,
+    right: []const NodeTypeRef,
+) ComputeNodeTypesError![]const NodeTypeRef {
+    if (left.len == 0) return right;
+    if (right.len == 0) return left;
+
+    var merged = std.array_list.Managed(NodeTypeRef).init(allocator);
+    defer merged.deinit();
+    try merged.appendSlice(left);
+    for (right) |candidate| {
+        try addNodeTypeRef(&merged, candidate);
+    }
+    std.mem.sort(NodeTypeRef, merged.items, {}, lessThanNodeTypeRef);
+    return try merged.toOwnedSlice();
+}
+
 fn isVisibleChild(
     symbol: syntax_ir.SymbolRef,
     syntax: syntax_ir.SyntaxGrammar,
@@ -466,6 +581,10 @@ fn containsNodeTypeRef(haystack: []const NodeTypeRef, needle: NodeTypeRef) bool 
     return false;
 }
 
+fn sameNodeTypeKey(a: NodeType, b: NodeType) bool {
+    return std.mem.eql(u8, a.kind, b.kind) and a.named == b.named;
+}
+
 fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
     return switch (a) {
         .non_terminal => |index| switch (b) {
@@ -547,6 +666,44 @@ test "computeNodeTypes includes visible syntax and lexical nodes with default al
     try std.testing.expectEqualStrings("identifier", nodes[2].kind);
     try std.testing.expectEqualStrings("source_file", nodes[3].kind);
     try std.testing.expect(nodes[3].root);
+}
+
+test "computeNodeTypes merges duplicate entries with the same effective type name" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var expr_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "expr", .kind = .named, .productions = &.{.{ .steps = expr_steps[0..] }} },
+        },
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "expr", .kind = .named, .rule = 0 },
+        },
+        .separators = &.{},
+    };
+
+    const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
+    try std.testing.expectEqual(@as(usize, 2), nodes.len);
+
+    const expr = findNodeByKind(nodes, "expr").?;
+    try std.testing.expect(expr.children != null);
+    try std.testing.expectEqual(@as(usize, 1), expr.children.?.types.len);
+    try std.testing.expectEqualStrings("expr", expr.children.?.types[0].kind);
 }
 
 test "computeNodeTypes computes visible supertype subtypes" {

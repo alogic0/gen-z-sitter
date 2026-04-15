@@ -217,10 +217,6 @@ pub fn validResolvedNodeTypesJson() Fixture {
             \\        }
             \\      ]
             \\    }
-            \\  },
-            \\  {
-            \\    "type": "term",
-            \\    "named": true
             \\  }
             \\]
             \\
@@ -298,10 +294,6 @@ pub fn fieldChildrenNodeTypesJson() Fixture {
             \\        }
             \\      ]
             \\    }
-            \\  },
-            \\  {
-            \\    "type": "expr",
-            \\    "named": true
             \\  },
             \\  {
             \\    "type": "source_file",
@@ -416,10 +408,6 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
             \\        }
             \\      ]
             \\    }
-            \\  },
-            \\  {
-            \\    "type": "expr",
-            \\    "named": true
             \\  },
             \\  {
             \\    "type": "rhs",
