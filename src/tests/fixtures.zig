@@ -1019,6 +1019,134 @@ pub fn hiddenAlternativeFieldsNodeTypesJson() Fixture {
     };
 }
 
+pub fn hiddenExternalFieldsGrammarJson() Fixture {
+    return .{
+        .name = "hidden_external_fields",
+        .contents =
+            \\{
+            \\  "name": "hidden_external_fields",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "_with_indent" },
+            \\        { "type": "SYMBOL", "name": "_without_indent" }
+            \\      ]
+            \\    },
+            \\    "_with_indent": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "lead",
+            \\          "content": { "type": "SYMBOL", "name": "indent" }
+            \\        },
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "body",
+            \\          "content": {
+            \\            "type": "ALIAS",
+            \\            "named": true,
+            \\            "value": "statement",
+            \\            "content": { "type": "SYMBOL", "name": "expr" }
+            \\          }
+            \\        }
+            \\      ]
+            \\    },
+            \\    "_without_indent": {
+            \\      "type": "FIELD",
+            \\      "name": "body",
+            \\      "content": {
+            \\        "type": "ALIAS",
+            \\        "named": true,
+            \\        "value": "statement",
+            \\        "content": { "type": "SYMBOL", "name": "expr" }
+            \\      }
+            \\    },
+            \\    "expr": { "type": "STRING", "value": "x" }
+            \\  },
+            \\  "externals": [
+            \\    { "type": "SYMBOL", "name": "indent" }
+            \\  ]
+            \\}
+        ,
+    };
+}
+
+pub fn hiddenExternalFieldsNodeTypesJson() Fixture {
+    return .{
+        .name = "hidden_external_fields_node_types",
+        .contents =
+            \\[
+            \\  {
+            \\    "type": "expr",
+            \\    "named": true
+            \\  },
+            \\  {
+            \\    "type": "indent",
+            \\    "named": true
+            \\  },
+            \\  {
+            \\    "type": "source_file",
+            \\    "named": true,
+            \\    "root": true,
+            \\    "fields": {
+            \\      "body": {
+            \\        "multiple": false,
+            \\        "required": true,
+            \\        "types": [
+            \\          {
+            \\            "type": "statement",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      },
+            \\      "lead": {
+            \\        "multiple": false,
+            \\        "required": false,
+            \\        "types": [
+            \\          {
+            \\            "type": "indent",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      }
+            \\    },
+            \\    "children": {
+            \\      "multiple": true,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "indent",
+            \\          "named": true
+            \\        },
+            \\        {
+            \\          "type": "statement",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "statement",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "expr",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\]
+            \\
+        ,
+    };
+}
+
 pub fn undefinedSymbolGrammarJson() Fixture {
     return .{
         .name = "undefined_symbol",

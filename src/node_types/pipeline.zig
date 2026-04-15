@@ -189,3 +189,26 @@ test "generateNodeTypesJsonFromPrepared matches the hidden alternative fields go
 
     try std.testing.expectEqualStrings(fixtures.hiddenAlternativeFieldsNodeTypesJson().contents, json);
 }
+
+test "generateNodeTypesJsonFromPrepared matches the hidden external fields golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.hiddenExternalFieldsGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const json = try generateNodeTypesJsonFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.hiddenExternalFieldsNodeTypesJson().contents, json);
+}
