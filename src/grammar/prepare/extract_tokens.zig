@@ -34,6 +34,7 @@ const Extractor = struct {
     separators: std.array_list.Managed(ir_rules.RuleId),
     auxiliary_variables: std.array_list.Managed(syntax_ir.SyntaxVariable),
     repeat_cache: std.AutoHashMap(RepeatKey, u32),
+    promoted_top_level_repeat_variables: std.array_list.Managed(u32),
 
     fn init(allocator: std.mem.Allocator, prepared: prepared_ir.PreparedGrammar) Extractor {
         return .{
@@ -43,6 +44,7 @@ const Extractor = struct {
             .separators = std.array_list.Managed(ir_rules.RuleId).init(allocator),
             .auxiliary_variables = std.array_list.Managed(syntax_ir.SyntaxVariable).init(allocator),
             .repeat_cache = std.AutoHashMap(RepeatKey, u32).init(allocator),
+            .promoted_top_level_repeat_variables = std.array_list.Managed(u32).init(allocator),
         };
     }
 
@@ -51,7 +53,7 @@ const Extractor = struct {
         const extra_symbols = try self.extractExtraSymbols();
         const expected_conflicts = try self.convertConflictSets();
         const precedence_orderings = try self.convertPrecedenceOrderings();
-        const variables_to_inline = try self.convertSymbolList(self.prepared.variables_to_inline);
+        const variables_to_inline = try self.extractVariablesToInline();
         const supertype_symbols = try self.convertSymbolList(self.prepared.supertype_symbols);
         const word_token = if (self.prepared.word_token) |word| try self.convertSymbol(word) else null;
 
@@ -76,7 +78,12 @@ const Extractor = struct {
         var result = std.array_list.Managed(syntax_ir.SyntaxVariable).init(self.allocator);
         defer result.deinit();
 
-        for (self.prepared.variables) |variable| {
+        for (self.prepared.variables, 0..) |variable, index| {
+            if (try self.extractPromotedTopLevelRepeatVariable(@intCast(index), variable)) |promoted| {
+                try result.append(promoted);
+                continue;
+            }
+
             try result.append(.{
                 .name = variable.name,
                 .kind = switch (variable.kind) {
@@ -91,6 +98,36 @@ const Extractor = struct {
 
         try result.appendSlice(self.auxiliary_variables.items);
         return try result.toOwnedSlice();
+    }
+
+    fn extractPromotedTopLevelRepeatVariable(
+        self: *Extractor,
+        variable_index: u32,
+        variable: prepared_ir.Variable,
+    ) ExtractTokensError!?syntax_ir.SyntaxVariable {
+        if (variable.kind != .hidden) return null;
+
+        const rule = self.prepared.rules[@intCast(variable.rule)];
+        const repeat: TopLevelRepeatInfo = switch (rule) {
+            .repeat => |inner| .{ .inner = inner, .at_least_one = false },
+            .repeat1 => |inner| .{ .inner = inner, .at_least_one = true },
+            else => return null,
+        };
+
+        const inner_productions = try self.extractProductions(variable.name, repeat.inner);
+        const productions = try expand_repeats.createRepeatProductions(
+            self.allocator,
+            variable_index,
+            inner_productions,
+            repeat.at_least_one,
+        );
+        try self.promoted_top_level_repeat_variables.append(variable_index);
+
+        return .{
+            .name = variable.name,
+            .kind = .auxiliary,
+            .productions = productions,
+        };
     }
 
     fn extractExtraSymbols(self: *Extractor) ExtractTokensError![]const syntax_ir.SymbolRef {
@@ -154,6 +191,26 @@ const Extractor = struct {
         }
 
         return try result.toOwnedSlice();
+    }
+
+    fn extractVariablesToInline(self: *Extractor) ExtractTokensError![]const syntax_ir.SymbolRef {
+        var result = std.array_list.Managed(syntax_ir.SymbolRef).init(self.allocator);
+        defer result.deinit();
+
+        for (self.prepared.variables_to_inline) |symbol| {
+            if (self.isPromotedTopLevelRepeatSymbol(symbol)) continue;
+            try result.append(try self.convertSymbol(symbol));
+        }
+
+        return try result.toOwnedSlice();
+    }
+
+    fn isPromotedTopLevelRepeatSymbol(self: *Extractor, symbol: ir_symbols.SymbolId) bool {
+        if (symbol.kind != .non_terminal) return false;
+        for (self.promoted_top_level_repeat_variables.items) |promoted| {
+            if (promoted == symbol.index) return true;
+        }
+        return false;
     }
 
     fn convertSymbol(self: *Extractor, symbol: ir_symbols.SymbolId) ExtractTokensError!syntax_ir.SymbolRef {
@@ -355,6 +412,11 @@ const RepeatKey = struct {
     at_least_one: bool,
 };
 
+const TopLevelRepeatInfo = struct {
+    inner: ir_rules.RuleId,
+    at_least_one: bool,
+};
+
 test "extractTokens splits simple prepared grammar into syntax and lexical parts" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
@@ -419,4 +481,103 @@ test "extractTokens expands repeat rules into auxiliary syntax variables" {
     try std.testing.expectEqualStrings("source_file_repeat1", extracted.syntax.variables[1].name);
     try std.testing.expectEqual(@as(u32, 1), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
+}
+
+test "extractTokens promotes hidden top-level repeats in place and removes them from inline symbols" {
+    const repeat_inner = ir_rules.Rule{ .string = "item" };
+    const repeat_rule = ir_rules.Rule{ .repeat = 0 };
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "hidden-repeat",
+        .variables = &.{
+            .{
+                .name = "_items",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .hidden,
+                .rule = 1,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{ repeat_inner, repeat_rule },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "_items",
+                .named = false,
+                .visible = false,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{ir_symbols.SymbolId.nonTerminal(0)},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables.len);
+    try std.testing.expectEqualStrings("_items", extracted.syntax.variables[0].name);
+    try std.testing.expectEqual(syntax_ir.VariableKind.auxiliary, extracted.syntax.variables[0].kind);
+    try std.testing.expectEqual(@as(usize, 3), extracted.syntax.variables[0].productions.len);
+    try std.testing.expectEqual(@as(usize, 0), extracted.syntax.variables_to_inline.len);
+}
+
+test "extractTokens reuses one auxiliary variable for duplicated repeat content" {
+    const terminal_rule = ir_rules.Rule{ .string = "item" };
+    const repeat_rule = ir_rules.Rule{ .repeat = 0 };
+    const seq_one = ir_rules.Rule{ .seq = &.{ 0, 1 } };
+    const seq_two = ir_rules.Rule{ .seq = &.{ 0, 1 } };
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "dedup-repeat",
+        .variables = &.{
+            .{
+                .name = "left",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 2,
+            },
+            .{
+                .name = "right",
+                .symbol = ir_symbols.SymbolId.nonTerminal(1),
+                .kind = .named,
+                .rule = 3,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{ terminal_rule, repeat_rule, seq_one, seq_two },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "left",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(1),
+                .name = "right",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 3), extracted.syntax.variables.len);
+    try std.testing.expectEqualStrings("left_repeat2", extracted.syntax.variables[2].name);
+    try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[0].productions[0].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[1].productions[0].steps[1].symbol.non_terminal);
 }
