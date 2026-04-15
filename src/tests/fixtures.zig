@@ -3672,6 +3672,45 @@ pub fn mixedSemanticsNodeTypesJson() Fixture {
     };
 }
 
+pub fn mixedSemanticsLexicalDump() Fixture {
+    return .{
+        .name = "mixed_semantics_lexical_dump",
+        .contents =
+            \\blocked true
+            \\variables 3
+            \\variable 0
+            \\  name identifier
+            \\  kind named
+            \\  form pattern [a-z]+
+            \\  flags null
+            \\  tokenized true
+            \\  immediate false
+            \\  implicit_precedence 0
+            \\  start_state 0
+            \\variable 1
+            \\  name number_literal
+            \\  kind named
+            \\  form string 42
+            \\  tokenized false
+            \\  immediate false
+            \\  implicit_precedence 0
+            \\  start_state 0
+            \\variable 2
+            \\  name space
+            \\  kind named
+            \\  form string  
+            \\  tokenized false
+            \\  immediate false
+            \\  implicit_precedence 0
+            \\  start_state 0
+            \\unsupported_separators 0
+            \\unsupported_externals 1
+            \\external 0 indent named
+            \\
+        ,
+    };
+}
+
 pub fn repeatChoiceSeqGrammarJson() Fixture {
     return .{
         .name = "repeat_choice_seq",
@@ -3775,6 +3814,36 @@ pub fn repeatChoiceSeqNodeTypesJson() Fixture {
             \\    }
             \\  }
             \\]
+            \\
+        ,
+    };
+}
+
+pub fn repeatChoiceSeqLexicalDump() Fixture {
+    return .{
+        .name = "repeat_choice_seq_lexical_dump",
+        .contents =
+            \\blocked false
+            \\variables 2
+            \\variable 0
+            \\  name identifier
+            \\  kind named
+            \\  form pattern [a-z]+
+            \\  flags null
+            \\  tokenized true
+            \\  immediate false
+            \\  implicit_precedence 0
+            \\  start_state 0
+            \\variable 1
+            \\  name number_literal
+            \\  kind named
+            \\  form string 42
+            \\  tokenized false
+            \\  immediate false
+            \\  implicit_precedence 0
+            \\  start_state 0
+            \\unsupported_separators 0
+            \\unsupported_externals 0
             \\
         ,
     };

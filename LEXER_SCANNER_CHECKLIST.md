@@ -55,9 +55,18 @@ Current lexer-facing boundary:
 
 ### 3. Add deterministic lexer/scanner artifacts
 
-- [ ] add exact goldens for the first supported scanner-driven grammar
-- [ ] cover both ready and explicitly blocked lexer/scanner cases when applicable
-- [ ] preserve deterministic output across `grammar.json` and `grammar.js` load paths where supported
+- [x] add exact goldens for the first supported scanner-driven grammar
+- [x] cover both ready and explicitly blocked lexer/scanner cases when applicable
+- [x] preserve deterministic output across `grammar.json` and `grammar.js` load paths where supported
+
+Current artifact boundary:
+- exact lexical dumps now exist for:
+  - ready pattern/string lexical grammar: `repeat_choice_seq`
+  - blocked external-token lexical grammar: `mixed_semantics`
+- the ready lexical dump is required to remain stable across:
+  - `grammar.json`
+  - `grammar.js`
+- this stage still stops at deterministic serialized lexical artifacts, not emitted lexer C code
 
 ### 4. Add emitted lexer/scanner boundary checks
 
