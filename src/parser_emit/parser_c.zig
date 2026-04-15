@@ -147,6 +147,21 @@ pub fn writeParserC(
     try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
     try writer.writeAll("  return state ? state->unresolved_count : 0;\n");
     try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSActionEntry *ts_parser_action_at(uint16_t state_id, uint16_t index) {\n");
+    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
+    try writer.writeAll("  return state and index < state->action_count ? &state->actions[index] : 0;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSGotoEntry *ts_parser_goto_at(uint16_t state_id, uint16_t index) {\n");
+    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
+    try writer.writeAll("  return state and index < state->goto_count ? &state->gotos[index] : 0;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {\n");
+    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
+    try writer.writeAll("  return state and index < state->unresolved_count ? &state->unresolved[index] : 0;\n");
+    try writer.writeAll("}\n");
 }
 
 test "emitParserCAlloc formats parser C skeletons deterministically" {
@@ -277,6 +292,21 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\uint16_t ts_parser_unresolved_count(uint16_t state_id) {
         \\  const TSStateTable *state = ts_parser_state(state_id);
         \\  return state ? state->unresolved_count : 0;
+        \\}
+        \\
+        \\const TSActionEntry *ts_parser_action_at(uint16_t state_id, uint16_t index) {
+        \\  const TSStateTable *state = ts_parser_state(state_id);
+        \\  return state and index < state->action_count ? &state->actions[index] : 0;
+        \\}
+        \\
+        \\const TSGotoEntry *ts_parser_goto_at(uint16_t state_id, uint16_t index) {
+        \\  const TSStateTable *state = ts_parser_state(state_id);
+        \\  return state and index < state->goto_count ? &state->gotos[index] : 0;
+        \\}
+        \\
+        \\const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {
+        \\  const TSStateTable *state = ts_parser_state(state_id);
+        \\  return state and index < state->unresolved_count ? &state->unresolved[index] : 0;
         \\}
         \\
     , emitted);

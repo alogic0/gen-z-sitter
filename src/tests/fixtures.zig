@@ -1053,6 +1053,21 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  return state ? state->unresolved_count : 0;
             \\}
             \\
+            \\const TSActionEntry *ts_parser_action_at(uint16_t state_id, uint16_t index) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state and index < state->action_count ? &state->actions[index] : 0;
+            \\}
+            \\
+            \\const TSGotoEntry *ts_parser_goto_at(uint16_t state_id, uint16_t index) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state and index < state->goto_count ? &state->gotos[index] : 0;
+            \\}
+            \\
+            \\const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state and index < state->unresolved_count ? &state->unresolved[index] : 0;
+            \\}
+            \\
         ,
     };
 }
@@ -1233,6 +1248,21 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\uint16_t ts_parser_unresolved_count(uint16_t state_id) {
             \\  const TSStateTable *state = ts_parser_state(state_id);
             \\  return state ? state->unresolved_count : 0;
+            \\}
+            \\
+            \\const TSActionEntry *ts_parser_action_at(uint16_t state_id, uint16_t index) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state and index < state->action_count ? &state->actions[index] : 0;
+            \\}
+            \\
+            \\const TSGotoEntry *ts_parser_goto_at(uint16_t state_id, uint16_t index) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state and index < state->goto_count ? &state->gotos[index] : 0;
+            \\}
+            \\
+            \\const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state and index < state->unresolved_count ? &state->unresolved[index] : 0;
             \\}
             \\
         ,
