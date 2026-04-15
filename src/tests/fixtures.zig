@@ -864,6 +864,139 @@ pub fn parseTableConflictCTablesDump() Fixture {
     };
 }
 
+pub fn parseTableMetadataParserCDump() Fixture {
+    return .{
+        .name = "parse_table_metadata_parser_c_dump",
+        .contents =
+            \\/* generated parser.c skeleton */
+            \\#include <stdbool.h>
+            \\#include <stdint.h>
+            \\
+            \\#define TS_PARSER_BLOCKED false
+            \\#define TS_STATE_COUNT 7
+            \\
+            \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
+            \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
+            \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+            \\
+            \\/* state 0 */
+            \\static const TSActionEntry ts_state_0_actions[] = {
+            \\  { "terminal:1", "shift", 3 },
+            \\};
+            \\static const TSGotoEntry ts_state_0_gotos[] = {
+            \\  { "non_terminal:0", 1 },
+            \\  { "non_terminal:1", 2 },
+            \\};
+            \\
+            \\/* state 1 */
+            \\static const TSActionEntry ts_state_1_actions[] = {
+            \\};
+            \\static const TSGotoEntry ts_state_1_gotos[] = {
+            \\};
+            \\
+            \\/* state 2 */
+            \\static const TSActionEntry ts_state_2_actions[] = {
+            \\  { "terminal:0", "shift", 4 },
+            \\};
+            \\static const TSGotoEntry ts_state_2_gotos[] = {
+            \\};
+            \\
+            \\/* state 3 */
+            \\static const TSActionEntry ts_state_3_actions[] = {
+            \\  { "terminal:0", "reduce", 2 },
+            \\};
+            \\static const TSGotoEntry ts_state_3_gotos[] = {
+            \\};
+            \\
+            \\/* state 4 */
+            \\static const TSActionEntry ts_state_4_actions[] = {
+            \\  { "terminal:1", "shift", 6 },
+            \\};
+            \\static const TSGotoEntry ts_state_4_gotos[] = {
+            \\  { "non_terminal:1", 5 },
+            \\};
+            \\
+            \\/* state 5 */
+            \\static const TSActionEntry ts_state_5_actions[] = {
+            \\};
+            \\static const TSGotoEntry ts_state_5_gotos[] = {
+            \\};
+            \\
+            \\/* state 6 */
+            \\static const TSActionEntry ts_state_6_actions[] = {
+            \\};
+            \\static const TSGotoEntry ts_state_6_gotos[] = {
+            \\};
+            \\
+        ,
+    };
+}
+
+pub fn parseTableConflictParserCDump() Fixture {
+    return .{
+        .name = "parse_table_conflict_parser_c_dump",
+        .contents =
+            \\/* generated parser.c skeleton */
+            \\#include <stdbool.h>
+            \\#include <stdint.h>
+            \\
+            \\#define TS_PARSER_BLOCKED true
+            \\#define TS_STATE_COUNT 6
+            \\
+            \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
+            \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
+            \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+            \\
+            \\/* state 0 */
+            \\static const TSActionEntry ts_state_0_actions[] = {
+            \\  { "terminal:1", "shift", 3 },
+            \\};
+            \\static const TSGotoEntry ts_state_0_gotos[] = {
+            \\  { "non_terminal:0", 1 },
+            \\  { "non_terminal:1", 2 },
+            \\};
+            \\
+            \\/* state 1 */
+            \\static const TSActionEntry ts_state_1_actions[] = {
+            \\};
+            \\static const TSGotoEntry ts_state_1_gotos[] = {
+            \\};
+            \\
+            \\/* state 2 */
+            \\static const TSActionEntry ts_state_2_actions[] = {
+            \\  { "terminal:0", "shift", 4 },
+            \\};
+            \\static const TSGotoEntry ts_state_2_gotos[] = {
+            \\};
+            \\
+            \\/* state 3 */
+            \\static const TSActionEntry ts_state_3_actions[] = {
+            \\  { "terminal:0", "reduce", 3 },
+            \\};
+            \\static const TSGotoEntry ts_state_3_gotos[] = {
+            \\};
+            \\
+            \\/* state 4 */
+            \\static const TSActionEntry ts_state_4_actions[] = {
+            \\  { "terminal:1", "shift", 3 },
+            \\};
+            \\static const TSGotoEntry ts_state_4_gotos[] = {
+            \\  { "non_terminal:1", 5 },
+            \\};
+            \\
+            \\/* state 5 */
+            \\static const TSActionEntry ts_state_5_actions[] = {
+            \\};
+            \\static const TSGotoEntry ts_state_5_gotos[] = {
+            \\};
+            \\static const TSUnresolvedEntry ts_state_5_unresolved[] = {
+            \\  { "terminal:0", "shift_reduce", 2 },
+            \\};
+            \\
+        ,
+    };
+}
+
 pub fn parseTableConflictActionTableDump() Fixture {
     return .{
         .name = "parse_table_conflict_action_table_dump",

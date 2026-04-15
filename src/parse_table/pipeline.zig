@@ -7,6 +7,7 @@ const resolution = @import("resolution.zig");
 const serialize = @import("serialize.zig");
 const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
 const c_tables_emit = @import("../parser_emit/c_tables.zig");
+const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const state = @import("state.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
@@ -21,6 +22,7 @@ pub const PipelineError =
     serialize.SerializeError ||
     parser_tables_emit.EmitError ||
     c_tables_emit.EmitError ||
+    parser_c_emit.EmitError ||
     debug_dump.DebugDumpError ||
     std.json.ParseError(std.json.Scanner) ||
     std.mem.Allocator.Error;
@@ -104,6 +106,16 @@ pub fn generateCTableEmitterDumpFromPrepared(
     const result = try buildStatesFromPrepared(allocator, prepared);
     const serialized = try serialize.serializeBuildResult(allocator, result, mode);
     return try c_tables_emit.emitCTableSkeletonAlloc(allocator, serialized);
+}
+
+pub fn generateParserCEmitterDumpFromPrepared(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    mode: serialize.SerializeMode,
+) PipelineError![]const u8 {
+    const result = try buildStatesFromPrepared(allocator, prepared);
+    const serialized = try serialize.serializeBuildResult(allocator, result, mode);
+    return try parser_c_emit.emitParserCAlloc(allocator, serialized);
 }
 
 test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture" {
@@ -993,6 +1005,60 @@ test "generateCTableEmitterDumpFromPrepared matches the conflict diagnostic C-li
     );
 
     try std.testing.expectEqualStrings(fixtures.parseTableConflictCTablesDump().contents, dump);
+}
+
+test "generateParserCEmitterDumpFromPrepared matches the metadata-rich parser.c-like emitter golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableMetadataGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateParserCEmitterDumpFromPrepared(
+        pipeline_arena.allocator(),
+        prepared,
+        .strict,
+    );
+
+    try std.testing.expectEqualStrings(fixtures.parseTableMetadataParserCDump().contents, dump);
+}
+
+test "generateParserCEmitterDumpFromPrepared matches the conflict diagnostic parser.c-like emitter golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableConflictGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateParserCEmitterDumpFromPrepared(
+        pipeline_arena.allocator(),
+        prepared,
+        .diagnostic,
+    );
+
+    try std.testing.expectEqualStrings(fixtures.parseTableConflictParserCDump().contents, dump);
 }
 
 test "generateResolvedActionTableDumpFromPrepared keeps reduce/reduce conflict groups explicit" {

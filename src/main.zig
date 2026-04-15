@@ -82,6 +82,7 @@ test {
     _ = @import("parse_table/pipeline.zig");
     _ = @import("parser_emit/parser_tables.zig");
     _ = @import("parser_emit/c_tables.zig");
+    _ = @import("parser_emit/parser_c.zig");
     _ = @import("support/diag.zig");
     _ = @import("support/fs.zig");
     _ = @import("support/json.zig");
