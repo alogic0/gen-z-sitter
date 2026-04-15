@@ -12,6 +12,7 @@ const parse_grammar = @import("../parse_grammar.zig");
 pub const ExtractTokensError = error{
     InvalidSupertypeSymbol,
     InvalidSupertypeStructure,
+    InvalidWordToken,
     UnsupportedRuleShape,
     OutOfMemory,
 };
@@ -107,9 +108,9 @@ const Extractor = struct {
                 if (self.findLexicalVariable(variable.rule)) |terminal_index| {
                     return .{ .terminal = terminal_index };
                 }
-                return .{ .non_terminal = word.index };
+                return error.InvalidWordToken;
             },
-            .external => return .{ .external = word.index },
+            .external => return error.InvalidWordToken,
         }
     }
 
@@ -786,6 +787,54 @@ test "extractTokens rejects supertypes that lower to external steps" {
     defer arena.deinit();
 
     try std.testing.expectError(error.InvalidSupertypeStructure, extractTokens(arena.allocator(), prepared));
+}
+
+test "extractTokens rejects word tokens that do not lower to lexical terminals" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "bad-word-token",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+            .{
+                .name = "expression",
+                .symbol = ir_symbols.SymbolId.nonTerminal(1),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{ .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) }, .{ .blank = {} } },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(1),
+                .name = "expression",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = ir_symbols.SymbolId.nonTerminal(1),
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(error.InvalidWordToken, extractTokens(arena.allocator(), prepared));
 }
 
 test "extractTokens promotes hidden top-level repeats in place and removes them from inline symbols" {
