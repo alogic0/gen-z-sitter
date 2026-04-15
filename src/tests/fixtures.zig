@@ -1010,8 +1010,8 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\} TSLanguage;
             \\
             \\static bool ts_string_eq(const char *a, const char *b) {
-            \\  if (!a or !b) return false;
-            \\  while (a[0] != 0 and b[0] != 0) {
+            \\  if (!a || !b) return false;
+            \\  while (a[0] != 0 && b[0] != 0) {
             \\    if (a[0] != b[0]) return false;
             \\    a += 1;
             \\    b += 1;
@@ -1292,7 +1292,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
             \\  const TSParserRuntime *runtime = ts_parser_runtime();
-            \\  return runtime and state_id < runtime->state_count ? &runtime->states[state_id] : 0;
+            \\  return runtime && state_id < runtime->state_count ? &runtime->states[state_id] : 0;
             \\}
             \\
             \\bool ts_parser_runtime_state_has_unresolved(uint16_t state_id) {
@@ -1302,7 +1302,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\const TSStateTable *ts_parser_state(uint16_t state_id) {
             \\  const TSParser *parser = ts_parser_instance();
-            \\  return parser and state_id < parser->state_count ? &parser->states[state_id] : 0;
+            \\  return parser && state_id < parser->state_count ? &parser->states[state_id] : 0;
             \\}
             \\
             \\bool ts_parser_is_blocked(void) {
@@ -1322,7 +1322,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) {
             \\  const TSParser *parser = ts_parser_instance();
-            \\  return parser and symbol_id < parser->symbol_count ? &parser->symbols[symbol_id] : 0;
+            \\  return parser && symbol_id < parser->symbol_count ? &parser->symbols[symbol_id] : 0;
             \\}
             \\
             \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
@@ -1353,7 +1353,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\int16_t ts_parser_find_symbol_id(const char *symbol) {
             \\  const TSParser *parser = ts_parser_instance();
             \\  uint16_t i = 0;
-            \\  while (parser and i < parser->symbol_count) {
+            \\  while (parser && i < parser->symbol_count) {
             \\    if (ts_string_eq(parser->symbols[i].name, symbol)) return (int16_t)i;
             \\    i += 1;
             \\  }
@@ -1392,17 +1392,17 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\const TSActionEntry *ts_parser_action_at(uint16_t state_id, uint16_t index) {
             \\  const TSStateTable *state = ts_parser_state(state_id);
-            \\  return state and index < state->action_count ? &state->actions[index] : 0;
+            \\  return state && index < state->action_count ? &state->actions[index] : 0;
             \\}
             \\
             \\const TSGotoEntry *ts_parser_goto_at(uint16_t state_id, uint16_t index) {
             \\  const TSStateTable *state = ts_parser_state(state_id);
-            \\  return state and index < state->goto_count ? &state->gotos[index] : 0;
+            \\  return state && index < state->goto_count ? &state->gotos[index] : 0;
             \\}
             \\
             \\const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {
             \\  const TSStateTable *state = ts_parser_state(state_id);
-            \\  return state and index < state->unresolved_count ? &state->unresolved[index] : 0;
+            \\  return state && index < state->unresolved_count ? &state->unresolved[index] : 0;
             \\}
             \\
             \\const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {
@@ -1423,17 +1423,17 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {
             \\  const char *kind = ts_parser_action_kind(state_id, index);
-            \\  return kind and ts_string_eq(kind, "shift");
+            \\  return kind && ts_string_eq(kind, "shift");
             \\}
             \\
             \\bool ts_parser_action_is_reduce(uint16_t state_id, uint16_t index) {
             \\  const char *kind = ts_parser_action_kind(state_id, index);
-            \\  return kind and ts_string_eq(kind, "reduce");
+            \\  return kind && ts_string_eq(kind, "reduce");
             \\}
             \\
             \\bool ts_parser_action_is_accept(uint16_t state_id, uint16_t index) {
             \\  const char *kind = ts_parser_action_kind(state_id, index);
-            \\  return kind and ts_string_eq(kind, "accept");
+            \\  return kind && ts_string_eq(kind, "accept");
             \\}
             \\
             \\uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {
@@ -1476,7 +1476,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSActionEntry *entry = ts_parser_action_at(state_id, i);
-            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
+            \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;
@@ -1487,7 +1487,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);
-            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
+            \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;
@@ -1498,7 +1498,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);
-            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
+            \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;
@@ -1603,8 +1603,8 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\} TSLanguage;
             \\
             \\static bool ts_string_eq(const char *a, const char *b) {
-            \\  if (!a or !b) return false;
-            \\  while (a[0] != 0 and b[0] != 0) {
+            \\  if (!a || !b) return false;
+            \\  while (a[0] != 0 && b[0] != 0) {
             \\    if (a[0] != b[0]) return false;
             \\    a += 1;
             \\    b += 1;
@@ -1868,7 +1868,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
             \\  const TSParserRuntime *runtime = ts_parser_runtime();
-            \\  return runtime and state_id < runtime->state_count ? &runtime->states[state_id] : 0;
+            \\  return runtime && state_id < runtime->state_count ? &runtime->states[state_id] : 0;
             \\}
             \\
             \\bool ts_parser_runtime_state_has_unresolved(uint16_t state_id) {
@@ -1878,7 +1878,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\const TSStateTable *ts_parser_state(uint16_t state_id) {
             \\  const TSParser *parser = ts_parser_instance();
-            \\  return parser and state_id < parser->state_count ? &parser->states[state_id] : 0;
+            \\  return parser && state_id < parser->state_count ? &parser->states[state_id] : 0;
             \\}
             \\
             \\bool ts_parser_is_blocked(void) {
@@ -1898,7 +1898,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) {
             \\  const TSParser *parser = ts_parser_instance();
-            \\  return parser and symbol_id < parser->symbol_count ? &parser->symbols[symbol_id] : 0;
+            \\  return parser && symbol_id < parser->symbol_count ? &parser->symbols[symbol_id] : 0;
             \\}
             \\
             \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
@@ -1929,7 +1929,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\int16_t ts_parser_find_symbol_id(const char *symbol) {
             \\  const TSParser *parser = ts_parser_instance();
             \\  uint16_t i = 0;
-            \\  while (parser and i < parser->symbol_count) {
+            \\  while (parser && i < parser->symbol_count) {
             \\    if (ts_string_eq(parser->symbols[i].name, symbol)) return (int16_t)i;
             \\    i += 1;
             \\  }
@@ -1968,17 +1968,17 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\const TSActionEntry *ts_parser_action_at(uint16_t state_id, uint16_t index) {
             \\  const TSStateTable *state = ts_parser_state(state_id);
-            \\  return state and index < state->action_count ? &state->actions[index] : 0;
+            \\  return state && index < state->action_count ? &state->actions[index] : 0;
             \\}
             \\
             \\const TSGotoEntry *ts_parser_goto_at(uint16_t state_id, uint16_t index) {
             \\  const TSStateTable *state = ts_parser_state(state_id);
-            \\  return state and index < state->goto_count ? &state->gotos[index] : 0;
+            \\  return state && index < state->goto_count ? &state->gotos[index] : 0;
             \\}
             \\
             \\const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {
             \\  const TSStateTable *state = ts_parser_state(state_id);
-            \\  return state and index < state->unresolved_count ? &state->unresolved[index] : 0;
+            \\  return state && index < state->unresolved_count ? &state->unresolved[index] : 0;
             \\}
             \\
             \\const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {
@@ -1999,17 +1999,17 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {
             \\  const char *kind = ts_parser_action_kind(state_id, index);
-            \\  return kind and ts_string_eq(kind, "shift");
+            \\  return kind && ts_string_eq(kind, "shift");
             \\}
             \\
             \\bool ts_parser_action_is_reduce(uint16_t state_id, uint16_t index) {
             \\  const char *kind = ts_parser_action_kind(state_id, index);
-            \\  return kind and ts_string_eq(kind, "reduce");
+            \\  return kind && ts_string_eq(kind, "reduce");
             \\}
             \\
             \\bool ts_parser_action_is_accept(uint16_t state_id, uint16_t index) {
             \\  const char *kind = ts_parser_action_kind(state_id, index);
-            \\  return kind and ts_string_eq(kind, "accept");
+            \\  return kind && ts_string_eq(kind, "accept");
             \\}
             \\
             \\uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {
@@ -2052,7 +2052,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSActionEntry *entry = ts_parser_action_at(state_id, i);
-            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
+            \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;
@@ -2063,7 +2063,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);
-            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
+            \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;
@@ -2074,7 +2074,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);
-            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
+            \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;

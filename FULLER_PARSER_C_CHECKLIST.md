@@ -51,9 +51,14 @@ Current result for this stage:
 
 ### 4. Add compile-oriented proof
 
-- [ ] add a basic compile smoke test for the emitted `parser.c` artifact
-- [ ] prove that both a ready grammar and a blocked grammar emit syntactically valid C at the current boundary
-- [ ] keep the compile proof narrow and deterministic; do not turn it into full runtime execution yet
+- [x] add a basic compile smoke test for the emitted `parser.c` artifact
+- [x] prove that both a ready grammar and a blocked grammar emit syntactically valid C at the current boundary
+- [x] keep the compile proof narrow and deterministic; do not turn it into full runtime execution yet
+
+Current result for this stage:
+- the parser.c pipeline tests now write emitted parser C to a temp file and compile it with `zig cc -std=c11 -c`
+- both the ready metadata-rich grammar and the blocked conflict grammar are compile-smoke checked
+- this is still only a syntax/translation-unit proof, not a runtime execution or ABI proof
 
 ### 5. Keep artifacts and checks in sync
 

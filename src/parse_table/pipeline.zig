@@ -9,6 +9,7 @@ const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
 const c_tables_emit = @import("../parser_emit/c_tables.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const compat_checks = @import("../parser_emit/compat_checks.zig");
+const process_support = @import("../support/process.zig");
 const state = @import("state.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
@@ -127,6 +128,41 @@ fn writeModuleExportsJsonFile(dir: std.fs.Dir, sub_path: []const u8, json_conten
         .sub_path = sub_path,
         .data = js,
     });
+}
+
+fn expectParserCDumpCompiles(contents: []const u8) !void {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "parser.c",
+        .data = contents,
+    });
+
+    const source_path = try tmp.dir.realpathAlloc(std.testing.allocator, "parser.c");
+    defer std.testing.allocator.free(source_path);
+
+    const dir_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dir_path);
+
+    const object_path = try std.fs.path.join(std.testing.allocator, &.{ dir_path, "parser.o" });
+    defer std.testing.allocator.free(object_path);
+
+    var result = try process_support.runCapture(
+        std.testing.allocator,
+        &.{ "zig", "cc", "-std=c11", "-c", source_path, "-o", object_path },
+    );
+    defer result.deinit(std.testing.allocator);
+
+    switch (result.term) {
+        .Exited => |code| {
+            if (code != 0) {
+                std.debug.print("zig cc stderr:\n{s}\n", .{result.stderr});
+                try std.testing.expectEqual(@as(u8, 0), code);
+            }
+        },
+        else => return error.UnexpectedCompilerTermination,
+    }
 }
 
 test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture" {
@@ -1044,6 +1080,7 @@ test "generateParserCEmitterDumpFromPrepared matches the metadata-rich parser.c-
 
     try std.testing.expectEqualStrings(fixtures.parseTableMetadataParserCDump().contents, dump);
     try compat_checks.validateParserCCompatibilitySurface(dump);
+    try expectParserCDumpCompiles(dump);
 }
 
 test "generateParserCEmitterDumpFromPrepared matches the conflict diagnostic parser.c-like emitter golden fixture" {
@@ -1072,6 +1109,7 @@ test "generateParserCEmitterDumpFromPrepared matches the conflict diagnostic par
 
     try std.testing.expectEqualStrings(fixtures.parseTableConflictParserCDump().contents, dump);
     try compat_checks.validateParserCCompatibilitySurface(dump);
+    try expectParserCDumpCompiles(dump);
 }
 
 test "generateParserCEmitterDumpFromPrepared matches the metadata-rich parser.c-like emitter golden fixture through grammar.js" {
