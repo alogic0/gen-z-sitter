@@ -67,6 +67,7 @@ test {
     _ = @import("ir/syntax_grammar.zig");
     _ = @import("ir/lexical_grammar.zig");
     _ = @import("ir/aliases.zig");
+    _ = @import("node_types/compute.zig");
     _ = @import("support/diag.zig");
     _ = @import("support/fs.zig");
     _ = @import("support/json.zig");
