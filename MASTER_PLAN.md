@@ -760,7 +760,7 @@ This checklist covers only work that is still outstanding from the current proje
 - [x] expand emitted parser output beyond the Milestone 12 query/helper layer
 - [x] decide whether the project will target upstream C runtime ABI compatibility directly, or stage that through an intermediate compatibility layer
 - [x] add exact artifacts for the richer runtime-facing emitted parser surface
-- [ ] define blocked-output behavior for that richer runtime-facing surface
+- [x] define blocked-output behavior for that richer runtime-facing surface
 - [ ] review whether the emitted parser boundary is strong enough to begin compatibility work
 
 ### Milestone 14: `grammar.js` end-to-end support

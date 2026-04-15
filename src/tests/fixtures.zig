@@ -1093,8 +1093,21 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  return &ts_runtime;
             \\}
             \\
+            \\bool ts_parser_runtime_is_blocked(void) {
+            \\  return ts_runtime.blocked;
+            \\}
+            \\
+            \\bool ts_parser_runtime_has_unresolved_states(void) {
+            \\  return ts_runtime.has_unresolved_states;
+            \\}
+            \\
             \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
             \\  return state_id < TS_STATE_COUNT ? &ts_runtime_states[state_id] : 0;
+            \\}
+            \\
+            \\bool ts_parser_runtime_state_has_unresolved(uint16_t state_id) {
+            \\  const TSRuntimeStateInfo *state = ts_parser_runtime_state(state_id);
+            \\  return state ? state->has_unresolved : false;
             \\}
             \\
             \\const TSStateTable *ts_parser_state(uint16_t state_id) {
@@ -1470,8 +1483,21 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  return &ts_runtime;
             \\}
             \\
+            \\bool ts_parser_runtime_is_blocked(void) {
+            \\  return ts_runtime.blocked;
+            \\}
+            \\
+            \\bool ts_parser_runtime_has_unresolved_states(void) {
+            \\  return ts_runtime.has_unresolved_states;
+            \\}
+            \\
             \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
             \\  return state_id < TS_STATE_COUNT ? &ts_runtime_states[state_id] : 0;
+            \\}
+            \\
+            \\bool ts_parser_runtime_state_has_unresolved(uint16_t state_id) {
+            \\  const TSRuntimeStateInfo *state = ts_parser_runtime_state(state_id);
+            \\  return state ? state->has_unresolved : false;
             \\}
             \\
             \\const TSStateTable *ts_parser_state(uint16_t state_id) {
