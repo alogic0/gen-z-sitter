@@ -4,6 +4,7 @@ const actions = @import("actions.zig");
 const debug_dump = @import("debug_dump.zig");
 const build = @import("build.zig");
 const resolution = @import("resolution.zig");
+const serialize = @import("serialize.zig");
 const state = @import("state.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
@@ -740,6 +741,61 @@ test "generateResolvedActionTableDumpFromPrepared keeps unresolved conflict grou
     try std.testing.expect(!snapshot.isSerializationReady());
     try std.testing.expect(snapshot.unresolved.len == 1);
     try std.testing.expectEqualStrings(fixtures.parseTableConflictResolvedActionDump().contents, dump);
+}
+
+test "buildStatesFromPrepared serializes metadata-rich grammar in strict mode" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableMetadataGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
+    const serialized = try serialize.serializeBuildResult(
+        pipeline_arena.allocator(),
+        result,
+        .strict,
+    );
+
+    try std.testing.expect(serialized.isSerializationReady());
+    try std.testing.expect(serialized.states.len > 0);
+}
+
+test "buildStatesFromPrepared rejects unresolved conflict grammar in strict serialization mode" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableConflictGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectError(
+        error.UnresolvedDecisions,
+        serialize.serializeBuildResult(pipeline_arena.allocator(), result, .strict),
+    );
 }
 
 test "generateResolvedActionTableDumpFromPrepared keeps reduce/reduce conflict groups explicit" {

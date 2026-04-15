@@ -78,6 +78,7 @@ test {
     _ = @import("parse_table/debug_dump.zig");
     _ = @import("parse_table/build.zig");
     _ = @import("parse_table/resolution.zig");
+    _ = @import("parse_table/serialize.zig");
     _ = @import("parse_table/pipeline.zig");
     _ = @import("support/diag.zig");
     _ = @import("support/fs.zig");
