@@ -62,6 +62,16 @@ pub fn generateGroupedActionTableDumpFromPrepared(
     return try debug_dump.dumpGroupedActionTableAlloc(allocator, result.states, result.actions);
 }
 
+pub fn generateResolvedActionTableDumpFromPrepared(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+) PipelineError![]const u8 {
+    const result = try buildStatesFromPrepared(allocator, prepared);
+    const grouped = try actions.groupActionTable(allocator, result.actions);
+    const resolved = try resolution.resolveActionTable(allocator, result.productions, grouped);
+    return try debug_dump.dumpResolvedActionTableAlloc(allocator, resolved);
+}
+
 test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
@@ -524,6 +534,30 @@ test "resolveActionTableSkeleton leaves the first precedence-sensitive grammar u
     }
 
     try std.testing.expect(saw_unresolved);
+}
+
+test "generateResolvedActionTableDumpFromPrepared chooses reduce for the first precedence-sensitive grammar" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTablePrecedenceGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateResolvedActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expect(std.mem.indexOf(u8, dump, "reduce 2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, dump, "unresolved") == null);
 }
 
 test "generateStateActionDumpFromPrepared matches the metadata-rich parser-state action golden fixture" {

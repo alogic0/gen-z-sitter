@@ -1,6 +1,7 @@
 const std = @import("std");
 const actions = @import("actions.zig");
 const item = @import("item.zig");
+const resolution = @import("resolution.zig");
 const state = @import("state.zig");
 
 pub const DebugDumpError = std.mem.Allocator.Error || std.fs.File.WriteError;
@@ -45,6 +46,16 @@ pub fn dumpGroupedActionTableAlloc(
     var out = std.array_list.Managed(u8).init(allocator);
     defer out.deinit();
     try writeGroupedActionTableAlloc(allocator, out.writer(), states, action_table);
+    return try out.toOwnedSlice();
+}
+
+pub fn dumpResolvedActionTableAlloc(
+    allocator: std.mem.Allocator,
+    resolved_table: resolution.ResolvedActionTable,
+) DebugDumpError![]const u8 {
+    var out = std.array_list.Managed(u8).init(allocator);
+    defer out.deinit();
+    try writeResolvedActionTable(out.writer(), resolved_table);
     return try out.toOwnedSlice();
 }
 
@@ -196,6 +207,45 @@ pub fn writeGroupedActionTableAlloc(
         }
 
         if (index + 1 < states.len) try writer.writeByte('\n');
+    }
+}
+
+pub fn writeResolvedActionTable(
+    writer: anytype,
+    resolved_table: resolution.ResolvedActionTable,
+) !void {
+    for (resolved_table.states, 0..) |resolved_state, index| {
+        try writer.print("state {d}\n", .{resolved_state.state_id});
+        try writer.writeAll("  resolved_actions:\n");
+
+        for (resolved_state.groups) |group| {
+            try writer.writeAll("    ");
+            try writeSymbol(writer, group.symbol);
+            try writer.writeAll(": ");
+            switch (group.kind) {
+                .chosen => {
+                    const chosen = group.chosen.?;
+                    switch (chosen) {
+                        .shift => |target| try writer.print("shift {d}\n", .{target}),
+                        .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                        .accept => try writer.writeAll("accept\n"),
+                    }
+                },
+                .unresolved => {
+                    try writer.writeAll("unresolved\n");
+                    for (group.candidates) |entry| {
+                        try writer.writeAll("      candidate ");
+                        switch (entry.action) {
+                            .shift => |target| try writer.print("shift {d}\n", .{target}),
+                            .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                            .accept => try writer.writeAll("accept\n"),
+                        }
+                    }
+                },
+            }
+        }
+
+        if (index + 1 < resolved_table.states.len) try writer.writeByte('\n');
     }
 }
 
@@ -386,6 +436,49 @@ test "dumpGroupedActionTableAlloc groups actions by symbol deterministically" {
         \\    shift_reduce on terminal:0
         \\      #1@1
         \\      #2@1 ?terminal:0
+        \\
+    , dump);
+}
+
+test "dumpResolvedActionTableAlloc formats chosen and unresolved groups deterministically" {
+    const allocator = std.testing.allocator;
+    const resolved = resolution.ResolvedActionTable{
+        .states = &[_]resolution.ResolvedStateActions{
+            .{
+                .state_id = 0,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .kind = .chosen,
+                        .candidates = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                        },
+                        .chosen = .{ .reduce = 2 },
+                    },
+                    .{
+                        .symbol = .{ .terminal = 1 },
+                        .kind = .unresolved,
+                        .candidates = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 3 } },
+                            .{ .symbol = .{ .terminal = 1 }, .action = .{ .reduce = 4 } },
+                        },
+                        .chosen = null,
+                    },
+                },
+            },
+        },
+    };
+
+    const dump = try dumpResolvedActionTableAlloc(allocator, resolved);
+    defer allocator.free(dump);
+
+    try std.testing.expectEqualStrings(
+        \\state 0
+        \\  resolved_actions:
+        \\    terminal:0: reduce 2
+        \\    terminal:1: unresolved
+        \\      candidate shift 3
+        \\      candidate reduce 4
         \\
     , dump);
 }

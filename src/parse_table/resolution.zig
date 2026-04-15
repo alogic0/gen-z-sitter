@@ -1,6 +1,7 @@
 const std = @import("std");
 const actions = @import("actions.zig");
 const state = @import("state.zig");
+const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const ResolutionKind = enum {
     chosen,
@@ -34,15 +35,24 @@ pub fn resolveActionTableSkeleton(
     allocator: std.mem.Allocator,
     grouped_table: actions.GroupedActionTable,
 ) std.mem.Allocator.Error!ResolvedActionTable {
+    return try resolveActionTable(allocator, &.{}, grouped_table);
+}
+
+pub fn resolveActionTable(
+    allocator: std.mem.Allocator,
+    productions: anytype,
+    grouped_table: actions.GroupedActionTable,
+) std.mem.Allocator.Error!ResolvedActionTable {
     const states = try allocator.alloc(ResolvedStateActions, grouped_table.states.len);
     for (grouped_table.states, 0..) |grouped_state, state_index| {
         const groups = try allocator.alloc(ResolvedActionGroup, grouped_state.groups.len);
         for (grouped_state.groups, 0..) |group, group_index| {
+            const chosen = chooseResolvedAction(productions, group.entries);
             groups[group_index] = .{
                 .symbol = group.symbol,
-                .kind = if (group.entries.len == 1) .chosen else .unresolved,
+                .kind = if (chosen != null) .chosen else .unresolved,
                 .candidates = try allocator.dupe(actions.ActionEntry, group.entries),
-                .chosen = if (group.entries.len == 1) group.entries[0].action else null,
+                .chosen = chosen,
             };
         }
         states[state_index] = .{
@@ -51,6 +61,65 @@ pub fn resolveActionTableSkeleton(
         };
     }
     return .{ .states = states };
+}
+
+fn chooseResolvedAction(
+    productions: anytype,
+    candidates: []const actions.ActionEntry,
+) ?actions.ParseAction {
+    if (candidates.len == 1) return candidates[0].action;
+
+    if (candidates.len == 2) {
+        const first = candidates[0].action;
+        const second = candidates[1].action;
+
+        if (isShift(first) and isReduce(second)) {
+            return resolveShiftReduce(productions, second);
+        }
+        if (isReduce(first) and isShift(second)) {
+            return resolveShiftReduce(productions, first);
+        }
+    }
+
+    return null;
+}
+
+fn resolveShiftReduce(
+    productions: anytype,
+    reduce_action: actions.ParseAction,
+) ?actions.ParseAction {
+    const production_id = switch (reduce_action) {
+        .reduce => |id| id,
+        else => return null,
+    };
+
+    if (production_id >= productions.len) return null;
+    const production = productions[production_id];
+
+    for (production.steps) |step| {
+        switch (step.precedence) {
+            .integer => |value| {
+                if (value > 0) return reduce_action;
+            },
+            else => {},
+        }
+    }
+
+    return null;
+}
+
+fn isShift(action: actions.ParseAction) bool {
+    return switch (action) {
+        .shift => true,
+        else => false,
+    };
+}
+
+fn isReduce(action: actions.ParseAction) bool {
+    return switch (action) {
+        .reduce => true,
+        else => false,
+    };
 }
 
 test "resolveActionTableSkeleton marks singleton groups as chosen" {
@@ -118,4 +187,56 @@ test "resolveActionTableSkeleton leaves multi-candidate groups unresolved" {
     try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(2)[0].kind);
     try std.testing.expect(resolved.groupsForState(2)[0].chosen == null);
     try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(2)[0].candidates.len);
+}
+
+test "resolveActionTable chooses reduce for a positive integer precedence shift/reduce pair" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{
+            .lhs = 1,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{
+                    .symbol = .{ .non_terminal = 1 },
+                    .precedence = .{ .integer = 1 },
+                },
+            },
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 3,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTable(allocator, productions[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
+    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .reduce => |id| id == 1, else => false });
 }
