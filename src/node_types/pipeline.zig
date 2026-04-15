@@ -6,7 +6,6 @@ const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
 const compute = @import("compute.zig");
 const render_json = @import("render_json.zig");
 const fixtures = @import("../tests/fixtures.zig");
-const golden = @import("../tests/golden.zig");
 const json_loader = @import("../grammar/json_loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 
@@ -51,4 +50,27 @@ test "generateNodeTypesJsonFromPrepared runs the Milestone 3 pipeline from gramm
     const json = try generateNodeTypesJsonFromPrepared(pipeline_arena.allocator(), prepared);
 
     try std.testing.expectEqualStrings(fixtures.validResolvedNodeTypesJson().contents, json);
+}
+
+test "generateNodeTypesJsonFromPrepared matches the field and children golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.fieldChildrenGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const json = try generateNodeTypesJsonFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.fieldChildrenNodeTypesJson().contents, json);
 }

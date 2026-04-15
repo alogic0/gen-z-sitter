@@ -228,6 +228,132 @@ pub fn validResolvedNodeTypesJson() Fixture {
     };
 }
 
+pub fn fieldChildrenGrammarJson() Fixture {
+    return .{
+        .name = "field_children",
+        .contents =
+            \\{
+            \\  "name": "field_children",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        {
+            \\          "type": "SEQ",
+            \\          "members": [
+            \\            {
+            \\              "type": "FIELD",
+            \\              "name": "left",
+            \\              "content": { "type": "SYMBOL", "name": "expr" }
+            \\            },
+            \\            { "type": "STRING", "value": "+" },
+            \\            {
+            \\              "type": "FIELD",
+            \\              "name": "right",
+            \\              "content": {
+            \\                "type": "ALIAS",
+            \\                "named": true,
+            \\                "value": "rhs",
+            \\                "content": { "type": "SYMBOL", "name": "expr" }
+            \\              }
+            \\            }
+            \\          ]
+            \\        },
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "left",
+            \\          "content": { "type": "SYMBOL", "name": "expr" }
+            \\        }
+            \\      ]
+            \\    },
+            \\    "expr": {
+            \\      "type": "STRING",
+            \\      "value": "x"
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
+pub fn fieldChildrenNodeTypesJson() Fixture {
+    return .{
+        .name = "field_children_node_types",
+        .contents =
+            \\[
+            \\  {
+            \\    "type": "+",
+            \\    "named": true
+            \\  },
+            \\  {
+            \\    "type": "expr",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\    "type": "expr",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "expr",
+            \\    "named": true
+            \\  },
+            \\  {
+            \\    "type": "source_file",
+            \\    "named": true,
+            \\    "root": true,
+            \\    "fields": {
+            \\      "left": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\    "type": "expr",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    },
+            \\      "right": {
+            \\      "multiple": false,
+            \\      "required": false,
+            \\      "types": [
+            \\        {
+            \\    "type": "rhs",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\    },
+            \\    "children": {
+            \\      "multiple": true,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\    "type": "+",
+            \\          "named": true
+            \\        },
+            \\        {
+            \\    "type": "expr",
+            \\          "named": true
+            \\        },
+            \\        {
+            \\    "type": "rhs",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\]
+            \\
+        ,
+    };
+}
+
 pub fn undefinedSymbolGrammarJson() Fixture {
     return .{
         .name = "undefined_symbol",
