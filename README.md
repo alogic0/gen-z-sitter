@@ -86,12 +86,27 @@ Milestone 11 includes:
   - a top-level parser descriptor
   - basic accessor/query helpers
 
-The next parser-generation work is now Milestone 12:
+Milestone 12 is complete and establishes a richer runtime-facing parser-emission boundary.
+
+Milestone 12 includes:
 
 - richer parser output on top of the Milestone 11 boundary
 - a clearer runtime-facing emitted API boundary
 - deterministic richer parser-emission goldens
 - explicit blocked behavior at that richer emitted boundary
+- emitted parser helpers for:
+  - parser-level queries
+  - per-state queries
+  - indexed entry access
+  - field-level access
+  - symbol-based lookup
+  - predicate helpers
+
+The next parser-generation work is now Milestone 13:
+
+- runtime-facing parser output and compatibility boundary work
+- decisions about ABI targeting and compatibility layering
+- fuller parser output beyond the Milestone 12 query/helper layer
 
 ## Documents
 

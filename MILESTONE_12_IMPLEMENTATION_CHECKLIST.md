@@ -199,3 +199,53 @@ Milestone 12 is complete when:
 - the emitted parser artifact exposes a clearer runtime-facing API boundary
 - ready and blocked richer outputs are pinned by exact real-path goldens
 - the next milestone can focus on runtime compatibility or fuller parser output instead of first emitter-boundary shaping
+
+## Current Status
+
+Implemented now:
+
+- `src/parser_emit/parser_c.zig` has moved beyond the Milestone 11 parser.c-like boundary
+- the emitted parser artifact now exposes:
+  - parser-level access
+  - per-state access
+  - indexed entry access
+  - field-level entry access
+  - symbol-based lookup
+  - boolean predicate helpers
+- blocked output remains explicit through the richer emitted boundary
+- exact real-path parser.c-like goldens remain in place for:
+  - one ready grammar
+  - one blocked grammar
+
+## Review Result
+
+Implemented boundary work:
+
+- the emitted translation unit is materially more runtime-shaped than Milestone 11
+- the runtime-facing emitted API is now clear enough to serve as a handoff to later compatibility work
+- blocked behavior remains explicit and inspectable in both emitted data and emitted helpers
+- the richer emitted output remains deterministic and pinned by exact real-path artifacts
+
+Remaining gaps, intentionally deferred beyond Milestone 12:
+
+- upstream runtime ABI compatibility work
+- fuller parser output closer to real Tree-sitter `parser.c`
+- lexer/scanner emission
+- external scanner integration
+- parse-table compression/minimization
+
+## Completion State
+
+Milestone 12 is complete.
+
+Completed in this milestone:
+
+- richer parser output on top of the Milestone 11 boundary
+- a clearer runtime-facing emitted API boundary
+- explicit blocked behavior at the richer emitted boundary
+- exact ready/blocked parser.c-like goldens for the richer emitted surface
+
+Deferred to the next milestone:
+
+- runtime-facing compatibility targets
+- fuller parser output and ABI-oriented work

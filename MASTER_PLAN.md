@@ -751,8 +751,8 @@ This checklist covers only work that is still outstanding from the current proje
 - [x] update exact real-path parser.c-like goldens for:
 - [x] one ready grammar
 - [x] one blocked grammar
-- [ ] review whether the richer emitted boundary is sufficient to close Milestone 12
-- [ ] document the Milestone 12 completion boundary and remaining deferrals
+- [x] review whether the richer emitted boundary is sufficient to close Milestone 12
+- [x] document the Milestone 12 completion boundary and remaining deferrals
 
 ### Milestone 13: Runtime-facing parser output and compatibility boundary
 
