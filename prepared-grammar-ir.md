@@ -79,6 +79,7 @@ Rules:
 - insertion order must be deterministic
 - anonymous string tokens still receive stable IDs
 - external tokens are distinguished from internal terminals
+- if a name exists both as an internal rule and an external token, internal resolution wins
 
 ## Rule Model
 
@@ -95,6 +96,7 @@ pub const Metadata = struct {
     dynamic_precedence: i32 = 0,
     token: bool = false,
     immediate_token: bool = false,
+    reserved_context_name: ?[]const u8 = null,
 };
 
 pub const Alias = struct {
@@ -116,6 +118,11 @@ pub const Rule = union(enum) {
     },
 };
 ```
+
+Wrapper-lowering rule:
+
+- nested `FIELD`, `ALIAS`, `PREC*`, `TOKEN`, `IMMEDIATE_TOKEN`, and `RESERVED` wrappers should be merged into one canonical metadata node where possible
+- later passes should not depend on wrapper nesting depth for semantic meaning
 
 ## Variable Model
 
@@ -143,10 +150,10 @@ pub const VariableKind = enum {
 pub const PreparedGrammar = struct {
     grammar_name: []const u8,
     variables: []Variable,
+    external_tokens: []Variable,
     rules: []Rule,
     symbols: []SymbolInfo,
-    external_tokens: []SymbolId,
-    extra_symbols: []SymbolId,
+    extra_rules: []RuleId,
     expected_conflicts: []ConflictSet,
     precedence_orderings: []PrecedenceOrdering,
     variables_to_inline: []SymbolId,
@@ -182,6 +189,10 @@ Alternative:
 
 Convert names to canonical IDs earlier if named precedences are interned.
 
+Current upstream-aligned rule:
+
+- named precedences used by `PREC`, `PREC_LEFT`, and `PREC_RIGHT` must already have been declared in one of the precedence ordering entries before later passes begin
+
 ## Reserved Words
 
 If the generator needs reserved word support from the source grammar, represent it explicitly:
@@ -189,9 +200,11 @@ If the generator needs reserved word support from the source grammar, represent 
 ```zig
 pub const ReservedWordSet = struct {
     context_name: []const u8,
-    words: []SymbolId,
+    words: []RuleId,
 };
 ```
+
+This remains rule-based at the prepared-IR boundary in the current Zig implementation, matching the fact that reserved words are still lowered before token extraction.
 
 ## Invariants
 
@@ -200,10 +213,13 @@ The following invariants must hold before lex/parse-table stages begin:
 - all symbol references resolve to valid `SymbolId`
 - all variable rules point to valid `RuleId`
 - no duplicate symbol names within the same semantic class where forbidden
-- all inline targets exist and refer to valid variables
+- all retained inline targets exist and refer to valid variables
 - all supertype targets exist and refer to valid variables
 - all conflict sets contain at least two members
 - `word_token`, if present, refers to a terminal-compatible symbol
+- missing `inline` names have already been ignored and removed
+- supertype targets have already forced the corresponding variables to hidden
+- named precedence references are declared
 
 ## Preparation Passes
 
@@ -213,7 +229,7 @@ Recommended pass order:
 2. intern symbol names
 3. assign initial symbol kinds
 4. resolve rule references
-5. normalize metadata wrappers
+5. normalize metadata wrappers into canonical merged metadata nodes
 6. flatten nested choices/sequences where appropriate
 7. expand repeats into auxiliary forms
 8. extract tokens and external token info
@@ -257,6 +273,8 @@ Test this IR before parser generation exists.
 - metadata normalization
 - repeat expansion
 - inline target resolution
+- internal-over-external name resolution
+- undeclared named precedence rejection
 
 ### Snapshot tests
 

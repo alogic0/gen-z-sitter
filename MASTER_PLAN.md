@@ -35,6 +35,8 @@ The Zig project scaffold already exists in this directory and passes:
 
 Milestone 0 is effectively complete: build system, CLI skeleton, diagnostics, helper modules, and basic tests are wired.
 
+Milestone 2 is underway. The current Zig implementation already has a first `PreparedGrammar` lowering pass plus semantic checks modeled on upstream `prepare_grammar/intern_symbols.rs`.
+
 ## Top-Level Strategy
 
 Build the Zig generator in explicit stages:
@@ -50,6 +52,13 @@ Build the Zig generator in explicit stages:
 9. verify compatibility and equivalence
 
 The rewrite should preserve external behavior first and optimize later.
+
+For the front-end stages, the primary behavioral reference is not generic “grammar preparation” in the abstract. It is the concrete upstream sequence around:
+
+- `crates/generate/src/prepare_grammar.rs`
+- `crates/generate/src/prepare_grammar/intern_symbols.rs`
+
+That matters because several user-visible semantics are established there before token extraction or parse-table work begins.
 
 ## Architecture
 
@@ -189,6 +198,15 @@ Its purpose is to:
 - normalize metadata and rule structure
 - provide a clean input to lexing and parse-table generation
 
+The current understanding from upstream Rust is that this boundary must already encode several specific semantics:
+
+- hidden start rules are rejected
+- internal rule names win over duplicate external-token names during resolution
+- missing `inline` names are ignored rather than rejected
+- supertypes force the referenced variables to become hidden
+- named precedences used in `PREC`, `PREC_LEFT`, and `PREC_RIGHT` must be declared
+- nested metadata wrappers should collapse into one canonical metadata node where possible
+
 ### Core types
 
 ```zig
@@ -237,8 +255,11 @@ pub const PreparedGrammar = struct {
 - all variable rules point to valid `RuleId`
 - duplicate symbol/state conflicts are normalized away where required
 - inline and supertype targets exist
+- missing `inline` names have already been dropped instead of surviving as unresolved entries
 - conflict sets are canonicalized
 - `word_token`, if present, is valid
+- named precedence references are declared
+- symbol resolution order is deterministic and prefers internal rules over external-token names
 
 ### Preparation pass order
 
@@ -246,7 +267,7 @@ pub const PreparedGrammar = struct {
 2. intern symbol names
 3. assign initial symbol kinds
 4. resolve rule references
-5. normalize metadata wrappers
+5. normalize metadata wrappers into canonical merged metadata nodes
 6. flatten nested choices/sequences where appropriate
 7. expand repeats into auxiliary forms
 8. extract token and external-token information

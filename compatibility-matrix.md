@@ -44,6 +44,11 @@ Use four compatibility levels:
 | aliases | visible node kinds and fields preserved | Stable | node-types + parse-tree compare |
 | supertypes | same supertype relationships | Stable | canonical node-types compare |
 | precedence/conflicts | same ambiguity resolution | Equivalent | parse-tree compare on targeted fixtures |
+| hidden start rule | reject grammars whose first rule is hidden | Equivalent | lowering fixture tests |
+| internal vs external names | prefer internal rule names over duplicate external-token names | Stable | lowering fixture tests |
+| missing inline targets | ignore unresolved inline names instead of rejecting the grammar | Stable | lowering fixture tests |
+| named precedence declarations | reject uses of undeclared named precedences | Equivalent | lowering fixture tests |
+| metadata wrapper collapse | preserve merged field/alias/precedence/token/reserved semantics through lowering | Stable | prepared-IR tests |
 
 ## Diagnostics Compatibility
 
@@ -80,6 +85,7 @@ Validation:
 
 - prepared grammar matches Rust generator on curated fixtures
 - symbol IDs and normalized rule ordering are stable
+- hidden-start, internal-over-external, missing-inline, supertype-hiding, and named-precedence semantics match upstream interning behavior
 
 ### Milestone 3
 

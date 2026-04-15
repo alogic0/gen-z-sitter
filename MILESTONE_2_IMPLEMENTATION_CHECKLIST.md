@@ -215,6 +215,7 @@ Possible responsibilities:
 - canonical ordering of conflict sets
 - duplicate elimination in inline/supertypes/conflicts
 - metadata normalization
+- visibility and symbol-table cleanup that should not remain embedded in recursive lowering code
 
 This file is optional if the logic remains small, but separation is likely useful.
 
@@ -229,6 +230,7 @@ Use the same basic visibility model as upstream:
 - names starting with `_` become hidden variables
 - start rule must not be hidden
 - named rules remain named unless transformed later
+- any symbol listed in `supertypes` must force the corresponding variable kind to hidden
 
 Errors to support:
 
@@ -239,6 +241,7 @@ Errors to support:
 For every named symbol reference in rules:
 
 - resolve to a declared variable or external token
+- if a name exists both as an internal rule and as an external token, the internal rule must win
 - otherwise fail
 
 Errors to support:
@@ -263,7 +266,8 @@ Errors to support:
 
 If `inline` names are present:
 
-- resolve to symbol IDs
+- resolve valid names to symbol IDs
+- ignore missing names instead of failing, to match upstream `intern_symbols.rs`
 - deduplicate
 
 Later constraints about what may be inlined can remain for later passes.
@@ -276,6 +280,27 @@ At this stage:
 
 - require symbol existence
 - record the supertype symbol list
+- mark the symbol as a supertype in the symbol table
+- force the resolved variable kind to hidden even if the source name is visible
+
+### Named precedence validation
+
+At this stage:
+
+- any named precedence used in `PREC`, `PREC_LEFT`, or `PREC_RIGHT` must be declared in at least one precedence ordering entry
+- integer precedence values remain always valid
+- validation must walk rules, externals, extras, and reserved-word members
+
+Errors to support:
+
+- undeclared named precedence
+
+### Metadata normalization
+
+At this stage:
+
+- nested `FIELD`, `ALIAS`, `PREC*`, `TOKEN`, `IMMEDIATE_TOKEN`, and `RESERVED` wrappers should collapse into one canonical metadata node where possible
+- later passes should consume merged metadata instead of peeling equivalent wrapper stacks repeatedly
 
 ### Conflict resolution metadata
 
@@ -307,7 +332,7 @@ pub const ParseGrammarError = error{
     UndefinedSupertype,
     UndefinedConflict,
     UndefinedWordToken,
-    DeferredUnsupportedCase,
+    UndeclaredPrecedence,
     OutOfMemory,
 };
 ```
@@ -346,6 +371,7 @@ Done when:
 - assign external symbols in external-token order
 - assign deterministic IDs
 - compute variable kinds from names
+- prefer internal rules over duplicate external-token names during resolution
 
 Done when:
 
@@ -383,6 +409,8 @@ Done when:
 - reject undefined `word`
 - reject undefined conflict members
 - reject undefined supertypes
+- reject undeclared named precedence uses
+- ignore missing `inline` names instead of reporting them as hard errors
 
 Done when:
 
@@ -415,6 +443,9 @@ For:
 - undefined reference detection
 - hidden start-rule rejection
 - word token resolution
+- named precedence validation
+- internal-over-external symbol resolution
+- metadata wrapper collapsing
 
 ### Snapshot tests
 
