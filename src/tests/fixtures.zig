@@ -772,6 +772,98 @@ pub fn parseTableConflictEmitterDump() Fixture {
     };
 }
 
+pub fn parseTableMetadataCTablesDump() Fixture {
+    return .{
+        .name = "parse_table_metadata_c_tables_dump",
+        .contents =
+            \\/* generated parser table skeleton */
+            \\#define TS_SERIALIZED_TABLE_BLOCKED false
+            \\#define TS_STATE_COUNT 7
+            \\
+            \\/* state 0 */
+            \\static const unsigned TS_STATE_0_ACTION_COUNT = 1;
+            \\/* action[0] terminal:1 shift 3 */
+            \\static const unsigned TS_STATE_0_GOTO_COUNT = 2;
+            \\/* goto[0] non_terminal:0 -> 1 */
+            \\/* goto[1] non_terminal:1 -> 2 */
+            \\
+            \\/* state 1 */
+            \\static const unsigned TS_STATE_1_ACTION_COUNT = 0;
+            \\static const unsigned TS_STATE_1_GOTO_COUNT = 0;
+            \\
+            \\/* state 2 */
+            \\static const unsigned TS_STATE_2_ACTION_COUNT = 1;
+            \\/* action[0] terminal:0 shift 4 */
+            \\static const unsigned TS_STATE_2_GOTO_COUNT = 0;
+            \\
+            \\/* state 3 */
+            \\static const unsigned TS_STATE_3_ACTION_COUNT = 1;
+            \\/* action[0] terminal:0 reduce 2 */
+            \\static const unsigned TS_STATE_3_GOTO_COUNT = 0;
+            \\
+            \\/* state 4 */
+            \\static const unsigned TS_STATE_4_ACTION_COUNT = 1;
+            \\/* action[0] terminal:1 shift 6 */
+            \\static const unsigned TS_STATE_4_GOTO_COUNT = 1;
+            \\/* goto[0] non_terminal:1 -> 5 */
+            \\
+            \\/* state 5 */
+            \\static const unsigned TS_STATE_5_ACTION_COUNT = 0;
+            \\static const unsigned TS_STATE_5_GOTO_COUNT = 0;
+            \\
+            \\/* state 6 */
+            \\static const unsigned TS_STATE_6_ACTION_COUNT = 0;
+            \\static const unsigned TS_STATE_6_GOTO_COUNT = 0;
+            \\
+        ,
+    };
+}
+
+pub fn parseTableConflictCTablesDump() Fixture {
+    return .{
+        .name = "parse_table_conflict_c_tables_dump",
+        .contents =
+            \\/* generated parser table skeleton */
+            \\#define TS_SERIALIZED_TABLE_BLOCKED true
+            \\#define TS_STATE_COUNT 6
+            \\
+            \\/* state 0 */
+            \\static const unsigned TS_STATE_0_ACTION_COUNT = 1;
+            \\/* action[0] terminal:1 shift 3 */
+            \\static const unsigned TS_STATE_0_GOTO_COUNT = 2;
+            \\/* goto[0] non_terminal:0 -> 1 */
+            \\/* goto[1] non_terminal:1 -> 2 */
+            \\
+            \\/* state 1 */
+            \\static const unsigned TS_STATE_1_ACTION_COUNT = 0;
+            \\static const unsigned TS_STATE_1_GOTO_COUNT = 0;
+            \\
+            \\/* state 2 */
+            \\static const unsigned TS_STATE_2_ACTION_COUNT = 1;
+            \\/* action[0] terminal:0 shift 4 */
+            \\static const unsigned TS_STATE_2_GOTO_COUNT = 0;
+            \\
+            \\/* state 3 */
+            \\static const unsigned TS_STATE_3_ACTION_COUNT = 1;
+            \\/* action[0] terminal:0 reduce 3 */
+            \\static const unsigned TS_STATE_3_GOTO_COUNT = 0;
+            \\
+            \\/* state 4 */
+            \\static const unsigned TS_STATE_4_ACTION_COUNT = 1;
+            \\/* action[0] terminal:1 shift 3 */
+            \\static const unsigned TS_STATE_4_GOTO_COUNT = 1;
+            \\/* goto[0] non_terminal:1 -> 5 */
+            \\
+            \\/* state 5 */
+            \\static const unsigned TS_STATE_5_ACTION_COUNT = 0;
+            \\static const unsigned TS_STATE_5_GOTO_COUNT = 0;
+            \\static const unsigned TS_STATE_5_UNRESOLVED_COUNT = 1;
+            \\/* unresolved[0] terminal:0 shift_reduce candidates=2 */
+            \\
+        ,
+    };
+}
+
 pub fn parseTableConflictActionTableDump() Fixture {
     return .{
         .name = "parse_table_conflict_action_table_dump",
