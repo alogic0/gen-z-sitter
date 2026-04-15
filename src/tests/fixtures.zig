@@ -1170,6 +1170,72 @@ pub fn extraAliasedBodyNodeTypesJson() Fixture {
     };
 }
 
+pub fn externalCollisionGrammarJson() Fixture {
+    return .{
+        .name = "external_collision",
+        .contents =
+            \\{
+            \\  "name": "external_collision",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "statement"
+            \\    },
+            \\    "statement": {
+            \\      "type": "ALIAS",
+            \\      "named": true,
+            \\      "value": "statement",
+            \\      "content": { "type": "SYMBOL", "name": "indent" }
+            \\    }
+            \\  },
+            \\  "externals": [
+            \\    { "type": "SYMBOL", "name": "indent" }
+            \\  ]
+            \\}
+        ,
+    };
+}
+
+pub fn externalCollisionNodeTypesJson() Fixture {
+    return .{
+        .name = "external_collision_node_types",
+        .contents =
+            \\[
+            \\  {
+            \\    "type": "source_file",
+            \\    "named": true,
+            \\    "root": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "statement",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "statement",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": false,
+            \\      "types": [
+            \\        {
+            \\          "type": "statement",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\]
+            \\
+        ,
+    };
+}
+
 pub fn undefinedSymbolGrammarJson() Fixture {
     return .{
         .name = "undefined_symbol",
