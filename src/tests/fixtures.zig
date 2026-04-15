@@ -212,7 +212,7 @@ pub fn validResolvedNodeTypesJson() Fixture {
             \\      "required": true,
             \\      "types": [
             \\        {
-            \\    "type": "term",
+            \\          "type": "term",
             \\          "named": true
             \\        }
             \\      ]
@@ -293,7 +293,7 @@ pub fn fieldChildrenNodeTypesJson() Fixture {
             \\      "required": true,
             \\      "types": [
             \\        {
-            \\    "type": "expr",
+            \\          "type": "expr",
             \\          "named": true
             \\        }
             \\      ]
@@ -309,40 +309,40 @@ pub fn fieldChildrenNodeTypesJson() Fixture {
             \\    "root": true,
             \\    "fields": {
             \\      "left": {
-            \\      "multiple": false,
-            \\      "required": true,
-            \\      "types": [
-            \\        {
-            \\    "type": "expr",
-            \\          "named": true
-            \\        }
-            \\      ]
-            \\    },
+            \\        "multiple": false,
+            \\        "required": true,
+            \\        "types": [
+            \\          {
+            \\            "type": "expr",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      },
             \\      "right": {
-            \\      "multiple": false,
-            \\      "required": false,
-            \\      "types": [
-            \\        {
-            \\    "type": "rhs",
-            \\          "named": true
-            \\        }
-            \\      ]
-            \\    }
+            \\        "multiple": false,
+            \\        "required": false,
+            \\        "types": [
+            \\          {
+            \\            "type": "rhs",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      }
             \\    },
             \\    "children": {
             \\      "multiple": true,
             \\      "required": true,
             \\      "types": [
             \\        {
-            \\    "type": "+",
+            \\          "type": "+",
             \\          "named": true
             \\        },
             \\        {
-            \\    "type": "expr",
+            \\          "type": "expr",
             \\          "named": true
             \\        },
             \\        {
-            \\    "type": "rhs",
+            \\          "type": "rhs",
             \\          "named": true
             \\        }
             \\      ]
@@ -411,7 +411,7 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
             \\      "required": true,
             \\      "types": [
             \\        {
-            \\    "type": "expr",
+            \\          "type": "expr",
             \\          "named": true
             \\        }
             \\      ]
@@ -429,7 +429,7 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
             \\      "required": true,
             \\      "types": [
             \\        {
-            \\    "type": "term",
+            \\          "type": "term",
             \\          "named": true
             \\        }
             \\      ]
@@ -441,40 +441,40 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
             \\    "root": true,
             \\    "fields": {
             \\      "left": {
-            \\      "multiple": false,
-            \\      "required": true,
-            \\      "types": [
-            \\        {
-            \\    "type": "expr",
-            \\          "named": true
-            \\        }
-            \\      ]
-            \\    },
+            \\        "multiple": false,
+            \\        "required": true,
+            \\        "types": [
+            \\          {
+            \\            "type": "expr",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      },
             \\      "right": {
-            \\      "multiple": false,
-            \\      "required": true,
-            \\      "types": [
-            \\        {
-            \\    "type": "rhs",
-            \\          "named": true
-            \\        }
-            \\      ]
-            \\    }
+            \\        "multiple": false,
+            \\        "required": true,
+            \\        "types": [
+            \\          {
+            \\            "type": "rhs",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      }
             \\    },
             \\    "children": {
             \\      "multiple": true,
             \\      "required": true,
             \\      "types": [
             \\        {
-            \\    "type": "_pair",
+            \\          "type": "_pair",
             \\          "named": true
             \\        },
             \\        {
-            \\    "type": "expr",
+            \\          "type": "expr",
             \\          "named": true
             \\        },
             \\        {
-            \\    "type": "rhs",
+            \\          "type": "rhs",
             \\          "named": true
             \\        }
             \\      ]

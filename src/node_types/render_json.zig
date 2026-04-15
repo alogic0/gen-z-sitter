@@ -11,21 +11,22 @@ pub fn renderNodeTypesJson(
 ) RenderJsonError!void {
     try writer.writeAll("[\n");
     for (nodes, 0..) |node, i| {
-        try writer.writeAll("  {\n");
-        try writeJsonField(writer, "type", node.kind, true);
-        try writer.print("    \"named\": {}", .{node.named});
+        try writeIndent(writer, 1);
+        try writer.writeAll("{\n");
+        try writeStringField(writer, 2, "type", node.kind, true);
+        try writeBoolField(writer, 2, "named", node.named, false, false);
 
         if (node.root) {
             try writer.writeAll(",\n");
-            try writer.print("    \"root\": {}", .{node.root});
+            try writeBoolField(writer, 2, "root", node.root, false, false);
         }
 
         if (node.extra) {
             try writer.writeAll(",\n");
-            try writer.print("    \"extra\": {}", .{node.extra});
+            try writeBoolField(writer, 2, "extra", node.extra, false, false);
         }
 
-        if (node.fields.len > 0) {
+        if (hasRenderableFields(node.fields)) {
             try writer.writeAll(",\n");
             try renderFields(writer, node.fields);
         }
@@ -42,7 +43,9 @@ pub fn renderNodeTypesJson(
             try renderSubtypes(writer, node.subtypes);
         }
 
-        try writer.writeAll("\n  }");
+        try writer.writeAll("\n");
+        try writeIndent(writer, 1);
+        try writer.writeAll("}");
         if (i + 1 != nodes.len) {
             try writer.writeAll(",\n");
         } else {
@@ -63,17 +66,24 @@ pub fn renderNodeTypesJsonAlloc(
 }
 
 fn renderFields(writer: anytype, fields: []const compute.Field) RenderJsonError!void {
-    try writer.writeAll("    \"fields\": {\n");
-    for (fields, 0..) |field, i| {
-        try writer.print("      \"{s}\": ", .{field.name});
-        try renderChildInfo(writer, field.info, 6);
-        if (i + 1 != fields.len) {
+    try writeIndent(writer, 2);
+    try writer.writeAll("\"fields\": {\n");
+
+    var rendered_count: usize = 0;
+    for (fields) |field| {
+        if (field.info.types.len == 0) continue;
+        if (rendered_count > 0) {
             try writer.writeAll(",\n");
-        } else {
-            try writer.writeAll("\n");
         }
+        try writeIndent(writer, 3);
+        try writeJsonString(writer, field.name);
+        try writer.writeAll(": ");
+        try renderChildInfo(writer, field.info, 3);
+        rendered_count += 1;
     }
-    try writer.writeAll("    }");
+    try writer.writeAll("\n");
+    try writeIndent(writer, 2);
+    try writer.writeAll("}");
 }
 
 fn renderChildInfoField(
@@ -81,56 +91,93 @@ fn renderChildInfoField(
     name: []const u8,
     info: compute.ChildInfo,
 ) RenderJsonError!void {
-    try writer.print("    \"{s}\": ", .{name});
-    try renderChildInfo(writer, info, 4);
+    try writeIndent(writer, 2);
+    try writeJsonString(writer, name);
+    try writer.writeAll(": ");
+    try renderChildInfo(writer, info, 2);
 }
 
 fn renderChildInfo(writer: anytype, info: compute.ChildInfo, indent: usize) RenderJsonError!void {
-    _ = indent;
     try writer.writeAll("{\n");
-    try writer.print("      \"multiple\": {},\n", .{info.quantity.multiple});
-    try writer.print("      \"required\": {},\n", .{info.quantity.required});
-    try writer.writeAll("      \"types\": [\n");
+    try writeBoolField(writer, indent + 1, "multiple", info.quantity.multiple, true, true);
+    try writeBoolField(writer, indent + 1, "required", info.quantity.required, true, true);
+    try writeIndent(writer, indent + 1);
+    try writer.writeAll("\"types\": [\n");
     for (info.types, 0..) |ty, i| {
-        try writer.writeAll("        {\n");
-        try writeJsonField(writer, "type", ty.kind, false);
+        try writeIndent(writer, indent + 2);
+        try writer.writeAll("{\n");
+        try writeStringField(writer, indent + 3, "type", ty.kind, false);
         try writer.writeAll(",\n");
-        try writer.print("          \"named\": {}\n", .{ty.named});
-        try writer.writeAll("        }");
+        try writeBoolField(writer, indent + 3, "named", ty.named, false, false);
+        try writer.writeAll("\n");
+        try writeIndent(writer, indent + 2);
+        try writer.writeAll("}");
         if (i + 1 != info.types.len) {
             try writer.writeAll(",\n");
         } else {
             try writer.writeAll("\n");
         }
     }
-    try writer.writeAll("      ]\n");
-    try writer.writeAll("    }");
+    try writeIndent(writer, indent + 1);
+    try writer.writeAll("]\n");
+    try writeIndent(writer, indent);
+    try writer.writeAll("}");
 }
 
 fn renderSubtypes(writer: anytype, subtypes: []const compute.NodeTypeRef) RenderJsonError!void {
-    try writer.writeAll("    \"subtypes\": [\n");
+    try writeIndent(writer, 2);
+    try writer.writeAll("\"subtypes\": [\n");
     for (subtypes, 0..) |subtype, i| {
-        try writer.writeAll("      {\n");
-        try writeJsonField(writer, "type", subtype.kind, false);
+        try writeIndent(writer, 3);
+        try writer.writeAll("{\n");
+        try writeStringField(writer, 4, "type", subtype.kind, false);
         try writer.writeAll(",\n");
-        try writer.print("        \"named\": {}\n", .{subtype.named});
-        try writer.writeAll("      }");
+        try writeBoolField(writer, 4, "named", subtype.named, false, false);
+        try writer.writeAll("\n");
+        try writeIndent(writer, 3);
+        try writer.writeAll("}");
         if (i + 1 != subtypes.len) {
             try writer.writeAll(",\n");
         } else {
             try writer.writeAll("\n");
         }
     }
-    try writer.writeAll("    ]");
+    try writeIndent(writer, 2);
+    try writer.writeAll("]");
 }
 
-fn writeJsonField(writer: anytype, name: []const u8, value: []const u8, comma_after: bool) RenderJsonError!void {
-    try writer.print("    \"{s}\": ", .{name});
+fn writeStringField(writer: anytype, indent: usize, name: []const u8, value: []const u8, newline_after: bool) RenderJsonError!void {
+    try writeIndent(writer, indent);
+    try writeJsonString(writer, name);
+    try writer.writeAll(": ");
     try writeJsonString(writer, value);
-    if (comma_after) try writer.writeAll(",");
-    if (comma_after) {
+    if (newline_after) {
+        try writer.writeAll(",");
         try writer.writeAll("\n");
     }
+}
+
+fn writeBoolField(writer: anytype, indent: usize, name: []const u8, value: bool, comma_after: bool, newline_after: bool) RenderJsonError!void {
+    try writeIndent(writer, indent);
+    try writeJsonString(writer, name);
+    try writer.writeAll(": ");
+    try writer.print("{}", .{value});
+    if (comma_after) try writer.writeAll(",");
+    if (newline_after) try writer.writeAll("\n");
+}
+
+fn writeIndent(writer: anytype, level: usize) RenderJsonError!void {
+    var i: usize = 0;
+    while (i < level) : (i += 1) {
+        try writer.writeAll("  ");
+    }
+}
+
+fn hasRenderableFields(fields: []const compute.Field) bool {
+    for (fields) |field| {
+        if (field.info.types.len > 0) return true;
+    }
+    return false;
 }
 
 fn writeJsonString(writer: anytype, value: []const u8) RenderJsonError!void {
