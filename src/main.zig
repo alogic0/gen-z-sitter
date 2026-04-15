@@ -60,6 +60,7 @@ test {
     _ = @import("grammar/prepare/extract_tokens.zig");
     _ = @import("grammar/prepare/expand_repeats.zig");
     _ = @import("grammar/prepare/flatten_grammar.zig");
+    _ = @import("grammar/prepare/extract_default_aliases.zig");
     _ = @import("ir/symbols.zig");
     _ = @import("ir/rules.zig");
     _ = @import("ir/grammar_ir.zig");

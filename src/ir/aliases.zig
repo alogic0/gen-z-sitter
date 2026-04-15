@@ -1,9 +1,9 @@
 const std = @import("std");
-const symbols = @import("symbols.zig");
 const rules = @import("rules.zig");
+const syntax = @import("syntax_grammar.zig");
 
 pub const AliasTarget = union(enum) {
-    symbol: symbols.SymbolId,
+    symbol: syntax.SymbolRef,
     rule: rules.RuleId,
 };
 
@@ -15,11 +15,11 @@ pub const AliasEntry = struct {
 pub const AliasMap = struct {
     entries: []const AliasEntry,
 
-    pub fn findForSymbol(self: AliasMap, symbol: symbols.SymbolId) ?rules.Alias {
+    pub fn findForSymbol(self: AliasMap, symbol: syntax.SymbolRef) ?rules.Alias {
         for (self.entries) |entry| {
             switch (entry.target) {
                 .symbol => |candidate| {
-                    if (candidate.kind == symbol.kind and candidate.index == symbol.index) {
+                    if (symbolRefEql(candidate, symbol)) {
                         return entry.alias;
                     }
                 },
@@ -30,20 +30,37 @@ pub const AliasMap = struct {
     }
 };
 
+fn symbolRefEql(a: syntax.SymbolRef, b: syntax.SymbolRef) bool {
+    return switch (a) {
+        .non_terminal => |index| switch (b) {
+            .non_terminal => |other| index == other,
+            else => false,
+        },
+        .terminal => |index| switch (b) {
+            .terminal => |other| index == other,
+            else => false,
+        },
+        .external => |index| switch (b) {
+            .external => |other| index == other,
+            else => false,
+        },
+    };
+}
+
 test "alias map resolves symbol aliases" {
     const map = AliasMap{
         .entries = &.{.{
-            .target = .{ .symbol = symbols.SymbolId.nonTerminal(2) },
+            .target = .{ .symbol = .{ .non_terminal = 2 } },
             .alias = .{ .value = "expression", .named = true },
         }},
     };
 
-    const alias = map.findForSymbol(symbols.SymbolId.nonTerminal(2)).?;
+    const alias = map.findForSymbol(.{ .non_terminal = 2 }).?;
     try std.testing.expectEqualStrings("expression", alias.value);
     try std.testing.expect(alias.named);
 }
 
 test "alias map returns null for unknown symbol" {
     const map = AliasMap{ .entries = &.{} };
-    try std.testing.expect(map.findForSymbol(symbols.SymbolId.nonTerminal(0)) == null);
+    try std.testing.expect(map.findForSymbol(.{ .non_terminal = 0 }) == null);
 }
