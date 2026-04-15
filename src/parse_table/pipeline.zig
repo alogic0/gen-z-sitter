@@ -523,13 +523,18 @@ test "resolveActionTableSkeleton leaves the first precedence-sensitive grammar u
             if (conflict.kind != .shift_reduce) continue;
             if (conflict.symbol == null) continue;
 
-            for (resolved.groupsForState(parse_state.id)) |group| {
-                if (!std.meta.eql(group.symbol, conflict.symbol.?)) continue;
-                try std.testing.expectEqual(resolution.ResolutionKind.unresolved, group.kind);
-                try std.testing.expect(group.chosen == null);
-                try std.testing.expect(group.candidate_actions.len >= 2);
-                saw_unresolved = true;
-            }
+            const decision = resolved.decisionFor(parse_state.id, conflict.symbol.?) orelse continue;
+            try std.testing.expectEqual(
+                resolution.UnresolvedReason.shift_reduce,
+                switch (decision) {
+                    .chosen => unreachable,
+                    .unresolved => |reason| reason,
+                },
+            );
+            try std.testing.expect(
+                resolved.candidateActionsFor(parse_state.id, conflict.symbol.?).len >= 2,
+            );
+            saw_unresolved = true;
         }
     }
 

@@ -4,11 +4,6 @@ const item = @import("item.zig");
 const state = @import("state.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
-pub const ResolutionKind = enum {
-    chosen,
-    unresolved,
-};
-
 pub const UnresolvedReason = enum {
     multiple_candidates,
     shift_reduce,
@@ -16,17 +11,44 @@ pub const UnresolvedReason = enum {
     unsupported_action_mix,
 };
 
+pub const ResolvedDecision = union(enum) {
+    chosen: actions.ParseAction,
+    unresolved: UnresolvedReason,
+};
+
 pub const ResolvedActionGroup = struct {
     symbol: @import("../ir/syntax_grammar.zig").SymbolRef,
-    kind: ResolutionKind,
     candidate_actions: []const actions.ParseAction,
-    chosen: ?actions.ParseAction = null,
-    reason: ?UnresolvedReason = null,
+    decision: ResolvedDecision,
+
+    pub fn chosenAction(self: ResolvedActionGroup) ?actions.ParseAction {
+        return switch (self.decision) {
+            .chosen => |action| action,
+            .unresolved => null,
+        };
+    }
+
+    pub fn unresolvedReason(self: ResolvedActionGroup) ?UnresolvedReason {
+        return switch (self.decision) {
+            .chosen => null,
+            .unresolved => |reason| reason,
+        };
+    }
 };
 
 pub const ResolvedStateActions = struct {
     state_id: state.StateId,
     groups: []const ResolvedActionGroup,
+
+    pub fn groupForSymbol(
+        self: ResolvedStateActions,
+        symbol: syntax_ir.SymbolRef,
+    ) ?ResolvedActionGroup {
+        for (self.groups) |group| {
+            if (symbolRefEql(group.symbol, symbol)) return group;
+        }
+        return null;
+    }
 };
 
 pub const ResolvedActionTable = struct {
@@ -35,6 +57,32 @@ pub const ResolvedActionTable = struct {
     pub fn groupsForState(self: ResolvedActionTable, state_id: state.StateId) []const ResolvedActionGroup {
         for (self.states) |resolved| {
             if (resolved.state_id == state_id) return resolved.groups;
+        }
+        return &.{};
+    }
+
+    pub fn decisionFor(
+        self: ResolvedActionTable,
+        state_id: state.StateId,
+        symbol: syntax_ir.SymbolRef,
+    ) ?ResolvedDecision {
+        for (self.states) |resolved| {
+            if (resolved.state_id != state_id) continue;
+            if (resolved.groupForSymbol(symbol)) |group| return group.decision;
+            return null;
+        }
+        return null;
+    }
+
+    pub fn candidateActionsFor(
+        self: ResolvedActionTable,
+        state_id: state.StateId,
+        symbol: syntax_ir.SymbolRef,
+    ) []const actions.ParseAction {
+        for (self.states) |resolved| {
+            if (resolved.state_id != state_id) continue;
+            if (resolved.groupForSymbol(symbol)) |group| return group.candidate_actions;
+            return &.{};
         }
         return &.{};
     }
@@ -86,10 +134,11 @@ pub fn resolveActionTableWithContext(
             const decision = chooseResolvedAction(productions, precedence_orderings, parse_state, group.entries);
             groups[group_index] = .{
                 .symbol = group.symbol,
-                .kind = if (decision.chosen != null) .chosen else .unresolved,
                 .candidate_actions = try dupActions(allocator, group.entries),
-                .chosen = decision.chosen,
-                .reason = decision.reason,
+                .decision = if (decision.chosen) |chosen|
+                    .{ .chosen = chosen }
+                else
+                    .{ .unresolved = decision.reason orelse .unsupported_action_mix },
             };
         }
         states[state_index] = .{
@@ -357,6 +406,25 @@ fn isReduce(action: actions.ParseAction) bool {
     };
 }
 
+fn expectChosenAction(group: ResolvedActionGroup, expected: actions.ParseAction) !void {
+    try std.testing.expect(switch (group.decision) {
+        .chosen => |actual| std.meta.eql(actual, expected),
+        .unresolved => false,
+    });
+}
+
+fn expectUnresolvedGroup(
+    group: ResolvedActionGroup,
+    expected_reason: UnresolvedReason,
+    expected_count: usize,
+) !void {
+    try std.testing.expect(switch (group.decision) {
+        .chosen => false,
+        .unresolved => |reason| reason == expected_reason,
+    });
+    try std.testing.expectEqual(expected_count, group.candidate_actions.len);
+}
+
 test "resolveActionTableSkeleton marks singleton groups as chosen" {
     const allocator = std.testing.allocator;
 
@@ -386,8 +454,11 @@ test "resolveActionTableSkeleton marks singleton groups as chosen" {
     }
 
     try std.testing.expectEqual(@as(usize, 1), resolved.groupsForState(1).len);
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(1)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(1)[0].chosen.?) { .shift => |id| id == 3, else => false });
+    try expectChosenAction(resolved.groupsForState(1)[0], .{ .shift = 3 });
+    try std.testing.expect(switch (resolved.decisionFor(1, .{ .terminal = 0 }).?) {
+        .chosen => |action| std.meta.eql(action, actions.ParseAction{ .shift = 3 }),
+        .unresolved => false,
+    });
 }
 
 test "resolveActionTableSkeleton leaves multi-candidate groups unresolved" {
@@ -419,9 +490,7 @@ test "resolveActionTableSkeleton leaves multi-candidate groups unresolved" {
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(2)[0].kind);
-    try std.testing.expect(resolved.groupsForState(2)[0].chosen == null);
-    try std.testing.expectEqual(UnresolvedReason.shift_reduce, resolved.groupsForState(2)[0].reason.?);
+    try expectUnresolvedGroup(resolved.groupsForState(2)[0], .shift_reduce, 2);
     try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(2)[0].candidate_actions.len);
     try std.testing.expect(switch (resolved.groupsForState(2)[0].candidate_actions[0]) {
         .shift => |id| id == 4,
@@ -431,6 +500,7 @@ test "resolveActionTableSkeleton leaves multi-candidate groups unresolved" {
         .reduce => |id| id == 2,
         else => false,
     });
+    try std.testing.expectEqual(@as(usize, 2), resolved.candidateActionsFor(2, .{ .terminal = 0 }).len);
 }
 
 test "resolveActionTable keeps reduce/reduce pairs unresolved" {
@@ -475,10 +545,7 @@ test "resolveActionTable keeps reduce/reduce pairs unresolved" {
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(4)[0].kind);
-    try std.testing.expectEqual(@as(?actions.ParseAction, null), resolved.groupsForState(4)[0].chosen);
-    try std.testing.expectEqual(UnresolvedReason.reduce_reduce_deferred, resolved.groupsForState(4)[0].reason.?);
-    try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(4)[0].candidate_actions.len);
+    try expectUnresolvedGroup(resolved.groupsForState(4)[0], .reduce_reduce_deferred, 2);
 }
 
 test "resolveActionTable chooses reduce for a positive integer precedence shift/reduce pair" {
@@ -530,8 +597,7 @@ test "resolveActionTable chooses reduce for a positive integer precedence shift/
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .reduce => |id| id == 1, else => false });
+    try expectChosenAction(resolved.groupsForState(3)[0], .{ .reduce = 1 });
 }
 
 test "resolveActionTable chooses reduce for named precedence ordered above the conflicted symbol" {
@@ -590,8 +656,7 @@ test "resolveActionTable chooses reduce for named precedence ordered above the c
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .reduce => |id| id == 1, else => false });
+    try expectChosenAction(resolved.groupsForState(3)[0], .{ .reduce = 1 });
 }
 
 test "resolveActionTable chooses shift for named precedence ordered below the conflicted symbol" {
@@ -650,8 +715,7 @@ test "resolveActionTable chooses shift for named precedence ordered below the co
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .shift => |id| id == 4, else => false });
+    try expectChosenAction(resolved.groupsForState(3)[0], .{ .shift = 4 });
 }
 
 test "resolveActionTable chooses shift for a negative integer precedence shift/reduce pair" {
@@ -703,8 +767,7 @@ test "resolveActionTable chooses shift for a negative integer precedence shift/r
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .shift => |id| id == 4, else => false });
+    try expectChosenAction(resolved.groupsForState(3)[0], .{ .shift = 4 });
 }
 
 test "resolveActionTable chooses reduce for equal-precedence left associativity" {
@@ -757,8 +820,7 @@ test "resolveActionTable chooses reduce for equal-precedence left associativity"
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .reduce => |id| id == 1, else => false });
+    try expectChosenAction(resolved.groupsForState(3)[0], .{ .reduce = 1 });
 }
 
 test "resolveActionTable chooses shift for equal-precedence right associativity" {
@@ -811,8 +873,7 @@ test "resolveActionTable chooses shift for equal-precedence right associativity"
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .shift => |id| id == 4, else => false });
+    try expectChosenAction(resolved.groupsForState(3)[0], .{ .shift = 4 });
 }
 
 test "resolveActionTable keeps equal-precedence non-associative conflicts unresolved" {
@@ -865,10 +926,7 @@ test "resolveActionTable keeps equal-precedence non-associative conflicts unreso
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.unresolved, resolved.groupsForState(3)[0].kind);
-    try std.testing.expectEqual(@as(?actions.ParseAction, null), resolved.groupsForState(3)[0].chosen);
-    try std.testing.expectEqual(UnresolvedReason.shift_reduce, resolved.groupsForState(3)[0].reason.?);
-    try std.testing.expectEqual(@as(usize, 2), resolved.groupsForState(3)[0].candidate_actions.len);
+    try expectUnresolvedGroup(resolved.groupsForState(3)[0], .shift_reduce, 2);
 }
 
 test "extractResolutionMetadata captures integer precedence and associativity" {
@@ -945,8 +1003,7 @@ test "resolveActionTable chooses reduce for positive dynamic precedence shift/re
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .reduce => |id| id == 1, else => false });
+    try expectChosenAction(resolved.groupsForState(3)[0], .{ .reduce = 1 });
 }
 
 test "resolveActionTable chooses shift for negative dynamic precedence shift/reduce pair" {
@@ -996,8 +1053,7 @@ test "resolveActionTable chooses shift for negative dynamic precedence shift/red
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .shift => |id| id == 4, else => false });
+    try expectChosenAction(resolved.groupsForState(3)[0], .{ .shift = 4 });
 }
 
 test "resolveActionTable lets positive dynamic precedence outrank named precedence" {
@@ -1057,8 +1113,7 @@ test "resolveActionTable lets positive dynamic precedence outrank named preceden
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .reduce => |id| id == 1, else => false });
+    try expectChosenAction(resolved.groupsForState(3)[0], .{ .reduce = 1 });
 }
 
 test "resolveActionTable uses shift-side integer precedence from the current state when available" {
@@ -1139,8 +1194,7 @@ test "resolveActionTable uses shift-side integer precedence from the current sta
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(6)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(6)[0].chosen.?) { .shift => |id| id == 7, else => false });
+    try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
 }
 
 test "resolveActionTable uses shift-side named precedence from the current state when available" {
@@ -1234,6 +1288,5 @@ test "resolveActionTable uses shift-side named precedence from the current state
         allocator.free(resolved.states);
     }
 
-    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(6)[0].kind);
-    try std.testing.expect(switch (resolved.groupsForState(6)[0].chosen.?) { .shift => |id| id == 7, else => false });
+    try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
 }

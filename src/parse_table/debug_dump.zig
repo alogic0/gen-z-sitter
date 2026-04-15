@@ -222,22 +222,19 @@ pub fn writeResolvedActionTable(
             try writer.writeAll("    ");
             try writeSymbol(writer, group.symbol);
             try writer.writeAll(": ");
-            switch (group.kind) {
-                .chosen => {
-                    const chosen = group.chosen.?;
+            switch (group.decision) {
+                .chosen => |chosen| {
                     switch (chosen) {
                         .shift => |target| try writer.print("shift {d}\n", .{target}),
                         .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
                         .accept => try writer.writeAll("accept\n"),
                     }
                 },
-                .unresolved => {
+                .unresolved => |reason| {
                     try writer.writeAll("unresolved");
-                    if (group.reason) |reason| {
-                        try writer.writeAll(" (");
-                        try writer.writeAll(@tagName(reason));
-                        try writer.writeByte(')');
-                    }
+                    try writer.writeAll(" (");
+                    try writer.writeAll(@tagName(reason));
+                    try writer.writeByte(')');
                     try writer.writeByte('\n');
                     for (group.candidate_actions) |candidate| {
                         try writer.writeAll("      candidate ");
@@ -455,19 +452,16 @@ test "dumpResolvedActionTableAlloc formats chosen and unresolved groups determin
                 .groups = &[_]resolution.ResolvedActionGroup{
                     .{
                         .symbol = .{ .terminal = 0 },
-                        .kind = .chosen,
                         .candidate_actions = &[_]actions.ParseAction{.{ .reduce = 2 }},
-                        .chosen = .{ .reduce = 2 },
+                        .decision = .{ .chosen = .{ .reduce = 2 } },
                     },
                     .{
                         .symbol = .{ .terminal = 1 },
-                        .kind = .unresolved,
                         .candidate_actions = &[_]actions.ParseAction{
                             .{ .shift = 3 },
                             .{ .reduce = 4 },
                         },
-                        .chosen = null,
-                        .reason = .shift_reduce,
+                        .decision = .{ .unresolved = .shift_reduce },
                     },
                 },
             },
