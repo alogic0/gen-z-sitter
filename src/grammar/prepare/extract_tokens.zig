@@ -837,6 +837,55 @@ test "extractTokens rejects word tokens that do not lower to lexical terminals" 
     try std.testing.expectError(error.InvalidWordToken, extractTokens(arena.allocator(), prepared));
 }
 
+test "extractTokens rejects external word tokens" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "bad-external-word-token",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+        },
+        .external_tokens = &.{
+            .{
+                .name = "template_chars",
+                .symbol = ir_symbols.SymbolId.external(0),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .rules = &.{ .{ .blank = {} }, .{ .blank = {} } },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.external(0),
+                .name = "template_chars",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = ir_symbols.SymbolId.external(0),
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(error.InvalidWordToken, extractTokens(arena.allocator(), prepared));
+}
+
 test "extractTokens promotes hidden top-level repeats in place and removes them from inline symbols" {
     const repeat_inner = ir_rules.Rule{ .string = "item" };
     const repeat_rule = ir_rules.Rule{ .repeat = 0 };
