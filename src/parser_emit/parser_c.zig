@@ -39,6 +39,15 @@ pub fn writeParserC(
     try writer.writeAll("  uint16_t state_count;\n");
     try writer.writeAll("  const TSStateTable *states;\n");
     try writer.writeAll("} TSParser;\n\n");
+    try writer.writeAll("static bool ts_string_eq(const char *a, const char *b) {\n");
+    try writer.writeAll("  if (!a or !b) return false;\n");
+    try writer.writeAll("  while (a[0] != 0 and b[0] != 0) {\n");
+    try writer.writeAll("    if (a[0] != b[0]) return false;\n");
+    try writer.writeAll("    a += 1;\n");
+    try writer.writeAll("    b += 1;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  return a[0] == b[0];\n");
+    try writer.writeAll("}\n\n");
 
     for (serialized.states, 0..) |serialized_state, index| {
         try writer.print("/* state {d} */\n", .{serialized_state.id});
@@ -202,6 +211,39 @@ pub fn writeParserC(
     try writer.writeAll("  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);\n");
     try writer.writeAll("  return entry ? entry->candidates : 0;\n");
     try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSActionEntry *ts_parser_find_action(uint16_t state_id, const char *symbol) {\n");
+    try writer.writeAll("  uint16_t count = ts_parser_action_count(state_id);\n");
+    try writer.writeAll("  uint16_t i = 0;\n");
+    try writer.writeAll("  while (i < count) {\n");
+    try writer.writeAll("    const TSActionEntry *entry = ts_parser_action_at(state_id, i);\n");
+    try writer.writeAll("    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;\n");
+    try writer.writeAll("    i += 1;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  return 0;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSGotoEntry *ts_parser_find_goto(uint16_t state_id, const char *symbol) {\n");
+    try writer.writeAll("  uint16_t count = ts_parser_goto_count(state_id);\n");
+    try writer.writeAll("  uint16_t i = 0;\n");
+    try writer.writeAll("  while (i < count) {\n");
+    try writer.writeAll("    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);\n");
+    try writer.writeAll("    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;\n");
+    try writer.writeAll("    i += 1;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  return 0;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSUnresolvedEntry *ts_parser_find_unresolved(uint16_t state_id, const char *symbol) {\n");
+    try writer.writeAll("  uint16_t count = ts_parser_unresolved_count(state_id);\n");
+    try writer.writeAll("  uint16_t i = 0;\n");
+    try writer.writeAll("  while (i < count) {\n");
+    try writer.writeAll("    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);\n");
+    try writer.writeAll("    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;\n");
+    try writer.writeAll("    i += 1;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  return 0;\n");
+    try writer.writeAll("}\n");
 }
 
 test "emitParserCAlloc formats parser C skeletons deterministically" {
@@ -260,6 +302,16 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  uint16_t state_count;
         \\  const TSStateTable *states;
         \\} TSParser;
+        \\
+        \\static bool ts_string_eq(const char *a, const char *b) {
+        \\  if (!a or !b) return false;
+        \\  while (a[0] != 0 and b[0] != 0) {
+        \\    if (a[0] != b[0]) return false;
+        \\    a += 1;
+        \\    b += 1;
+        \\  }
+        \\  return a[0] == b[0];
+        \\}
         \\
         \\/* state 0 */
         \\static const TSActionEntry ts_state_0_actions[] = {
@@ -387,6 +439,39 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
         \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
         \\  return entry ? entry->candidates : 0;
+        \\}
+        \\
+        \\const TSActionEntry *ts_parser_find_action(uint16_t state_id, const char *symbol) {
+        \\  uint16_t count = ts_parser_action_count(state_id);
+        \\  uint16_t i = 0;
+        \\  while (i < count) {
+        \\    const TSActionEntry *entry = ts_parser_action_at(state_id, i);
+        \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+        \\    i += 1;
+        \\  }
+        \\  return 0;
+        \\}
+        \\
+        \\const TSGotoEntry *ts_parser_find_goto(uint16_t state_id, const char *symbol) {
+        \\  uint16_t count = ts_parser_goto_count(state_id);
+        \\  uint16_t i = 0;
+        \\  while (i < count) {
+        \\    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);
+        \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+        \\    i += 1;
+        \\  }
+        \\  return 0;
+        \\}
+        \\
+        \\const TSUnresolvedEntry *ts_parser_find_unresolved(uint16_t state_id, const char *symbol) {
+        \\  uint16_t count = ts_parser_unresolved_count(state_id);
+        \\  uint16_t i = 0;
+        \\  while (i < count) {
+        \\    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);
+        \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+        \\    i += 1;
+        \\  }
+        \\  return 0;
         \\}
         \\
     , emitted);

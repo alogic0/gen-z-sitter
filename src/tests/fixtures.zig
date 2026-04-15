@@ -894,6 +894,16 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  const TSStateTable *states;
             \\} TSParser;
             \\
+            \\static bool ts_string_eq(const char *a, const char *b) {
+            \\  if (!a or !b) return false;
+            \\  while (a[0] != 0 and b[0] != 0) {
+            \\    if (a[0] != b[0]) return false;
+            \\    a += 1;
+            \\    b += 1;
+            \\  }
+            \\  return a[0] == b[0];
+            \\}
+            \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
             \\  { "terminal:1", "shift", 3 },
@@ -1108,6 +1118,39 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  return entry ? entry->candidates : 0;
             \\}
             \\
+            \\const TSActionEntry *ts_parser_find_action(uint16_t state_id, const char *symbol) {
+            \\  uint16_t count = ts_parser_action_count(state_id);
+            \\  uint16_t i = 0;
+            \\  while (i < count) {
+            \\    const TSActionEntry *entry = ts_parser_action_at(state_id, i);
+            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    i += 1;
+            \\  }
+            \\  return 0;
+            \\}
+            \\
+            \\const TSGotoEntry *ts_parser_find_goto(uint16_t state_id, const char *symbol) {
+            \\  uint16_t count = ts_parser_goto_count(state_id);
+            \\  uint16_t i = 0;
+            \\  while (i < count) {
+            \\    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);
+            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    i += 1;
+            \\  }
+            \\  return 0;
+            \\}
+            \\
+            \\const TSUnresolvedEntry *ts_parser_find_unresolved(uint16_t state_id, const char *symbol) {
+            \\  uint16_t count = ts_parser_unresolved_count(state_id);
+            \\  uint16_t i = 0;
+            \\  while (i < count) {
+            \\    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);
+            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    i += 1;
+            \\  }
+            \\  return 0;
+            \\}
+            \\
         ,
     };
 }
@@ -1141,6 +1184,16 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  uint16_t state_count;
             \\  const TSStateTable *states;
             \\} TSParser;
+            \\
+            \\static bool ts_string_eq(const char *a, const char *b) {
+            \\  if (!a or !b) return false;
+            \\  while (a[0] != 0 and b[0] != 0) {
+            \\    if (a[0] != b[0]) return false;
+            \\    a += 1;
+            \\    b += 1;
+            \\  }
+            \\  return a[0] == b[0];
+            \\}
             \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
@@ -1343,6 +1396,39 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
             \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
             \\  return entry ? entry->candidates : 0;
+            \\}
+            \\
+            \\const TSActionEntry *ts_parser_find_action(uint16_t state_id, const char *symbol) {
+            \\  uint16_t count = ts_parser_action_count(state_id);
+            \\  uint16_t i = 0;
+            \\  while (i < count) {
+            \\    const TSActionEntry *entry = ts_parser_action_at(state_id, i);
+            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    i += 1;
+            \\  }
+            \\  return 0;
+            \\}
+            \\
+            \\const TSGotoEntry *ts_parser_find_goto(uint16_t state_id, const char *symbol) {
+            \\  uint16_t count = ts_parser_goto_count(state_id);
+            \\  uint16_t i = 0;
+            \\  while (i < count) {
+            \\    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);
+            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    i += 1;
+            \\  }
+            \\  return 0;
+            \\}
+            \\
+            \\const TSUnresolvedEntry *ts_parser_find_unresolved(uint16_t state_id, const char *symbol) {
+            \\  uint16_t count = ts_parser_unresolved_count(state_id);
+            \\  uint16_t i = 0;
+            \\  while (i < count) {
+            \\    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);
+            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    i += 1;
+            \\  }
+            \\  return 0;
             \\}
             \\
         ,
