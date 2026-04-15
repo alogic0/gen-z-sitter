@@ -97,6 +97,23 @@ Why this is the chosen direction:
 4. decide compatibility layering direction
 5. review whether the emitted parser boundary is strong enough to begin compatibility work
 
+## Current Status
+
+Implemented now:
+
+- the richer runtime-facing emitted parser surface is already pinned through the existing exact parser.c-like goldens
+- those exact artifacts cover:
+  - one ready grammar
+  - one blocked grammar
+- the richer emitted surface already includes:
+  - `TSRuntimeStateInfo`
+  - `TSParserRuntime`
+  - parser/runtime accessors
+  - state and entry lookup helpers
+  - predicate helpers
+
+This means the “exact richer-output artifacts” item is already satisfied by the current parser.c emitter path rather than needing a separate artifact format.
+
 ## Exit Criteria
 
 Milestone 13 is complete when:
