@@ -101,6 +101,14 @@ pub fn writeParserC(
     try writer.writeAll("  .state_count = TS_STATE_COUNT,\n");
     try writer.writeAll("  .states = ts_states,\n");
     try writer.writeAll("};\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSParser *ts_parser_instance(void) {\n");
+    try writer.writeAll("  return &ts_parser;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSStateTable *ts_parser_state(uint16_t state_id) {\n");
+    try writer.writeAll("  return state_id < TS_STATE_COUNT ? &ts_states[state_id] : 0;\n");
+    try writer.writeAll("}\n");
 }
 
 test "emitParserCAlloc formats parser C skeletons deterministically" {
@@ -186,6 +194,14 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  .state_count = TS_STATE_COUNT,
         \\  .states = ts_states,
         \\};
+        \\
+        \\const TSParser *ts_parser_instance(void) {
+        \\  return &ts_parser;
+        \\}
+        \\
+        \\const TSStateTable *ts_parser_state(uint16_t state_id) {
+        \\  return state_id < TS_STATE_COUNT ? &ts_states[state_id] : 0;
+        \\}
         \\
     , emitted);
 }
