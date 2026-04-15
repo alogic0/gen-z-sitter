@@ -691,6 +691,39 @@ pub fn parseTableReduceReduceActionTableDump() Fixture {
     };
 }
 
+pub fn parseTableMetadataActionTableDump() Fixture {
+    return .{
+        .name = "parse_table_metadata_action_table_dump",
+        .contents =
+            \\state 0
+            \\  actions:
+            \\    terminal:1 => shift 3
+            \\
+            \\state 1
+            \\  actions:
+            \\
+            \\state 2
+            \\  actions:
+            \\    terminal:0 => shift 4
+            \\
+            \\state 3
+            \\  actions:
+            \\    terminal:0 => reduce 2
+            \\
+            \\state 4
+            \\  actions:
+            \\    terminal:1 => shift 6
+            \\
+            \\state 5
+            \\  actions:
+            \\
+            \\state 6
+            \\  actions:
+            \\
+        ,
+    };
+}
+
 pub fn parseTableReuseGrammarJson() Fixture {
     return .{
         .name = "parse_table_reuse",
