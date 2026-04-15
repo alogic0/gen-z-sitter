@@ -4,6 +4,7 @@ const lexical_ir = @import("../../ir/lexical_grammar.zig");
 const syntax_ir = @import("../../ir/syntax_grammar.zig");
 const ir_rules = @import("../../ir/rules.zig");
 const ir_symbols = @import("../../ir/symbols.zig");
+const expand_repeats = @import("expand_repeats.zig");
 const fixtures = @import("../../tests/fixtures.zig");
 const json_loader = @import("../json_loader.zig");
 const parse_grammar = @import("../parse_grammar.zig");
@@ -31,6 +32,8 @@ const Extractor = struct {
     prepared: prepared_ir.PreparedGrammar,
     lexical_variables: std.array_list.Managed(lexical_ir.LexicalVariable),
     separators: std.array_list.Managed(ir_rules.RuleId),
+    auxiliary_variables: std.array_list.Managed(syntax_ir.SyntaxVariable),
+    repeat_cache: std.AutoHashMap(RepeatKey, u32),
 
     fn init(allocator: std.mem.Allocator, prepared: prepared_ir.PreparedGrammar) Extractor {
         return .{
@@ -38,6 +41,8 @@ const Extractor = struct {
             .prepared = prepared,
             .lexical_variables = std.array_list.Managed(lexical_ir.LexicalVariable).init(allocator),
             .separators = std.array_list.Managed(ir_rules.RuleId).init(allocator),
+            .auxiliary_variables = std.array_list.Managed(syntax_ir.SyntaxVariable).init(allocator),
+            .repeat_cache = std.AutoHashMap(RepeatKey, u32).init(allocator),
         };
     }
 
@@ -84,6 +89,7 @@ const Extractor = struct {
             });
         }
 
+        try result.appendSlice(self.auxiliary_variables.items);
         return try result.toOwnedSlice();
     }
 
@@ -174,9 +180,22 @@ const Extractor = struct {
             .string, .pattern => unreachable,
             .choice => |members| self.extractChoiceProductions(variable_name, members),
             .seq => |members| self.extractSequenceProductions(variable_name, members),
-            .repeat, .repeat1 => error.UnsupportedRuleShape,
+            .repeat => |inner| self.extractRepeatProductions(variable_name, inner, false),
+            .repeat1 => |inner| self.extractRepeatProductions(variable_name, inner, true),
             .metadata => |metadata| self.extractMetadataProductions(variable_name, metadata),
         };
+    }
+
+    fn extractRepeatProductions(
+        self: *Extractor,
+        variable_name: []const u8,
+        inner: ir_rules.RuleId,
+        at_least_one: bool,
+    ) ExtractTokensError![]syntax_ir.Production {
+        const repeat_symbol = try self.ensureRepeatAuxiliary(variable_name, inner, at_least_one);
+        return try self.singleStepProductions(.{
+            .symbol = .{ .non_terminal = repeat_symbol },
+        });
     }
 
     fn extractChoiceProductions(self: *Extractor, variable_name: []const u8, members: []const ir_rules.RuleId) ExtractTokensError![]syntax_ir.Production {
@@ -257,6 +276,29 @@ const Extractor = struct {
         return null;
     }
 
+    fn ensureRepeatAuxiliary(
+        self: *Extractor,
+        variable_name: []const u8,
+        inner: ir_rules.RuleId,
+        at_least_one: bool,
+    ) ExtractTokensError!u32 {
+        const key = RepeatKey{ .rule_id = inner, .at_least_one = at_least_one };
+        if (self.repeat_cache.get(key)) |symbol_index| return symbol_index;
+
+        const symbol_index: u32 = @intCast(self.prepared.variables.len + self.auxiliary_variables.items.len);
+        const inner_productions = try self.extractProductions(variable_name, inner);
+        const expansion = try expand_repeats.createRepeatAuxiliary(
+            self.allocator,
+            variable_name,
+            symbol_index,
+            inner_productions,
+            at_least_one,
+        );
+        try self.auxiliary_variables.append(expansion.variable);
+        try self.repeat_cache.put(key, symbol_index);
+        return symbol_index;
+    }
+
     fn singleStepProductions(self: *Extractor, step: syntax_ir.ProductionStep) ExtractTokensError![]syntax_ir.Production {
         const steps = try self.allocator.dupe(syntax_ir.ProductionStep, &.{step});
         return try self.singleProduction(steps);
@@ -308,6 +350,11 @@ const Extractor = struct {
     }
 };
 
+const RepeatKey = struct {
+    rule_id: ir_rules.RuleId,
+    at_least_one: bool,
+};
+
 test "extractTokens splits simple prepared grammar into syntax and lexical parts" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
@@ -329,4 +376,47 @@ test "extractTokens splits simple prepared grammar into syntax and lexical parts
     try std.testing.expectEqualStrings("term", extracted.lexical.variables[1].name);
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.separators.len);
     try std.testing.expectEqual(@as(usize, 0), extracted.syntax.extra_symbols.len);
+}
+
+test "extractTokens expands repeat rules into auxiliary syntax variables" {
+    const repeat_inner = ir_rules.Rule{ .string = "item" };
+    const repeat_rule = ir_rules.Rule{ .repeat = 0 };
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "repeaty",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{ repeat_inner, repeat_rule },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 2), extracted.syntax.variables.len);
+    try std.testing.expectEqualStrings("source_file", extracted.syntax.variables[0].name);
+    try std.testing.expectEqualStrings("source_file_repeat1", extracted.syntax.variables[1].name);
+    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
+    try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
 }
