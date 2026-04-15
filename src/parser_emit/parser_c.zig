@@ -39,6 +39,19 @@ pub fn writeParserC(
     try writer.writeAll("  uint16_t state_count;\n");
     try writer.writeAll("  const TSStateTable *states;\n");
     try writer.writeAll("} TSParser;\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  uint16_t action_count;\n");
+    try writer.writeAll("  uint16_t goto_count;\n");
+    try writer.writeAll("  uint16_t unresolved_count;\n");
+    try writer.writeAll("  bool has_unresolved;\n");
+    try writer.writeAll("} TSRuntimeStateInfo;\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  bool blocked;\n");
+    try writer.writeAll("  bool has_unresolved_states;\n");
+    try writer.writeAll("  uint16_t state_count;\n");
+    try writer.writeAll("  const TSParser *parser;\n");
+    try writer.writeAll("  const TSRuntimeStateInfo *states;\n");
+    try writer.writeAll("} TSParserRuntime;\n\n");
     try writer.writeAll("static bool ts_string_eq(const char *a, const char *b) {\n");
     try writer.writeAll("  if (!a or !b) return false;\n");
     try writer.writeAll("  while (a[0] != 0 and b[0] != 0) {\n");
@@ -111,8 +124,35 @@ pub fn writeParserC(
     try writer.writeAll("  .states = ts_states,\n");
     try writer.writeAll("};\n");
     try writer.writeAll("\n");
+    try writer.writeAll("static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {\n");
+    for (serialized.states) |serialized_state| {
+        try writer.writeAll("  {\n");
+        try writer.print("    .action_count = {d},\n", .{serialized_state.actions.len});
+        try writer.print("    .goto_count = {d},\n", .{serialized_state.gotos.len});
+        try writer.print("    .unresolved_count = {d},\n", .{serialized_state.unresolved.len});
+        try writer.print("    .has_unresolved = {},\n", .{serialized_state.unresolved.len > 0});
+        try writer.writeAll("  },\n");
+    }
+    try writer.writeAll("};\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("static const TSParserRuntime ts_runtime = {\n");
+    try writer.print("  .blocked = {},\n", .{serialized.blocked});
+    try writer.print("  .has_unresolved_states = {},\n", .{hasUnresolvedStates(serialized)});
+    try writer.writeAll("  .state_count = TS_STATE_COUNT,\n");
+    try writer.writeAll("  .parser = &ts_parser,\n");
+    try writer.writeAll("  .states = ts_runtime_states,\n");
+    try writer.writeAll("};\n");
+    try writer.writeAll("\n");
     try writer.writeAll("const TSParser *ts_parser_instance(void) {\n");
     try writer.writeAll("  return &ts_parser;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSParserRuntime *ts_parser_runtime(void) {\n");
+    try writer.writeAll("  return &ts_runtime;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {\n");
+    try writer.writeAll("  return state_id < TS_STATE_COUNT ? &ts_runtime_states[state_id] : 0;\n");
     try writer.writeAll("}\n");
     try writer.writeAll("\n");
     try writer.writeAll("const TSStateTable *ts_parser_state(uint16_t state_id) {\n");
@@ -273,6 +313,13 @@ pub fn writeParserC(
     try writer.writeAll("}\n");
 }
 
+fn hasUnresolvedStates(serialized: serialize.SerializedTable) bool {
+    for (serialized.states) |state| {
+        if (state.unresolved.len > 0) return true;
+    }
+    return false;
+}
+
 test "emitParserCAlloc formats parser C skeletons deterministically" {
     const allocator = std.testing.allocator;
     const serialized = serialize.SerializedTable{
@@ -330,6 +377,21 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  const TSStateTable *states;
         \\} TSParser;
         \\
+        \\typedef struct {
+        \\  uint16_t action_count;
+        \\  uint16_t goto_count;
+        \\  uint16_t unresolved_count;
+        \\  bool has_unresolved;
+        \\} TSRuntimeStateInfo;
+        \\
+        \\typedef struct {
+        \\  bool blocked;
+        \\  bool has_unresolved_states;
+        \\  uint16_t state_count;
+        \\  const TSParser *parser;
+        \\  const TSRuntimeStateInfo *states;
+        \\} TSParserRuntime;
+        \\
         \\static bool ts_string_eq(const char *a, const char *b) {
         \\  if (!a or !b) return false;
         \\  while (a[0] != 0 and b[0] != 0) {
@@ -367,8 +429,33 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  .states = ts_states,
         \\};
         \\
+        \\static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {
+        \\  {
+        \\    .action_count = 1,
+        \\    .goto_count = 1,
+        \\    .unresolved_count = 1,
+        \\    .has_unresolved = true,
+        \\  },
+        \\};
+        \\
+        \\static const TSParserRuntime ts_runtime = {
+        \\  .blocked = true,
+        \\  .has_unresolved_states = true,
+        \\  .state_count = TS_STATE_COUNT,
+        \\  .parser = &ts_parser,
+        \\  .states = ts_runtime_states,
+        \\};
+        \\
         \\const TSParser *ts_parser_instance(void) {
         \\  return &ts_parser;
+        \\}
+        \\
+        \\const TSParserRuntime *ts_parser_runtime(void) {
+        \\  return &ts_runtime;
+        \\}
+        \\
+        \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
+        \\  return state_id < TS_STATE_COUNT ? &ts_runtime_states[state_id] : 0;
         \\}
         \\
         \\const TSStateTable *ts_parser_state(uint16_t state_id) {

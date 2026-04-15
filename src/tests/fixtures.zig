@@ -894,6 +894,21 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  const TSStateTable *states;
             \\} TSParser;
             \\
+            \\typedef struct {
+            \\  uint16_t action_count;
+            \\  uint16_t goto_count;
+            \\  uint16_t unresolved_count;
+            \\  bool has_unresolved;
+            \\} TSRuntimeStateInfo;
+            \\
+            \\typedef struct {
+            \\  bool blocked;
+            \\  bool has_unresolved_states;
+            \\  uint16_t state_count;
+            \\  const TSParser *parser;
+            \\  const TSRuntimeStateInfo *states;
+            \\} TSParserRuntime;
+            \\
             \\static bool ts_string_eq(const char *a, const char *b) {
             \\  if (!a or !b) return false;
             \\  while (a[0] != 0 and b[0] != 0) {
@@ -1017,8 +1032,69 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  .states = ts_states,
             \\};
             \\
+            \\static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {
+            \\  {
+            \\    .action_count = 1,
+            \\    .goto_count = 2,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\  {
+            \\    .action_count = 0,
+            \\    .goto_count = 0,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\  {
+            \\    .action_count = 1,
+            \\    .goto_count = 0,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\  {
+            \\    .action_count = 1,
+            \\    .goto_count = 0,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\  {
+            \\    .action_count = 1,
+            \\    .goto_count = 1,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\  {
+            \\    .action_count = 0,
+            \\    .goto_count = 0,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\  {
+            \\    .action_count = 0,
+            \\    .goto_count = 0,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\};
+            \\
+            \\static const TSParserRuntime ts_runtime = {
+            \\  .blocked = false,
+            \\  .has_unresolved_states = false,
+            \\  .state_count = TS_STATE_COUNT,
+            \\  .parser = &ts_parser,
+            \\  .states = ts_runtime_states,
+            \\};
+            \\
             \\const TSParser *ts_parser_instance(void) {
             \\  return &ts_parser;
+            \\}
+            \\
+            \\const TSParserRuntime *ts_parser_runtime(void) {
+            \\  return &ts_runtime;
+            \\}
+            \\
+            \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
+            \\  return state_id < TS_STATE_COUNT ? &ts_runtime_states[state_id] : 0;
             \\}
             \\
             \\const TSStateTable *ts_parser_state(uint16_t state_id) {
@@ -1212,6 +1288,21 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  const TSStateTable *states;
             \\} TSParser;
             \\
+            \\typedef struct {
+            \\  uint16_t action_count;
+            \\  uint16_t goto_count;
+            \\  uint16_t unresolved_count;
+            \\  bool has_unresolved;
+            \\} TSRuntimeStateInfo;
+            \\
+            \\typedef struct {
+            \\  bool blocked;
+            \\  bool has_unresolved_states;
+            \\  uint16_t state_count;
+            \\  const TSParser *parser;
+            \\  const TSRuntimeStateInfo *states;
+            \\} TSParserRuntime;
+            \\
             \\static bool ts_string_eq(const char *a, const char *b) {
             \\  if (!a or !b) return false;
             \\  while (a[0] != 0 and b[0] != 0) {
@@ -1324,8 +1415,63 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  .states = ts_states,
             \\};
             \\
+            \\static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {
+            \\  {
+            \\    .action_count = 1,
+            \\    .goto_count = 2,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\  {
+            \\    .action_count = 0,
+            \\    .goto_count = 0,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\  {
+            \\    .action_count = 1,
+            \\    .goto_count = 0,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\  {
+            \\    .action_count = 1,
+            \\    .goto_count = 0,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\  {
+            \\    .action_count = 1,
+            \\    .goto_count = 1,
+            \\    .unresolved_count = 0,
+            \\    .has_unresolved = false,
+            \\  },
+            \\  {
+            \\    .action_count = 0,
+            \\    .goto_count = 0,
+            \\    .unresolved_count = 1,
+            \\    .has_unresolved = true,
+            \\  },
+            \\};
+            \\
+            \\static const TSParserRuntime ts_runtime = {
+            \\  .blocked = true,
+            \\  .has_unresolved_states = true,
+            \\  .state_count = TS_STATE_COUNT,
+            \\  .parser = &ts_parser,
+            \\  .states = ts_runtime_states,
+            \\};
+            \\
             \\const TSParser *ts_parser_instance(void) {
             \\  return &ts_parser;
+            \\}
+            \\
+            \\const TSParserRuntime *ts_parser_runtime(void) {
+            \\  return &ts_runtime;
+            \\}
+            \\
+            \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
+            \\  return state_id < TS_STATE_COUNT ? &ts_runtime_states[state_id] : 0;
             \\}
             \\
             \\const TSStateTable *ts_parser_state(uint16_t state_id) {

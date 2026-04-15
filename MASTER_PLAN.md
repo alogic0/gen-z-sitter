@@ -757,7 +757,7 @@ This checklist covers only work that is still outstanding from the current proje
 ### Milestone 13: Runtime-facing parser output and compatibility boundary
 
 - [x] decide the intended runtime-facing emitted API scope before any ABI claim
-- [ ] expand emitted parser output beyond the Milestone 12 query/helper layer
+- [x] expand emitted parser output beyond the Milestone 12 query/helper layer
 - [ ] decide whether the project will target upstream C runtime ABI compatibility directly, or stage that through an intermediate compatibility layer
 - [ ] add exact artifacts for the richer runtime-facing emitted parser surface
 - [ ] define blocked-output behavior for that richer runtime-facing surface
