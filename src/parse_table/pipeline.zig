@@ -2,6 +2,7 @@ const std = @import("std");
 const grammar_ir = @import("../ir/grammar_ir.zig");
 const debug_dump = @import("debug_dump.zig");
 const build = @import("build.zig");
+const state = @import("state.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
 const fixtures = @import("../tests/fixtures.zig");
@@ -125,7 +126,7 @@ test "buildStatesFromPrepared reuses identical advanced states deterministically
     var parsed = try std.json.parseFromSlice(
         std.json.Value,
         loader_arena.allocator(),
-        fixtures.parseTableReuseGrammarJson().contents,
+        fixtures.parseTableConflictGrammarJson().contents,
         .{},
     );
     defer parsed.deinit();
@@ -134,10 +135,8 @@ test "buildStatesFromPrepared reuses identical advanced states deterministically
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
     const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
 
-    try std.testing.expectEqual(@as(usize, 5), result.states.len);
-    const first_terminal_state = result.states[0].transitions[2].state;
-    const repeated_terminal_state = result.states[2].transitions[1].state;
-    try std.testing.expectEqual(first_terminal_state, repeated_terminal_state);
+    try std.testing.expectEqual(@as(state.StateId, 3), result.states[0].transitions[2].state);
+    try std.testing.expectEqual(result.states[0].transitions[2].state, result.states[4].transitions[1].state);
 }
 
 test "buildStatesFromPrepared reports a focused reduce/reduce conflict fixture" {

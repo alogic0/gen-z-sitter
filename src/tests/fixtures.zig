@@ -335,7 +335,9 @@ pub fn parseTableConflictDump() Fixture {
             \\    #0@0
             \\    #1@0
             \\    #2@0
+            \\    #2@0 ?terminal:0
             \\    #3@0
+            \\    #3@0 ?terminal:0
             \\  transitions:
             \\    non_terminal:0 -> 1
             \\    non_terminal:1 -> 2
@@ -350,6 +352,7 @@ pub fn parseTableConflictDump() Fixture {
             \\  items:
             \\    #1@1
             \\    #2@1
+            \\    #2@1 ?terminal:0
             \\  transitions:
             \\    terminal:0 -> 4
             \\  conflicts:
@@ -360,13 +363,17 @@ pub fn parseTableConflictDump() Fixture {
             \\state 3
             \\  items:
             \\    #3@1
+            \\    #3@1 ?terminal:0
             \\  transitions:
             \\
             \\state 4
             \\  items:
             \\    #2@0
+            \\    #2@0 ?terminal:0
             \\    #2@2
+            \\    #2@2 ?terminal:0
             \\    #3@0
+            \\    #3@0 ?terminal:0
             \\  transitions:
             \\    non_terminal:1 -> 5
             \\    terminal:1 -> 3
@@ -374,7 +381,9 @@ pub fn parseTableConflictDump() Fixture {
             \\state 5
             \\  items:
             \\    #2@1
+            \\    #2@1 ?terminal:0
             \\    #2@3
+            \\    #2@3 ?terminal:0
             \\  transitions:
             \\    terminal:0 -> 4
             \\  conflicts:

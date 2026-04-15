@@ -1,5 +1,6 @@
 const std = @import("std");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
+const first = @import("first.zig");
 const item = @import("item.zig");
 const state = @import("state.zig");
 const conflicts = @import("conflicts.zig");
@@ -27,8 +28,9 @@ pub fn buildStates(
 ) BuildError!BuildResult {
     try validateSupportedSubset(grammar);
 
+    const first_sets = try first.computeFirstSets(allocator, grammar);
     const productions = try collectProductions(allocator, grammar);
-    const states = try constructStates(allocator, productions);
+    const states = try constructStates(allocator, productions, first_sets);
     return .{
         .productions = productions,
         .states = states,
@@ -80,11 +82,12 @@ fn collectProductions(
 fn constructStates(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
+    first_sets: first.FirstSets,
 ) BuildError![]const state.ParseState {
     var states = std.array_list.Managed(state.ParseState).init(allocator);
     defer states.deinit();
 
-    const start_items = try closure(allocator, productions, &[_]item.ParseItem{item.ParseItem.init(0, 0)});
+    const start_items = try closure(allocator, productions, first_sets, &[_]item.ParseItem{item.ParseItem.init(0, 0)});
     try states.append(.{
         .id = 0,
         .items = start_items,
@@ -94,7 +97,7 @@ fn constructStates(
 
     var next_state_index: usize = 0;
     while (next_state_index < states.items.len) : (next_state_index += 1) {
-        const transitions = try collectTransitionsForState(allocator, productions, &states, states.items[next_state_index].items);
+        const transitions = try collectTransitionsForState(allocator, productions, first_sets, &states, states.items[next_state_index].items);
         const detected_conflicts = try conflicts.detectConflicts(
             allocator,
             productions,
@@ -113,6 +116,7 @@ fn constructStates(
 fn collectTransitionsForState(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
+    first_sets: first.FirstSets,
     states: *std.array_list.Managed(state.ParseState),
     state_items: []const item.ParseItem,
 ) BuildError![]const state.Transition {
@@ -125,7 +129,7 @@ fn collectTransitionsForState(
         const symbol = production.steps[parse_item.step_index].symbol;
         if (containsTransition(transitions.items, symbol)) continue;
 
-        const advanced_items = try gotoItems(allocator, productions, state_items, symbol);
+        const advanced_items = try gotoItems(allocator, productions, first_sets, state_items, symbol);
         if (findState(states.items, advanced_items)) |existing| {
             try transitions.append(.{ .symbol = symbol, .state = existing.id });
             continue;
@@ -202,6 +206,7 @@ test "buildStates records LR(0)-style conflicts for an ambiguous expression gram
 fn closure(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
+    first_sets: first.FirstSets,
     seed_items: []const item.ParseItem,
 ) BuildError![]const item.ParseItem {
     var items = std.array_list.Managed(item.ParseItem).init(allocator);
@@ -219,12 +224,18 @@ fn closure(
             if (parse_item.step_index >= production.steps.len) continue;
             switch (production.steps[parse_item.step_index].symbol) {
                 .non_terminal => |non_terminal| {
+                    const suffix = production.steps[parse_item.step_index + 1 ..];
+                    const suffix_first = try first_sets.firstOfSequence(allocator, suffix);
                     for (productions, 0..) |candidate, production_index| {
                         if (candidate.augmented) continue;
                         if (candidate.lhs != non_terminal) continue;
-                        const new_item = item.ParseItem.init(@intCast(production_index), 0);
-                        if (!containsItem(items.items, new_item)) {
-                            try items.append(new_item);
+                        if (try appendPropagatedItems(
+                            allocator,
+                            &items,
+                            @intCast(production_index),
+                            suffix_first,
+                            parse_item.lookahead,
+                        )) {
                             changed = true;
                         }
                     }
@@ -241,6 +252,7 @@ fn closure(
 fn gotoItems(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
+    first_sets: first.FirstSets,
     state_items: []const item.ParseItem,
     symbol: syntax_ir.SymbolRef,
 ) BuildError![]const item.ParseItem {
@@ -258,7 +270,49 @@ fn gotoItems(
         });
     }
 
-    return try closure(allocator, productions, advanced.items);
+    return try closure(allocator, productions, first_sets, advanced.items);
+}
+
+fn appendPropagatedItems(
+    allocator: std.mem.Allocator,
+    items: *std.array_list.Managed(item.ParseItem),
+    production_id: item.ProductionId,
+    propagated_first: first.SymbolSet,
+    inherited_lookahead: ?syntax_ir.SymbolRef,
+) BuildError!bool {
+    _ = allocator;
+    var changed = false;
+
+    for (propagated_first.terminals, 0..) |present, index| {
+        if (!present) continue;
+        const new_item = item.ParseItem.withLookahead(production_id, 0, .{ .terminal = @intCast(index) });
+        if (!containsItem(items.items, new_item)) {
+            try items.append(new_item);
+            changed = true;
+        }
+    }
+
+    for (propagated_first.externals, 0..) |present, index| {
+        if (!present) continue;
+        const new_item = item.ParseItem.withLookahead(production_id, 0, .{ .external = @intCast(index) });
+        if (!containsItem(items.items, new_item)) {
+            try items.append(new_item);
+            changed = true;
+        }
+    }
+
+    if (propagated_first.includes_epsilon) {
+        const new_item = if (inherited_lookahead) |lookahead|
+            item.ParseItem.withLookahead(production_id, 0, lookahead)
+        else
+            item.ParseItem.init(production_id, 0);
+        if (!containsItem(items.items, new_item)) {
+            try items.append(new_item);
+            changed = true;
+        }
+    }
+
+    return changed;
 }
 
 fn containsItem(items: []const item.ParseItem, candidate: item.ParseItem) bool {
@@ -338,6 +392,63 @@ test "buildStates constructs deterministic LR(0)-style states for a tiny grammar
     try std.testing.expectEqual(@as(state.StateId, 0), result.states[0].id);
     try std.testing.expectEqual(@as(usize, 3), result.states[0].items.len);
     try std.testing.expectEqual(@as(usize, 3), result.states[0].transitions.len);
+}
+
+test "buildStates propagates terminal lookaheads through nullable suffix closure" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+    var start_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+    };
+    var expr_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "start", .kind = .named, .productions = &.{.{ .steps = start_steps[0..] }} },
+            .{ .name = "expr", .kind = .named, .productions = &.{.{ .steps = expr_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const result = try buildStates(arena.allocator(), grammar);
+
+    var saw_start_with_terminal_lookahead = false;
+    var saw_expr_with_terminal_lookahead = false;
+    for (result.states[0].items) |parse_item| {
+        if (parse_item.production_id == 2 and hasTerminalLookahead(parse_item, 1)) {
+            saw_start_with_terminal_lookahead = true;
+        }
+        if (parse_item.production_id == 3 and hasTerminalLookahead(parse_item, 1)) {
+            saw_expr_with_terminal_lookahead = true;
+        }
+    }
+
+    try std.testing.expect(saw_start_with_terminal_lookahead);
+    try std.testing.expect(saw_expr_with_terminal_lookahead);
+}
+
+fn hasTerminalLookahead(parse_item: item.ParseItem, terminal_index: u32) bool {
+    if (parse_item.lookahead) |lookahead| {
+        return switch (lookahead) {
+            .terminal => |index| index == terminal_index,
+            else => false,
+        };
+    }
+    return false;
 }
 
 test "buildStates rejects metadata-heavy syntax not in the current supported subset" {
