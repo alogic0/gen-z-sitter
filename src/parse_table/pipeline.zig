@@ -497,6 +497,10 @@ test "buildStatesFromPrepared supports metadata-rich grammar through the real pr
     try std.testing.expect(!result.hasUnresolvedDecisions());
     const chosen = try result.chosenDecisionsAlloc(pipeline_arena.allocator());
     try std.testing.expect(chosen.len > 0);
+    const snapshot = try result.decisionSnapshotAlloc(pipeline_arena.allocator());
+    try std.testing.expect(snapshot.isSerializationReady());
+    try std.testing.expect(snapshot.unresolved.len == 0);
+    try std.testing.expect(snapshot.chosen.len > 0);
 }
 
 test "resolveActionTableSkeleton leaves the first precedence-sensitive grammar unresolved" {
@@ -732,6 +736,9 @@ test "generateResolvedActionTableDumpFromPrepared keeps unresolved conflict grou
     const unresolved = try result.unresolvedDecisionsAlloc(pipeline_arena.allocator());
     try std.testing.expectEqual(@as(usize, 1), unresolved.len);
     try std.testing.expectEqual(resolution.UnresolvedReason.shift_reduce, unresolved[0].reason);
+    const snapshot = try result.decisionSnapshotAlloc(pipeline_arena.allocator());
+    try std.testing.expect(!snapshot.isSerializationReady());
+    try std.testing.expect(snapshot.unresolved.len == 1);
     try std.testing.expectEqualStrings(fixtures.parseTableConflictResolvedActionDump().contents, dump);
 }
 

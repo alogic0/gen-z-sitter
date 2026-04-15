@@ -30,6 +30,15 @@ pub const ChosenDecisionRef = struct {
     candidate_actions: []const actions.ParseAction,
 };
 
+pub const DecisionSnapshot = struct {
+    chosen: []const ChosenDecisionRef,
+    unresolved: []const UnresolvedDecisionRef,
+
+    pub fn isSerializationReady(self: DecisionSnapshot) bool {
+        return self.unresolved.len == 0;
+    }
+};
+
 pub const ResolvedActionGroup = struct {
     symbol: @import("../ir/syntax_grammar.zig").SymbolRef,
     candidate_actions: []const actions.ParseAction,
@@ -196,6 +205,16 @@ pub const ResolvedActionTable = struct {
             }
         }
         return refs;
+    }
+
+    pub fn snapshotAlloc(
+        self: ResolvedActionTable,
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error!DecisionSnapshot {
+        return .{
+            .chosen = try self.chosenDecisionsAlloc(allocator),
+            .unresolved = try self.unresolvedDecisionsAlloc(allocator),
+        };
     }
 };
 
@@ -700,6 +719,57 @@ test "resolveActionTableSkeleton exposes structured unresolved decision refs" {
         else => false,
     });
     try std.testing.expectEqual(@as(usize, 2), refs[0].candidate_actions.len);
+}
+
+test "resolveActionTableSkeleton exposes a serializer-facing decision snapshot" {
+    const allocator = std.testing.allocator;
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 2,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                        },
+                    },
+                    .{
+                        .symbol = .{ .terminal = 1 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 5 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTableSkeleton(allocator, grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    const snapshot = try resolved.snapshotAlloc(allocator);
+    defer {
+        allocator.free(snapshot.chosen);
+        allocator.free(snapshot.unresolved);
+    }
+
+    try std.testing.expect(!snapshot.isSerializationReady());
+    try std.testing.expectEqual(@as(usize, 1), snapshot.chosen.len);
+    try std.testing.expectEqual(@as(usize, 1), snapshot.unresolved.len);
+    try std.testing.expect(switch (snapshot.chosen[0].action) {
+        .shift => |id| id == 5,
+        else => false,
+    });
+    try std.testing.expectEqual(UnresolvedReason.shift_reduce, snapshot.unresolved[0].reason);
 }
 
 test "resolveActionTable keeps reduce/reduce pairs unresolved" {
