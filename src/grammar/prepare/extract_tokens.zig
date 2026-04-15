@@ -117,6 +117,19 @@ const Extractor = struct {
         }
     }
 
+    fn extractPrecedenceSymbol(self: *Extractor, symbol: ir_symbols.SymbolId) ExtractTokensError!syntax_ir.SymbolRef {
+        switch (symbol.kind) {
+            .non_terminal => {
+                const variable = self.prepared.variables[symbol.index];
+                if (self.findLexicalVariable(variable.rule)) |terminal_index| {
+                    return .{ .terminal = terminal_index };
+                }
+                return .{ .non_terminal = symbol.index };
+            },
+            .external => return error.InvalidPrecedenceSymbol,
+        }
+    }
+
     fn extractVariables(self: *Extractor) ExtractTokensError![]const syntax_ir.SyntaxVariable {
         var result = std.array_list.Managed(syntax_ir.SyntaxVariable).init(self.allocator);
         defer result.deinit();
@@ -225,10 +238,7 @@ const Extractor = struct {
             for (ordering) |entry| {
                 try entries.append(switch (entry) {
                     .name => |name| .{ .name = name },
-                    .symbol => |symbol| switch (symbol.kind) {
-                        .non_terminal => .{ .symbol = .{ .non_terminal = symbol.index } },
-                        .external => return error.InvalidPrecedenceSymbol,
-                    },
+                    .symbol => |symbol| .{ .symbol = try self.extractPrecedenceSymbol(symbol) },
                 });
             }
 
@@ -563,6 +573,61 @@ test "extractTokens splits simple prepared grammar into syntax and lexical parts
     try std.testing.expectEqual(@as(usize, 0), extracted.syntax.extra_symbols.len);
     try std.testing.expect(extracted.syntax.word_token != null);
     try std.testing.expectEqual(@as(u32, 1), extracted.syntax.word_token.?.terminal);
+}
+
+test "extractTokens rewrites precedence symbols to extracted terminals" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "precedence-token-rewrite",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+            .{
+                .name = "term",
+                .symbol = ir_symbols.SymbolId.nonTerminal(1),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{ .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) }, .{ .string = "x" } },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(1),
+                .name = "term",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{&.{
+            prepared_ir.PrecedenceEntry{ .symbol = ir_symbols.SymbolId.nonTerminal(1) },
+        }},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.precedence_orderings.len);
+    switch (extracted.syntax.precedence_orderings[0][0]) {
+        .symbol => |symbol| try std.testing.expectEqual(@as(u32, 0), symbol.terminal),
+        .name => return error.TestUnexpectedResult,
+    }
 }
 
 test "extractTokens uses literal token names inside hidden wrappers" {
