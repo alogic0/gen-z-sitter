@@ -1,0 +1,11 @@
+.{
+    .name = .zig_tree_sit,
+    .fingerprint = 0x7c690263c93d176a,
+    .version = "0.0.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "README.md",
+        "src",
+    },
+}
