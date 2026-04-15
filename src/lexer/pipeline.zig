@@ -1,5 +1,6 @@
 const std = @import("std");
 const grammar_ir = @import("../ir/grammar_ir.zig");
+const lexical_checks = @import("checks.zig");
 const lexical_serialize = @import("serialize.zig");
 const lexical_dump = @import("debug_dump.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
@@ -58,6 +59,14 @@ test "generateSerializedLexicalDumpFromPrepared matches the repeat choice seq le
 
     const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const extracted = try extract_tokens.extractTokens(pipeline_arena.allocator(), prepared);
+    const serialized = try lexical_serialize.serializeExtractedLexicalGrammar(
+        pipeline_arena.allocator(),
+        prepared,
+        extracted.syntax,
+        extracted.lexical,
+    );
+    try lexical_checks.validateSerializedLexicalBoundary(serialized);
     const dump = try generateSerializedLexicalDumpFromPrepared(pipeline_arena.allocator(), prepared);
 
     try std.testing.expectEqualStrings(fixtures.repeatChoiceSeqLexicalDump().contents, dump);
@@ -81,6 +90,14 @@ test "generateSerializedLexicalDumpFromPrepared matches the mixed semantics bloc
 
     const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const extracted = try extract_tokens.extractTokens(pipeline_arena.allocator(), prepared);
+    const serialized = try lexical_serialize.serializeExtractedLexicalGrammar(
+        pipeline_arena.allocator(),
+        prepared,
+        extracted.syntax,
+        extracted.lexical,
+    );
+    try lexical_checks.validateSerializedLexicalBoundary(serialized);
     const dump = try generateSerializedLexicalDumpFromPrepared(pipeline_arena.allocator(), prepared);
 
     try std.testing.expectEqualStrings(fixtures.mixedSemanticsLexicalDump().contents, dump);

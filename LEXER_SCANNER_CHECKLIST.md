@@ -70,9 +70,18 @@ Current artifact boundary:
 
 ### 4. Add emitted lexer/scanner boundary checks
 
-- [ ] add structural checks for the first emitted lexer/scanner surface
-- [ ] keep those checks aligned with the staged compatibility boundary rather than claiming full runtime ABI support
-- [ ] add compile-oriented or smoke-oriented proof if the emitted lexer surface reaches C output
+- [x] add structural checks for the first emitted lexer/scanner surface
+- [x] keep those checks aligned with the staged compatibility boundary rather than claiming full runtime ABI support
+- [x] add compile-oriented or smoke-oriented proof if the emitted lexer surface reaches C output
+
+Current check boundary:
+- `src/lexer/checks.zig` now validates the serialized lexical surface directly
+- ready lexical surfaces must:
+  - contain serialized lexical variables
+  - avoid unsupported separators and external-token blockers
+- blocked lexical surfaces must:
+  - carry explicit blocker information
+- compile-oriented proof is intentionally recorded as not yet applicable at this stage because the current lexer boundary stops at serialized/dumped lexical artifacts rather than emitted lexer C output
 
 ### 5. Connect lexer/scanner work to behavioral proof
 
