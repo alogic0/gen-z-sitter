@@ -10,6 +10,7 @@ const json_loader = @import("../json_loader.zig");
 const parse_grammar = @import("../parse_grammar.zig");
 
 pub const ExtractTokensError = error{
+    InvalidConflictSymbol,
     InvalidInlineSymbol,
     InvalidSupertypeSymbol,
     InvalidSupertypeStructure,
@@ -196,7 +197,17 @@ const Extractor = struct {
         defer result.deinit();
 
         for (self.prepared.expected_conflicts) |conflict_set| {
-            try result.append(try self.convertSymbolList(conflict_set));
+            var converted = std.array_list.Managed(syntax_ir.SymbolRef).init(self.allocator);
+            defer converted.deinit();
+
+            for (conflict_set) |symbol| {
+                switch (symbol.kind) {
+                    .non_terminal => try converted.append(.{ .non_terminal = symbol.index }),
+                    .external => return error.InvalidConflictSymbol,
+                }
+            }
+
+            try result.append(try converted.toOwnedSlice());
         }
 
         return try result.toOwnedSlice();
@@ -1082,4 +1093,53 @@ test "extractTokens rejects external inline symbols" {
     defer arena.deinit();
 
     try std.testing.expectError(error.InvalidInlineSymbol, extractTokens(arena.allocator(), prepared));
+}
+
+test "extractTokens rejects external conflict symbols" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "bad-conflict",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+        },
+        .external_tokens = &.{
+            .{
+                .name = "template_chars",
+                .symbol = ir_symbols.SymbolId.external(0),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .rules = &.{ .{ .blank = {} }, .{ .blank = {} } },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.external(0),
+                .name = "template_chars",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{&.{ ir_symbols.SymbolId.nonTerminal(0), ir_symbols.SymbolId.external(0) }},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(error.InvalidConflictSymbol, extractTokens(arena.allocator(), prepared));
 }
