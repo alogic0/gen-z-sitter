@@ -192,6 +192,52 @@ Acceptance criteria:
 5. Review whether the emitter module structure is sufficient for later `parser.c`-style expansion.
 6. Do a closeout review documenting what remains for fuller parser code emission and runtime compatibility.
 
+## Current Status
+
+Implemented now:
+
+- `src/parser_emit/parser_c.zig` as the broader parser-oriented emitter on top of `SerializedTable`
+- exact real-path parser.c-like goldens for:
+  - metadata-rich grammar in strict mode
+  - conflict grammar in diagnostic mode
+- blocked-emission behavior carried through the broader emitted artifact via the existing strict vs diagnostic serialization boundary
+- shared emitter formatting/helpers in `src/parser_emit/common.zig`
+- a broader emitted translation unit that now includes:
+  - per-state action/goto/unresolved arrays
+  - `TSStateTable`
+  - `ts_states`
+  - `TSParser`
+  - `ts_parser`
+  - accessor/query helpers:
+    - `ts_parser_instance()`
+    - `ts_parser_state(...)`
+    - `ts_parser_is_blocked()`
+    - `ts_parser_state_count()`
+
+This means Milestone 11 is no longer in “first broader emitter missing” territory. The broader emitter boundary exists and is pinned through exact artifacts.
+
+## Review Result
+
+Implemented boundary work:
+
+- broader parser code emission now exists as a parser.c-like translation unit rather than only table skeletons
+- the emitted artifact is deterministic and exact-golden tested through the real pipeline
+- blocked emission has an explicit policy through the strict vs diagnostic serialized-table boundary
+- emitter architecture is cleaner than the Milestone 10 starting point because shared serialized-table formatting now lives in `src/parser_emit/common.zig`
+
+Real remaining gaps:
+
+- the emitted parser artifact is broader, but still intentionally simpler than a real Tree-sitter `parser.c`
+- there is still no runtime-facing parser API or ABI compatibility target
+- the current emitted API surface is useful, but still narrow and diagnostic-oriented rather than production-oriented
+- emitter architecture may still want one later consolidation step if broader code emission expands beyond the current `parser_c.zig` surface
+
+Closeout assessment:
+
+- Milestone 11 has achieved its core goal: establish a broader parser-emission surface on top of `SerializedTable`
+- the remaining work is not another Milestone 11 refinement problem
+- the next work belongs to a new milestone focused on deeper parser output and runtime-facing emission boundaries
+
 ## Risks
 
 - broadening code emission too aggressively can blur the boundary between “first real emitter” and “full parser.c parity”
@@ -207,3 +253,27 @@ Milestone 11 is complete when:
 - emitted artifacts are deterministic and pinned by exact goldens
 - the emitter architecture is clear enough for later expansion toward fuller parser code emission
 - the next milestone can focus on deeper parser output and runtime-oriented work rather than reworking the first broader emitter
+
+## Completion State
+
+Milestone 11 is complete.
+
+Completed in this milestone:
+
+- broader parser code emission on top of `SerializedTable`
+- deterministic exact-golden coverage for ready and blocked broader emitter paths
+- shared emitter helpers in `src/parser_emit/common.zig`
+- a parser.c-like emitted translation unit including:
+  - per-state action/goto/unresolved arrays
+  - `TSStateTable`
+  - `ts_states`
+  - `TSParser`
+  - `ts_parser`
+  - accessor/query helpers
+
+Explicitly deferred beyond Milestone 11:
+
+- fuller parser output closer to real Tree-sitter `parser.c`
+- runtime-facing parser API and ABI compatibility targets
+- lexer/scanner emission
+- parse-table compression/minimization

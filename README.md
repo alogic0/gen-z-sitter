@@ -73,12 +73,25 @@ Milestone 10 includes:
 - a first textual emitter-facing parser-table skeleton
 - a first C-like table skeleton consumer of serialized parser data
 
-The next parser-generation work is now Milestone 11:
+Milestone 11 is complete and establishes the first broader parser-emission boundary on top of `SerializedTable`.
 
-- broader parser code emission on top of `SerializedTable`
-- explicit blocked-emission behavior for broader emitted artifacts
-- deterministic broader emitter goldens
-- emitter architecture cleanup for later `parser.c`-style expansion
+Milestone 11 includes:
+
+- a broader `parser.c`-like emitter on top of `SerializedTable`
+- exact real-path emitter goldens for ready and blocked grammars
+- shared emitter helpers in `src/parser_emit/common.zig`
+- a broader emitted parser translation unit with:
+  - per-state arrays
+  - state-table descriptors
+  - a top-level parser descriptor
+  - basic accessor/query helpers
+
+The next parser-generation work is now Milestone 12:
+
+- richer parser output on top of the Milestone 11 boundary
+- a clearer runtime-facing emitted API boundary
+- deterministic richer parser-emission goldens
+- explicit blocked behavior at that richer emitted boundary
 
 ## Documents
 
@@ -94,6 +107,7 @@ The next parser-generation work is now Milestone 11:
 - [MILESTONE_9_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_9_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_10_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_10_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_11_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_11_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_12_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_12_IMPLEMENTATION_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)
