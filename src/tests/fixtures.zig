@@ -190,6 +190,44 @@ pub fn validResolvedGrammarJson() Fixture {
     };
 }
 
+pub fn validResolvedNodeTypesJson() Fixture {
+    return .{
+        .name = "valid_resolved_node_types",
+        .contents =
+            \\[
+            \\  {
+            \\    "type": "expr",
+            \\    "named": true
+            \\  },
+            \\  {
+            \\    "type": "source_file",
+            \\    "named": true,
+            \\    "root": true
+            \\  },
+            \\  {
+            \\    "type": "term",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\    "type": "term",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "term",
+            \\    "named": true
+            \\  }
+            \\]
+            \\
+        ,
+    };
+}
+
 pub fn undefinedSymbolGrammarJson() Fixture {
     return .{
         .name = "undefined_symbol",

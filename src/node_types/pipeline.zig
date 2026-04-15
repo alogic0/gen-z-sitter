@@ -50,8 +50,5 @@ test "generateNodeTypesJsonFromPrepared runs the Milestone 3 pipeline from gramm
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
     const json = try generateNodeTypesJsonFromPrepared(pipeline_arena.allocator(), prepared);
 
-    try golden.expectContains(json, "[");
-    try golden.expectContains(json, "\"type\": \"source_file\"");
-    try golden.expectContains(json, "\"root\": true");
-    try golden.expectContains(json, "\"type\": \"expr\"");
+    try std.testing.expectEqualStrings(fixtures.validResolvedNodeTypesJson().contents, json);
 }
