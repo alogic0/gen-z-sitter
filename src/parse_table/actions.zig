@@ -54,6 +54,16 @@ pub const ActionTable = struct {
     }
 };
 
+pub const ActionGroup = struct {
+    symbol: syntax_ir.SymbolRef,
+    entries: []const ActionEntry,
+};
+
+pub const GroupedStateActions = struct {
+    state_id: state.StateId,
+    groups: []const ActionGroup,
+};
+
 pub fn buildActionsForState(
     allocator: std.mem.Allocator,
     productions: anytype,
@@ -107,6 +117,33 @@ pub fn buildActionTable(
         };
     }
     return .{ .states = state_entries };
+}
+
+pub fn groupActionsForState(
+    allocator: std.mem.Allocator,
+    state_id: state.StateId,
+    entries: []const ActionEntry,
+) std.mem.Allocator.Error!GroupedStateActions {
+    var groups = std.array_list.Managed(ActionGroup).init(allocator);
+    defer groups.deinit();
+
+    var cursor: usize = 0;
+    while (cursor < entries.len) {
+        const symbol = entries[cursor].symbol;
+        var next = cursor + 1;
+        while (next < entries.len and symbolRefEql(entries[next].symbol, symbol)) : (next += 1) {}
+
+        try groups.append(.{
+            .symbol = symbol,
+            .entries = try allocator.dupe(ActionEntry, entries[cursor..next]),
+        });
+        cursor = next;
+    }
+
+    return .{
+        .state_id = state_id,
+        .groups = try groups.toOwnedSlice(),
+    };
 }
 
 pub fn sortActionEntries(entries: []ActionEntry) void {
@@ -301,4 +338,28 @@ test "buildActionTable keeps per-state actions addressable by state id" {
     try std.testing.expect(switch (table.entriesForState(2)[0].action) { .reduce => |id| id == 1, else => false });
     try std.testing.expectEqual(@as(usize, 1), table.entriesForState(7).len);
     try std.testing.expect(switch (table.entriesForState(7)[0].action) { .accept => true, else => false });
+}
+
+test "groupActionsForState groups sorted actions by symbol deterministically" {
+    const allocator = std.testing.allocator;
+
+    const entries = [_]ActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 3 } },
+        .{ .symbol = .{ .external = 1 }, .action = .{ .accept = {} } },
+    };
+
+    const grouped = try groupActionsForState(allocator, 4, entries[0..]);
+    defer {
+        for (grouped.groups) |group| allocator.free(group.entries);
+        allocator.free(grouped.groups);
+    }
+
+    try std.testing.expectEqual(@as(state.StateId, 4), grouped.state_id);
+    try std.testing.expectEqual(@as(usize, 2), grouped.groups.len);
+    try std.testing.expectEqual(@as(u32, 0), grouped.groups[0].symbol.terminal);
+    try std.testing.expectEqual(@as(usize, 2), grouped.groups[0].entries.len);
+    try std.testing.expect(switch (grouped.groups[0].entries[0].action) { .shift => true, else => false });
+    try std.testing.expect(switch (grouped.groups[0].entries[1].action) { .reduce => true, else => false });
+    try std.testing.expectEqual(@as(u32, 1), grouped.groups[1].symbol.external);
 }

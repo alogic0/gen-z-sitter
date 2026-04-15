@@ -44,7 +44,7 @@ pub fn dumpGroupedActionTableAlloc(
 ) DebugDumpError![]const u8 {
     var out = std.array_list.Managed(u8).init(allocator);
     defer out.deinit();
-    try writeGroupedActionTable(out.writer(), states, action_table);
+    try writeGroupedActionTableAlloc(allocator, out.writer(), states, action_table);
     return try out.toOwnedSlice();
 }
 
@@ -146,7 +146,8 @@ pub fn writeActionTable(
     }
 }
 
-pub fn writeGroupedActionTable(
+pub fn writeGroupedActionTableAlloc(
+    allocator: std.mem.Allocator,
     writer: anytype,
     states: []const state.ParseState,
     action_table: actions.ActionTable,
@@ -155,18 +156,17 @@ pub fn writeGroupedActionTable(
         try writer.print("state {d}\n", .{parse_state.id});
         try writer.writeAll("  actions:\n");
 
-        const state_actions = action_table.entriesForState(parse_state.id);
-        var cursor: usize = 0;
-        while (cursor < state_actions.len) {
-            const symbol = state_actions[cursor].symbol;
-            var next = cursor + 1;
-            while (next < state_actions.len and symbolRefEql(state_actions[next].symbol, symbol)) : (next += 1) {}
-
+        const grouped = try actions.groupActionsForState(allocator, parse_state.id, action_table.entriesForState(parse_state.id));
+        defer {
+            for (grouped.groups) |group| allocator.free(group.entries);
+            allocator.free(grouped.groups);
+        }
+        for (grouped.groups) |group| {
             try writer.writeAll("    ");
-            try writeSymbol(writer, symbol);
+            try writeSymbol(writer, group.symbol);
             try writer.writeAll(":\n");
 
-            for (state_actions[cursor..next]) |entry| {
+            for (group.entries) |entry| {
                 try writer.writeAll("      ");
                 switch (entry.action) {
                     .shift => |target| try writer.print("shift {d}\n", .{target}),
@@ -174,8 +174,6 @@ pub fn writeGroupedActionTable(
                     .accept => try writer.writeAll("accept\n"),
                 }
             }
-
-            cursor = next;
         }
 
         if (parse_state.conflicts.len > 0) {
@@ -203,23 +201,6 @@ fn writeSymbol(writer: anytype, symbol: @import("../ir/syntax_grammar.zig").Symb
         .terminal => |symbol_index| try writer.print("terminal:{d}", .{symbol_index}),
         .external => |symbol_index| try writer.print("external:{d}", .{symbol_index}),
     }
-}
-
-fn symbolRefEql(a: @import("../ir/syntax_grammar.zig").SymbolRef, b: @import("../ir/syntax_grammar.zig").SymbolRef) bool {
-    return switch (a) {
-        .non_terminal => |index| switch (b) {
-            .non_terminal => |other| index == other,
-            else => false,
-        },
-        .terminal => |index| switch (b) {
-            .terminal => |other| index == other,
-            else => false,
-        },
-        .external => |index| switch (b) {
-            .external => |other| index == other,
-            else => false,
-        },
-    };
 }
 
 test "dumpStatesAlloc formats parser states deterministically" {
