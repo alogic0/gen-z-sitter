@@ -1,6 +1,7 @@
 const std = @import("std");
 const cli_args = @import("cli/args.zig");
 const command_generate = @import("cli/command_generate.zig");
+const grammar_loader = @import("grammar/loader.zig");
 const diag = @import("support/diag.zig");
 
 pub fn main() !void {
@@ -29,17 +30,9 @@ pub fn main() !void {
         .generate => |opts| {
             command_generate.runGenerate(allocator, opts) catch |err| switch (err) {
                 error.NotImplemented => {
-                    try diag.printStderr(diag.Diagnostic{
-                        .kind = .unimplemented,
-                        .message = "generate pipeline scaffolded; grammar loading is not implemented yet",
-                    });
                     std.process.exit(3);
                 },
                 error.InvalidArguments => {
-                    try diag.printStderr(diag.Diagnostic{
-                        .kind = .usage,
-                        .message = "invalid generate options",
-                    });
                     std.process.exit(2);
                 },
                 else => {
@@ -57,6 +50,10 @@ pub fn main() !void {
 test {
     _ = @import("cli/args.zig");
     _ = @import("cli/command_generate.zig");
+    _ = @import("grammar/raw_grammar.zig");
+    _ = @import("grammar/json_loader.zig");
+    _ = @import("grammar/validate.zig");
+    _ = @import("grammar/loader.zig");
     _ = @import("support/diag.zig");
     _ = @import("support/fs.zig");
     _ = @import("support/json.zig");

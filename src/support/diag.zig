@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub const Kind = enum {
     info,
@@ -16,10 +17,12 @@ pub const Diagnostic = struct {
 };
 
 pub fn printStdout(d: Diagnostic) !void {
+    if (builtin.is_test) return;
     try printToFile(std.fs.File.stdout(), d);
 }
 
 pub fn printStderr(d: Diagnostic) !void {
+    if (builtin.is_test) return;
     try printToFile(std.fs.File.stderr(), d);
 }
 
