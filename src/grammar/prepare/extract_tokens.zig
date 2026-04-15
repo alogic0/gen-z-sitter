@@ -10,6 +10,7 @@ const json_loader = @import("../json_loader.zig");
 const parse_grammar = @import("../parse_grammar.zig");
 
 pub const ExtractTokensError = error{
+    InvalidInlineSymbol,
     InvalidSupertypeSymbol,
     InvalidSupertypeStructure,
     InvalidWordToken,
@@ -239,7 +240,10 @@ const Extractor = struct {
 
         for (self.prepared.variables_to_inline) |symbol| {
             if (self.isPromotedTopLevelRepeatSymbol(symbol)) continue;
-            try result.append(try self.convertSymbol(symbol));
+            switch (symbol.kind) {
+                .non_terminal => try result.append(.{ .non_terminal = symbol.index }),
+                .external => return error.InvalidInlineSymbol,
+            }
         }
 
         return try result.toOwnedSlice();
@@ -1029,4 +1033,53 @@ test "extractTokens assigns distinct auxiliary symbols for nested repeats" {
     try std.testing.expectEqual(@as(u32, 1), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
     try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[1].productions[2].steps[1].symbol.non_terminal);
     try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[2].productions[1].steps[0].symbol.non_terminal);
+}
+
+test "extractTokens rejects external inline symbols" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "bad-inline",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+        },
+        .external_tokens = &.{
+            .{
+                .name = "template_chars",
+                .symbol = ir_symbols.SymbolId.external(0),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .rules = &.{ .{ .blank = {} }, .{ .blank = {} } },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.external(0),
+                .name = "template_chars",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{ir_symbols.SymbolId.external(0)},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(error.InvalidInlineSymbol, extractTokens(arena.allocator(), prepared));
 }
