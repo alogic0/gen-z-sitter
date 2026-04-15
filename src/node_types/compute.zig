@@ -25,27 +25,43 @@ pub const NodeTypeRef = struct {
 };
 
 pub const ChildQuantity = struct {
-    required: bool = true,
+    exists: bool = false,
+    required: bool = false,
     multiple: bool = false,
 
     fn zero() ChildQuantity {
-        return .{ .required = false, .multiple = false };
+        return .{ .exists = false, .required = false, .multiple = false };
     }
 
     fn one() ChildQuantity {
-        return .{ .required = true, .multiple = false };
+        return .{ .exists = true, .required = true, .multiple = false };
     }
 
     fn fromCount(count: usize) ChildQuantity {
         if (count == 0) return .zero();
         return .{
+            .exists = true,
             .required = true,
             .multiple = count > 1,
         };
     }
 
-    fn merge(a: ChildQuantity, b: ChildQuantity) ChildQuantity {
+    fn append(self: *ChildQuantity, other: ChildQuantity) void {
+        if (!other.exists) return;
+        if (self.exists or other.multiple) self.multiple = true;
+        if (other.required) self.required = true;
+        self.exists = true;
+    }
+
+    fn mergeAlternatives(a: ChildQuantity, b: ChildQuantity) ChildQuantity {
+        if (!a.exists) return b;
+        if (!b.exists) return .{
+            .exists = a.exists,
+            .required = false,
+            .multiple = a.multiple,
+        };
         return .{
+            .exists = true,
             .required = a.required and b.required,
             .multiple = a.multiple or b.multiple,
         };
@@ -68,6 +84,7 @@ pub fn computeNodeTypes(
     lexical: lexical_ir.LexicalGrammar,
     defaults: alias_ir.AliasMap,
 ) ComputeNodeTypesError![]const NodeType {
+    var summary_context = try SummaryContext.init(allocator, syntax, lexical, defaults);
     var nodes = std.array_list.Managed(NodeType).init(allocator);
     defer nodes.deinit();
 
@@ -75,20 +92,19 @@ pub fn computeNodeTypes(
         if (!isVisibleSyntaxVariable(variable)) continue;
 
         const symbol: syntax_ir.SymbolRef = .{ .non_terminal = @intCast(index) };
+        const summary = try summary_context.get(index);
         const subtype_refs = if (containsSymbolRef(syntax.supertype_symbols, symbol))
-            try computeSupertypeRefs(allocator, syntax, lexical, defaults, symbol)
+            try computeSupertypeRefs(allocator, symbol, summary)
         else
             &.{};
-        const fields = try computeFields(allocator, variable, syntax, lexical, defaults);
-        const children = try computeChildren(allocator, variable, syntax, lexical, defaults);
 
         try nodes.append(.{
             .kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults),
             .named = isNamedSyntaxVariable(variable, defaults.findForSymbol(symbol)),
             .root = index == 0,
             .extra = containsSymbolRef(syntax.extra_symbols, symbol),
-            .fields = fields,
-            .children = children,
+            .fields = summary.fields,
+            .children = summary.children,
             .subtypes = subtype_refs,
         });
     }
@@ -110,10 +126,8 @@ pub fn computeNodeTypes(
 
 fn computeSupertypeRefs(
     allocator: std.mem.Allocator,
-    syntax: syntax_ir.SyntaxGrammar,
-    lexical: lexical_ir.LexicalGrammar,
-    defaults: alias_ir.AliasMap,
     supertype_symbol: syntax_ir.SymbolRef,
+    summary: *const VariableSummary,
 ) ComputeNodeTypesError![]const NodeTypeRef {
     var refs = std.array_list.Managed(NodeTypeRef).init(allocator);
     defer refs.deinit();
@@ -123,120 +137,18 @@ fn computeSupertypeRefs(
         else => return error.InvalidSupertype,
     };
 
-    const variable = syntax.variables[supertype_index];
-    for (variable.productions) |production| {
-        if (production.steps.len != 1) return error.InvalidSupertype;
-        const step = production.steps[0];
-        if (containsSymbolRef(syntax.supertype_symbols, step.symbol)) return error.InvalidSupertype;
-        if (!isVisibleChild(step.symbol, syntax, lexical, defaults)) return error.InvalidSupertype;
-
-        const candidate = NodeTypeRef{
-            .kind = effectiveNameForSymbol(step.symbol, syntax, lexical, defaults),
-            .named = isNamedSymbol(step.symbol, syntax, lexical, defaults),
-        };
-        if (!containsNodeTypeRef(refs.items, candidate)) {
-            try refs.append(candidate);
+    _ = supertype_index;
+    if (summary.has_multi_step_production) return error.InvalidSupertype;
+    if (summary.children) |children| {
+        for (children.types) |candidate| {
+            if (!containsNodeTypeRef(refs.items, candidate)) {
+                try refs.append(candidate);
+            }
         }
     }
 
     std.mem.sort(NodeTypeRef, refs.items, {}, lessThanNodeTypeRef);
     return try refs.toOwnedSlice();
-}
-
-fn computeFields(
-    allocator: std.mem.Allocator,
-    variable: syntax_ir.SyntaxVariable,
-    syntax: syntax_ir.SyntaxGrammar,
-    lexical: lexical_ir.LexicalGrammar,
-    defaults: alias_ir.AliasMap,
-) ComputeNodeTypesError![]const Field {
-    var map = std.StringArrayHashMap(FieldAccumulator).init(allocator);
-
-    for (variable.productions) |production| {
-        var counts = std.StringArrayHashMap(usize).init(allocator);
-        defer counts.deinit();
-
-        for (production.steps) |step| {
-            const field_name = step.field_name orelse continue;
-            if (!isVisibleChild(step.symbol, syntax, lexical, defaults)) continue;
-
-            const gop = try map.getOrPut(field_name);
-            if (!gop.found_existing) {
-                gop.value_ptr.* = FieldAccumulator.init(allocator);
-            }
-            try addNodeTypeRef(&gop.value_ptr.types, .{
-                .kind = effectiveNameForStep(step, syntax, lexical, defaults),
-                .named = isNamedStep(step, syntax, lexical, defaults),
-            });
-
-            const count_entry = try counts.getOrPut(field_name);
-            if (!count_entry.found_existing) count_entry.value_ptr.* = 0;
-            count_entry.value_ptr.* += 1;
-        }
-
-        var it = map.iterator();
-        while (it.next()) |entry| {
-            const count = counts.get(entry.key_ptr.*) orelse 0;
-            const qty = ChildQuantity.fromCount(count);
-            entry.value_ptr.quantity = if (entry.value_ptr.quantity) |existing|
-                ChildQuantity.merge(existing, qty)
-            else
-                qty;
-        }
-    }
-
-    var fields = std.array_list.Managed(Field).init(allocator);
-    defer fields.deinit();
-
-    var iter = map.iterator();
-    while (iter.next()) |entry| {
-        std.mem.sort(NodeTypeRef, entry.value_ptr.types.items, {}, lessThanNodeTypeRef);
-        try fields.append(.{
-            .name = entry.key_ptr.*,
-            .info = .{
-                .quantity = entry.value_ptr.quantity orelse ChildQuantity.zero(),
-                .types = try entry.value_ptr.types.toOwnedSlice(),
-            },
-        });
-    }
-
-    std.mem.sort(Field, fields.items, {}, lessThanField);
-    return try fields.toOwnedSlice();
-}
-
-fn computeChildren(
-    allocator: std.mem.Allocator,
-    variable: syntax_ir.SyntaxVariable,
-    syntax: syntax_ir.SyntaxGrammar,
-    lexical: lexical_ir.LexicalGrammar,
-    defaults: alias_ir.AliasMap,
-) ComputeNodeTypesError!?ChildInfo {
-    var child_types = std.array_list.Managed(NodeTypeRef).init(allocator);
-    defer child_types.deinit();
-    var quantity: ?ChildQuantity = null;
-
-    for (variable.productions) |production| {
-        var visible_count: usize = 0;
-
-        for (production.steps) |step| {
-            if (!isVisibleChild(step.symbol, syntax, lexical, defaults)) continue;
-            visible_count += 1;
-            try addNodeTypeRef(&child_types, .{
-                .kind = effectiveNameForStep(step, syntax, lexical, defaults),
-                .named = isNamedStep(step, syntax, lexical, defaults),
-            });
-        }
-
-        const production_qty = ChildQuantity.fromCount(visible_count);
-        quantity = if (quantity) |existing| ChildQuantity.merge(existing, production_qty) else production_qty;
-    }
-
-    if (quantity == null) return null;
-    std.mem.sort(NodeTypeRef, child_types.items, {}, lessThanNodeTypeRef);
-    return .{
-        .quantity = quantity.?,
-        .types = try child_types.toOwnedSlice(),
-    };
 }
 
 const FieldAccumulator = struct {
@@ -249,6 +161,197 @@ const FieldAccumulator = struct {
         };
     }
 };
+
+const VariableSummary = struct {
+    fields: []const Field = &.{},
+    children: ?ChildInfo = null,
+    has_multi_step_production: bool = false,
+};
+
+const SummaryState = enum {
+    pending,
+    visiting,
+    done,
+};
+
+const SummaryContext = struct {
+    allocator: std.mem.Allocator,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    defaults: alias_ir.AliasMap,
+    states: []SummaryState,
+    summaries: []VariableSummary,
+
+    fn init(
+        allocator: std.mem.Allocator,
+        syntax: syntax_ir.SyntaxGrammar,
+        lexical: lexical_ir.LexicalGrammar,
+        defaults: alias_ir.AliasMap,
+    ) ComputeNodeTypesError!SummaryContext {
+        const states = try allocator.alloc(SummaryState, syntax.variables.len);
+        const summaries = try allocator.alloc(VariableSummary, syntax.variables.len);
+        for (states) |*state| state.* = .pending;
+        for (summaries) |*summary| summary.* = .{};
+        return .{
+            .allocator = allocator,
+            .syntax = syntax,
+            .lexical = lexical,
+            .defaults = defaults,
+            .states = states,
+            .summaries = summaries,
+        };
+    }
+
+    fn get(self: *SummaryContext, index: usize) ComputeNodeTypesError!*const VariableSummary {
+        switch (self.states[index]) {
+            .done => return &self.summaries[index],
+            .visiting => return &self.summaries[index],
+            .pending => {},
+        }
+
+        self.states[index] = .visiting;
+        self.summaries[index] = .{};
+
+        const variable = self.syntax.variables[index];
+        var field_map = std.StringArrayHashMap(FieldAccumulator).init(self.allocator);
+        var child_types = std.array_list.Managed(NodeTypeRef).init(self.allocator);
+        var children_quantity: ?ChildQuantity = null;
+        var has_multi_step = false;
+
+        for (variable.productions, 0..) |production, production_index| {
+            var production_field_quantities = std.StringArrayHashMap(ChildQuantity).init(self.allocator);
+            defer production_field_quantities.deinit();
+            var production_children_quantity = ChildQuantity.zero();
+
+            if (production.steps.len > 1) has_multi_step = true;
+
+            for (production.steps) |step| {
+                const hidden_index = self.hiddenInheritableIndex(step.symbol);
+                if (hidden_index) |child_index| {
+                    const child_summary = try self.get(child_index);
+                    if (child_summary.has_multi_step_production) has_multi_step = true;
+
+                    if (child_summary.children) |children| {
+                        for (children.types) |child_type| {
+                            try addNodeTypeRef(&child_types, child_type);
+                        }
+                        production_children_quantity.append(children.quantity);
+
+                        if (step.field_name) |field_name| {
+                            const acc = try getFieldAccumulator(self.allocator, &field_map, field_name, production_index);
+                            for (children.types) |child_type| {
+                                try addNodeTypeRef(&acc.types, child_type);
+                            }
+                            const qty = try getProductionFieldQuantity(&production_field_quantities, field_name);
+                            qty.append(children.quantity);
+                        }
+                    }
+
+                    for (child_summary.fields) |child_field| {
+                        const acc = try getFieldAccumulator(self.allocator, &field_map, child_field.name, production_index);
+                        for (child_field.info.types) |child_type| {
+                            try addNodeTypeRef(&acc.types, child_type);
+                        }
+                        const qty = try getProductionFieldQuantity(&production_field_quantities, child_field.name);
+                        qty.append(child_field.info.quantity);
+                    }
+                    continue;
+                }
+
+                if (!isVisibleChild(step.symbol, self.syntax, self.lexical, self.defaults)) continue;
+
+                const child_type = NodeTypeRef{
+                    .kind = effectiveNameForStep(step, self.syntax, self.lexical, self.defaults),
+                    .named = isNamedStep(step, self.syntax, self.lexical, self.defaults),
+                };
+                try addNodeTypeRef(&child_types, child_type);
+                production_children_quantity.append(ChildQuantity.one());
+
+                if (step.field_name) |field_name| {
+                    const acc = try getFieldAccumulator(self.allocator, &field_map, field_name, production_index);
+                    try addNodeTypeRef(&acc.types, child_type);
+                    const qty = try getProductionFieldQuantity(&production_field_quantities, field_name);
+                    qty.append(ChildQuantity.one());
+                }
+            }
+
+            children_quantity = if (children_quantity) |existing|
+                ChildQuantity.mergeAlternatives(existing, production_children_quantity)
+            else
+                production_children_quantity;
+
+            var iter = field_map.iterator();
+            while (iter.next()) |entry| {
+                const qty = production_field_quantities.get(entry.key_ptr.*) orelse ChildQuantity.zero();
+                entry.value_ptr.quantity = if (entry.value_ptr.quantity) |existing|
+                    ChildQuantity.mergeAlternatives(existing, qty)
+                else
+                    qty;
+            }
+        }
+
+        var fields = std.array_list.Managed(Field).init(self.allocator);
+        var field_iter = field_map.iterator();
+        while (field_iter.next()) |entry| {
+            std.mem.sort(NodeTypeRef, entry.value_ptr.types.items, {}, lessThanNodeTypeRef);
+            try fields.append(.{
+                .name = entry.key_ptr.*,
+                .info = .{
+                    .quantity = entry.value_ptr.quantity orelse ChildQuantity.zero(),
+                    .types = try entry.value_ptr.types.toOwnedSlice(),
+                },
+            });
+        }
+        std.mem.sort(Field, fields.items, {}, lessThanField);
+
+        std.mem.sort(NodeTypeRef, child_types.items, {}, lessThanNodeTypeRef);
+        self.summaries[index] = .{
+            .fields = try fields.toOwnedSlice(),
+            .children = if (children_quantity) |qty| .{
+                .quantity = qty,
+                .types = try child_types.toOwnedSlice(),
+            } else null,
+            .has_multi_step_production = has_multi_step,
+        };
+        self.states[index] = .done;
+        return &self.summaries[index];
+    }
+
+    fn hiddenInheritableIndex(self: *SummaryContext, symbol: syntax_ir.SymbolRef) ?usize {
+        const index = switch (symbol) {
+            .non_terminal => |i| i,
+            else => return null,
+        };
+        if (containsSymbolRef(self.syntax.supertype_symbols, symbol)) return null;
+        if (isVisibleSyntaxVariable(self.syntax.variables[index])) return null;
+        return index;
+    }
+};
+
+fn getFieldAccumulator(
+    allocator: std.mem.Allocator,
+    map: *std.StringArrayHashMap(FieldAccumulator),
+    field_name: []const u8,
+    prior_production_count: usize,
+) ComputeNodeTypesError!*FieldAccumulator {
+    const gop = try map.getOrPut(field_name);
+    if (!gop.found_existing) {
+        gop.value_ptr.* = FieldAccumulator.init(allocator);
+        if (prior_production_count > 0) {
+            gop.value_ptr.quantity = ChildQuantity.zero();
+        }
+    }
+    return gop.value_ptr;
+}
+
+fn getProductionFieldQuantity(
+    map: *std.StringArrayHashMap(ChildQuantity),
+    field_name: []const u8,
+) ComputeNodeTypesError!*ChildQuantity {
+    const gop = try map.getOrPut(field_name);
+    if (!gop.found_existing) gop.value_ptr.* = ChildQuantity.zero();
+    return gop.value_ptr;
+}
 
 fn addNodeTypeRef(list: *std.array_list.Managed(NodeTypeRef), candidate: NodeTypeRef) ComputeNodeTypesError!void {
     if (!containsNodeTypeRef(list.items, candidate)) {
@@ -539,6 +642,58 @@ test "computeNodeTypes aggregates fields and visible children" {
     try std.testing.expectEqualStrings("expr", source.fields[0].info.types[0].kind);
     try std.testing.expectEqualStrings("right", source.fields[1].name);
     try std.testing.expect(!source.fields[1].info.quantity.required);
+    try std.testing.expectEqualStrings("rhs", source.fields[1].info.types[0].kind);
+}
+
+test "computeNodeTypes inherits fields and children through hidden wrappers" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var hidden_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 }, .field_name = "left" },
+        .{ .symbol = .{ .terminal = 0 } },
+        .{ .symbol = .{ .non_terminal = 3 }, .field_name = "right", .alias = .{ .value = "rhs", .named = true } },
+    };
+    var expr_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+    var term_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 2 } },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "_pair", .kind = .hidden, .productions = &.{.{ .steps = hidden_steps[0..] }} },
+            .{ .name = "expr", .kind = .named, .productions = &.{.{ .steps = expr_steps[0..] }} },
+            .{ .name = "term", .kind = .named, .productions = &.{.{ .steps = term_steps[0..] }} },
+        },
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "+", .kind = .anonymous, .rule = 0 },
+            .{ .name = "identifier", .kind = .named, .rule = 1 },
+            .{ .name = "number", .kind = .named, .rule = 2 },
+        },
+        .separators = &.{},
+    };
+
+    const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
+    const source = findNodeByKind(nodes, "source_file").?;
+    try std.testing.expect(source.children != null);
+    try std.testing.expectEqual(@as(usize, 3), source.children.?.types.len);
+    try std.testing.expectEqual(@as(usize, 2), source.fields.len);
+    try std.testing.expectEqualStrings("left", source.fields[0].name);
+    try std.testing.expectEqualStrings("expr", source.fields[0].info.types[0].kind);
+    try std.testing.expectEqualStrings("right", source.fields[1].name);
     try std.testing.expectEqualStrings("rhs", source.fields[1].info.types[0].kind);
 }
 
