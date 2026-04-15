@@ -1,5 +1,6 @@
 const std = @import("std");
 const raw = @import("raw_grammar.zig");
+const normalize = @import("normalize.zig");
 const ir_symbols = @import("../ir/symbols.zig");
 const ir_rules = @import("../ir/rules.zig");
 const ir = @import("../ir/grammar_ir.zig");
@@ -44,12 +45,12 @@ const Builder = struct {
         var variables = try self.buildVariables();
         const external_tokens = try self.buildExternalTokens();
         const extra_rules = try self.lowerRuleList(self.grammar.extras);
-        const expected_conflicts = try self.resolveConflicts();
+        const expected_conflicts = try normalize.normalizeConflictSets(self.allocator, try self.resolveConflicts());
         const precedence_orderings = try self.resolvePrecedences();
-        const variables_to_inline = try self.resolveInlineRules();
-        const supertype_symbols = try self.resolveSupertypes();
+        const variables_to_inline = try normalize.normalizeSymbolList(self.allocator, try self.resolveInlineRules());
+        const supertype_symbols = try normalize.normalizeSymbolList(self.allocator, try self.resolveSupertypes());
         const word_token = try self.resolveWordToken();
-        const reserved_word_sets = try self.resolveReservedWordSets();
+        const reserved_word_sets = try normalize.normalizeReservedWordSets(self.allocator, try self.resolveReservedWordSets());
 
         for (supertype_symbols) |symbol| {
             symbols[self.symbolTableIndex(symbol)].supertype = true;
@@ -558,6 +559,35 @@ test "parseRawGrammar merges nested metadata wrappers" {
     try std.testing.expect(metadata.data.token);
     try std.testing.expect(metadata.data.immediate_token);
     try std.testing.expectEqualStrings("global", metadata.data.reserved_context_name.?);
+}
+
+test "parseRawGrammar normalizes semantic lists" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), fixtures.normalizedListsGrammarJson().contents, .{});
+    defer parsed.deinit();
+
+    const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parseRawGrammar(parse_arena.allocator(), &raw_grammar);
+
+    try std.testing.expectEqual(@as(usize, 2), prepared.variables_to_inline.len);
+    try std.testing.expectEqual(@as(u32, 1), prepared.variables_to_inline[0].index);
+    try std.testing.expectEqual(@as(u32, 2), prepared.variables_to_inline[1].index);
+
+    try std.testing.expectEqual(@as(usize, 2), prepared.supertype_symbols.len);
+    try std.testing.expectEqual(@as(u32, 1), prepared.supertype_symbols[0].index);
+    try std.testing.expectEqual(@as(u32, 2), prepared.supertype_symbols[1].index);
+
+    try std.testing.expectEqual(@as(usize, 1), prepared.expected_conflicts.len);
+    try std.testing.expectEqual(@as(usize, 2), prepared.expected_conflicts[0].len);
+    try std.testing.expectEqual(@as(u32, 1), prepared.expected_conflicts[0][0].index);
+    try std.testing.expectEqual(@as(u32, 2), prepared.expected_conflicts[0][1].index);
+
+    try std.testing.expectEqual(@as(usize, 1), prepared.reserved_word_sets.len);
+    try std.testing.expectEqual(@as(usize, 2), prepared.reserved_word_sets[0].members.len);
 }
 
 fn getMetadataRule(prepared: ir.PreparedGrammar, rule_id: ir_rules.RuleId) ir_rules.MetadataRule {

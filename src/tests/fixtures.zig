@@ -310,6 +310,40 @@ pub fn nestedMetadataGrammarJson() Fixture {
     };
 }
 
+pub fn normalizedListsGrammarJson() Fixture {
+    return .{
+        .name = "normalized_lists",
+        .contents =
+            \\{
+            \\  "name": "basic",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "expr" },
+            \\        { "type": "SYMBOL", "name": "term" }
+            \\      ]
+            \\    },
+            \\    "expr": { "type": "STRING", "value": "x" },
+            \\    "term": { "type": "STRING", "value": "y" }
+            \\  },
+            \\  "inline": ["term", "expr", "term"],
+            \\  "supertypes": ["term", "expr", "term"],
+            \\  "conflicts": [
+            \\    ["term", "expr", "expr"],
+            \\    ["expr", "term"]
+            \\  ],
+            \\  "reserved": {
+            \\    "global": [
+            \\      { "type": "STRING", "value": "yield" },
+            \\      { "type": "STRING", "value": "yield" }
+            \\    ]
+            \\  }
+            \\}
+        ,
+    };
+}
+
 test "basic fixture is non-empty" {
     const fixture = basicGrammarJson();
     try std.testing.expect(fixture.contents.len > 0);
