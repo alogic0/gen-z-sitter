@@ -974,6 +974,44 @@ pub fn parseTableMetadataGrammarJson() Fixture {
     };
 }
 
+pub fn parseTablePrecedenceGrammarJson() Fixture {
+    return .{
+        .name = "parse_table_precedence",
+        .contents =
+            \\{
+            \\  "name": "parse_table_precedence",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "expr"
+            \\    },
+            \\    "expr": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        {
+            \\          "type": "PREC_LEFT",
+            \\          "value": 1,
+            \\          "content": {
+            \\            "type": "SEQ",
+            \\            "members": [
+            \\              { "type": "SYMBOL", "name": "expr" },
+            \\              { "type": "STRING", "value": "+" },
+            \\              { "type": "SYMBOL", "name": "expr" }
+            \\            ]
+            \\          }
+            \\        },
+            \\        {
+            \\          "type": "STRING",
+            \\          "value": "x"
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
 pub fn fieldChildrenGrammarJson() Fixture {
     return .{
         .name = "field_children",

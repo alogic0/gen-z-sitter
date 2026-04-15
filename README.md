@@ -13,14 +13,13 @@ Milestone 5 is complete and establishes the first parser-table foundation:
 - deterministic state-reuse coverage
 - focused reduce/reduce conflict coverage through the real preparation pipeline
 
-The remaining parser-generation work is now Milestone 6+:
+The remaining parser-generation work is now Milestone 7+:
 
 - broader grammar support beyond the current narrow LR(0)-style subset
-- richer lookahead/FIRST-set behavior
 - conflict resolution
 - parse-table serialization and eventual `parser.c` emission
 
-Milestone 6 is now well underway and already includes:
+Milestone 6 is complete and includes:
 
 - FIRST-set computation
 - lookahead-aware closure propagation
@@ -29,10 +28,12 @@ Milestone 6 is now well underway and already includes:
 - action-derived conflict reporting
 - exact state, action-table, and grouped-action-table goldens across tiny, conflict, reduce/reduce, and metadata-rich fixtures
 
-The main remaining Milestone 6 question is semantic depth:
+Milestone 7 is the next semantic step:
 
-- whether precedence / associativity handling should be implemented in this milestone
-- or deferred so Milestone 6 closes around lookahead, action tables, and conflict surfaces
+- precedence-aware conflict resolution
+- associativity-aware conflict resolution
+- dynamic precedence support
+- resolved action-table artifacts
 
 ## Documents
 
@@ -43,6 +44,7 @@ The main remaining Milestone 6 question is semantic depth:
 - [MILESTONE_4_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_4_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_5_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_5_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_6_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_6_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_7_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_7_IMPLEMENTATION_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)

@@ -65,7 +65,7 @@ By the end of Milestone 6, the repository should have:
 
 ## Current Status
 
-Milestone 6 is substantially implemented.
+Milestone 6 is complete.
 
 Already in place:
 
@@ -87,7 +87,7 @@ Already in place:
   - inert step metadata is accepted
   - `dynamic_precedence` is still rejected explicitly
 
-This means the Milestone 6 remaining work is no longer foundation-building. It is mainly semantic depth and closeout.
+This means the Milestone 6 infrastructure goals are complete. The remaining semantic depth around precedence, associativity, and dynamic precedence now belongs to Milestone 7.
 
 ## Current Starting Point
 
@@ -129,10 +129,10 @@ Expected impact:
 - conflicts and actions can become more realistic
 - the parser-table layer can start supporting grammars that LR(0)-style construction over-reports or misclassifies
 
-Remaining semantic work in this area:
+Closeout note:
 
-- confirm whether any upstream lookahead cases still differ on more complex nullable / recursive grammars
-- add more focused fixtures only if a real mismatch is found
+- lookahead / FIRST-set support is complete for Milestone 6
+- any remaining deeper parser-decision semantics are deferred to Milestone 7
 
 ### 2. Parse-action table IR
 
@@ -153,10 +153,9 @@ Expected impact:
 - later milestones can serialize or emit real parser tables
 - conflict handling can move from “state contains conflicts” to “action entries conflict”
 
-Remaining semantic work in this area:
+Closeout note:
 
-- mostly polish
-- decide whether any additional grouped-action IR is needed beyond the current symbol buckets before Milestone 6 closes
+- explicit parse-action IR is complete for Milestone 6
 
 ### 3. Broader supported subset
 
@@ -185,11 +184,10 @@ Expected impact:
 - the parser-table layer becomes useful for more than the minimal subset proven in Milestone 5
 - fewer grammars stop at `UnsupportedFeature`
 
-Remaining semantic work in this area:
+Deferred to Milestone 7:
 
 - precedence / associativity semantics at the action-table or conflict-resolution layer
-- explicit decision on whether `dynamic_precedence` belongs in late Milestone 6 or should be deferred to Milestone 7+
-- possibly one or two more real-grammar fixtures if precedence handling is implemented here
+- `dynamic_precedence`
 
 ### 4. Action-table conflict reporting
 
@@ -210,10 +208,10 @@ Expected impact:
 - later resolution logic will have the right boundary
 - debug artifacts will better match the real parse-table problem
 
-Remaining semantic work in this area:
+Closeout note:
 
-- actual conflict resolution remains out of scope for Milestone 6
-- the remaining question is documentation and milestone-boundary clarity, not the existence of the conflict surface
+- unresolved conflict reporting is complete for Milestone 6
+- conflict resolution itself is deferred to Milestone 7
 
 ## File-by-File Plan
 
@@ -327,33 +325,35 @@ Status:
   - flat standalone action-table dumps
   - grouped standalone action-table dumps
 
-## Remaining Work From Current Code State
+## Supported Subset At Closeout
 
-### Real semantic work
+Milestone 6 closes with support for:
 
-1. Decide whether Milestone 6 should also honor precedence / associativity semantically, or stop with the current accepted-but-inert metadata boundary.
-2. Decide whether `dynamic_precedence` should remain a Milestone 7+ deferral.
-3. If precedence semantics are added in Milestone 6:
-   - implement them at the action/conflict layer
-   - add one focused precedence-sensitive fixture and golden
+- FIRST-set computation
+- lookahead-aware closure propagation
+- explicit action-table IR
+- builder-owned action tables
+- action-derived shift/reduce and reduce/reduce conflict reporting
+- state dumps with embedded actions
+- standalone flat action-table dumps
+- standalone grouped action-table dumps
+- inert parser-step metadata surviving through table construction
 
-### Closeout / polish work
+Milestone 6 explicitly does not resolve conflicts using:
 
-1. Record the supported subset explicitly in the final milestone closeout.
-2. Update `README.md` once Milestone 6 is either declared complete or explicitly left in semantic follow-up state.
-3. Optionally add one final tiny standalone flat action-table golden for symmetry if it proves useful, but this is not a blocker.
+- precedence
+- associativity
+- dynamic precedence
 
-## Closeout Assessment
+Those now belong to Milestone 7.
 
-Milestone 6 no longer has missing architecture or missing artifact surfaces.
+## Exit Assessment
 
-The meaningful open question is now:
+Milestone 6 is complete because:
 
-- should semantic precedence handling be part of Milestone 6,
-or
-- should Milestone 6 close with lookahead, actions, and conflict reporting complete, while precedence-aware resolution moves to the next milestone?
-
-That is the main remaining decision boundary.
+- the parser-table infrastructure is in place
+- action/conflict artifacts are stable and broadly covered by exact goldens
+- the remaining work is semantic resolution logic rather than missing parser-table architecture
 
 ### 7. `src/parse_table/pipeline.zig`
 

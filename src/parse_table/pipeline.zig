@@ -3,6 +3,7 @@ const grammar_ir = @import("../ir/grammar_ir.zig");
 const actions = @import("actions.zig");
 const debug_dump = @import("debug_dump.zig");
 const build = @import("build.zig");
+const resolution = @import("resolution.zig");
 const state = @import("state.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
@@ -482,6 +483,47 @@ test "buildStatesFromPrepared supports metadata-rich grammar through the real pr
 
     try std.testing.expectEqual(@as(usize, 7), result.states.len);
     try std.testing.expect(result.states[0].transitions.len >= 2);
+}
+
+test "resolveActionTableSkeleton leaves the first precedence-sensitive grammar unresolved" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTablePrecedenceGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
+    const grouped = try actions.groupActionTable(pipeline_arena.allocator(), result.actions);
+    const resolved = try resolution.resolveActionTableSkeleton(pipeline_arena.allocator(), grouped);
+
+    var saw_unresolved = false;
+    for (result.states) |parse_state| {
+        for (parse_state.conflicts) |conflict| {
+            if (conflict.kind != .shift_reduce) continue;
+            if (conflict.symbol == null) continue;
+
+            for (resolved.groupsForState(parse_state.id)) |group| {
+                if (!std.meta.eql(group.symbol, conflict.symbol.?)) continue;
+                try std.testing.expectEqual(resolution.ResolutionKind.unresolved, group.kind);
+                try std.testing.expect(group.chosen == null);
+                try std.testing.expect(group.candidates.len >= 2);
+                saw_unresolved = true;
+            }
+        }
+    }
+
+    try std.testing.expect(saw_unresolved);
 }
 
 test "generateStateActionDumpFromPrepared matches the metadata-rich parser-state action golden fixture" {
