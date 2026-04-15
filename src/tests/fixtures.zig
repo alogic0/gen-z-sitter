@@ -326,6 +326,66 @@ pub fn parseTableConflictGrammarJson() Fixture {
     };
 }
 
+pub fn parseTableConflictDump() Fixture {
+    return .{
+        .name = "parse_table_conflict_dump",
+        .contents =
+            \\state 0
+            \\  items:
+            \\    #0@0
+            \\    #1@0
+            \\    #2@0
+            \\    #3@0
+            \\  transitions:
+            \\    non_terminal:0 -> 1
+            \\    non_terminal:1 -> 2
+            \\    terminal:1 -> 3
+            \\
+            \\state 1
+            \\  items:
+            \\    #0@1
+            \\  transitions:
+            \\
+            \\state 2
+            \\  items:
+            \\    #1@1
+            \\    #2@1
+            \\  transitions:
+            \\    terminal:0 -> 4
+            \\  conflicts:
+            \\    shift_reduce on terminal:0
+            \\      #1@1
+            \\      #2@1
+            \\
+            \\state 3
+            \\  items:
+            \\    #3@1
+            \\  transitions:
+            \\
+            \\state 4
+            \\  items:
+            \\    #2@0
+            \\    #2@2
+            \\    #3@0
+            \\  transitions:
+            \\    non_terminal:1 -> 5
+            \\    terminal:1 -> 3
+            \\
+            \\state 5
+            \\  items:
+            \\    #2@1
+            \\    #2@3
+            \\  transitions:
+            \\    terminal:0 -> 4
+            \\  conflicts:
+            \\    shift_reduce on terminal:0
+            \\      #2@3
+            \\      #2@1
+            \\
+        ,
+    };
+}
+
 pub fn fieldChildrenGrammarJson() Fixture {
     return .{
         .name = "field_children",
