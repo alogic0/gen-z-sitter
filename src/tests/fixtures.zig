@@ -4560,6 +4560,83 @@ pub fn behavioralConfigGrammarJson() Fixture {
     };
 }
 
+pub fn behavioralConfigGrammarJs() Fixture {
+    return .{
+        .name = "behavioral_config_js",
+        .contents =
+            \\module.exports = {
+            \\  "name": "behavioral_config",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "value"
+            \\    },
+            \\    "value": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "object" },
+            \\        { "type": "SYMBOL", "name": "array" },
+            \\        { "type": "STRING", "value": "id" },
+            \\        { "type": "STRING", "value": "0" },
+            \\        { "type": "STRING", "value": "true" },
+            \\        { "type": "STRING", "value": "false" },
+            \\        { "type": "STRING", "value": "null" }
+            \\      ]
+            \\    },
+            \\    "object": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        {
+            \\          "type": "SEQ",
+            \\          "members": [
+            \\            { "type": "STRING", "value": "{" },
+            \\            { "type": "STRING", "value": "}" }
+            \\          ]
+            \\        },
+            \\        {
+            \\          "type": "SEQ",
+            \\          "members": [
+            \\            { "type": "STRING", "value": "{" },
+            \\            { "type": "SYMBOL", "name": "pair" },
+            \\            { "type": "STRING", "value": "}" }
+            \\          ]
+            \\        }
+            \\      ]
+            \\    },
+            \\    "pair": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        { "type": "STRING", "value": "id" },
+            \\        { "type": "STRING", "value": ":" },
+            \\        { "type": "SYMBOL", "name": "value" }
+            \\      ]
+            \\    },
+            \\    "array": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        {
+            \\          "type": "SEQ",
+            \\          "members": [
+            \\            { "type": "STRING", "value": "[" },
+            \\            { "type": "STRING", "value": "]" }
+            \\          ]
+            \\        },
+            \\        {
+            \\          "type": "SEQ",
+            \\          "members": [
+            \\            { "type": "STRING", "value": "[" },
+            \\            { "type": "SYMBOL", "name": "value" },
+            \\            { "type": "STRING", "value": "]" }
+            \\          ]
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\};
+        ,
+    };
+}
+
 pub fn behavioralConfigValidInput() Fixture {
     return .{
         .name = "behavioral_config_valid_input",
@@ -4581,6 +4658,7 @@ test "basic fixture is non-empty" {
 
 test "behavioral comparison boundary fixtures are non-empty" {
     try std.testing.expect(behavioralConfigGrammarJson().contents.len > 0);
+    try std.testing.expect(behavioralConfigGrammarJs().contents.len > 0);
     try std.testing.expect(behavioralConfigValidInput().contents.len > 0);
     try std.testing.expect(behavioralConfigInvalidInput().contents.len > 0);
 }

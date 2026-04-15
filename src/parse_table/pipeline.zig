@@ -1139,6 +1139,59 @@ test "generateParserCEmitterDumpFromPrepared matches the metadata-rich parser.c-
     try std.testing.expectEqualStrings(fixtures.parseTableMetadataParserCDump().contents, dump);
 }
 
+test "generateParserCEmitterDumpFromPrepared keeps behavioral config parser output stable across grammar.json and grammar.js" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.behavioralConfigGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared_from_json = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump_from_json = try generateParserCEmitterDumpFromPrepared(
+        pipeline_arena.allocator(),
+        prepared_from_json,
+        .strict,
+    );
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.js",
+        .data = fixtures.behavioralConfigGrammarJs().contents,
+    });
+
+    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    defer std.testing.allocator.free(grammar_path);
+
+    var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
+    defer loaded.deinit();
+
+    var parse_arena_js = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena_js.deinit();
+    var pipeline_arena_js = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena_js.deinit();
+
+    const prepared_from_js = try parse_grammar.parseRawGrammar(parse_arena_js.allocator(), &loaded.json.grammar);
+    const dump_from_js = try generateParserCEmitterDumpFromPrepared(
+        pipeline_arena_js.allocator(),
+        prepared_from_js,
+        .strict,
+    );
+
+    try std.testing.expectEqualStrings(dump_from_json, dump_from_js);
+}
+
 test "generateResolvedActionTableDumpFromPrepared keeps reduce/reduce conflict groups explicit" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();

@@ -28,9 +28,16 @@ Current first comparison boundary:
 
 ### 2. Add end-to-end emitted-parser comparison inputs
 
-- [ ] add one or more real-grammar inputs that run through the existing `grammar.js` or `grammar.json` loading path
-- [ ] preserve deterministic generated outputs for those real grammars
-- [ ] keep the first comparison set focused on grammars that fit the current parser/emitter boundary
+- [x] add one or more real-grammar inputs that run through the existing `grammar.js` or `grammar.json` loading path
+- [x] preserve deterministic generated outputs for those real grammars
+- [x] keep the first comparison set focused on grammars that fit the current parser/emitter boundary
+
+Current result for this stage:
+- the `behavioral_config` comparison target now exists in both:
+  - `grammar.json` fixture form
+  - `grammar.js` fixture form
+- parser-oriented output is now compared across both load paths for that same real-language-style grammar
+- the first end-to-end comparison input remains scanner-free and bounded to the current emitted parser surface
 
 ### 3. Compare behavior, not just text
 
