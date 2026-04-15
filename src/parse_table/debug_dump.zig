@@ -37,6 +37,17 @@ pub fn dumpActionTableAlloc(
     return try out.toOwnedSlice();
 }
 
+pub fn dumpGroupedActionTableAlloc(
+    allocator: std.mem.Allocator,
+    states: []const state.ParseState,
+    action_table: actions.ActionTable,
+) DebugDumpError![]const u8 {
+    var out = std.array_list.Managed(u8).init(allocator);
+    defer out.deinit();
+    try writeGroupedActionTable(out.writer(), states, action_table);
+    return try out.toOwnedSlice();
+}
+
 pub fn writeStates(writer: anytype, states: []const state.ParseState) !void {
     try writeStatesWithActions(writer, states, .{ .states = &.{} });
 }
@@ -135,12 +146,80 @@ pub fn writeActionTable(
     }
 }
 
+pub fn writeGroupedActionTable(
+    writer: anytype,
+    states: []const state.ParseState,
+    action_table: actions.ActionTable,
+) !void {
+    for (states, 0..) |parse_state, index| {
+        try writer.print("state {d}\n", .{parse_state.id});
+        try writer.writeAll("  actions:\n");
+
+        const state_actions = action_table.entriesForState(parse_state.id);
+        var cursor: usize = 0;
+        while (cursor < state_actions.len) {
+            const symbol = state_actions[cursor].symbol;
+            var next = cursor + 1;
+            while (next < state_actions.len and symbolRefEql(state_actions[next].symbol, symbol)) : (next += 1) {}
+
+            try writer.writeAll("    ");
+            try writeSymbol(writer, symbol);
+            try writer.writeAll(":\n");
+
+            for (state_actions[cursor..next]) |entry| {
+                try writer.writeAll("      ");
+                switch (entry.action) {
+                    .shift => |target| try writer.print("shift {d}\n", .{target}),
+                    .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                    .accept => try writer.writeAll("accept\n"),
+                }
+            }
+
+            cursor = next;
+        }
+
+        if (parse_state.conflicts.len > 0) {
+            try writer.writeAll("  conflicts:\n");
+            for (parse_state.conflicts) |conflict| {
+                try writer.print("    {s}", .{@tagName(conflict.kind)});
+                if (conflict.symbol) |symbol| {
+                    try writer.writeAll(" on ");
+                    try writeSymbol(writer, symbol);
+                }
+                try writer.writeByte('\n');
+                for (conflict.items) |parse_item| {
+                    try writer.print("      {f}\n", .{parse_item});
+                }
+            }
+        }
+
+        if (index + 1 < states.len) try writer.writeByte('\n');
+    }
+}
+
 fn writeSymbol(writer: anytype, symbol: @import("../ir/syntax_grammar.zig").SymbolRef) !void {
     switch (symbol) {
         .non_terminal => |symbol_index| try writer.print("non_terminal:{d}", .{symbol_index}),
         .terminal => |symbol_index| try writer.print("terminal:{d}", .{symbol_index}),
         .external => |symbol_index| try writer.print("external:{d}", .{symbol_index}),
     }
+}
+
+fn symbolRefEql(a: @import("../ir/syntax_grammar.zig").SymbolRef, b: @import("../ir/syntax_grammar.zig").SymbolRef) bool {
+    return switch (a) {
+        .non_terminal => |index| switch (b) {
+            .non_terminal => |other| index == other,
+            else => false,
+        },
+        .terminal => |index| switch (b) {
+            .terminal => |other| index == other,
+            else => false,
+        },
+        .external => |index| switch (b) {
+            .external => |other| index == other,
+            else => false,
+        },
+    };
 }
 
 test "dumpStatesAlloc formats parser states deterministically" {
@@ -267,6 +346,57 @@ test "dumpActionTableAlloc formats action tables deterministically" {
         \\  actions:
         \\    terminal:0 => shift 2
         \\    terminal:0 => reduce 3
+        \\  conflicts:
+        \\    shift_reduce on terminal:0
+        \\      #1@1
+        \\      #2@1 ?terminal:0
+        \\
+    , dump);
+}
+
+test "dumpGroupedActionTableAlloc groups actions by symbol deterministically" {
+    const allocator = std.testing.allocator;
+    const states = [_]state.ParseState{
+        .{
+            .id = 0,
+            .items = &[_]item.ParseItem{},
+            .transitions = &[_]state.Transition{},
+            .conflicts = &[_]state.Conflict{
+                .{
+                    .kind = .shift_reduce,
+                    .symbol = .{ .terminal = 0 },
+                    .items = &[_]item.ParseItem{
+                        item.ParseItem.init(1, 1),
+                        item.ParseItem.withLookahead(2, 1, .{ .terminal = 0 }),
+                    },
+                },
+            },
+        },
+    };
+    const action_table = actions.ActionTable{
+        .states = &[_]actions.StateActions{
+            .{
+                .state_id = 0,
+                .entries = &[_]actions.ActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 3 } },
+                    .{ .symbol = .{ .external = 1 }, .action = .{ .accept = {} } },
+                },
+            },
+        },
+    };
+
+    const dump = try dumpGroupedActionTableAlloc(allocator, states[0..], action_table);
+    defer allocator.free(dump);
+
+    try std.testing.expectEqualStrings(
+        \\state 0
+        \\  actions:
+        \\    terminal:0:
+        \\      shift 2
+        \\      reduce 3
+        \\    external:1:
+        \\      accept
         \\  conflicts:
         \\    shift_reduce on terminal:0
         \\      #1@1

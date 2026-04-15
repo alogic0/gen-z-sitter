@@ -648,6 +648,47 @@ pub fn parseTableConflictActionTableDump() Fixture {
     };
 }
 
+pub fn parseTableConflictGroupedActionTableDump() Fixture {
+    return .{
+        .name = "parse_table_conflict_grouped_action_table_dump",
+        .contents =
+            \\state 0
+            \\  actions:
+            \\    terminal:1:
+            \\      shift 3
+            \\
+            \\state 1
+            \\  actions:
+            \\
+            \\state 2
+            \\  actions:
+            \\    terminal:0:
+            \\      shift 4
+            \\
+            \\state 3
+            \\  actions:
+            \\    terminal:0:
+            \\      reduce 3
+            \\
+            \\state 4
+            \\  actions:
+            \\    terminal:1:
+            \\      shift 3
+            \\
+            \\state 5
+            \\  actions:
+            \\    terminal:0:
+            \\      shift 4
+            \\      reduce 2
+            \\  conflicts:
+            \\    shift_reduce on terminal:0
+            \\      #2@1
+            \\      #2@3
+            \\
+        ,
+    };
+}
+
 pub fn parseTableReduceReduceActionTableDump() Fixture {
     return .{
         .name = "parse_table_reduce_reduce_action_table_dump",
