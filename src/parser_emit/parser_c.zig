@@ -244,6 +244,18 @@ pub fn writeParserC(
     try writer.writeAll("  }\n");
     try writer.writeAll("  return 0;\n");
     try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("bool ts_parser_has_action(uint16_t state_id, const char *symbol) {\n");
+    try writer.writeAll("  return ts_parser_find_action(state_id, symbol) != 0;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("bool ts_parser_has_goto(uint16_t state_id, const char *symbol) {\n");
+    try writer.writeAll("  return ts_parser_find_goto(state_id, symbol) != 0;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {\n");
+    try writer.writeAll("  return ts_parser_find_unresolved(state_id, symbol) != 0;\n");
+    try writer.writeAll("}\n");
 }
 
 test "emitParserCAlloc formats parser C skeletons deterministically" {
@@ -472,6 +484,18 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\    i += 1;
         \\  }
         \\  return 0;
+        \\}
+        \\
+        \\bool ts_parser_has_action(uint16_t state_id, const char *symbol) {
+        \\  return ts_parser_find_action(state_id, symbol) != 0;
+        \\}
+        \\
+        \\bool ts_parser_has_goto(uint16_t state_id, const char *symbol) {
+        \\  return ts_parser_find_goto(state_id, symbol) != 0;
+        \\}
+        \\
+        \\bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {
+        \\  return ts_parser_find_unresolved(state_id, symbol) != 0;
         \\}
         \\
     , emitted);

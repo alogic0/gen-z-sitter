@@ -1151,6 +1151,18 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  return 0;
             \\}
             \\
+            \\bool ts_parser_has_action(uint16_t state_id, const char *symbol) {
+            \\  return ts_parser_find_action(state_id, symbol) != 0;
+            \\}
+            \\
+            \\bool ts_parser_has_goto(uint16_t state_id, const char *symbol) {
+            \\  return ts_parser_find_goto(state_id, symbol) != 0;
+            \\}
+            \\
+            \\bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {
+            \\  return ts_parser_find_unresolved(state_id, symbol) != 0;
+            \\}
+            \\
         ,
     };
 }
@@ -1429,6 +1441,18 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\    i += 1;
             \\  }
             \\  return 0;
+            \\}
+            \\
+            \\bool ts_parser_has_action(uint16_t state_id, const char *symbol) {
+            \\  return ts_parser_find_action(state_id, symbol) != 0;
+            \\}
+            \\
+            \\bool ts_parser_has_goto(uint16_t state_id, const char *symbol) {
+            \\  return ts_parser_find_goto(state_id, symbol) != 0;
+            \\}
+            \\
+            \\bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {
+            \\  return ts_parser_find_unresolved(state_id, symbol) != 0;
             \\}
             \\
         ,
