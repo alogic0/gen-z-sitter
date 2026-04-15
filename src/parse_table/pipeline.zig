@@ -306,3 +306,26 @@ test "buildStatesFromPrepared supports metadata-rich grammar through the real pr
     try std.testing.expectEqual(@as(usize, 7), result.states.len);
     try std.testing.expect(result.states[0].transitions.len >= 2);
 }
+
+test "generateStateActionDumpFromPrepared matches the metadata-rich parser-state action golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableMetadataGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateStateActionDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.parseTableMetadataActionDump().contents, dump);
+}

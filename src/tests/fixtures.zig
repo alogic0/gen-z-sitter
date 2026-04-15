@@ -549,6 +549,69 @@ pub fn parseTableReduceReduceActionDump() Fixture {
     };
 }
 
+pub fn parseTableMetadataActionDump() Fixture {
+    return .{
+        .name = "parse_table_metadata_action_dump",
+        .contents =
+            \\state 0
+            \\  items:
+            \\    #0@0
+            \\    #1@0
+            \\    #2@0 ?terminal:0
+            \\  transitions:
+            \\    non_terminal:0 -> 1
+            \\    non_terminal:1 -> 2
+            \\    terminal:1 -> 3
+            \\  actions:
+            \\    terminal:1 => shift 3
+            \\
+            \\state 1
+            \\  items:
+            \\    #0@1
+            \\  transitions:
+            \\  actions:
+            \\
+            \\state 2
+            \\  items:
+            \\    #1@1
+            \\  transitions:
+            \\    terminal:0 -> 4
+            \\  actions:
+            \\    terminal:0 => shift 4
+            \\
+            \\state 3
+            \\  items:
+            \\    #2@1 ?terminal:0
+            \\  transitions:
+            \\  actions:
+            \\    terminal:0 => reduce 2
+            \\
+            \\state 4
+            \\  items:
+            \\    #1@2
+            \\    #2@0
+            \\  transitions:
+            \\    non_terminal:1 -> 5
+            \\    terminal:1 -> 6
+            \\  actions:
+            \\    terminal:1 => shift 6
+            \\
+            \\state 5
+            \\  items:
+            \\    #1@3
+            \\  transitions:
+            \\  actions:
+            \\
+            \\state 6
+            \\  items:
+            \\    #2@1
+            \\  transitions:
+            \\  actions:
+            \\
+        ,
+    };
+}
+
 pub fn parseTableReuseGrammarJson() Fixture {
     return .{
         .name = "parse_table_reuse",
