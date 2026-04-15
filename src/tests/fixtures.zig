@@ -1435,6 +1435,46 @@ pub fn parseTableConflictResolvedActionDump() Fixture {
     };
 }
 
+pub fn parseTableReduceReduceResolvedActionDump() Fixture {
+    return .{
+        .name = "parse_table_reduce_reduce_resolved_action_dump",
+        .contents =
+            \\state 0
+            \\  resolved_actions:
+            \\    terminal:1: shift 6
+            \\
+            \\state 1
+            \\  resolved_actions:
+            \\
+            \\state 2
+            \\  resolved_actions:
+            \\    terminal:0: shift 7
+            \\
+            \\state 3
+            \\  resolved_actions:
+            \\    terminal:0: reduce 2
+            \\
+            \\state 4
+            \\  resolved_actions:
+            \\    terminal:0: reduce 3
+            \\
+            \\state 5
+            \\  resolved_actions:
+            \\    terminal:0: unresolved
+            \\      candidate reduce 4
+            \\      candidate reduce 5
+            \\
+            \\state 6
+            \\  resolved_actions:
+            \\    terminal:0: reduce 6
+            \\
+            \\state 7
+            \\  resolved_actions:
+            \\
+        ,
+    };
+}
+
 pub fn fieldChildrenGrammarJson() Fixture {
     return .{
         .name = "field_children",
