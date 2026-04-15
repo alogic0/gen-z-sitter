@@ -68,6 +68,7 @@ test {
     _ = @import("ir/grammar_ir.zig");
     _ = @import("ir/syntax_grammar.zig");
     _ = @import("ir/lexical_grammar.zig");
+    _ = @import("lexer/serialize.zig");
     _ = @import("ir/aliases.zig");
     _ = @import("node_types/compute.zig");
     _ = @import("node_types/pipeline.zig");

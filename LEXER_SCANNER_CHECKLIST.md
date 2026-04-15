@@ -37,9 +37,21 @@ Current first supported lexer/scanner boundary:
 
 ### 2. Introduce lexer-facing IR and serialization boundary
 
-- [ ] define the minimal lexer/scanner IR needed beyond the current parser-only structures
-- [ ] keep the first IR deterministic and emitter-oriented
-- [ ] make blocked or unsupported lexer features explicit rather than implicit
+- [x] define the minimal lexer/scanner IR needed beyond the current parser-only structures
+- [x] keep the first IR deterministic and emitter-oriented
+- [x] make blocked or unsupported lexer features explicit rather than implicit
+
+Current lexer-facing boundary:
+- `src/lexer/serialize.zig` is the first lexer-oriented serialization boundary
+- the ready subset now serializes:
+  - string lexical forms
+  - pattern lexical forms
+  - token/immediate-token metadata
+  - lexical precedence and start-state fields
+- the blocked subset is explicit instead of implicit:
+  - separators are surfaced as unsupported blockers
+  - external tokens are surfaced as unsupported blockers
+- this stage still does not emit lexer C code or claim external-scanner support
 
 ### 3. Add deterministic lexer/scanner artifacts
 
