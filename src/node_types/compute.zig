@@ -166,7 +166,9 @@ pub fn computeNodeTypes(
     }
 
     std.mem.sort(NodeType, nodes.items, {}, lessThanNodeType);
-    return try mergeDuplicateNodeTypes(allocator, nodes.items);
+    const merged = try mergeDuplicateNodeTypes(allocator, nodes.items);
+    try pruneSubtypeRefsFromNodes(allocator, @constCast(merged));
+    return merged;
 }
 
 fn computeSupertypeRefs(
@@ -458,6 +460,66 @@ fn mergeDuplicateNodeTypes(
     }
 
     return try merged.toOwnedSlice();
+}
+
+fn pruneSubtypeRefsFromNodes(
+    allocator: std.mem.Allocator,
+    nodes: []NodeType,
+) ComputeNodeTypesError!void {
+    for (nodes) |*node| {
+        if (node.children) |children| {
+            node.children = try pruneSubtypeRefsFromChildInfo(allocator, children, nodes);
+        }
+
+        const fields = @constCast(node.fields);
+        for (fields) |*field| {
+            field.info = (try pruneSubtypeRefsFromChildInfo(allocator, field.info, nodes)).?;
+        }
+    }
+}
+
+fn pruneSubtypeRefsFromChildInfo(
+    allocator: std.mem.Allocator,
+    info: ChildInfo,
+    nodes: []const NodeType,
+) ComputeNodeTypesError!?ChildInfo {
+    var filtered = std.array_list.Managed(NodeTypeRef).init(allocator);
+    defer filtered.deinit();
+
+    for (info.types) |candidate| {
+        if (!isSubtypeShadowedBySupertype(candidate, info.types, nodes)) {
+            try addNodeTypeRef(&filtered, candidate);
+        }
+    }
+
+    if (filtered.items.len == 0) return null;
+
+    std.mem.sort(NodeTypeRef, filtered.items, {}, lessThanNodeTypeRef);
+    return .{
+        .quantity = info.quantity,
+        .types = try filtered.toOwnedSlice(),
+    };
+}
+
+fn isSubtypeShadowedBySupertype(
+    candidate: NodeTypeRef,
+    siblings: []const NodeTypeRef,
+    nodes: []const NodeType,
+) bool {
+    for (siblings) |sibling| {
+        if (std.mem.eql(u8, sibling.kind, candidate.kind) and sibling.named == candidate.named) continue;
+        const node = findNodeByRef(nodes, sibling) orelse continue;
+        if (node.subtypes.len == 0) continue;
+        if (containsNodeTypeRef(node.subtypes, candidate)) return true;
+    }
+    return false;
+}
+
+fn findNodeByRef(nodes: []const NodeType, needle: NodeTypeRef) ?NodeType {
+    for (nodes) |node| {
+        if (node.named == needle.named and std.mem.eql(u8, node.kind, needle.kind)) return node;
+    }
+    return null;
 }
 
 fn mergeNodeType(
@@ -987,6 +1049,49 @@ test "computeNodeTypes computes visible supertype subtypes" {
     try std.testing.expectEqual(@as(usize, 2), nodes[1].subtypes.len);
     try std.testing.expectEqualStrings("binary_expression", nodes[1].subtypes[0].kind);
     try std.testing.expectEqualStrings("identifier", nodes[1].subtypes[1].kind);
+}
+
+test "computeNodeTypes prunes subtype entries when a supertype is already present" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var source_prod_a = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var source_prod_b = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+    };
+    var expression_prod_a = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+    };
+    var expression_prod_b = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 3 } },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{ .{ .steps = source_prod_a[0..] }, .{ .steps = source_prod_b[0..] } } },
+            .{ .name = "expression", .kind = .named, .productions = &.{ .{ .steps = expression_prod_a[0..] }, .{ .steps = expression_prod_b[0..] } } },
+            .{ .name = "identifier", .kind = .named, .productions = &.{.{ .steps = &.{} }} },
+            .{ .name = "number_literal", .kind = .named, .productions = &.{.{ .steps = &.{} }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{.{ .non_terminal = 1 }},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{},
+        .separators = &.{},
+    };
+
+    const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
+    const source = findNodeByKind(nodes, "source_file").?;
+    try std.testing.expect(source.children != null);
+    try std.testing.expectEqual(@as(usize, 1), source.children.?.types.len);
+    try std.testing.expectEqualStrings("expression", source.children.?.types[0].kind);
 }
 
 test "computeNodeTypes aggregates fields and visible children" {

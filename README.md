@@ -2,7 +2,7 @@
 
 This directory contains planning documents for a Zig rewrite of the Tree-sitter generator/tooling stack.
 
-Milestone 3 is complete. The project now contains a working Zig `node-types.json` pipeline, with the remaining known parity gaps explicitly documented as Milestone 4+ work.
+Milestone 3 is complete. Milestone 4 is in closeout review: the two main deferred `node-types.json` parity targets are implemented, and the remaining work is limited to smaller upstream post-processing differences documented in the Milestone 4 checklist.
 
 ## Documents
 
