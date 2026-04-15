@@ -1023,6 +1023,36 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  return ts_parser.state_count;
             \\}
             \\
+            \\const TSActionEntry *ts_parser_actions(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->actions : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_action_count(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->action_count : 0;
+            \\}
+            \\
+            \\const TSGotoEntry *ts_parser_gotos(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->gotos : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_goto_count(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->goto_count : 0;
+            \\}
+            \\
+            \\const TSUnresolvedEntry *ts_parser_unresolved(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->unresolved : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_unresolved_count(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->unresolved_count : 0;
+            \\}
+            \\
         ,
     };
 }
@@ -1173,6 +1203,36 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\uint16_t ts_parser_state_count(void) {
             \\  return ts_parser.state_count;
+            \\}
+            \\
+            \\const TSActionEntry *ts_parser_actions(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->actions : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_action_count(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->action_count : 0;
+            \\}
+            \\
+            \\const TSGotoEntry *ts_parser_gotos(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->gotos : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_goto_count(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->goto_count : 0;
+            \\}
+            \\
+            \\const TSUnresolvedEntry *ts_parser_unresolved(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->unresolved : 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_unresolved_count(uint16_t state_id) {
+            \\  const TSStateTable *state = ts_parser_state(state_id);
+            \\  return state ? state->unresolved_count : 0;
             \\}
             \\
         ,

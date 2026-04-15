@@ -33,9 +33,40 @@ The Zig project scaffold already exists in this directory and passes:
 - `zig build`
 - `zig build test`
 
-Milestone 0 is effectively complete: build system, CLI skeleton, diagnostics, helper modules, and basic tests are wired.
+Completed milestones:
 
-Milestone 2 is complete. The current Zig implementation has a working `PreparedGrammar` lowering pass, normalization, deterministic debug dumping, and structured semantic diagnostics modeled on upstream `prepare_grammar` and `intern_symbols` behavior.
+- Milestone 0: project scaffold
+- Milestone 1: `grammar.json` loading and validation
+- Milestone 2: prepared-grammar lowering and semantic preparation
+- Milestone 3: integrated `node-types.json` pipeline
+- Milestone 4: deferred `node-types.json` parity work
+- Milestone 5: parser-state construction foundation
+- Milestone 6: lookahead/action/conflict infrastructure
+- Milestone 7: supported precedence-aware conflict resolution subset
+- Milestone 8: build-owned resolved actions and richer shift-side precedence
+- Milestone 9: serializer-facing decision snapshot boundary
+- Milestone 10: serialized parse-table IR and first emitter boundary
+- Milestone 11: broader parser.c-like emission from `SerializedTable`
+
+The project is no longer in front-end or parse-table-foundation work. The remaining work is parser output, runtime-facing emission, compatibility, and later full-generator parity.
+
+Current implementation boundary:
+
+- validated and prepared grammar pipeline
+- `node-types.json` generation and parity-oriented golden coverage
+- parser item/state/action/conflict infrastructure
+- resolution pipeline with explicit unresolved boundaries
+- serialized parse-table boundary
+- multiple emitter surfaces:
+  - textual table dump
+  - C-like table dump
+  - broader parser.c-like translation unit
+
+The active next milestone is Milestone 12:
+
+- richer parser output on top of the Milestone 11 parser.c-like boundary
+- a clearer runtime-facing emitted API
+- exact ready/blocked emission goldens at that richer boundary
 
 ## Top-Level Strategy
 
@@ -478,6 +509,10 @@ Acceptance:
 
 ### Milestone 1: `grammar.json` loader
 
+Status:
+
+- complete
+
 Deliverables:
 
 - `RawGrammar` definition
@@ -491,6 +526,10 @@ Exit criteria:
 - invalid schema fixtures fail correctly
 
 ### Milestone 2: Prepared grammar passes
+
+Status:
+
+- complete
 
 Deliverables:
 
@@ -506,6 +545,10 @@ Exit criteria:
 
 ### Milestone 3: `node-types.json`
 
+Status:
+
+- complete
+
 Deliverables:
 
 - variable info computation
@@ -515,97 +558,186 @@ Exit criteria:
 
 - semantic match on curated grammars
 
-### Milestone 4: `grammar.json` emission
+### Milestone 4: `node-types.json` parity cleanup
+
+Status:
+
+- complete
 
 Deliverables:
 
-- deterministic normalized `src/grammar.json`
+- `children_without_fields` parity
+- named lexical/external collision parity
+- supertype pruning and final node ordering cleanup
 
 Exit criteria:
 
-- stable canonical JSON compare passes
+- the deferred Milestone 3 `node-types.json` parity gaps are closed
 
-### Milestone 5: Lexical pipeline
+### Milestone 5: Parser-state foundation
+
+Status:
+
+- complete
 
 Deliverables:
 
-- token extraction
-- lexical grammar structures
-- NFA / lex-table generation
-- token conflict handling
+- parse item/state IR
+- deterministic narrow LR(0)-style state construction
+- structured conflict reporting
+- exact parser-state dump artifacts
 
 Exit criteria:
 
-- token-focused fixtures behave correctly
+- parser-state construction is deterministic and pinned through exact fixtures
 
-### Milestone 6: Parse-table core
+### Milestone 6: Lookahead and action-table infrastructure
+
+Status:
+
+- complete
 
 Deliverables:
 
-- item sets
-- transitions
-- reductions
-- conflict detection
+- FIRST-set computation
+- lookahead-aware closure
+- explicit parse-action IR
+- builder-owned action tables
+- flat and grouped action-table artifacts
 
 Exit criteria:
 
-- basic grammars generate enough table data for parser rendering
+- action/conflict infrastructure is stable enough for resolution work
 
-### Milestone 7: `parser.c`
+### Milestone 7: Supported precedence-aware resolution
+
+Status:
+
+- complete
 
 Deliverables:
 
-- full `parser.c` rendering
-- ABI/version handling
-- optional report outputs
+- integer precedence in both directions
+- named precedence in both directions for the supported subset
+- dynamic precedence in both directions
+- associativity handling
+- explicit unresolved classification
 
 Exit criteria:
 
-- generated parsers compile on curated grammars
+- the supported shift/reduce resolution subset is real and artifact-tested
 
-### Milestone 8: Semantic verification
+### Milestone 8: Build-owned resolved actions
+
+Status:
+
+- complete
 
 Deliverables:
 
-- harness comparing Rust-generated and Zig-generated parsers
+- builder-owned resolved actions in `BuildResult`
+- explicit `reduce_reduce_deferred` boundary
+- richer shift-side precedence support at the direct resolver layer
 
 Exit criteria:
 
-- parse-tree equivalence on curated grammars and corpora
+- parser-decision output is cleaner and closer to serialization
 
-### Milestone 9: `grammar.js` through Node
+### Milestone 9: Pre-serialization decision boundary
+
+Status:
+
+- complete
 
 Deliverables:
 
-- subprocess-based `node` loader
-- `grammar.js` end-to-end support
+- serializer-facing resolved decisions
+- chosen/unresolved decision refs
+- readiness checks
+- `DecisionSnapshot`
 
 Exit criteria:
 
-- real Tree-sitter grammar repos generate without manual conversion
+- serialization can consume a stable decision handoff
 
-### Milestone 10: Compatibility polish and ergonomics
+### Milestone 10: Serialized parse-table boundary
+
+Status:
+
+- complete
 
 Deliverables:
 
-- improved diagnostics
-- richer report output
-- more runtime choices
-- performance work
+- serialized parse-table IR
+- strict vs diagnostic serialization policy
+- deterministic serialized-table artifacts
+- first emitter-facing serialized consumers
 
-This milestone only begins after correctness is credible.
+Exit criteria:
+
+- serialized tables are a stable emission boundary
+
+### Milestone 11: Broader parser code emission
+
+Status:
+
+- complete
+
+Deliverables:
+
+- broader parser.c-like emitter on top of `SerializedTable`
+- shared emitter helpers
+- exact ready/blocked emitter goldens
+- emitted translation unit with:
+  - state arrays
+  - `TSStateTable`
+  - `TSParser`
+  - accessor/query helpers
+
+Exit criteria:
+
+- the project has a broader parser-emission boundary than Milestone 10’s skeleton emitters
+
+### Milestone 12: Richer parser output boundary
+
+Status:
+
+- planned
+
+Deliverables:
+
+- richer parser output on top of Milestone 11
+- clearer runtime-facing emitted API boundary
+- exact ready/blocked goldens for the richer emitted artifact
+
+Exit criteria:
+
+- the emitter exposes a clearer runtime-shaped boundary without claiming full upstream parity
+
+### Milestone 13+: Runtime compatibility and broader generator parity
+
+Status:
+
+- future work
+
+Likely themes:
+
+- fuller parser output closer to real Tree-sitter `parser.c`
+- runtime/ABI compatibility targets
+- lexer/scanner emission
+- parse-table compression/minimization
+- broader grammar/repo compatibility
+- semantic and corpus-level equivalence verification
 
 ## Immediate Next Work
 
-The next practical step is Milestone 1 only:
+The next practical step is Milestone 12:
 
-1. add `src/grammar/raw_grammar.zig`
-2. add `src/grammar/json_loader.zig`
-3. define the minimum schema model
-4. implement structured validation
-5. add positive and negative fixture tests
-
-Do not start with parse-table work or JS runtime support.
+1. deepen `src/parser_emit/parser_c.zig` into a richer parser-oriented translation unit
+2. define one small but explicit runtime-facing emitted API layer
+3. keep blocked output explicit at that richer boundary
+4. pin the richer ready/blocked outputs through exact real-path goldens
+5. stop short of claiming runtime ABI compatibility or full upstream `parser.c` parity
 
 ## Risks
 
