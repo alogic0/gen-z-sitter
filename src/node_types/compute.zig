@@ -89,9 +89,8 @@ pub fn computeNodeTypes(
     defer nodes.deinit();
 
     for (syntax.variables, 0..) |variable, index| {
-        if (!isVisibleSyntaxVariable(variable)) continue;
-
         const symbol: syntax_ir.SymbolRef = .{ .non_terminal = @intCast(index) };
+        if (!isVisibleSyntaxVariable(variable)) continue;
         const summary = try summary_context.get(index);
         const subtype_refs = if (containsSymbolRef(syntax.supertype_symbols, symbol))
             try computeSupertypeRefs(allocator, symbol, summary)
@@ -269,7 +268,7 @@ const SummaryContext = struct {
                     continue;
                 }
 
-                if (!isVisibleChild(step.symbol, self.syntax, self.lexical, self.defaults)) continue;
+                if (!isVisibleStep(step, self.syntax, self.lexical, self.defaults)) continue;
 
                 const child_type = NodeTypeRef{
                     .kind = effectiveNameForStep(step, self.syntax, self.lexical, self.defaults),
@@ -496,6 +495,17 @@ fn isVisibleChild(
         .terminal => |index| isVisibleLexicalVariable(lexical.variables[index], defaults.findForSymbol(symbol)),
         .external => |index| isVisibleExternalToken(syntax.external_tokens[index], defaults.findForSymbol(symbol)),
     };
+}
+
+fn isVisibleStep(
+    step: syntax_ir.ProductionStep,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    defaults: alias_ir.AliasMap,
+) bool {
+    if (step.alias != null) return true;
+    if (defaults.findForSymbol(step.symbol) != null) return true;
+    return isVisibleChild(step.symbol, syntax, lexical, defaults);
 }
 
 fn effectiveNameForSymbol(

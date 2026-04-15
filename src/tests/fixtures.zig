@@ -482,6 +482,154 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
     };
 }
 
+pub fn mixedSemanticsGrammarJson() Fixture {
+    return .{
+        .name = "mixed_semantics",
+        .contents =
+            \\{
+            \\  "name": "mixed_semantics",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "_wrapped_expression"
+            \\    },
+            \\    "_wrapped_expression": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "indent" },
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "body",
+            \\          "content": {
+            \\            "type": "ALIAS",
+            \\            "named": true,
+            \\            "value": "statement",
+            \\            "content": { "type": "SYMBOL", "name": "expression" }
+            \\          }
+            \\        }
+            \\      ]
+            \\    },
+            \\    "expression": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "identifier" },
+            \\        { "type": "SYMBOL", "name": "number_literal" }
+            \\      ]
+            \\    },
+            \\    "identifier": {
+            \\      "type": "TOKEN",
+            \\      "content": { "type": "PATTERN", "value": "[a-z]+" }
+            \\    },
+            \\    "number_literal": {
+            \\      "type": "STRING",
+            \\      "value": "42"
+            \\    },
+            \\    "space": {
+            \\      "type": "STRING",
+            \\      "value": " "
+            \\    }
+            \\  },
+            \\  "externals": [
+            \\    { "type": "SYMBOL", "name": "indent" }
+            \\  ],
+            \\  "extras": [
+            \\    { "type": "SYMBOL", "name": "space" }
+            \\  ],
+            \\  "supertypes": ["expression"]
+            \\}
+        ,
+    };
+}
+
+pub fn mixedSemanticsNodeTypesJson() Fixture {
+    return .{
+        .name = "mixed_semantics_node_types",
+        .contents =
+            \\[
+            \\  {
+            \\    "type": "identifier",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "identifier",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "indent",
+            \\    "named": true
+            \\  },
+            \\  {
+            \\    "type": "number_literal",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "number_literal",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "source_file",
+            \\    "named": true,
+            \\    "root": true,
+            \\    "fields": {
+            \\      "body": {
+            \\        "multiple": false,
+            \\        "required": true,
+            \\        "types": [
+            \\          {
+            \\            "type": "statement",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      }
+            \\    },
+            \\    "children": {
+            \\      "multiple": true,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "indent",
+            \\          "named": true
+            \\        },
+            \\        {
+            \\          "type": "statement",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "space",
+            \\    "named": true,
+            \\    "extra": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "space",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  }
+            \\]
+            \\
+        ,
+    };
+}
+
 pub fn undefinedSymbolGrammarJson() Fixture {
     return .{
         .name = "undefined_symbol",
