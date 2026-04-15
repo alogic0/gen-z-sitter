@@ -20,6 +20,20 @@ The remaining parser-generation work is now Milestone 6+:
 - conflict resolution
 - parse-table serialization and eventual `parser.c` emission
 
+Milestone 6 is now well underway and already includes:
+
+- FIRST-set computation
+- lookahead-aware closure propagation
+- explicit parse-action IR
+- builder-owned action tables
+- action-derived conflict reporting
+- exact state, action-table, and grouped-action-table goldens across tiny, conflict, reduce/reduce, and metadata-rich fixtures
+
+The main remaining Milestone 6 question is semantic depth:
+
+- whether precedence / associativity handling should be implemented in this milestone
+- or deferred so Milestone 6 closes around lookahead, action tables, and conflict surfaces
+
 ## Documents
 
 - [MASTER_PLAN.md](./MASTER_PLAN.md)
