@@ -1,4 +1,5 @@
 const std = @import("std");
+const actions = @import("actions.zig");
 const item = @import("item.zig");
 const state = @import("state.zig");
 
@@ -14,7 +15,26 @@ pub fn dumpStatesAlloc(
     return try out.toOwnedSlice();
 }
 
+pub fn dumpStatesWithActionsAlloc(
+    allocator: std.mem.Allocator,
+    states: []const state.ParseState,
+    per_state_actions: []const []const actions.ActionEntry,
+) DebugDumpError![]const u8 {
+    var out = std.array_list.Managed(u8).init(allocator);
+    defer out.deinit();
+    try writeStatesWithActions(out.writer(), states, per_state_actions);
+    return try out.toOwnedSlice();
+}
+
 pub fn writeStates(writer: anytype, states: []const state.ParseState) !void {
+    try writeStatesWithActions(writer, states, &.{});
+}
+
+pub fn writeStatesWithActions(
+    writer: anytype,
+    states: []const state.ParseState,
+    per_state_actions: []const []const actions.ActionEntry,
+) !void {
     for (states, 0..) |parse_state, index| {
         try writer.print("state {d}\n", .{parse_state.id});
 
@@ -32,16 +52,27 @@ pub fn writeStates(writer: anytype, states: []const state.ParseState) !void {
             }
         }
 
+        if (per_state_actions.len > 0) {
+            try writer.writeAll("  actions:\n");
+            for (per_state_actions[parse_state.id]) |entry| {
+                try writer.writeAll("    ");
+                try writeSymbol(writer, entry.symbol);
+                try writer.writeAll(" => ");
+                switch (entry.action) {
+                    .shift => |target| try writer.print("shift {d}\n", .{target}),
+                    .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                    .accept => try writer.writeAll("accept\n"),
+                }
+            }
+        }
+
         if (parse_state.conflicts.len > 0) {
             try writer.writeAll("  conflicts:\n");
             for (parse_state.conflicts) |conflict| {
                 try writer.print("    {s}", .{@tagName(conflict.kind)});
                 if (conflict.symbol) |symbol| {
-                    switch (symbol) {
-                        .non_terminal => |symbol_index| try writer.print(" on non_terminal:{d}", .{symbol_index}),
-                        .terminal => |symbol_index| try writer.print(" on terminal:{d}", .{symbol_index}),
-                        .external => |symbol_index| try writer.print(" on external:{d}", .{symbol_index}),
-                    }
+                    try writer.writeAll(" on ");
+                    try writeSymbol(writer, symbol);
                 }
                 try writer.writeByte('\n');
                 for (conflict.items) |parse_item| {
@@ -51,6 +82,14 @@ pub fn writeStates(writer: anytype, states: []const state.ParseState) !void {
         }
 
         if (index + 1 < states.len) try writer.writeByte('\n');
+    }
+}
+
+fn writeSymbol(writer: anytype, symbol: @import("../ir/syntax_grammar.zig").SymbolRef) !void {
+    switch (symbol) {
+        .non_terminal => |symbol_index| try writer.print("non_terminal:{d}", .{symbol_index}),
+        .terminal => |symbol_index| try writer.print("terminal:{d}", .{symbol_index}),
+        .external => |symbol_index| try writer.print("external:{d}", .{symbol_index}),
     }
 }
 
@@ -94,6 +133,42 @@ test "dumpStatesAlloc formats parser states deterministically" {
         \\    shift_reduce on external:7
         \\      #0@1
         \\      #2@0 ?external:5
+        \\
+    , dump);
+}
+
+test "dumpStatesWithActionsAlloc formats parser actions deterministically" {
+    const allocator = std.testing.allocator;
+    const states = [_]state.ParseState{
+        .{
+            .id = 0,
+            .items = &[_]item.ParseItem{
+                item.ParseItem.init(0, 0),
+            },
+            .transitions = &[_]state.Transition{
+                .{ .symbol = .{ .terminal = 0 }, .state = 2 },
+            },
+        },
+    };
+    const per_state_actions = [_][]const actions.ActionEntry{
+        &[_]actions.ActionEntry{
+            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
+            .{ .symbol = .{ .external = 1 }, .action = .{ .accept = {} } },
+        },
+    };
+
+    const dump = try dumpStatesWithActionsAlloc(allocator, states[0..], per_state_actions[0..]);
+    defer allocator.free(dump);
+
+    try std.testing.expectEqualStrings(
+        \\state 0
+        \\  items:
+        \\    #0@0
+        \\  transitions:
+        \\    terminal:0 -> 2
+        \\  actions:
+        \\    terminal:0 => shift 2
+        \\    external:1 => accept
         \\
     , dump);
 }

@@ -1,5 +1,6 @@
 const std = @import("std");
 const grammar_ir = @import("../ir/grammar_ir.zig");
+const actions = @import("actions.zig");
 const debug_dump = @import("debug_dump.zig");
 const build = @import("build.zig");
 const state = @import("state.zig");
@@ -36,6 +37,26 @@ pub fn buildStatesFromPrepared(
     return try build.buildStates(allocator, flattened);
 }
 
+pub fn generateStateActionDumpFromPrepared(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+) PipelineError![]const u8 {
+    const result = try buildStatesFromPrepared(allocator, prepared);
+    const per_state_actions = try buildActionsForStates(allocator, result);
+    return try debug_dump.dumpStatesWithActionsAlloc(allocator, result.states, per_state_actions);
+}
+
+fn buildActionsForStates(
+    allocator: std.mem.Allocator,
+    result: build.BuildResult,
+) std.mem.Allocator.Error![]const []const actions.ActionEntry {
+    const per_state_actions = try allocator.alloc([]const actions.ActionEntry, result.states.len);
+    for (result.states, 0..) |parse_state, index| {
+        per_state_actions[index] = try actions.buildActionsForState(allocator, result.productions, parse_state);
+    }
+    return per_state_actions;
+}
+
 test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
@@ -57,6 +78,60 @@ test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture
     const dump = try generateStateDumpFromPrepared(pipeline_arena.allocator(), prepared);
 
     try std.testing.expectEqualStrings(fixtures.parseTableTinyDump().contents, dump);
+}
+
+test "generateStateActionDumpFromPrepared matches the tiny parser-state action golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableTinyGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateStateActionDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(
+        \\state 0
+        \\  items:
+        \\    #0@0
+        \\    #1@0
+        \\    #2@0
+        \\  transitions:
+        \\    non_terminal:0 -> 1
+        \\    non_terminal:1 -> 2
+        \\    terminal:0 -> 3
+        \\  actions:
+        \\    terminal:0 => shift 3
+        \\
+        \\state 1
+        \\  items:
+        \\    #0@1
+        \\  transitions:
+        \\  actions:
+        \\
+        \\state 2
+        \\  items:
+        \\    #1@1
+        \\  transitions:
+        \\  actions:
+        \\
+        \\state 3
+        \\  items:
+        \\    #2@1
+        \\  transitions:
+        \\  actions:
+        \\
+    , dump);
 }
 
 test "buildStatesFromPrepared reports a focused shift/reduce conflict fixture" {
