@@ -1088,6 +1088,21 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  return entry ? entry->kind : 0;
             \\}
             \\
+            \\bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {
+            \\  const char *kind = ts_parser_action_kind(state_id, index);
+            \\  return kind and ts_string_eq(kind, "shift");
+            \\}
+            \\
+            \\bool ts_parser_action_is_reduce(uint16_t state_id, uint16_t index) {
+            \\  const char *kind = ts_parser_action_kind(state_id, index);
+            \\  return kind and ts_string_eq(kind, "reduce");
+            \\}
+            \\
+            \\bool ts_parser_action_is_accept(uint16_t state_id, uint16_t index) {
+            \\  const char *kind = ts_parser_action_kind(state_id, index);
+            \\  return kind and ts_string_eq(kind, "accept");
+            \\}
+            \\
             \\uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {
             \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
             \\  return entry ? entry->value : 0;
@@ -1378,6 +1393,21 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {
             \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
             \\  return entry ? entry->kind : 0;
+            \\}
+            \\
+            \\bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {
+            \\  const char *kind = ts_parser_action_kind(state_id, index);
+            \\  return kind and ts_string_eq(kind, "shift");
+            \\}
+            \\
+            \\bool ts_parser_action_is_reduce(uint16_t state_id, uint16_t index) {
+            \\  const char *kind = ts_parser_action_kind(state_id, index);
+            \\  return kind and ts_string_eq(kind, "reduce");
+            \\}
+            \\
+            \\bool ts_parser_action_is_accept(uint16_t state_id, uint16_t index) {
+            \\  const char *kind = ts_parser_action_kind(state_id, index);
+            \\  return kind and ts_string_eq(kind, "accept");
             \\}
             \\
             \\uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {

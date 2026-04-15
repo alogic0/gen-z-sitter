@@ -182,6 +182,21 @@ pub fn writeParserC(
     try writer.writeAll("  return entry ? entry->kind : 0;\n");
     try writer.writeAll("}\n");
     try writer.writeAll("\n");
+    try writer.writeAll("bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {\n");
+    try writer.writeAll("  const char *kind = ts_parser_action_kind(state_id, index);\n");
+    try writer.writeAll("  return kind and ts_string_eq(kind, \"shift\");\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("bool ts_parser_action_is_reduce(uint16_t state_id, uint16_t index) {\n");
+    try writer.writeAll("  const char *kind = ts_parser_action_kind(state_id, index);\n");
+    try writer.writeAll("  return kind and ts_string_eq(kind, \"reduce\");\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("bool ts_parser_action_is_accept(uint16_t state_id, uint16_t index) {\n");
+    try writer.writeAll("  const char *kind = ts_parser_action_kind(state_id, index);\n");
+    try writer.writeAll("  return kind and ts_string_eq(kind, \"accept\");\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
     try writer.writeAll("uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {\n");
     try writer.writeAll("  const TSActionEntry *entry = ts_parser_action_at(state_id, index);\n");
     try writer.writeAll("  return entry ? entry->value : 0;\n");
@@ -421,6 +436,21 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {
         \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
         \\  return entry ? entry->kind : 0;
+        \\}
+        \\
+        \\bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {
+        \\  const char *kind = ts_parser_action_kind(state_id, index);
+        \\  return kind and ts_string_eq(kind, "shift");
+        \\}
+        \\
+        \\bool ts_parser_action_is_reduce(uint16_t state_id, uint16_t index) {
+        \\  const char *kind = ts_parser_action_kind(state_id, index);
+        \\  return kind and ts_string_eq(kind, "reduce");
+        \\}
+        \\
+        \\bool ts_parser_action_is_accept(uint16_t state_id, uint16_t index) {
+        \\  const char *kind = ts_parser_action_kind(state_id, index);
+        \\  return kind and ts_string_eq(kind, "accept");
         \\}
         \\
         \\uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {
