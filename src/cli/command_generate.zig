@@ -240,7 +240,7 @@ test "runGenerate writes node-types.json when output directory is provided" {
     const written = try std.fs.cwd().readFileAlloc(std.testing.allocator, node_types_path, 1024 * 1024);
     defer std.testing.allocator.free(written);
 
-    try std.testing.expect(std.mem.indexOf(u8, written, "\"type\": \"source_file\"") != null);
+    try std.testing.expectEqualStrings(fixtures.validResolvedNodeTypesJson().contents, written);
 }
 
 test "runGenerate maps js grammars to NotImplemented" {
