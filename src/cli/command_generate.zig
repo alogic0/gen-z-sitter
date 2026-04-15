@@ -47,6 +47,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
         try diag.printStderr(.{
             .kind = .usage,
             .message = parse_grammar.errorMessage(err),
+            .note = parse_grammar.errorNote(err),
             .path = opts.grammar_path,
         });
         return error.InvalidArguments;
