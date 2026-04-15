@@ -776,8 +776,8 @@ This checklist covers only work that is still outstanding from the current proje
 - [x] define the first concrete compatibility target against upstream generated parser behavior
 - [x] add compatibility checks for parser output structure and runtime-facing expectations
 - [x] decide how ABI/version handling should be centralized
-- [ ] close the most important remaining gaps between the emitted parser surface and the expected C runtime contract
-- [ ] document which compatibility mismatches are still deferred
+- [x] close the most important remaining gaps between the emitted parser surface and the expected C runtime contract
+- [x] document which compatibility mismatches are still deferred
 
 ### Milestone 16: Behavioral equivalence and corpus verification
 

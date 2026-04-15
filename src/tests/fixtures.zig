@@ -937,6 +937,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\#define TS_PARSER_BLOCKED false
             \\#define TS_STATE_COUNT 7
+            \\#define TS_SYMBOL_COUNT 4
             \\
             \\#define TS_LANGUAGE_VERSION 15
             \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
@@ -944,6 +945,12 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
             \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
             \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+            \\
+            \\typedef struct {
+            \\  const char *name;
+            \\  bool terminal;
+            \\  bool external;
+            \\} TSSymbolInfo;
             \\
             \\typedef struct {
             \\  uint16_t language_version;
@@ -963,7 +970,9 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\typedef struct {
             \\  bool blocked;
+            \\  uint16_t symbol_count;
             \\  uint16_t state_count;
+            \\  const TSSymbolInfo *symbols;
             \\  const TSStateTable *states;
             \\  const TSCompatibilityInfo *compatibility;
             \\} TSParser;
@@ -998,6 +1007,29 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  .min_compatible_language_version = 13,
             \\  .target = "tree-sitter-runtime-surface",
             \\  .layer = "intermediate",
+            \\};
+            \\
+            \\static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {
+            \\  {
+            \\    .name = "non_terminal:0",
+            \\    .terminal = false,
+            \\    .external = false,
+            \\  },
+            \\  {
+            \\    .name = "non_terminal:1",
+            \\    .terminal = false,
+            \\    .external = false,
+            \\  },
+            \\  {
+            \\    .name = "terminal:0",
+            \\    .terminal = true,
+            \\    .external = false,
+            \\  },
+            \\  {
+            \\    .name = "terminal:1",
+            \\    .terminal = true,
+            \\    .external = false,
+            \\  },
             \\};
             \\
             \\/* state 0 */
@@ -1109,7 +1141,9 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\static const TSParser ts_parser = {
             \\  .blocked = false,
+            \\  .symbol_count = TS_SYMBOL_COUNT,
             \\  .state_count = TS_STATE_COUNT,
+            \\  .symbols = ts_symbols,
             \\  .states = ts_states,
             \\  .compatibility = &ts_compatibility,
             \\};
@@ -1220,8 +1254,40 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  return ts_parser.blocked;
             \\}
             \\
+            \\uint16_t ts_parser_symbol_count(void) {
+            \\  return ts_parser.symbol_count;
+            \\}
+            \\
             \\uint16_t ts_parser_state_count(void) {
             \\  return ts_parser.state_count;
+            \\}
+            \\
+            \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) {
+            \\  return symbol_id < TS_SYMBOL_COUNT ? &ts_symbols[symbol_id] : 0;
+            \\}
+            \\
+            \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
+            \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+            \\  return symbol ? symbol->name : 0;
+            \\}
+            \\
+            \\bool ts_parser_symbol_is_terminal(uint16_t symbol_id) {
+            \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+            \\  return symbol ? symbol->terminal : false;
+            \\}
+            \\
+            \\bool ts_parser_symbol_is_external(uint16_t symbol_id) {
+            \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+            \\  return symbol ? symbol->external : false;
+            \\}
+            \\
+            \\int16_t ts_parser_find_symbol_id(const char *symbol) {
+            \\  uint16_t i = 0;
+            \\  while (i < TS_SYMBOL_COUNT) {
+            \\    if (ts_string_eq(ts_symbols[i].name, symbol)) return (int16_t)i;
+            \\    i += 1;
+            \\  }
+            \\  return -1;
             \\}
             \\
             \\const TSActionEntry *ts_parser_actions(uint16_t state_id) {
@@ -1383,6 +1449,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\#define TS_PARSER_BLOCKED true
             \\#define TS_STATE_COUNT 6
+            \\#define TS_SYMBOL_COUNT 4
             \\
             \\#define TS_LANGUAGE_VERSION 15
             \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
@@ -1390,6 +1457,12 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
             \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
             \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+            \\
+            \\typedef struct {
+            \\  const char *name;
+            \\  bool terminal;
+            \\  bool external;
+            \\} TSSymbolInfo;
             \\
             \\typedef struct {
             \\  uint16_t language_version;
@@ -1409,7 +1482,9 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\typedef struct {
             \\  bool blocked;
+            \\  uint16_t symbol_count;
             \\  uint16_t state_count;
+            \\  const TSSymbolInfo *symbols;
             \\  const TSStateTable *states;
             \\  const TSCompatibilityInfo *compatibility;
             \\} TSParser;
@@ -1444,6 +1519,29 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  .min_compatible_language_version = 13,
             \\  .target = "tree-sitter-runtime-surface",
             \\  .layer = "intermediate",
+            \\};
+            \\
+            \\static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {
+            \\  {
+            \\    .name = "non_terminal:0",
+            \\    .terminal = false,
+            \\    .external = false,
+            \\  },
+            \\  {
+            \\    .name = "non_terminal:1",
+            \\    .terminal = false,
+            \\    .external = false,
+            \\  },
+            \\  {
+            \\    .name = "terminal:0",
+            \\    .terminal = true,
+            \\    .external = false,
+            \\  },
+            \\  {
+            \\    .name = "terminal:1",
+            \\    .terminal = true,
+            \\    .external = false,
+            \\  },
             \\};
             \\
             \\/* state 0 */
@@ -1544,7 +1642,9 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\static const TSParser ts_parser = {
             \\  .blocked = true,
+            \\  .symbol_count = TS_SYMBOL_COUNT,
             \\  .state_count = TS_STATE_COUNT,
+            \\  .symbols = ts_symbols,
             \\  .states = ts_states,
             \\  .compatibility = &ts_compatibility,
             \\};
@@ -1649,8 +1749,40 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  return ts_parser.blocked;
             \\}
             \\
+            \\uint16_t ts_parser_symbol_count(void) {
+            \\  return ts_parser.symbol_count;
+            \\}
+            \\
             \\uint16_t ts_parser_state_count(void) {
             \\  return ts_parser.state_count;
+            \\}
+            \\
+            \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) {
+            \\  return symbol_id < TS_SYMBOL_COUNT ? &ts_symbols[symbol_id] : 0;
+            \\}
+            \\
+            \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
+            \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+            \\  return symbol ? symbol->name : 0;
+            \\}
+            \\
+            \\bool ts_parser_symbol_is_terminal(uint16_t symbol_id) {
+            \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+            \\  return symbol ? symbol->terminal : false;
+            \\}
+            \\
+            \\bool ts_parser_symbol_is_external(uint16_t symbol_id) {
+            \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+            \\  return symbol ? symbol->external : false;
+            \\}
+            \\
+            \\int16_t ts_parser_find_symbol_id(const char *symbol) {
+            \\  uint16_t i = 0;
+            \\  while (i < TS_SYMBOL_COUNT) {
+            \\    if (ts_string_eq(ts_symbols[i].name, symbol)) return (int16_t)i;
+            \\    i += 1;
+            \\  }
+            \\  return -1;
             \\}
             \\
             \\const TSActionEntry *ts_parser_actions(uint16_t state_id) {

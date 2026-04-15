@@ -1,5 +1,6 @@
 const std = @import("std");
 const serialize = @import("../parse_table/serialize.zig");
+const syntax_grammar = @import("../ir/syntax_grammar.zig");
 const common = @import("common.zig");
 const compat = @import("compat.zig");
 
@@ -11,26 +12,35 @@ pub fn emitParserCAlloc(
 ) EmitError![]const u8 {
     var out = std.array_list.Managed(u8).init(allocator);
     defer out.deinit();
-    try writeParserC(out.writer(), serialized);
+    try writeParserC(out.writer(), allocator, serialized);
     return try out.toOwnedSlice();
 }
 
 pub fn writeParserC(
     writer: anytype,
+    allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
 ) !void {
     const compatibility = compat.currentRuntimeCompatibility();
+    const emitted_symbols = try collectEmittedSymbols(allocator, serialized);
+    defer deinitEmittedSymbols(allocator, emitted_symbols);
 
     try writer.writeAll("/* generated parser.c skeleton */\n");
     try writer.writeAll("#include <stdbool.h>\n");
     try writer.writeAll("#include <stdint.h>\n\n");
     try writer.print("#define TS_PARSER_BLOCKED {}\n", .{serialized.blocked});
-    try writer.print("#define TS_STATE_COUNT {d}\n\n", .{serialized.states.len});
+    try writer.print("#define TS_STATE_COUNT {d}\n", .{serialized.states.len});
+    try writer.print("#define TS_SYMBOL_COUNT {d}\n\n", .{emitted_symbols.len});
     try writer.print("#define TS_LANGUAGE_VERSION {d}\n", .{compatibility.language_version});
     try writer.print("#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION {d}\n\n", .{compatibility.min_compatible_language_version});
     try writer.writeAll("typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;\n");
     try writer.writeAll("typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;\n");
     try writer.writeAll("typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  const char *name;\n");
+    try writer.writeAll("  bool terminal;\n");
+    try writer.writeAll("  bool external;\n");
+    try writer.writeAll("} TSSymbolInfo;\n\n");
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  uint16_t language_version;\n");
     try writer.writeAll("  uint16_t min_compatible_language_version;\n");
@@ -47,7 +57,9 @@ pub fn writeParserC(
     try writer.writeAll("} TSStateTable;\n\n");
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  bool blocked;\n");
+    try writer.writeAll("  uint16_t symbol_count;\n");
     try writer.writeAll("  uint16_t state_count;\n");
+    try writer.writeAll("  const TSSymbolInfo *symbols;\n");
     try writer.writeAll("  const TSStateTable *states;\n");
     try writer.writeAll("  const TSCompatibilityInfo *compatibility;\n");
     try writer.writeAll("} TSParser;\n\n");
@@ -82,6 +94,17 @@ pub fn writeParserC(
     try writer.writeAll("  .layer = \"");
     try writer.writeAll(compat.layerName(compatibility.layer));
     try writer.writeAll("\",\n");
+    try writer.writeAll("};\n\n");
+    try writer.writeAll("static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {\n");
+    for (emitted_symbols) |symbol| {
+        try writer.writeAll("  {\n");
+        try writer.writeAll("    .name = \"");
+        try writer.writeAll(symbol.label);
+        try writer.writeAll("\",\n");
+        try writer.print("    .terminal = {},\n", .{symbolKindIsTerminal(symbol.ref)});
+        try writer.print("    .external = {},\n", .{symbolKindIsExternal(symbol.ref)});
+        try writer.writeAll("  },\n");
+    }
     try writer.writeAll("};\n\n");
 
     for (serialized.states, 0..) |serialized_state, index| {
@@ -142,7 +165,9 @@ pub fn writeParserC(
     try writer.writeAll("\n");
     try writer.writeAll("static const TSParser ts_parser = {\n");
     try writer.print("  .blocked = {},\n", .{serialized.blocked});
+    try writer.writeAll("  .symbol_count = TS_SYMBOL_COUNT,\n");
     try writer.writeAll("  .state_count = TS_STATE_COUNT,\n");
+    try writer.writeAll("  .symbols = ts_symbols,\n");
     try writer.writeAll("  .states = ts_states,\n");
     try writer.writeAll("  .compatibility = &ts_compatibility,\n");
     try writer.writeAll("};\n");
@@ -219,8 +244,40 @@ pub fn writeParserC(
     try writer.writeAll("  return ts_parser.blocked;\n");
     try writer.writeAll("}\n");
     try writer.writeAll("\n");
+    try writer.writeAll("uint16_t ts_parser_symbol_count(void) {\n");
+    try writer.writeAll("  return ts_parser.symbol_count;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
     try writer.writeAll("uint16_t ts_parser_state_count(void) {\n");
     try writer.writeAll("  return ts_parser.state_count;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) {\n");
+    try writer.writeAll("  return symbol_id < TS_SYMBOL_COUNT ? &ts_symbols[symbol_id] : 0;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("const char *ts_parser_symbol_name(uint16_t symbol_id) {\n");
+    try writer.writeAll("  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);\n");
+    try writer.writeAll("  return symbol ? symbol->name : 0;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("bool ts_parser_symbol_is_terminal(uint16_t symbol_id) {\n");
+    try writer.writeAll("  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);\n");
+    try writer.writeAll("  return symbol ? symbol->terminal : false;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("bool ts_parser_symbol_is_external(uint16_t symbol_id) {\n");
+    try writer.writeAll("  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);\n");
+    try writer.writeAll("  return symbol ? symbol->external : false;\n");
+    try writer.writeAll("}\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("int16_t ts_parser_find_symbol_id(const char *symbol) {\n");
+    try writer.writeAll("  uint16_t i = 0;\n");
+    try writer.writeAll("  while (i < TS_SYMBOL_COUNT) {\n");
+    try writer.writeAll("    if (ts_string_eq(ts_symbols[i].name, symbol)) return (int16_t)i;\n");
+    try writer.writeAll("    i += 1;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  return -1;\n");
     try writer.writeAll("}\n");
     try writer.writeAll("\n");
     try writer.writeAll("const TSActionEntry *ts_parser_actions(uint16_t state_id) {\n");
@@ -369,6 +426,103 @@ pub fn writeParserC(
     try writer.writeAll("}\n");
 }
 
+const EmittedSymbol = struct {
+    ref: syntax_grammar.SymbolRef,
+    label: []u8,
+};
+
+fn collectEmittedSymbols(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+) std.mem.Allocator.Error![]EmittedSymbol {
+    var symbols = std.array_list.Managed(EmittedSymbol).init(allocator);
+    defer symbols.deinit();
+
+    for (serialized.states) |state| {
+        for (state.actions) |entry| {
+            try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
+        }
+        for (state.gotos) |entry| {
+            try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
+        }
+        for (state.unresolved) |entry| {
+            try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
+        }
+    }
+
+    std.mem.sort(EmittedSymbol, symbols.items, {}, emittedSymbolLessThan);
+    return try symbols.toOwnedSlice();
+}
+
+fn appendUniqueEmittedSymbol(
+    allocator: std.mem.Allocator,
+    symbols: *std.array_list.Managed(EmittedSymbol),
+    symbol: syntax_grammar.SymbolRef,
+) std.mem.Allocator.Error!void {
+    for (symbols.items) |existing| {
+        if (symbolRefEql(existing.ref, symbol)) return;
+    }
+
+    var buffer = std.array_list.Managed(u8).init(allocator);
+    defer buffer.deinit();
+    try common.writeSymbol(buffer.writer(), symbol);
+
+    try symbols.append(.{
+        .ref = symbol,
+        .label = try buffer.toOwnedSlice(),
+    });
+}
+
+fn deinitEmittedSymbols(allocator: std.mem.Allocator, symbols: []EmittedSymbol) void {
+    for (symbols) |symbol| {
+        allocator.free(symbol.label);
+    }
+    allocator.free(symbols);
+}
+
+fn emittedSymbolLessThan(_: void, a: EmittedSymbol, b: EmittedSymbol) bool {
+    return symbolSortKey(a.ref) < symbolSortKey(b.ref);
+}
+
+fn symbolSortKey(symbol: syntax_grammar.SymbolRef) u64 {
+    return switch (symbol) {
+        .non_terminal => |index| (@as(u64, 0) << 32) | index,
+        .terminal => |index| (@as(u64, 1) << 32) | index,
+        .external => |index| (@as(u64, 2) << 32) | index,
+    };
+}
+
+fn symbolRefEql(a: syntax_grammar.SymbolRef, b: syntax_grammar.SymbolRef) bool {
+    return switch (a) {
+        .non_terminal => |index| switch (b) {
+            .non_terminal => |other| index == other,
+            else => false,
+        },
+        .terminal => |index| switch (b) {
+            .terminal => |other| index == other,
+            else => false,
+        },
+        .external => |index| switch (b) {
+            .external => |other| index == other,
+            else => false,
+        },
+    };
+}
+
+fn symbolKindIsTerminal(symbol: syntax_grammar.SymbolRef) bool {
+    return switch (symbol) {
+        .terminal => true,
+        .non_terminal, .external => false,
+    };
+}
+
+fn symbolKindIsExternal(symbol: syntax_grammar.SymbolRef) bool {
+    return switch (symbol) {
+        .external => true,
+        .non_terminal, .terminal => false,
+    };
+}
+
 fn hasUnresolvedStates(serialized: serialize.SerializedTable) bool {
     for (serialized.states) |state| {
         if (state.unresolved.len > 0) return true;
@@ -413,6 +567,7 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\
         \\#define TS_PARSER_BLOCKED true
         \\#define TS_STATE_COUNT 1
+        \\#define TS_SYMBOL_COUNT 3
         \\
         \\#define TS_LANGUAGE_VERSION 15
         \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
@@ -420,6 +575,12 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
         \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
         \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+        \\
+        \\typedef struct {
+        \\  const char *name;
+        \\  bool terminal;
+        \\  bool external;
+        \\} TSSymbolInfo;
         \\
         \\typedef struct {
         \\  uint16_t language_version;
@@ -439,7 +600,9 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\
         \\typedef struct {
         \\  bool blocked;
+        \\  uint16_t symbol_count;
         \\  uint16_t state_count;
+        \\  const TSSymbolInfo *symbols;
         \\  const TSStateTable *states;
         \\  const TSCompatibilityInfo *compatibility;
         \\} TSParser;
@@ -476,6 +639,24 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  .layer = "intermediate",
         \\};
         \\
+        \\static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {
+        \\  {
+        \\    .name = "non_terminal:1",
+        \\    .terminal = false,
+        \\    .external = false,
+        \\  },
+        \\  {
+        \\    .name = "terminal:0",
+        \\    .terminal = true,
+        \\    .external = false,
+        \\  },
+        \\  {
+        \\    .name = "terminal:1",
+        \\    .terminal = true,
+        \\    .external = false,
+        \\  },
+        \\};
+        \\
         \\/* state 0 */
         \\static const TSActionEntry ts_state_0_actions[] = {
         \\  { "terminal:0", "shift", 2 },
@@ -499,7 +680,9 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\
         \\static const TSParser ts_parser = {
         \\  .blocked = true,
+        \\  .symbol_count = TS_SYMBOL_COUNT,
         \\  .state_count = TS_STATE_COUNT,
+        \\  .symbols = ts_symbols,
         \\  .states = ts_states,
         \\  .compatibility = &ts_compatibility,
         \\};
@@ -574,8 +757,40 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  return ts_parser.blocked;
         \\}
         \\
+        \\uint16_t ts_parser_symbol_count(void) {
+        \\  return ts_parser.symbol_count;
+        \\}
+        \\
         \\uint16_t ts_parser_state_count(void) {
         \\  return ts_parser.state_count;
+        \\}
+        \\
+        \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) {
+        \\  return symbol_id < TS_SYMBOL_COUNT ? &ts_symbols[symbol_id] : 0;
+        \\}
+        \\
+        \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
+        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+        \\  return symbol ? symbol->name : 0;
+        \\}
+        \\
+        \\bool ts_parser_symbol_is_terminal(uint16_t symbol_id) {
+        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+        \\  return symbol ? symbol->terminal : false;
+        \\}
+        \\
+        \\bool ts_parser_symbol_is_external(uint16_t symbol_id) {
+        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
+        \\  return symbol ? symbol->external : false;
+        \\}
+        \\
+        \\int16_t ts_parser_find_symbol_id(const char *symbol) {
+        \\  uint16_t i = 0;
+        \\  while (i < TS_SYMBOL_COUNT) {
+        \\    if (ts_string_eq(ts_symbols[i].name, symbol)) return (int16_t)i;
+        \\    i += 1;
+        \\  }
+        \\  return -1;
         \\}
         \\
         \\const TSActionEntry *ts_parser_actions(uint16_t state_id) {

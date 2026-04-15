@@ -124,11 +124,19 @@ Milestone 14 is complete:
 - deterministic `grammar.json`, `node-types.json`, and parser emission through the JS loading path
 - non-Node JS runtimes explicitly deferred
 
-The next parser-generation work is now Milestone 15:
+Milestone 15 is complete:
 
-- parser/runtime compatibility targets
-- output-structure and runtime-facing compatibility checks
-- centralized ABI/version handling decisions
+- first concrete parser/runtime compatibility target
+- centralized ABI/version handling
+- structural compatibility checks for ready and blocked parser output
+- deterministic emitted symbol-table contract and symbol accessors
+- explicit remaining compatibility mismatches deferred to later milestones
+
+The next parser-generation work is now Milestone 16:
+
+- behavioral equivalence and corpus verification
+- compiled-parser comparison against upstream generated output
+- classification of remaining semantic mismatches
 
 ## Documents
 
@@ -146,6 +154,7 @@ The next parser-generation work is now Milestone 15:
 - [MILESTONE_11_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_11_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_12_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_12_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_13_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_13_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_15_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_15_IMPLEMENTATION_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)
