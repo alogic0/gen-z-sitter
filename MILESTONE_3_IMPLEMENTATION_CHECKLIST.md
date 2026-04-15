@@ -86,37 +86,134 @@ Implemented and passing:
   - `src/ir/syntax_grammar.zig`
   - `src/ir/lexical_grammar.zig`
   - `src/ir/aliases.zig`
-- token extraction scaffold:
+- token extraction:
   - `src/grammar/prepare/extract_tokens.zig`
-- repeat expansion scaffold:
+  - lexical extraction for string, pattern, and token-marked rules
+  - syntax-side terminal replacement
+  - extras vs separators split
+  - external token carry-through
+  - `word_token`, precedence-symbol, conflict-member, and `SYMBOL`-extra rewrites through the extracted graph
+  - extraction-stage validation for invalid supertype, inline, conflict, precedence, and word-token inputs
+- repeat expansion:
   - `src/grammar/prepare/expand_repeats.zig`
-- repeat semantics currently covered:
   - auxiliary repeat creation
   - repeat deduplication
   - hidden top-level repeat promotion in place
   - removal of promoted hidden repeats from `variables_to_inline`
   - nested repeat auxiliary allocation without symbol-index collisions
+- grammar flattening:
+  - `src/grammar/prepare/flatten_grammar.zig`
+  - duplicate production deduplication
+  - metadata preservation
+  - empty-string validation outside the start rule
+  - recursive-inline rejection
+- default alias extraction:
+  - `src/grammar/prepare/extract_default_aliases.zig`
+  - syntax, lexical, and external default-alias support
+- node-type computation and rendering:
+  - `src/node_types/compute.zig`
+  - `src/node_types/render_json.zig`
+  - `src/node_types/pipeline.zig`
+  - deterministic JSON rendering
+  - hidden-wrapper inheritance
+  - duplicate node-type entry canonicalization
+- CLI and integration:
+  - debug preview path
+  - `generate --output <dir>` writes `node-types.json`
+  - exact golden coverage for multiple curated grammars
 
-Still missing:
+Still remaining:
 
-- grammar flattening
-- default alias extraction
-- variable info / node-shape aggregation
-- node-type computation
-- deterministic `node-types.json` rendering
-- CLI path to emit or preview `node-types.json`
-- golden tests for generated node-type output
+- tighten `extract_tokens.zig` parity on the remaining symbol-bearing collections and stage checks
+- improve `compute.zig` parity for harder aggregation and hidden-node cases
+- add stronger upstream-style golden fixtures that stress mixed semantics together
+- update docs and do a formal Milestone 3 completion review
 
 ## Remaining Critical Path
 
-Milestone 3 is not blocked on more repeat work. The shortest path to completion is:
+Milestone 3 is no longer blocked on missing subsystems. The shortest path to completion is:
 
-1. define flattened syntax IR
-2. implement flattening from extracted syntax grammar
-3. extract default aliases and variable info from flattened grammar
-4. compute node-type structures
-5. render deterministic JSON
-6. add golden-output tests
+1. finish `extract_tokens.zig` parity cleanup
+2. add stronger artifact-level golden fixtures for mixed semantics
+3. tighten remaining `compute.zig` parity gaps that those fixtures expose
+4. update docs and mark Milestone 3 complete if the remaining deltas are acceptable
+
+## Remaining Work From Current Code State
+
+The remaining work is mostly semantic tightening and proof, not new architecture.
+
+### 1. `extract_tokens.zig` parity cleanup
+
+Keep auditing symbol-bearing collections so every reference follows the extracted graph or fails explicitly.
+
+Remaining checks to decide and implement:
+
+- `variables_to_inline` extracted-graph behavior for tokenized non-terminals:
+  - rewrite to extracted terminal
+  - or reject explicitly if inline targets must stay syntax-only
+- any remaining symbol-wrapper paths that still copy `convertSymbol` blindly instead of following extracted lexicalization
+- reserved-word and word-token interactions if upstream extraction treats some combinations specially
+- external-token corner cases beyond the current visibility and alias coverage
+
+Done when:
+
+- all symbol-bearing extracted collections either:
+  - track the extracted symbol graph, or
+  - fail with a dedicated extraction-stage error
+
+### 2. repeat-expansion confidence
+
+The implementation is good enough for current pipelines, but still light on tricky mixed-shape coverage.
+
+Remaining:
+
+- add at least one upstream-style regression with nested repeats inside a mixed `choice` / `seq` shape
+- verify auxiliary naming remains deterministic in snapshot-like output
+
+Done when:
+
+- repeat expansion is no longer an obvious source of downstream artifact mismatch risk
+
+### 3. `compute.zig` parity cleanup
+
+Most major functionality exists, but some upstream semantics still need stronger proof and possibly refinement.
+
+Remaining:
+
+- hidden-node inheritance in trickier nested cases
+- child aggregation across mixed visible/hidden/aliased paths
+- field aggregation across alternative productions with more varied shapes
+- supertype behavior in more edge-case structures
+- external-token interactions with child and field aggregation where relevant
+
+Done when:
+
+- additional tricky fixtures do not force structural changes to node-type aggregation
+
+### 4. stronger golden fixtures
+
+Current goldens are useful but still small.
+
+Add fixtures that combine:
+
+- aliases and default aliases
+- externals
+- extras
+- supertypes
+- hidden wrappers
+- multiple fields across alternatives
+
+Done when:
+
+- at least one or two “mixed semantics” fixtures exercise several of these behaviors at once and stay stable
+
+### 5. Milestone 3 closeout
+
+Before declaring completion:
+
+- update this checklist and `README.md` to reflect the real end state
+- decide whether the remaining parity gaps are acceptable for Milestone 3 or should be pushed into Milestone 4+
+- document any explicitly deferred extraction or node-type mismatches
 
 ## Status By Task Group
 
@@ -139,7 +236,7 @@ Exit criteria:
 
 Status:
 
-- underway and usable
+- implemented and in parity cleanup
 
 Already implemented:
 
@@ -147,25 +244,39 @@ Already implemented:
 - syntax-side terminal replacement
 - extras vs separators split
 - basic metadata carry-through
+- external token carry-through
+- extracted-graph rewrites for:
+  - `word_token`
+  - precedence symbol entries
+  - `SYMBOL` extras
+  - conflict members
+- extraction-stage validation for invalid:
+  - inline symbols
+  - conflict symbols
+  - precedence symbols
+  - supertype symbols
+  - supertype structures through externals
+  - word tokens
 
 Remaining:
 
 - compare `extract_tokens.zig` more closely against upstream `extract_tokens.rs` for:
-  - word-token edge cases
+  - remaining word-token edge cases
   - reserved-word token restrictions
   - external-token behavior
-  - supertype terminal rejection
-- decide whether to implement Milestone 3 errors now or defer some extraction diagnostics to a dedicated cleanup pass
+  - any remaining symbol-wrapper paths that should follow extracted lexicalization
+  - tokenized inline-target behavior
+  - any remaining supertype edge cases worth rejecting earlier
 
 Exit criteria:
 
-- token extraction is stable enough that flattening and node-type work do not need to revisit symbol-category decisions
+- token extraction is stable enough that node-type work does not need to reinterpret symbol categories or stale references
 
 ### Task Group C: Repeat Expansion
 
 Status:
 
-- substantially done for the initial Milestone 3 target
+- substantially done, with a few confidence gaps remaining
 
 Already implemented:
 
@@ -187,23 +298,20 @@ Exit criteria:
 
 Status:
 
-- not started
+- implemented in initial form
 
-Files to add:
+Already implemented:
 
 - `src/grammar/prepare/flatten_grammar.zig`
-- optionally `src/ir/flattened_syntax.zig` if `syntax_grammar.zig` should remain pre-flattening only
+- duplicate production deduplication
+- metadata preservation through deduplication
+- empty-string validation outside the start rule
+- recursive-inline rejection
 
-Immediate tasks:
+Remaining:
 
-- define the flattened production and step types
-- decide whether flattening operates on existing `SyntaxGrammar` in place or returns a new flattened IR
-- port the minimal upstream logic from `flatten_grammar.rs`
-- add tests for:
-  - nested sequence flattening
-  - nested choice flattening
-  - metadata preservation
-  - flattened output determinism
+- compare more closely against upstream flattening behavior for nested structure normalization if future fixtures expose gaps
+- decide whether a dedicated flattened IR is still needed or whether the current `SyntaxGrammar` form is sufficient
 
 Exit criteria:
 
@@ -213,26 +321,18 @@ Exit criteria:
 
 Status:
 
-- not started
+- implemented, with room for more parity proof
 
-Files to add:
+Already implemented:
 
 - `src/grammar/prepare/extract_default_aliases.zig`
-- optional `src/ir/variable_info.zig`
+- default-alias extraction for syntax, lexical, and external symbols
+- redundant explicit alias clearing
 
-Immediate tasks:
+Remaining:
 
-- inspect upstream `extract_default_aliases.rs`
-- define exactly what node-type computation needs:
-  - effective visible name
-  - namedness
-  - alias targets
-  - child field structure
-  - supertype relationships
-- choose whether alias info is stored as:
-  - a flat map keyed by symbol reference
-  - per-production-step data
-  - a separate analysis result layered on flattened grammar
+- add stronger mixed-semantic coverage where aliases interact with hidden wrappers, externals, and fields in the same fixture
+- decide whether a dedicated `variable_info` IR is still warranted or unnecessary for Milestone 3
 
 Exit criteria:
 
@@ -242,20 +342,24 @@ Exit criteria:
 
 Status:
 
-- not started
+- implemented and usable, with parity cleanup remaining
 
-Files to add:
+Already implemented:
 
 - `src/node_types/compute.zig`
 - `src/node_types/render_json.zig`
+- `src/node_types/pipeline.zig`
+- deterministic JSON rendering
+- hidden-wrapper inheritance
+- duplicate node-type canonicalization
+- CLI preview and output path
+- exact golden fixtures for several curated grammars
 
-Immediate tasks:
+Remaining:
 
-- define a `NodeType` IR with stable ordering rules
-- decide the exact render boundary:
-  - in-memory node-type model first
-  - then JSON renderer
-- start with one curated grammar fixture and compare against expected `node-types.json`
+- stronger mixed-semantics golden coverage
+- additional hidden/alias/supertype aggregation edge cases
+- final review against upstream expectations rather than only internal current-output goldens
 
 Exit criteria:
 
@@ -265,17 +369,18 @@ Exit criteria:
 
 Status:
 
-- not started for Milestone 3 artifact output
+- implemented
 
-Immediate tasks:
+Already implemented:
 
-- choose whether node types are:
-  - printed to stdout
-  - written beside `grammar.json`
-  - available only through a debug path first
-- add at least:
-  - one passing golden fixture
-  - one determinism test
+- debug preview path for `node-types.json`
+- `generate --output <dir>` writing `node-types.json`
+- exact pipeline and CLI artifact tests
+
+Remaining:
+
+- add more mixed-semantic golden fixtures
+- decide whether any additional user-facing output mode is needed before Milestone 3 closeout
 
 Exit criteria:
 
@@ -664,12 +769,12 @@ Milestone 3 is complete when:
 
 ## Immediate Next Command Sequence
 
-After this plan is accepted, implementation should start with:
+From the current code state, implementation should continue with:
 
-1. create `src/grammar/prepare/flatten_grammar.zig`
-2. define the flattened production representation
-3. add one flattening test for nested `choice` / `seq`
-4. preserve metadata through flattening
-5. use that boundary as the entry point for alias extraction and node-type work
+1. decide and implement extracted-graph behavior for tokenized `variables_to_inline`
+2. audit `extract_tokens.zig` for any remaining symbol-wrapper paths that still preserve stale pre-extraction references
+3. add one stronger mixed-semantic golden fixture covering aliases, externals, extras, and supertypes together
+4. use that fixture to tighten any remaining `compute.zig` aggregation gaps
+5. update docs and perform a Milestone 3 completion review
 
-That is the shortest path from the current code state into real artifact-producing Milestone 3 work.
+That is the shortest path from the current code state into a clean Milestone 3 closeout.
