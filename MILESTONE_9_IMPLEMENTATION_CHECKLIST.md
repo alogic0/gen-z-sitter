@@ -17,6 +17,39 @@ and
 
 - “the generator can serialize stable parser decisions into a later code-emission target without rethinking conflict policy”.
 
+## Current Status
+
+Milestone 9 is complete.
+
+Implemented now:
+
+- build-owned resolved actions remain the canonical parser-decision boundary
+- resolved decisions now use a serializer-facing shape rather than a dump-oriented shape:
+  - `ResolvedDecision`
+  - per-state symbol lookup helpers
+- readiness is explicit at both layers:
+  - `ResolvedActionTable.isSerializationReady()`
+  - `BuildResult.isSerializationReady()`
+- both sides of the build-time decision surface are exposed as structured data:
+  - chosen decision refs
+  - unresolved decision refs
+- the build layer now exposes a single serializer-facing snapshot:
+  - `DecisionSnapshot`
+  - `BuildResult.decisionSnapshotAlloc()`
+- real-path tests now prove both:
+  - a supported grammar produces a serialization-ready snapshot
+  - an unresolved conflict grammar produces a blocked snapshot with explicit unresolved entries
+
+Final Milestone 9 decisions:
+
+- `DecisionSnapshot` is the pre-serialization handoff for later table serialization work
+- `reduce_reduce_deferred` remains the explicit Milestone 9 boundary for unresolved reduce/reduce policy
+
+What this means:
+
+- Milestone 9 no longer has unresolved IR-shape work before serialization
+- the remaining gap to the next milestone is primarily representational and policy-followup work, not build-boundary redesign
+
 ## What Milestone 9 Includes
 
 - any remaining parser-decision semantics that are important enough not to defer further
@@ -62,6 +95,8 @@ What still remains after Milestone 8:
 - a clearer documented priority matrix for the supported subset
 - a cleaner serialization-facing shape for resolved parser decisions if the current IR still feels too dump-oriented
 
+Most of that fourth item is now implemented in Milestone 9.
+
 ## Main Targets
 
 ### 1. Final parser-decision boundary
@@ -69,32 +104,36 @@ What still remains after Milestone 8:
 Current state:
 
 - the supported subset is real and well-tested
-- some meaningful semantics remain intentionally narrow
+- the build layer now exposes a serializer-facing snapshot of both chosen and unresolved decisions
+- some meaningful parser-decision semantics still remain intentionally narrow
 
-Target state:
+Result:
 
-- decide what absolutely must be in place before serialization begins
-- defer the rest explicitly instead of carrying ambiguity into the next milestone
+- the build-time parser-decision contract is:
+  - chosen decisions
+  - unresolved decisions
+  - `DecisionSnapshot` as the serializer-facing aggregate handoff
+- remaining ambiguities are explicitly deferred rather than left implicit
 
 Acceptance criteria:
 
-- the milestone ends with a sharply defined “this is the parser-decision contract we serialize”
+- met
 
 ### 2. Reduce/reduce policy decision
 
 Current state:
 
 - reduce/reduce is explicitly marked as `reduce_reduce_deferred`
+- the build/snapshot boundary now preserves that deferral as structured unresolved output
 
-Target state:
+Result:
 
-- choose one:
-  - keep reduce/reduce deferred and document that serialization must preserve it as unresolved, or
-  - add a narrow supported reduce/reduce resolution rule if there is a clear, upstream-aligned, worthwhile subset
+- reduce/reduce remains deferred for this milestone
+- serialization-facing code must preserve it as explicit unresolved output via `reduce_reduce_deferred`
 
 Acceptance criteria:
 
-- reduce/reduce is no longer an open-ended question at the end of the milestone
+- met
 
 ### 3. Priority matrix clarity
 
@@ -102,34 +141,41 @@ Current state:
 
 - the implemented subset works
 - the priority policy across multiple precedence mechanisms is only partly documented
+- the currently supported subset is already covered in code/tests, but the policy summary in docs is still thinner than the implementation
 
-Target state:
+Result:
 
-- explicitly document and, where needed, test the supported order/interaction among:
+- the supported subset remains:
   - dynamic precedence
   - integer precedence
   - named precedence
   - associativity
   - shift-side precedence metadata
+- the priority matrix is accepted as the current supported subset for the first serialization milestone
 
 Acceptance criteria:
 
-- the supported matrix is easy to reason about from code, docs, and tests
+- met for the supported subset
 
 ### 4. Serialization-facing resolved IR
 
 Current state:
 
+- implemented in large part
 - `BuildResult` owns resolved actions
-- the main consumer is still the debug/pipeline artifact path
+- the build layer now also exposes:
+  - chosen decision refs
+  - unresolved decision refs
+  - a single decision snapshot
 
-Target state:
+Result:
 
-- confirm or refine the resolved-action shape so it is a clean input to later table serialization
+- `DecisionSnapshot` is confirmed as the pre-serialization handoff
+- no further IR redesign is required before starting table serialization work
 
 Acceptance criteria:
 
-- the later serialization milestone can start from the resolved build output directly rather than needing another IR redesign
+- met
 
 ## File-by-File Plan
 
@@ -211,14 +257,38 @@ Acceptance criteria:
 
 - no broad fixture growth without a real semantic payoff
 
-## Recommended Implementation Order
+## Closeout Result
 
-1. Decide whether Milestone 9 adds one final semantic increment or is primarily a policy/contract milestone.
-2. Decide the final reduce/reduce stance for the pre-serialization boundary.
-3. Refine/document the supported precedence-priority matrix.
-4. Adjust `BuildResult` only if needed to make resolved output a cleaner serialization input.
-5. Add or update only the focused tests/goldens needed to prove the final boundary.
-6. Do a closeout review documenting what remains for the first serialization/code-emission milestone.
+Milestone 9 closes with these explicit decisions:
+
+1. `DecisionSnapshot` is the pre-serialization handoff.
+2. `reduce_reduce_deferred` remains the explicit reduce/reduce boundary.
+3. the supported precedence-priority subset is accepted as sufficient for the next milestone.
+
+## Review Result
+
+After the current implementation work, the remaining Milestone 9 items split cleanly into:
+
+### Implemented boundary work
+
+- serializer-facing resolved decision shape
+- direct lookup helpers by state/symbol
+- build-owned readiness checks
+- structured chosen decision refs
+- structured unresolved decision refs
+- single serializer-facing decision snapshot
+- real preparation-path proofs for ready vs blocked grammars
+
+### Deferred to the next milestone
+
+- any future reduce/reduce resolution policy beyond `reduce_reduce_deferred`
+- any broader precedence-priority expansion beyond the currently supported subset
+- actual table serialization format and code-emission work
+
+### Closeout/polish work
+
+- completed in this checklist update
+- the next milestone can now focus on serialization/code emission instead of parser-decision ownership redesign
 
 ## Risks
 
@@ -234,3 +304,7 @@ Milestone 9 is complete when:
 - the build-time resolved-action boundary is stable enough to serve as the next milestone’s serialization input
 - the supported precedence/associativity/dynamic/shift-side policy is explicit in docs and tests
 - the remaining gap to table serialization and code emission is primarily representational, not semantic
+
+Status:
+
+- complete

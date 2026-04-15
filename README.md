@@ -37,14 +37,7 @@ Milestone 7 is complete and implements a real supported resolution subset:
 - equal-precedence associativity handling
 - explicit unresolved classification for shift/reduce and reduce/reduce cases
 
-The next parser-generation work is now Milestone 8:
-
-- whether shift-side precedence semantics need one more expansion now
-- whether reduce/reduce resolution stays deferred
-- whether builder-owned resolved actions are required before closeout
-- and how far parser-decision semantics should be stabilized before table serialization work
-
-Milestone 8 is now underway and already implements:
+Milestone 8 is complete and established the next parser-decision boundary before serialization:
 
 - builder-owned resolved actions in `BuildResult`
 - an explicit `reduce_reduce_deferred` policy boundary
@@ -52,10 +45,25 @@ Milestone 8 is now underway and already implements:
   - integer precedence
   - named precedence
 
-The remaining Milestone 8 work is narrower:
+Milestone 9 is complete and establishes the final pre-serialization parser-decision handoff:
 
-- whether to add one more semantic rule beyond the current supported subset
-- or close the milestone and defer the remaining parser-decision gaps to the next milestone
+- serializer-facing resolved decisions via `ResolvedDecision`
+- structured chosen and unresolved decision refs
+- explicit readiness checks on both `ResolvedActionTable` and `BuildResult`
+- a single serializer-facing `DecisionSnapshot`
+- real-path tests for both serialization-ready and blocked grammars
+
+Milestone 9 closes with two explicit boundary decisions:
+
+- `DecisionSnapshot` is the pre-serialization handoff
+- `reduce_reduce_deferred` remains the explicit unresolved reduce/reduce boundary
+
+The next parser-generation work is now Milestone 10:
+
+- serialized parse-table IR
+- explicit ready vs blocked serialization behavior
+- deterministic serialized-table artifacts
+- the first narrow emitter-facing boundary on top of serialized parser data
 
 ## Documents
 
@@ -69,6 +77,7 @@ The remaining Milestone 8 work is narrower:
 - [MILESTONE_7_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_7_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_8_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_8_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_9_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_9_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_10_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_10_IMPLEMENTATION_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)
