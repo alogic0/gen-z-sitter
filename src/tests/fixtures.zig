@@ -334,24 +334,6 @@ pub fn fieldChildrenNodeTypesJson() Fixture {
             \\          }
             \\        ]
             \\      }
-            \\    },
-            \\    "children": {
-            \\      "multiple": true,
-            \\      "required": true,
-            \\      "types": [
-            \\        {
-            \\          "type": "+",
-            \\          "named": false
-            \\        },
-            \\        {
-            \\          "type": "expr",
-            \\          "named": true
-            \\        },
-            \\        {
-            \\          "type": "rhs",
-            \\          "named": true
-            \\        }
-            \\      ]
             \\    }
             \\  }
             \\]
@@ -462,24 +444,6 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
             \\          }
             \\        ]
             \\      }
-            \\    },
-            \\    "children": {
-            \\      "multiple": true,
-            \\      "required": true,
-            \\      "types": [
-            \\        {
-            \\          "type": "+",
-            \\          "named": false
-            \\        },
-            \\        {
-            \\          "type": "expr",
-            \\          "named": true
-            \\        },
-            \\        {
-            \\          "type": "rhs",
-            \\          "named": true
-            \\        }
-            \\      ]
             \\    }
             \\  },
             \\  {
@@ -619,15 +583,11 @@ pub fn mixedSemanticsNodeTypesJson() Fixture {
             \\      }
             \\    },
             \\    "children": {
-            \\      "multiple": true,
+            \\      "multiple": false,
             \\      "required": true,
             \\      "types": [
             \\        {
             \\          "type": "indent",
-            \\          "named": true
-            \\        },
-            \\        {
-            \\          "type": "statement",
             \\          "named": true
             \\        }
             \\      ]
@@ -852,20 +812,6 @@ pub fn alternativeFieldsNodeTypesJson() Fixture {
             \\          }
             \\        ]
             \\      }
-            \\    },
-            \\    "children": {
-            \\      "multiple": true,
-            \\      "required": true,
-            \\      "types": [
-            \\        {
-            \\          "type": "expr",
-            \\          "named": true
-            \\        },
-            \\        {
-            \\          "type": "term",
-            \\          "named": true
-            \\        }
-            \\      ]
             \\    }
             \\  },
             \\  {
@@ -993,20 +939,6 @@ pub fn hiddenAlternativeFieldsNodeTypesJson() Fixture {
             \\          }
             \\        ]
             \\      }
-            \\    },
-            \\    "children": {
-            \\      "multiple": true,
-            \\      "required": true,
-            \\      "types": [
-            \\        {
-            \\          "type": "expr",
-            \\          "named": true
-            \\        },
-            \\        {
-            \\          "type": "rhs",
-            \\          "named": true
-            \\        }
-            \\      ]
             \\    }
             \\  },
             \\  {
@@ -1111,20 +1043,6 @@ pub fn hiddenExternalFieldsNodeTypesJson() Fixture {
             \\          }
             \\        ]
             \\      }
-            \\    },
-            \\    "children": {
-            \\      "multiple": true,
-            \\      "required": true,
-            \\      "types": [
-            \\        {
-            \\          "type": "indent",
-            \\          "named": true
-            \\        },
-            \\        {
-            \\          "type": "statement",
-            \\          "named": true
-            \\        }
-            \\      ]
             \\    }
             \\  },
             \\  {
@@ -1207,15 +1125,11 @@ pub fn extraAliasedBodyNodeTypesJson() Fixture {
             \\      }
             \\    },
             \\    "children": {
-            \\      "multiple": true,
+            \\      "multiple": false,
             \\      "required": true,
             \\      "types": [
             \\        {
             \\          "type": "space",
-            \\          "named": true
-            \\        },
-            \\        {
-            \\          "type": "statement",
             \\          "named": true
             \\        }
             \\      ]

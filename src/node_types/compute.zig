@@ -116,7 +116,7 @@ pub fn computeNodeTypes(
             .root = index == 0,
             .extra = containsSymbolRef(syntax.extra_symbols, symbol),
             .fields = summary.fields,
-            .children = summary.children,
+            .children = summary.children_without_fields,
             .subtypes = subtype_refs,
         });
     }
@@ -188,6 +188,7 @@ const FieldAccumulator = struct {
 const VariableSummary = struct {
     fields: []const Field = &.{},
     children: ?ChildInfo = null,
+    children_without_fields: ?ChildInfo = null,
     has_multi_step_production: bool = false,
 };
 
@@ -239,12 +240,15 @@ const SummaryContext = struct {
         var field_map = std.StringArrayHashMap(FieldAccumulator).init(self.allocator);
         var child_types = std.array_list.Managed(NodeTypeRef).init(self.allocator);
         var children_quantity: ?ChildQuantity = null;
+        var child_types_without_fields = std.array_list.Managed(NodeTypeRef).init(self.allocator);
+        var children_without_fields_quantity: ?ChildQuantity = null;
         var has_multi_step = false;
 
         for (variable.productions, 0..) |production, production_index| {
             var production_field_quantities = std.StringArrayHashMap(ChildQuantity).init(self.allocator);
             defer production_field_quantities.deinit();
             var production_children_quantity = ChildQuantity.zero();
+            var production_children_without_fields_quantity = ChildQuantity.zero();
 
             if (production.steps.len > 1) has_multi_step = true;
 
@@ -267,6 +271,15 @@ const SummaryContext = struct {
                             }
                             const qty = try getProductionFieldQuantity(&production_field_quantities, field_name);
                             qty.append(children.quantity);
+                        }
+                    }
+
+                    if (step.field_name == null) {
+                        if (child_summary.children_without_fields) |children_without_fields| {
+                            for (children_without_fields.types) |child_type| {
+                                try addNodeTypeRef(&child_types_without_fields, child_type);
+                            }
+                            production_children_without_fields_quantity.append(children_without_fields.quantity);
                         }
                     }
 
@@ -295,6 +308,9 @@ const SummaryContext = struct {
                     try addNodeTypeRef(&acc.types, child_type);
                     const qty = try getProductionFieldQuantity(&production_field_quantities, field_name);
                     qty.append(ChildQuantity.one());
+                } else if (child_type.named) {
+                    try addNodeTypeRef(&child_types_without_fields, child_type);
+                    production_children_without_fields_quantity.append(ChildQuantity.one());
                 }
             }
 
@@ -302,6 +318,11 @@ const SummaryContext = struct {
                 ChildQuantity.mergeAlternatives(existing, production_children_quantity)
             else
                 production_children_quantity;
+
+            children_without_fields_quantity = if (children_without_fields_quantity) |existing|
+                ChildQuantity.mergeAlternatives(existing, production_children_without_fields_quantity)
+            else
+                production_children_without_fields_quantity;
 
             var iter = field_map.iterator();
             while (iter.next()) |entry| {
@@ -328,12 +349,29 @@ const SummaryContext = struct {
         std.mem.sort(Field, fields.items, {}, lessThanField);
 
         std.mem.sort(NodeTypeRef, child_types.items, {}, lessThanNodeTypeRef);
+        std.mem.sort(NodeTypeRef, child_types_without_fields.items, {}, lessThanNodeTypeRef);
         self.summaries[index] = .{
             .fields = try fields.toOwnedSlice(),
-            .children = if (children_quantity) |qty| .{
-                .quantity = qty,
-                .types = try child_types.toOwnedSlice(),
-            } else null,
+            .children = if (children_quantity) |qty|
+                if (qty.exists and child_types.items.len > 0)
+                    .{
+                        .quantity = qty,
+                        .types = try child_types.toOwnedSlice(),
+                    }
+                else
+                    null
+            else
+                null,
+            .children_without_fields = if (children_without_fields_quantity) |qty|
+                if (qty.exists and child_types_without_fields.items.len > 0)
+                    .{
+                        .quantity = qty,
+                        .types = try child_types_without_fields.toOwnedSlice(),
+                    }
+                else
+                    null
+            else
+                null,
             .has_multi_step_production = has_multi_step,
         };
         self.states[index] = .done;
@@ -912,10 +950,7 @@ test "computeNodeTypes aggregates fields and visible children" {
 
     const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
     const source = findNodeByKind(nodes, "source_file").?;
-    try std.testing.expect(source.children != null);
-    try std.testing.expectEqual(@as(usize, 3), source.children.?.types.len);
-    try std.testing.expect(source.children.?.quantity.required);
-    try std.testing.expect(source.children.?.quantity.multiple);
+    try std.testing.expect(source.children == null);
     try std.testing.expectEqual(@as(usize, 2), source.fields.len);
     try std.testing.expectEqualStrings("left", source.fields[0].name);
     try std.testing.expect(source.fields[0].info.quantity.required);
@@ -970,13 +1005,59 @@ test "computeNodeTypes inherits fields and children through hidden wrappers" {
 
     const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
     const source = findNodeByKind(nodes, "source_file").?;
-    try std.testing.expect(source.children != null);
-    try std.testing.expectEqual(@as(usize, 3), source.children.?.types.len);
+    try std.testing.expect(source.children == null);
     try std.testing.expectEqual(@as(usize, 2), source.fields.len);
     try std.testing.expectEqualStrings("left", source.fields[0].name);
     try std.testing.expectEqualStrings("expr", source.fields[0].info.types[0].kind);
     try std.testing.expectEqualStrings("right", source.fields[1].name);
     try std.testing.expectEqualStrings("rhs", source.fields[1].info.types[0].kind);
+}
+
+test "computeNodeTypes emits only named children without fields in children" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var prod = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 }, .field_name = "left" },
+        .{ .symbol = .{ .terminal = 0 } },
+        .{ .symbol = .{ .non_terminal = 2 } },
+    };
+    var expr_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+    var stmt_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 2 } },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = prod[0..] }} },
+            .{ .name = "expr", .kind = .named, .productions = &.{.{ .steps = expr_steps[0..] }} },
+            .{ .name = "stmt", .kind = .named, .productions = &.{.{ .steps = stmt_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "+", .kind = .anonymous, .rule = 0 },
+            .{ .name = "identifier", .kind = .named, .rule = 1 },
+            .{ .name = "statement", .kind = .named, .rule = 2 },
+        },
+        .separators = &.{},
+    };
+
+    const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
+    const source = findNodeByKind(nodes, "source_file").?;
+    try std.testing.expect(source.children != null);
+    try std.testing.expectEqual(@as(usize, 1), source.children.?.types.len);
+    try std.testing.expectEqualStrings("stmt", source.children.?.types[0].kind);
+    try std.testing.expect(source.children.?.quantity.required);
+    try std.testing.expect(!source.children.?.quantity.multiple);
 }
 
 fn findNodeByKind(nodes: []const NodeType, kind: []const u8) ?NodeType {
