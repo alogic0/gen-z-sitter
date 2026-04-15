@@ -58,12 +58,27 @@ Milestone 9 closes with two explicit boundary decisions:
 - `DecisionSnapshot` is the pre-serialization handoff
 - `reduce_reduce_deferred` remains the explicit unresolved reduce/reduce boundary
 
-The next parser-generation work is now Milestone 10:
+Milestone 10 is complete and establishes the first real serialization/code-emission boundary:
 
 - serialized parse-table IR
 - explicit ready vs blocked serialization behavior
 - deterministic serialized-table artifacts
 - the first narrow emitter-facing boundary on top of serialized parser data
+
+Milestone 10 includes:
+
+- `src/parse_table/serialize.zig` as the serialized parse-table boundary
+- explicit strict vs diagnostic serialization policy
+- exact serialized-table goldens for ready and blocked grammars
+- a first textual emitter-facing parser-table skeleton
+- a first C-like table skeleton consumer of serialized parser data
+
+The next parser-generation work is now Milestone 11:
+
+- broader parser code emission on top of `SerializedTable`
+- explicit blocked-emission behavior for broader emitted artifacts
+- deterministic broader emitter goldens
+- emitter architecture cleanup for later `parser.c`-style expansion
 
 ## Documents
 
@@ -78,6 +93,7 @@ The next parser-generation work is now Milestone 10:
 - [MILESTONE_8_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_8_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_9_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_9_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_10_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_10_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_11_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_11_IMPLEMENTATION_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)

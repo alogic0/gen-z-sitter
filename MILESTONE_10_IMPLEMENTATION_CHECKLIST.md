@@ -17,6 +17,33 @@ and
 
 - “the generator can serialize parser tables into a deterministic form that later code emission can consume directly”.
 
+## Current Status
+
+Milestone 10 is complete.
+
+Implemented now:
+
+- dedicated serialized parse-table IR in `src/parse_table/serialize.zig`
+- explicit serialization policy:
+  - `strict` mode rejects unresolved snapshots
+  - `diagnostic` mode preserves unresolved entries
+- deterministic serialized-table dump artifacts for:
+  - a ready metadata-rich grammar
+  - a blocked conflict grammar
+- the first emitter-facing consumers of serialized tables:
+  - `src/parser_emit/parser_tables.zig`
+  - `src/parser_emit/c_tables.zig`
+- exact end-to-end artifacts proving both emitters consume serialized tables through the real preparation path
+
+Final Milestone 10 decision:
+
+- the current serializer/emitter boundary is sufficient for Milestone 10 closeout
+
+What this means:
+
+- Milestone 10 is no longer waiting on serialization-boundary work
+- the next milestone can focus on broader code emission instead of reworking the initial serialized-table handoff
+
 ## What Milestone 10 Includes
 
 - a serialization-facing parse-table IR
@@ -58,14 +85,16 @@ What still remains after Milestone 9:
 - establish the first emitter-facing contract from serialized parser data
 - prove the serialized output is deterministic and stable enough for later codegen
 
+Most of those items are now implemented in Milestone 10.
+
 ## Main Targets
 
 ### 1. Serialized parse-table IR
 
 Current state:
 
-- parse tables exist as build-layer structures and decision snapshots
-- there is not yet a dedicated serialized-table boundary
+- implemented
+- parse tables now have a dedicated serialized boundary in `src/parse_table/serialize.zig`
 
 Target state:
 
@@ -74,14 +103,14 @@ Target state:
 
 Acceptance criteria:
 
-- later code-emission work can consume serialized tables without re-deriving parser decisions
+- met
 
 ### 2. State/action/goto serialization
 
 Current state:
 
-- state/action data is inspectable through debug dumps
-- there is no canonical serialized layout yet
+- implemented
+- state/action/goto data now has a canonical serialized layout and exact artifact coverage
 
 Target state:
 
@@ -94,7 +123,7 @@ Target state:
 
 Acceptance criteria:
 
-- the serialized layout is deterministic and covers the current supported parser subset
+- met
 
 ### 3. Unresolved-entry policy at serialization time
 
@@ -103,30 +132,33 @@ Current state:
 - `DecisionSnapshot` exposes unresolved entries explicitly
 - Milestone 9 leaves `reduce_reduce_deferred` as an intentional unresolved boundary
 
-Target state:
+Result:
 
-- explicitly decide whether serialization:
-  - rejects unresolved snapshots, or
-  - preserves unresolved entries in a debug/diagnostic serialization mode
+- explicit dual-mode policy implemented:
+  - `strict` rejects unresolved snapshots
+  - `diagnostic` preserves unresolved entries in serialized output
 
 Acceptance criteria:
 
-- serialization behavior is explicit and tested for both ready and blocked inputs
+- met
 
 ### 4. First emitter-facing boundary
 
 Current state:
 
-- there is no dedicated code-emission input yet
+- implemented
+- serialized tables now have two emitter-facing consumers:
+  - a narrow textual parser-table skeleton
+  - a C-like table skeleton
 
-Target state:
+Result:
 
-- define the first narrow emitter-facing contract that consumes serialized parser tables
-- keep this focused on table/code skeleton emission, not full runtime output
+- the first emitter-facing boundary exists and is artifact-tested
+- later code-emission work no longer needs to start from the build algorithm layer
 
 Acceptance criteria:
 
-- later `parser.c` work can begin from serialized tables rather than the build algorithm layer
+- met
 
 ## File-by-File Plan
 
@@ -229,14 +261,37 @@ Acceptance criteria:
 
 - code-emission work no longer needs to start from the build algorithm layer
 
-## Recommended Implementation Order
+## Closeout Result
 
-1. Define the serialized parse-table IR and serializer entry point.
-2. Decide the blocked-snapshot serialization policy.
-3. Add deterministic serialized-table dump helpers.
-4. Add real pipeline goldens for ready and blocked serialization paths.
-5. Add the first narrow emitter-facing consumer of serialized parser tables.
-6. Do a closeout review documenting what remains for broader code emission.
+Milestone 10 closes with these explicit decisions:
+
+1. the current serialized parse-table IR is the stable serialization boundary
+2. strict vs diagnostic serialization behavior is accepted as the Milestone 10 unresolved-entry policy
+3. the existing textual and C-like emitter skeletons are sufficient as the first emitter-facing consumers
+
+## Review Result
+
+After the current implementation work, Milestone 10 splits into:
+
+### Implemented boundary work
+
+- serialized parse-table IR
+- explicit strict vs diagnostic serialization policy
+- deterministic serialized-table dump artifacts
+- exact real-path goldens for ready and blocked serialization
+- first emitter-facing parser-table skeleton
+- first C-like codegen-oriented table skeleton
+
+### Deferred to the next milestone
+
+- broader parser code emission beyond the current skeleton consumers
+- any richer emitted representation or runtime-facing layout work
+- later codegen polish beyond the Milestone 10 boundary
+
+### Closeout/polish work
+
+- completed in this checklist update
+- the next milestone can now focus on broader code emission rather than serialization-boundary redesign
 
 ## Risks
 
@@ -253,3 +308,7 @@ Milestone 10 is complete when:
 - serialized-table artifacts are pinned through the real pipeline
 - a first emitter-facing boundary exists on top of serialized parser data
 - the next milestone can focus on broader code emission rather than reworking serialization
+
+Status:
+
+- complete
