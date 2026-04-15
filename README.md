@@ -4,15 +4,21 @@ This directory contains planning documents for a Zig rewrite of the Tree-sitter 
 
 Milestone 3 is complete. Milestone 4 is also complete: the deferred `node-types.json` parity work has been implemented, including the later post-processing cleanup around supertypes and final node ordering.
 
-Milestone 5 is well underway and now has the core parser-table foundation in place:
+Milestone 5 is complete and establishes the first parser-table foundation:
 
 - parser item/state IR
 - deterministic narrow LR(0)-style state construction
 - structured conflict reporting
 - exact parser-state dump goldens for both simple and conflict grammars
 - deterministic state-reuse coverage
+- focused reduce/reduce conflict coverage through the real preparation pipeline
 
-The remaining Milestone 5 work is mainly closeout around the currently supported subset and explicit deferrals to later parser-generation milestones.
+The remaining parser-generation work is now Milestone 6+:
+
+- broader grammar support beyond the current narrow LR(0)-style subset
+- richer lookahead/FIRST-set behavior
+- conflict resolution
+- parse-table serialization and eventual `parser.c` emission
 
 ## Documents
 
