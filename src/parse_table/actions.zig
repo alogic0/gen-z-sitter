@@ -1,0 +1,217 @@
+const std = @import("std");
+const item = @import("item.zig");
+const state = @import("state.zig");
+const syntax_ir = @import("../ir/syntax_grammar.zig");
+
+pub const ActionKind = enum {
+    shift,
+    reduce,
+    accept,
+};
+
+pub const ParseAction = union(ActionKind) {
+    shift: state.StateId,
+    reduce: item.ProductionId,
+    accept: void,
+
+    pub fn lessThan(_: void, a: ParseAction, b: ParseAction) bool {
+        const a_tag = @intFromEnum(a);
+        const b_tag = @intFromEnum(b);
+        if (a_tag != b_tag) return a_tag < b_tag;
+
+        return switch (a) {
+            .shift => |left| switch (b) {
+                .shift => |right| left < right,
+                else => false,
+            },
+            .reduce => |left| switch (b) {
+                .reduce => |right| left < right,
+                else => false,
+            },
+            .accept => false,
+        };
+    }
+};
+
+pub const ActionEntry = struct {
+    symbol: syntax_ir.SymbolRef,
+    action: ParseAction,
+};
+
+pub fn buildActionsForState(
+    allocator: std.mem.Allocator,
+    productions: anytype,
+    parse_state: state.ParseState,
+) std.mem.Allocator.Error![]const ActionEntry {
+    var entries = std.array_list.Managed(ActionEntry).init(allocator);
+    defer entries.deinit();
+
+    for (parse_state.transitions) |transition| {
+        switch (transition.symbol) {
+            .terminal, .external => {
+                try appendUniqueAction(&entries, .{
+                    .symbol = transition.symbol,
+                    .action = .{ .shift = transition.state },
+                });
+            },
+            .non_terminal => {},
+        }
+    }
+
+    for (parse_state.items) |parse_item| {
+        const production = productions[parse_item.production_id];
+        if (parse_item.step_index != production.steps.len) continue;
+        const lookahead = parse_item.lookahead orelse continue;
+
+        const action: ParseAction = if (production.augmented)
+            .{ .accept = {} }
+        else
+            .{ .reduce = parse_item.production_id };
+
+        try appendUniqueAction(&entries, .{
+            .symbol = lookahead,
+            .action = action,
+        });
+    }
+
+    sortActionEntries(entries.items);
+    return try entries.toOwnedSlice();
+}
+
+pub fn sortActionEntries(entries: []ActionEntry) void {
+    std.mem.sort(ActionEntry, entries, {}, lessThanActionEntry);
+}
+
+fn appendUniqueAction(
+    entries: *std.array_list.Managed(ActionEntry),
+    candidate: ActionEntry,
+) std.mem.Allocator.Error!void {
+    for (entries.items) |entry| {
+        if (actionEntryEql(entry, candidate)) return;
+    }
+    try entries.append(candidate);
+}
+
+fn lessThanActionEntry(_: void, a: ActionEntry, b: ActionEntry) bool {
+    if (!symbolRefEql(a.symbol, b.symbol)) return symbolLessThan(a.symbol, b.symbol);
+    return ParseAction.lessThan({}, a.action, b.action);
+}
+
+fn actionEntryEql(a: ActionEntry, b: ActionEntry) bool {
+    return symbolRefEql(a.symbol, b.symbol) and parseActionEql(a.action, b.action);
+}
+
+fn parseActionEql(a: ParseAction, b: ParseAction) bool {
+    return switch (a) {
+        .shift => |left| switch (b) {
+            .shift => |right| left == right,
+            else => false,
+        },
+        .reduce => |left| switch (b) {
+            .reduce => |right| left == right,
+            else => false,
+        },
+        .accept => switch (b) {
+            .accept => true,
+            else => false,
+        },
+    };
+}
+
+fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
+    return switch (a) {
+        .non_terminal => |index| switch (b) {
+            .non_terminal => |other| index == other,
+            else => false,
+        },
+        .terminal => |index| switch (b) {
+            .terminal => |other| index == other,
+            else => false,
+        },
+        .external => |index| switch (b) {
+            .external => |other| index == other,
+            else => false,
+        },
+    };
+}
+
+fn symbolLessThan(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
+    return switch (a) {
+        .non_terminal => |index| switch (b) {
+            .non_terminal => |other| index < other,
+            else => true,
+        },
+        .terminal => |index| switch (b) {
+            .non_terminal => false,
+            .terminal => |other| index < other,
+            .external => true,
+        },
+        .external => |index| switch (b) {
+            .external => |other| index < other,
+            else => false,
+        },
+    };
+}
+
+test "action helpers sort deterministically" {
+    var entries = [_]ActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
+        .{ .symbol = .{ .external = 1 }, .action = .{ .accept = {} } },
+    };
+
+    sortActionEntries(entries[0..]);
+    try std.testing.expectEqual(@as(u32, 0), entries[0].symbol.terminal);
+    try std.testing.expect(switch (entries[0].action) { .shift => true, else => false });
+    try std.testing.expect(switch (entries[1].action) { .reduce => true, else => false });
+    try std.testing.expect(switch (entries[2].action) { .accept => true, else => false });
+}
+
+test "buildActionsForState derives shift reduce and accept actions" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{
+            .lhs = std.math.maxInt(u32),
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .non_terminal = 0 } },
+            },
+            .augmented = true,
+        },
+        .{
+            .lhs = 0,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .terminal = 0 } },
+            },
+        },
+    };
+
+    const parse_state = state.ParseState{
+        .id = 3,
+        .items = &[_]item.ParseItem{
+            item.ParseItem.withLookahead(0, 1, .{ .external = 2 }),
+            item.ParseItem.withLookahead(1, 1, .{ .terminal = 0 }),
+            item.ParseItem.withLookahead(1, 0, .{ .terminal = 0 }),
+        },
+        .transitions = &[_]state.Transition{
+            .{ .symbol = .{ .terminal = 0 }, .state = 7 },
+            .{ .symbol = .{ .non_terminal = 0 }, .state = 8 },
+        },
+    };
+
+    const entries = try buildActionsForState(allocator, productions[0..], parse_state);
+    defer allocator.free(entries);
+
+    try std.testing.expectEqual(@as(usize, 3), entries.len);
+    try std.testing.expectEqual(@as(u32, 0), entries[0].symbol.terminal);
+    try std.testing.expect(switch (entries[0].action) { .shift => |id| id == 7, else => false });
+    try std.testing.expect(switch (entries[1].action) { .reduce => |id| id == 1, else => false });
+    try std.testing.expectEqual(@as(u32, 2), entries[2].symbol.external);
+    try std.testing.expect(switch (entries[2].action) { .accept => true, else => false });
+}
