@@ -57,7 +57,7 @@ const Extractor = struct {
         const precedence_orderings = try self.convertPrecedenceOrderings();
         const variables_to_inline = try self.extractVariablesToInline();
         const supertype_symbols = try self.extractSupertypeSymbols();
-        const word_token = if (self.prepared.word_token) |word| try self.convertSymbol(word) else null;
+        const word_token = try self.extractWordToken();
 
         return .{
             .syntax = .{
@@ -94,6 +94,21 @@ const Extractor = struct {
         }
 
         return try result.toOwnedSlice();
+    }
+
+    fn extractWordToken(self: *Extractor) ExtractTokensError!?syntax_ir.SymbolRef {
+        const word = self.prepared.word_token orelse return null;
+
+        switch (word.kind) {
+            .non_terminal => {
+                const variable = self.prepared.variables[word.index];
+                if (self.findLexicalVariable(variable.rule)) |terminal_index| {
+                    return .{ .terminal = terminal_index };
+                }
+                return .{ .non_terminal = word.index };
+            },
+            .external => return .{ .external = word.index },
+        }
     }
 
     fn extractVariables(self: *Extractor) ExtractTokensError![]const syntax_ir.SyntaxVariable {
@@ -500,6 +515,8 @@ test "extractTokens splits simple prepared grammar into syntax and lexical parts
     try std.testing.expectEqualStrings("term", extracted.lexical.variables[1].name);
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.separators.len);
     try std.testing.expectEqual(@as(usize, 0), extracted.syntax.extra_symbols.len);
+    try std.testing.expect(extracted.syntax.word_token != null);
+    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.word_token.?.terminal);
 }
 
 test "extractTokens uses literal token names inside hidden wrappers" {
