@@ -115,6 +115,7 @@ Implemented now:
   - a compatibility-layering decision
   - a richer runtime summary/output layer beyond the Milestone 12 helper/query surface
   - explicit blocked-state helpers at the runtime-facing layer
+  - symbol-based lookup and presence predicates over parser entries
 
 This means the “exact richer-output artifacts” item is already satisfied by the current parser.c emitter path rather than needing a separate artifact format.
 
@@ -157,6 +158,12 @@ Completed in this milestone:
 - richer parser output beyond the Milestone 12 helper/query layer
 - exact ready/blocked artifacts for the richer runtime-facing parser surface
 - explicit blocked-output behavior at the richer runtime-facing layer
+- a richer compatibility-oriented emitted API including:
+  - parser/runtime summary structs
+  - per-state runtime summaries
+  - field-level entry accessors
+  - symbol-based lookup
+  - predicate helpers
 
 Deferred to the next milestone:
 

@@ -111,6 +111,11 @@ Milestone 13 includes:
 - richer parser output beyond the Milestone 12 helper/query layer
 - exact ready/blocked artifacts for the richer runtime-facing parser surface
 - explicit blocked-output behavior at the richer runtime-facing layer
+- richer compatibility-oriented emitted helpers, including:
+  - runtime summary structs
+  - state summary access
+  - symbol-based lookup
+  - predicate helpers
 
 The next parser-generation work is now Milestone 14:
 
