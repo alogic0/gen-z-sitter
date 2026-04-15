@@ -12,6 +12,7 @@ const state = @import("state.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
 const fixtures = @import("../tests/fixtures.zig");
+const grammar_loader = @import("../grammar/loader.zig");
 const json_loader = @import("../grammar/json_loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 
@@ -116,6 +117,15 @@ pub fn generateParserCEmitterDumpFromPrepared(
     const result = try buildStatesFromPrepared(allocator, prepared);
     const serialized = try serialize.serializeBuildResult(allocator, result, mode);
     return try parser_c_emit.emitParserCAlloc(allocator, serialized);
+}
+
+fn writeModuleExportsJsonFile(dir: std.fs.Dir, sub_path: []const u8, json_contents: []const u8) !void {
+    const js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{json_contents});
+    defer std.testing.allocator.free(js);
+    try dir.writeFile(.{
+        .sub_path = sub_path,
+        .data = js,
+    });
 }
 
 test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture" {
@@ -1059,6 +1069,33 @@ test "generateParserCEmitterDumpFromPrepared matches the conflict diagnostic par
     );
 
     try std.testing.expectEqualStrings(fixtures.parseTableConflictParserCDump().contents, dump);
+}
+
+test "generateParserCEmitterDumpFromPrepared matches the metadata-rich parser.c-like emitter golden fixture through grammar.js" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try writeModuleExportsJsonFile(tmp.dir, "grammar.js", fixtures.parseTableMetadataGrammarJson().contents);
+
+    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    defer std.testing.allocator.free(grammar_path);
+
+    var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
+    defer loaded.deinit();
+
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &loaded.json.grammar);
+    const dump = try generateParserCEmitterDumpFromPrepared(
+        pipeline_arena.allocator(),
+        prepared,
+        .strict,
+    );
+
+    try std.testing.expectEqualStrings(fixtures.parseTableMetadataParserCDump().contents, dump);
 }
 
 test "generateResolvedActionTableDumpFromPrepared keeps reduce/reduce conflict groups explicit" {

@@ -768,8 +768,8 @@ This checklist covers only work that is still outstanding from the current proje
 - [x] add subprocess-based `node` loading for `grammar.js`
 - [x] keep `grammar.json` as the native/core path
 - [x] add end-to-end tests that start from `grammar.js`
-- [ ] verify emitted `grammar.json`, `node-types.json`, and parser output remain deterministic through the JS path
-- [ ] keep non-Node JS runtimes deferred unless they become necessary
+- [x] verify emitted `grammar.json`, `node-types.json`, and parser output remain deterministic through the JS path
+- [x] keep non-Node JS runtimes deferred unless they become necessary
 
 ### Milestone 15: Parser/runtime compatibility work
 

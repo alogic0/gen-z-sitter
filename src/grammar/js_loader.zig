@@ -7,7 +7,7 @@ pub const LoadError = json_loader.LoadError || error{
     ProcessFailure,
 };
 
-pub fn loadGrammarJs(gpa: std.mem.Allocator, path: []const u8) LoadError!json_loader.LoadedJsonGrammar {
+pub fn emitGrammarJsonFromJsAlloc(gpa: std.mem.Allocator, path: []const u8) LoadError![]u8 {
     if (isDirectory(path)) {
         return error.InvalidPath;
     }
@@ -33,7 +33,13 @@ pub fn loadGrammarJs(gpa: std.mem.Allocator, path: []const u8) LoadError!json_lo
         else => return error.ProcessFailure,
     }
 
-    return json_loader.loadGrammarJsonFromSlice(gpa, result.stdout);
+    return gpa.dupe(u8, result.stdout);
+}
+
+pub fn loadGrammarJs(gpa: std.mem.Allocator, path: []const u8) LoadError!json_loader.LoadedJsonGrammar {
+    const contents = try emitGrammarJsonFromJsAlloc(gpa, path);
+    defer gpa.free(contents);
+    return json_loader.loadGrammarJsonFromSlice(gpa, contents);
 }
 
 fn isDirectory(path: []const u8) bool {
@@ -84,4 +90,34 @@ test "loadGrammarJs rejects malformed emitted json" {
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.JsonParseFailure, loadGrammarJs(std.testing.allocator, path));
+}
+
+test "emitGrammarJsonFromJsAlloc produces deterministic compact json" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.js",
+        .data = fixtures.validResolvedGrammarJs().contents,
+    });
+
+    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    defer std.testing.allocator.free(path);
+
+    const emitted = try emitGrammarJsonFromJsAlloc(std.testing.allocator, path);
+    defer std.testing.allocator.free(emitted);
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, arena.allocator(), fixtures.validResolvedGrammarJson().contents, .{});
+    defer parsed.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    try std.json.Stringify.value(parsed.value, .{}, &out.writer);
+    const expected = try out.toOwnedSlice();
+    defer std.testing.allocator.free(expected);
+
+    try std.testing.expectEqualStrings(expected, emitted);
 }

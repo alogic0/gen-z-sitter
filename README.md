@@ -117,11 +117,18 @@ Milestone 13 includes:
   - symbol-based lookup
   - predicate helpers
 
-The next parser-generation work is now Milestone 14:
+Milestone 14 is complete:
 
 - `grammar.js` end-to-end support through a `node` subprocess path
-- keeping `grammar.json` as the native/core path
-- deterministic end-to-end emission through the JS loading path
+- `grammar.json` kept as the native/core path
+- deterministic `grammar.json`, `node-types.json`, and parser emission through the JS loading path
+- non-Node JS runtimes explicitly deferred
+
+The next parser-generation work is now Milestone 15:
+
+- parser/runtime compatibility targets
+- output-structure and runtime-facing compatibility checks
+- centralized ABI/version handling decisions
 
 ## Documents
 

@@ -6,6 +6,7 @@ const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
 const compute = @import("compute.zig");
 const render_json = @import("render_json.zig");
 const fixtures = @import("../tests/fixtures.zig");
+const grammar_loader = @import("../grammar/loader.zig");
 const json_loader = @import("../grammar/json_loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 
@@ -29,6 +30,15 @@ pub fn generateNodeTypesJsonFromPrepared(
     return try render_json.renderNodeTypesJsonAlloc(allocator, nodes);
 }
 
+fn writeModuleExportsJsonFile(dir: std.fs.Dir, sub_path: []const u8, json_contents: []const u8) !void {
+    const js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{json_contents});
+    defer std.testing.allocator.free(js);
+    try dir.writeFile(.{
+        .sub_path = sub_path,
+        .data = js,
+    });
+}
+
 test "generateNodeTypesJsonFromPrepared runs the Milestone 3 pipeline from grammar.json" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
@@ -47,6 +57,29 @@ test "generateNodeTypesJsonFromPrepared runs the Milestone 3 pipeline from gramm
 
     const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const json = try generateNodeTypesJsonFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.validResolvedNodeTypesJson().contents, json);
+}
+
+test "generateNodeTypesJsonFromPrepared matches the grammar.js path for valid resolved grammar" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try writeModuleExportsJsonFile(tmp.dir, "grammar.js", fixtures.validResolvedGrammarJson().contents);
+
+    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    defer std.testing.allocator.free(grammar_path);
+
+    var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
+    defer loaded.deinit();
+
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &loaded.json.grammar);
     const json = try generateNodeTypesJsonFromPrepared(pipeline_arena.allocator(), prepared);
 
     try std.testing.expectEqualStrings(fixtures.validResolvedNodeTypesJson().contents, json);
