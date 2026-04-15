@@ -42,8 +42,7 @@ pub fn generateStateActionDumpFromPrepared(
     prepared: grammar_ir.PreparedGrammar,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const action_table = try actions.buildActionTable(allocator, result.productions, result.states);
-    return try debug_dump.dumpStatesWithActionsAlloc(allocator, result.states, action_table);
+    return try debug_dump.dumpStatesWithActionsAlloc(allocator, result.states, result.actions);
 }
 
 test "generateStateDumpFromPrepared matches the tiny parser-state golden fixture" {
@@ -200,6 +199,29 @@ test "generateStateActionDumpFromPrepared matches the conflict parser-state acti
     const dump = try generateStateActionDumpFromPrepared(pipeline_arena.allocator(), prepared);
 
     try std.testing.expectEqualStrings(fixtures.parseTableConflictActionDump().contents, dump);
+}
+
+test "generateStateActionDumpFromPrepared matches the reduce/reduce parser-state action golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableReduceReduceGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateStateActionDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.parseTableReduceReduceActionDump().contents, dump);
 }
 
 test "buildStatesFromPrepared reuses identical advanced states deterministically" {

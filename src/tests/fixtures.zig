@@ -468,6 +468,87 @@ pub fn parseTableConflictActionDump() Fixture {
     };
 }
 
+pub fn parseTableReduceReduceActionDump() Fixture {
+    return .{
+        .name = "parse_table_reduce_reduce_action_dump",
+        .contents =
+            \\state 0
+            \\  items:
+            \\    #0@0
+            \\    #1@0
+            \\    #2@0 ?terminal:0
+            \\    #3@0 ?terminal:0
+            \\    #4@0 ?terminal:0
+            \\    #5@0 ?terminal:0
+            \\    #6@0 ?terminal:0
+            \\  transitions:
+            \\    non_terminal:0 -> 1
+            \\    non_terminal:1 -> 2
+            \\    non_terminal:2 -> 3
+            \\    non_terminal:3 -> 4
+            \\    non_terminal:4 -> 5
+            \\    terminal:1 -> 6
+            \\  actions:
+            \\    terminal:1 => shift 6
+            \\
+            \\state 1
+            \\  items:
+            \\    #0@1
+            \\  transitions:
+            \\  actions:
+            \\
+            \\state 2
+            \\  items:
+            \\    #1@1
+            \\  transitions:
+            \\    terminal:0 -> 7
+            \\  actions:
+            \\    terminal:0 => shift 7
+            \\
+            \\state 3
+            \\  items:
+            \\    #2@1 ?terminal:0
+            \\  transitions:
+            \\  actions:
+            \\    terminal:0 => reduce 2
+            \\
+            \\state 4
+            \\  items:
+            \\    #3@1 ?terminal:0
+            \\  transitions:
+            \\  actions:
+            \\    terminal:0 => reduce 3
+            \\
+            \\state 5
+            \\  items:
+            \\    #4@1 ?terminal:0
+            \\    #5@1 ?terminal:0
+            \\  transitions:
+            \\  actions:
+            \\    terminal:0 => reduce 4
+            \\    terminal:0 => reduce 5
+            \\  conflicts:
+            \\    reduce_reduce on terminal:0
+            \\      #4@1 ?terminal:0
+            \\      #5@1 ?terminal:0
+            \\
+            \\state 6
+            \\  items:
+            \\    #6@1 ?terminal:0
+            \\  transitions:
+            \\  actions:
+            \\    terminal:0 => reduce 6
+            \\
+            \\state 7
+            \\  items:
+            \\    #1@2
+            \\  transitions:
+            \\  actions:
+            \\
+        ,
+    };
+}
+
 pub fn parseTableReuseGrammarJson() Fixture {
     return .{
         .name = "parse_table_reuse",

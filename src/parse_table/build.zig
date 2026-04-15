@@ -21,6 +21,7 @@ pub const ProductionInfo = struct {
 pub const BuildResult = struct {
     productions: []const ProductionInfo,
     states: []const state.ParseState,
+    actions: actions.ActionTable,
 };
 
 pub fn buildStates(
@@ -31,12 +32,18 @@ pub fn buildStates(
 
     const first_sets = try first.computeFirstSets(allocator, grammar);
     const productions = try collectProductions(allocator, grammar);
-    const states = try constructStates(allocator, productions, first_sets);
+    const constructed = try constructStates(allocator, productions, first_sets);
     return .{
         .productions = productions,
-        .states = states,
+        .states = constructed.states,
+        .actions = constructed.actions,
     };
 }
+
+const ConstructedStates = struct {
+    states: []const state.ParseState,
+    actions: actions.ActionTable,
+};
 
 fn validateSupportedSubset(grammar: syntax_ir.SyntaxGrammar) BuildError!void {
     for (grammar.variables) |variable| {
@@ -77,9 +84,11 @@ fn constructStates(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
-) BuildError![]const state.ParseState {
+) BuildError!ConstructedStates {
     var states = std.array_list.Managed(state.ParseState).init(allocator);
     defer states.deinit();
+    var action_states = std.array_list.Managed(actions.StateActions).init(allocator);
+    defer action_states.deinit();
 
     const start_items = try closure(allocator, productions, first_sets, &[_]item.ParseItem{item.ParseItem.init(0, 0)});
     try states.append(.{
@@ -102,10 +111,19 @@ fn constructStates(
             state_actions,
         );
         mutable_states[next_state_index].conflicts = detected_conflicts;
+        try action_states.append(.{
+            .state_id = mutable_states[next_state_index].id,
+            .entries = state_actions,
+        });
     }
 
     state.sortStates(states.items);
-    return try states.toOwnedSlice();
+    return .{
+        .states = try states.toOwnedSlice(),
+        .actions = .{
+            .states = try action_states.toOwnedSlice(),
+        },
+    };
 }
 
 fn collectTransitionsForState(
@@ -196,6 +214,7 @@ test "buildStates records LR(0)-style conflicts for an ambiguous expression gram
 
     try std.testing.expect(saw_shift_reduce);
     try std.testing.expect(!saw_reduce_reduce);
+    try std.testing.expect(result.actions.entriesForState(0).len > 0);
 }
 
 fn closure(
