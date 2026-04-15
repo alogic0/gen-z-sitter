@@ -1,5 +1,6 @@
 const std = @import("std");
 const actions = @import("actions.zig");
+const item = @import("item.zig");
 const state = @import("state.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
@@ -58,7 +59,7 @@ pub fn resolveActionTable(
     productions: anytype,
     grouped_table: actions.GroupedActionTable,
 ) std.mem.Allocator.Error!ResolvedActionTable {
-    return try resolveActionTableWithPrecedence(allocator, productions, &.{}, grouped_table);
+    return try resolveActionTableWithContext(allocator, productions, &.{}, &.{}, grouped_table);
 }
 
 pub fn resolveActionTableWithPrecedence(
@@ -67,11 +68,22 @@ pub fn resolveActionTableWithPrecedence(
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
     grouped_table: actions.GroupedActionTable,
 ) std.mem.Allocator.Error!ResolvedActionTable {
+    return try resolveActionTableWithContext(allocator, productions, precedence_orderings, &.{}, grouped_table);
+}
+
+pub fn resolveActionTableWithContext(
+    allocator: std.mem.Allocator,
+    productions: anytype,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    parse_states: []const state.ParseState,
+    grouped_table: actions.GroupedActionTable,
+) std.mem.Allocator.Error!ResolvedActionTable {
     const states = try allocator.alloc(ResolvedStateActions, grouped_table.states.len);
     for (grouped_table.states, 0..) |grouped_state, state_index| {
         const groups = try allocator.alloc(ResolvedActionGroup, grouped_state.groups.len);
+        const parse_state = findState(parse_states, grouped_state.state_id);
         for (grouped_state.groups, 0..) |group, group_index| {
-            const decision = chooseResolvedAction(productions, precedence_orderings, group.entries);
+            const decision = chooseResolvedAction(productions, precedence_orderings, parse_state, group.entries);
             groups[group_index] = .{
                 .symbol = group.symbol,
                 .kind = if (decision.chosen != null) .chosen else .unresolved,
@@ -96,6 +108,7 @@ const ResolutionDecision = struct {
 fn chooseResolvedAction(
     productions: anytype,
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    parse_state: ?state.ParseState,
     candidates: []const actions.ActionEntry,
 ) ResolutionDecision {
     if (candidates.len == 1) return .{ .chosen = candidates[0].action };
@@ -106,13 +119,13 @@ fn chooseResolvedAction(
 
         if (isShift(first) and isReduce(second)) {
             return .{
-                .chosen = resolveShiftReduce(productions, precedence_orderings, candidates[0].symbol, first, second),
+                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, candidates[0].symbol, first, second),
                 .reason = .shift_reduce,
             };
         }
         if (isReduce(first) and isShift(second)) {
             return .{
-                .chosen = resolveShiftReduce(productions, precedence_orderings, candidates[0].symbol, second, first),
+                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, candidates[0].symbol, second, first),
                 .reason = .shift_reduce,
             };
         }
@@ -133,6 +146,7 @@ fn chooseResolvedAction(
 fn resolveShiftReduce(
     productions: anytype,
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    parse_state: ?state.ParseState,
     shift_symbol: syntax_ir.SymbolRef,
     shift_action: actions.ParseAction,
     reduce_action: actions.ParseAction,
@@ -145,12 +159,41 @@ fn resolveShiftReduce(
     if (production_id >= productions.len) return null;
     const production = productions[production_id];
     const metadata = extractResolutionMetadata(production);
+    const shift_metadata = if (parse_state) |resolved_state|
+        extractShiftResolutionMetadata(productions, resolved_state, shift_symbol)
+    else
+        null;
 
     if (metadata.dynamic_precedence > 0) return reduce_action;
     if (metadata.dynamic_precedence < 0) return shift_action;
 
+    if (shift_metadata) |shift| {
+        if (metadata.max_integer_precedence) |reduce_value| {
+            if (shift.max_integer_precedence) |shift_value| {
+                if (reduce_value > shift_value) return reduce_action;
+                if (reduce_value < shift_value) return shift_action;
+            }
+        }
+
+        if (metadata.named_precedence) |reduce_name| {
+            if (shift.named_precedence) |shift_name| {
+                if (comparePrecedenceEntries(
+                    precedence_orderings,
+                    .{ .name = reduce_name },
+                    .{ .name = shift_name },
+                )) |reduce_wins| {
+                    return if (reduce_wins) reduce_action else shift_action;
+                }
+            }
+        }
+    }
+
     if (metadata.named_precedence) |name| {
-        if (compareNamedPrecedence(precedence_orderings, name, shift_symbol)) |reduce_wins| {
+        if (comparePrecedenceEntries(
+            precedence_orderings,
+            .{ .name = name },
+            .{ .symbol = shift_symbol },
+        )) |reduce_wins| {
             return if (reduce_wins) reduce_action else shift_action;
         }
     }
@@ -193,31 +236,69 @@ fn extractResolutionMetadata(production: anytype) ProductionResolutionMetadata {
     return metadata;
 }
 
-fn compareNamedPrecedence(
+fn comparePrecedenceEntries(
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
-    reduce_name: []const u8,
-    shift_symbol: syntax_ir.SymbolRef,
+    left: syntax_ir.PrecedenceEntry,
+    right: syntax_ir.PrecedenceEntry,
 ) ?bool {
     for (precedence_orderings) |ordering| {
-        var reduce_index: ?usize = null;
-        var shift_index: ?usize = null;
+        var left_index: ?usize = null;
+        var right_index: ?usize = null;
 
         for (ordering, 0..) |entry, index| {
-            switch (entry) {
-                .name => |name| {
-                    if (std.mem.eql(u8, name, reduce_name)) reduce_index = index;
-                },
-                .symbol => |symbol| {
-                    if (symbolRefEql(symbol, shift_symbol)) shift_index = index;
-                },
-            }
+            if (precedenceEntryEql(entry, left)) left_index = index;
+            if (precedenceEntryEql(entry, right)) right_index = index;
         }
 
-        if (reduce_index != null and shift_index != null) {
-            return shift_index.? < reduce_index.?;
+        if (left_index != null and right_index != null) {
+            return right_index.? < left_index.?;
         }
     }
 
+    return null;
+}
+
+fn extractShiftResolutionMetadata(
+    productions: anytype,
+    parse_state: state.ParseState,
+    shift_symbol: syntax_ir.SymbolRef,
+) ?ProductionResolutionMetadata {
+    var metadata = ProductionResolutionMetadata{};
+    var saw_match = false;
+
+    for (parse_state.items) |parse_item| {
+        if (parse_item.production_id >= productions.len) continue;
+        const production = productions[parse_item.production_id];
+        if (parse_item.step_index >= production.steps.len) continue;
+        const step = production.steps[parse_item.step_index];
+        if (!symbolRefEql(step.symbol, shift_symbol)) continue;
+
+        saw_match = true;
+
+        switch (step.precedence) {
+            .integer => |value| {
+                if (metadata.max_integer_precedence == null or value > metadata.max_integer_precedence.?) {
+                    metadata.max_integer_precedence = value;
+                }
+            },
+            .name => |value| {
+                if (metadata.named_precedence == null) metadata.named_precedence = value;
+            },
+            else => {},
+        }
+
+        if (step.associativity != .none and metadata.associativity == null) {
+            metadata.associativity = step.associativity;
+        }
+    }
+
+    return if (saw_match) metadata else null;
+}
+
+fn findState(states: []const state.ParseState, state_id: state.StateId) ?state.ParseState {
+    for (states) |parse_state| {
+        if (parse_state.id == state_id) return parse_state;
+    }
     return null;
 }
 
@@ -233,6 +314,19 @@ fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
         },
         .external => |index| switch (b) {
             .external => |other| index == other,
+            else => false,
+        },
+    };
+}
+
+fn precedenceEntryEql(a: syntax_ir.PrecedenceEntry, b: syntax_ir.PrecedenceEntry) bool {
+    return switch (a) {
+        .name => |left| switch (b) {
+            .name => |right| std.mem.eql(u8, left, right),
+            else => false,
+        },
+        .symbol => |left| switch (b) {
+            .symbol => |right| symbolRefEql(left, right),
             else => false,
         },
     };
@@ -946,4 +1040,86 @@ test "resolveActionTable lets positive dynamic precedence outrank named preceden
 
     try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
     try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .reduce => |id| id == 1, else => false });
+}
+
+test "resolveActionTable uses shift-side integer precedence from the current state when available" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const reduce_steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .non_terminal = 1 },
+            .precedence = .{ .integer = 1 },
+        },
+    };
+    const shift_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+        .{
+            .symbol = .{ .terminal = 0 },
+            .precedence = .{ .integer = 2 },
+        },
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = reduce_steps[0..] },
+        .{ .lhs = 1, .steps = shift_steps[0..] },
+    };
+
+    const parse_items = [_]item.ParseItem{
+        .{
+            .production_id = 1,
+            .step_index = 1,
+            .lookahead = .{ .terminal = 0 },
+        },
+        .{
+            .production_id = 2,
+            .step_index = 1,
+            .lookahead = null,
+        },
+    };
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 6,
+            .items = parse_items[0..],
+            .transitions = &.{},
+            .conflicts = &.{},
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 6,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, parse_states[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(6)[0].kind);
+    try std.testing.expect(switch (resolved.groupsForState(6)[0].chosen.?) { .shift => |id| id == 7, else => false });
 }

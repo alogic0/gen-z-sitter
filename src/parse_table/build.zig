@@ -38,10 +38,11 @@ pub fn buildStates(
     const productions = try collectProductions(allocator, grammar);
     const constructed = try constructStates(allocator, productions, first_sets);
     const grouped_actions = try actions.groupActionTable(allocator, constructed.actions);
-    const resolved_actions = try resolution.resolveActionTableWithPrecedence(
+    const resolved_actions = try resolution.resolveActionTableWithContext(
         allocator,
         productions,
         grammar.precedence_orderings,
+        constructed.states,
         grouped_actions,
     );
     return .{
