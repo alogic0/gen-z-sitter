@@ -700,6 +700,78 @@ pub fn parseTableConflictSerializedDump() Fixture {
     };
 }
 
+pub fn parseTableMetadataEmitterDump() Fixture {
+    return .{
+        .name = "parse_table_metadata_emitter_dump",
+        .contents =
+            \\parser_tables blocked=false
+            \\state_count=7
+            \\state 0 {
+            \\  action terminal:1 shift 3
+            \\  goto non_terminal:0 1
+            \\  goto non_terminal:1 2
+            \\}
+            \\
+            \\state 1 {
+            \\}
+            \\
+            \\state 2 {
+            \\  action terminal:0 shift 4
+            \\}
+            \\
+            \\state 3 {
+            \\  action terminal:0 reduce 2
+            \\}
+            \\
+            \\state 4 {
+            \\  action terminal:1 shift 6
+            \\  goto non_terminal:1 5
+            \\}
+            \\
+            \\state 5 {
+            \\}
+            \\
+            \\state 6 {
+            \\}
+        ,
+    };
+}
+
+pub fn parseTableConflictEmitterDump() Fixture {
+    return .{
+        .name = "parse_table_conflict_emitter_dump",
+        .contents =
+            \\parser_tables blocked=true
+            \\state_count=6
+            \\state 0 {
+            \\  action terminal:1 shift 3
+            \\  goto non_terminal:0 1
+            \\  goto non_terminal:1 2
+            \\}
+            \\
+            \\state 1 {
+            \\}
+            \\
+            \\state 2 {
+            \\  action terminal:0 shift 4
+            \\}
+            \\
+            \\state 3 {
+            \\  action terminal:0 reduce 3
+            \\}
+            \\
+            \\state 4 {
+            \\  action terminal:1 shift 3
+            \\  goto non_terminal:1 5
+            \\}
+            \\
+            \\state 5 {
+            \\  unresolved terminal:0 shift_reduce candidates=2
+            \\}
+        ,
+    };
+}
+
 pub fn parseTableConflictActionTableDump() Fixture {
     return .{
         .name = "parse_table_conflict_action_table_dump",
