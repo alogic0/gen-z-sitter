@@ -141,6 +141,87 @@ pub fn invalidReservedGrammarJson() Fixture {
     };
 }
 
+pub fn validResolvedGrammarJson() Fixture {
+    return .{
+        .name = "valid_resolved",
+        .contents =
+            \\{
+            \\  "name": "basic",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "expr" }
+            \\      ]
+            \\    },
+            \\    "expr": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        { "type": "STRING", "value": "x" },
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "rhs",
+            \\          "content": { "type": "SYMBOL", "name": "term" }
+            \\        }
+            \\      ]
+            \\    },
+            \\    "term": {
+            \\      "type": "TOKEN",
+            \\      "content": { "type": "PATTERN", "value": "[a-z]+" }
+            \\    }
+            \\  },
+            \\  "externals": [
+            \\    { "type": "SYMBOL", "name": "indent" }
+            \\  ],
+            \\  "extras": [
+            \\    { "type": "STRING", "value": " " }
+            \\  ],
+            \\  "inline": ["term", "missing_inline"],
+            \\  "supertypes": ["expr"],
+            \\  "conflicts": [["expr", "term"]],
+            \\  "word": "term",
+            \\  "reserved": {
+            \\    "global": [
+            \\      { "type": "STRING", "value": "for" }
+            \\    ]
+            \\  }
+            \\}
+        ,
+    };
+}
+
+pub fn undefinedSymbolGrammarJson() Fixture {
+    return .{
+        .name = "undefined_symbol",
+        .contents =
+            \\{
+            \\  "name": "basic",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SYMBOL",
+            \\      "name": "missing"
+            \\    }
+            \\  }
+            \\}
+        ,
+    };
+}
+
+pub fn hiddenStartGrammarJson() Fixture {
+    return .{
+        .name = "hidden_start",
+        .contents =
+            \\{
+            \\  "name": "basic",
+            \\  "rules": {
+            \\    "_source_file": { "type": "BLANK" },
+            \\    "expr": { "type": "STRING", "value": "x" }
+            \\  }
+            \\}
+        ,
+    };
+}
+
 test "basic fixture is non-empty" {
     const fixture = basicGrammarJson();
     try std.testing.expect(fixture.contents.len > 0);

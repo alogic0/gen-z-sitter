@@ -8,6 +8,7 @@ It now also contains the initial Zig project scaffold for Milestone 0.
 
 - [MASTER_PLAN.md](./MASTER_PLAN.md)
 - [MILESTONE_1_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_1_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_2_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_2_IMPLEMENTATION_CHECKLIST.md)
 - [zig-generator-architecture.md](./zig-generator-architecture.md)
 - [compatibility-matrix.md](./compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)
@@ -26,9 +27,10 @@ It now also contains the initial Zig project scaffold for Milestone 0.
 
 1. master plan
 2. milestone 1 checklist
-3. architecture
-4. compatibility matrix
-5. prepared grammar IR
-6. test strategy
-7. milestone 0 task list
-8. parse-table algorithm plan
+3. milestone 2 checklist
+4. architecture
+5. compatibility matrix
+6. prepared grammar IR
+7. test strategy
+8. milestone 0 task list
+9. parse-table algorithm plan

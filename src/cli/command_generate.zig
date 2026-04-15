@@ -2,6 +2,7 @@ const std = @import("std");
 const args = @import("args.zig");
 const diag = @import("../support/diag.zig");
 const grammar_loader = @import("../grammar/loader.zig");
+const parse_grammar = @import("../grammar/parse_grammar.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
 pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !void {
@@ -39,6 +40,18 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
     };
     defer loaded.deinit();
 
+    var parse_arena = std.heap.ArenaAllocator.init(allocator);
+    defer parse_arena.deinit();
+
+    const prepared = parse_grammar.parseRawGrammar(parse_arena.allocator(), &loaded.json.grammar) catch |err| {
+        try diag.printStderr(.{
+            .kind = .usage,
+            .message = @errorName(err),
+            .path = opts.grammar_path,
+        });
+        return error.InvalidArguments;
+    };
+
     try diag.printStdout(.{
         .kind = .info,
         .message = "loaded grammar.json successfully",
@@ -67,6 +80,12 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
     try diag.printStdout(.{
         .kind = .info,
         .message = extras_count,
+    });
+
+    const symbol_count = try std.fmt.bufPrint(&counts_buffer, "symbols: {}", .{prepared.symbols.len});
+    try diag.printStdout(.{
+        .kind = .info,
+        .message = symbol_count,
     });
 }
 
@@ -102,5 +121,22 @@ test "runGenerate maps js grammars to NotImplemented" {
 test "runGenerate maps unsupported extension to InvalidArguments" {
     try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, .{
         .grammar_path = "grammar.txt",
+    }));
+}
+
+test "runGenerate maps semantic parse errors to InvalidArguments" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.json",
+        .data = fixtures.undefinedSymbolGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, .{
+        .grammar_path = path,
     }));
 }

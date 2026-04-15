@@ -71,7 +71,7 @@ fn isDirectory(path: []const u8) bool {
     }
 }
 
-fn parseTopLevel(allocator: std.mem.Allocator, value: std.json.Value) LoadError!raw.RawGrammar {
+pub fn parseTopLevel(allocator: std.mem.Allocator, value: std.json.Value) LoadError!raw.RawGrammar {
     const object = switch (value) {
         .object => |obj| obj,
         else => return error.JsonParseFailure,

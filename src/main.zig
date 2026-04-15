@@ -55,6 +55,9 @@ test {
     _ = @import("grammar/validate.zig");
     _ = @import("grammar/loader.zig");
     _ = @import("grammar/parse_grammar.zig");
+    _ = @import("ir/symbols.zig");
+    _ = @import("ir/rules.zig");
+    _ = @import("ir/grammar_ir.zig");
     _ = @import("support/diag.zig");
     _ = @import("support/fs.zig");
     _ = @import("support/json.zig");
