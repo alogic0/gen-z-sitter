@@ -689,6 +689,55 @@ pub fn parseTableConflictGroupedActionTableDump() Fixture {
     };
 }
 
+pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
+    return .{
+        .name = "parse_table_reduce_reduce_grouped_action_table_dump",
+        .contents =
+            \\state 0
+            \\  actions:
+            \\    terminal:1:
+            \\      shift 6
+            \\
+            \\state 1
+            \\  actions:
+            \\
+            \\state 2
+            \\  actions:
+            \\    terminal:0:
+            \\      shift 7
+            \\
+            \\state 3
+            \\  actions:
+            \\    terminal:0:
+            \\      reduce 2
+            \\
+            \\state 4
+            \\  actions:
+            \\    terminal:0:
+            \\      reduce 3
+            \\
+            \\state 5
+            \\  actions:
+            \\    terminal:0:
+            \\      reduce 4
+            \\      reduce 5
+            \\  conflicts:
+            \\    reduce_reduce on terminal:0
+            \\      #4@1 ?terminal:0
+            \\      #5@1 ?terminal:0
+            \\
+            \\state 6
+            \\  actions:
+            \\    terminal:0:
+            \\      reduce 6
+            \\
+            \\state 7
+            \\  actions:
+            \\
+        ,
+    };
+}
+
 pub fn parseTableReduceReduceActionTableDump() Fixture {
     return .{
         .name = "parse_table_reduce_reduce_action_table_dump",
@@ -726,6 +775,43 @@ pub fn parseTableReduceReduceActionTableDump() Fixture {
             \\    terminal:0 => reduce 6
             \\
             \\state 7
+            \\  actions:
+            \\
+        ,
+    };
+}
+
+pub fn parseTableMetadataGroupedActionTableDump() Fixture {
+    return .{
+        .name = "parse_table_metadata_grouped_action_table_dump",
+        .contents =
+            \\state 0
+            \\  actions:
+            \\    terminal:1:
+            \\      shift 3
+            \\
+            \\state 1
+            \\  actions:
+            \\
+            \\state 2
+            \\  actions:
+            \\    terminal:0:
+            \\      shift 4
+            \\
+            \\state 3
+            \\  actions:
+            \\    terminal:0:
+            \\      reduce 2
+            \\
+            \\state 4
+            \\  actions:
+            \\    terminal:1:
+            \\      shift 6
+            \\
+            \\state 5
+            \\  actions:
+            \\
+            \\state 6
             \\  actions:
             \\
         ,

@@ -263,6 +263,29 @@ test "generateGroupedActionTableDumpFromPrepared matches the conflict grouped ac
     try std.testing.expectEqualStrings(fixtures.parseTableConflictGroupedActionTableDump().contents, dump);
 }
 
+test "generateGroupedActionTableDumpFromPrepared matches the reduce/reduce grouped action-table golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableReduceReduceGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateGroupedActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.parseTableReduceReduceGroupedActionTableDump().contents, dump);
+}
+
 test "generateActionTableDumpFromPrepared matches the reduce/reduce action-table golden fixture" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
@@ -307,6 +330,29 @@ test "generateActionTableDumpFromPrepared matches the metadata-rich action-table
     const dump = try generateActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
 
     try std.testing.expectEqualStrings(fixtures.parseTableMetadataActionTableDump().contents, dump);
+}
+
+test "generateGroupedActionTableDumpFromPrepared matches the metadata-rich grouped action-table golden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableMetadataGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateGroupedActionTableDumpFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectEqualStrings(fixtures.parseTableMetadataGroupedActionTableDump().contents, dump);
 }
 
 test "generateStateActionDumpFromPrepared matches the reduce/reduce parser-state action golden fixture" {
