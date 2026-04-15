@@ -33,10 +33,15 @@ pub fn writeParserC(
     try writer.print("#define TS_STATE_COUNT {d}\n", .{serialized.states.len});
     try writer.print("#define TS_SYMBOL_COUNT {d}\n\n", .{emitted_symbols.len});
     try writer.print("#define TS_LANGUAGE_VERSION {d}\n", .{compatibility.language_version});
-    try writer.print("#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION {d}\n\n", .{compatibility.min_compatible_language_version});
-    try writer.writeAll("typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;\n");
-    try writer.writeAll("typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;\n");
-    try writer.writeAll("typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;\n\n");
+    try writer.print("#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION {d}\n", .{compatibility.min_compatible_language_version});
+    try writer.writeAll("#define TS_ACTION_SHIFT 1\n");
+    try writer.writeAll("#define TS_ACTION_REDUCE 2\n");
+    try writer.writeAll("#define TS_ACTION_ACCEPT 3\n");
+    try writer.writeAll("#define TS_UNRESOLVED_SHIFT_REDUCE 1\n");
+    try writer.writeAll("#define TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED 2\n\n");
+    try writer.writeAll("typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;\n");
+    try writer.writeAll("typedef struct { uint16_t symbol_id; uint16_t state; } TSGotoEntry;\n");
+    try writer.writeAll("typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidates; } TSUnresolvedEntry;\n\n");
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  const char *name;\n");
     try writer.writeAll("  bool terminal;\n");
@@ -118,12 +123,13 @@ pub fn writeParserC(
 
         try writer.print("static const TSActionEntry ts_state_{d}_actions[] = {{\n", .{serialized_state.id});
         for (serialized_state.actions) |entry| {
-            try writer.writeAll("  { ");
-            try common.writeQuotedSymbol(writer, entry.symbol);
-            try writer.writeAll(", ");
-            try writer.writeByte('"');
-            try common.writeActionKind(writer, entry.action);
-            try writer.writeAll("\", ");
+            try writer.print(
+                "  {{ {d}, {d}, ",
+                .{
+                    symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory,
+                    actionKindCode(entry.action),
+                },
+            );
             try common.writeActionValue(writer, entry.action);
             try writer.writeAll(" },\n");
         }
@@ -131,20 +137,27 @@ pub fn writeParserC(
 
         try writer.print("static const TSGotoEntry ts_state_{d}_gotos[] = {{\n", .{serialized_state.id});
         for (serialized_state.gotos) |entry| {
-            try writer.writeAll("  { ");
-            try common.writeQuotedSymbol(writer, entry.symbol);
-            try writer.print(", {d} }},\n", .{entry.state});
+            try writer.print(
+                "  {{ {d}, {d} }},\n",
+                .{
+                    symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory,
+                    entry.state,
+                },
+            );
         }
         try writer.writeAll("};\n");
 
         if (serialized_state.unresolved.len > 0) {
             try writer.print("static const TSUnresolvedEntry ts_state_{d}_unresolved[] = {{\n", .{serialized_state.id});
             for (serialized_state.unresolved) |entry| {
-                try writer.writeAll("  { ");
-                try common.writeQuotedSymbol(writer, entry.symbol);
-                try writer.writeAll(", \"");
-                try common.writeUnresolvedReason(writer, entry.reason);
-                try writer.print("\", {d} }},\n", .{entry.candidate_actions.len});
+                try writer.print(
+                    "  {{ {d}, {d}, {d} }},\n",
+                    .{
+                        symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory,
+                        unresolvedReasonCode(entry.reason),
+                        entry.candidate_actions.len,
+                    },
+                );
             }
             try writer.writeAll("};\n");
         }
@@ -368,12 +381,18 @@ pub fn writeParserC(
     try writer.writeAll("\n");
     try writer.writeAll("const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {\n");
     try writer.writeAll("  const TSActionEntry *entry = ts_parser_action_at(state_id, index);\n");
-    try writer.writeAll("  return entry ? entry->symbol : 0;\n");
+    try writer.writeAll("  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;\n");
     try writer.writeAll("}\n");
     try writer.writeAll("\n");
     try writer.writeAll("const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {\n");
     try writer.writeAll("  const TSActionEntry *entry = ts_parser_action_at(state_id, index);\n");
-    try writer.writeAll("  return entry ? entry->kind : 0;\n");
+    try writer.writeAll("  if (!entry) return 0;\n");
+    try writer.writeAll("  switch (entry->kind) {\n");
+    try writer.writeAll("    case TS_ACTION_SHIFT: return \"shift\";\n");
+    try writer.writeAll("    case TS_ACTION_REDUCE: return \"reduce\";\n");
+    try writer.writeAll("    case TS_ACTION_ACCEPT: return \"accept\";\n");
+    try writer.writeAll("    default: return 0;\n");
+    try writer.writeAll("  }\n");
     try writer.writeAll("}\n");
     try writer.writeAll("\n");
     try writer.writeAll("bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {\n");
@@ -398,7 +417,7 @@ pub fn writeParserC(
     try writer.writeAll("\n");
     try writer.writeAll("const char *ts_parser_goto_symbol(uint16_t state_id, uint16_t index) {\n");
     try writer.writeAll("  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);\n");
-    try writer.writeAll("  return entry ? entry->symbol : 0;\n");
+    try writer.writeAll("  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;\n");
     try writer.writeAll("}\n");
     try writer.writeAll("\n");
     try writer.writeAll("uint16_t ts_parser_goto_target(uint16_t state_id, uint16_t index) {\n");
@@ -408,12 +427,17 @@ pub fn writeParserC(
     try writer.writeAll("\n");
     try writer.writeAll("const char *ts_parser_unresolved_symbol(uint16_t state_id, uint16_t index) {\n");
     try writer.writeAll("  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);\n");
-    try writer.writeAll("  return entry ? entry->symbol : 0;\n");
+    try writer.writeAll("  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;\n");
     try writer.writeAll("}\n");
     try writer.writeAll("\n");
     try writer.writeAll("const char *ts_parser_unresolved_reason(uint16_t state_id, uint16_t index) {\n");
     try writer.writeAll("  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);\n");
-    try writer.writeAll("  return entry ? entry->reason : 0;\n");
+    try writer.writeAll("  if (!entry) return 0;\n");
+    try writer.writeAll("  switch (entry->reason) {\n");
+    try writer.writeAll("    case TS_UNRESOLVED_SHIFT_REDUCE: return \"shift_reduce\";\n");
+    try writer.writeAll("    case TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED: return \"reduce_reduce_deferred\";\n");
+    try writer.writeAll("    default: return 0;\n");
+    try writer.writeAll("  }\n");
     try writer.writeAll("}\n");
     try writer.writeAll("\n");
     try writer.writeAll("uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {\n");
@@ -426,7 +450,7 @@ pub fn writeParserC(
     try writer.writeAll("  uint16_t i = 0;\n");
     try writer.writeAll("  while (i < count) {\n");
     try writer.writeAll("    const TSActionEntry *entry = ts_parser_action_at(state_id, i);\n");
-    try writer.writeAll("    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;\n");
+    try writer.writeAll("    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;\n");
     try writer.writeAll("    i += 1;\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("  return 0;\n");
@@ -437,7 +461,7 @@ pub fn writeParserC(
     try writer.writeAll("  uint16_t i = 0;\n");
     try writer.writeAll("  while (i < count) {\n");
     try writer.writeAll("    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);\n");
-    try writer.writeAll("    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;\n");
+    try writer.writeAll("    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;\n");
     try writer.writeAll("    i += 1;\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("  return 0;\n");
@@ -448,7 +472,7 @@ pub fn writeParserC(
     try writer.writeAll("  uint16_t i = 0;\n");
     try writer.writeAll("  while (i < count) {\n");
     try writer.writeAll("    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);\n");
-    try writer.writeAll("    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;\n");
+    try writer.writeAll("    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;\n");
     try writer.writeAll("    i += 1;\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("  return 0;\n");
@@ -523,6 +547,30 @@ fn deinitEmittedSymbols(allocator: std.mem.Allocator, symbols: []EmittedSymbol) 
 
 fn emittedSymbolLessThan(_: void, a: EmittedSymbol, b: EmittedSymbol) bool {
     return symbolSortKey(a.ref) < symbolSortKey(b.ref);
+}
+
+fn symbolIdForRef(symbols: []const EmittedSymbol, symbol: syntax_grammar.SymbolRef) ?u16 {
+    for (symbols, 0..) |entry, index| {
+        if (symbolRefEql(entry.ref, symbol)) return @intCast(index);
+    }
+    return null;
+}
+
+fn actionKindCode(action: @import("../parse_table/actions.zig").ParseAction) u16 {
+    return switch (action) {
+        .shift => 1,
+        .reduce => 2,
+        .accept => 3,
+    };
+}
+
+fn unresolvedReasonCode(reason: @import("../parse_table/resolution.zig").UnresolvedReason) u16 {
+    return switch (reason) {
+        .shift_reduce => 1,
+        .reduce_reduce_deferred => 2,
+        .multiple_candidates => 3,
+        .unsupported_action_mix => 4,
+    };
 }
 
 fn symbolSortKey(symbol: syntax_grammar.SymbolRef) u64 {
@@ -613,10 +661,15 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\
         \\#define TS_LANGUAGE_VERSION 15
         \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
+        \\#define TS_ACTION_SHIFT 1
+        \\#define TS_ACTION_REDUCE 2
+        \\#define TS_ACTION_ACCEPT 3
+        \\#define TS_UNRESOLVED_SHIFT_REDUCE 1
+        \\#define TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED 2
         \\
-        \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
-        \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
-        \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+        \\typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;
+        \\typedef struct { uint16_t symbol_id; uint16_t state; } TSGotoEntry;
+        \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidates; } TSUnresolvedEntry;
         \\
         \\typedef struct {
         \\  const char *name;
@@ -707,13 +760,13 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\
         \\/* state 0 */
         \\static const TSActionEntry ts_state_0_actions[] = {
-        \\  { "terminal:0", "shift", 2 },
+        \\  { 1, 1, 2 },
         \\};
         \\static const TSGotoEntry ts_state_0_gotos[] = {
-        \\  { "non_terminal:1", 3 },
+        \\  { 0, 3 },
         \\};
         \\static const TSUnresolvedEntry ts_state_0_unresolved[] = {
-        \\  { "terminal:1", "shift_reduce", 2 },
+        \\  { 2, 1, 2 },
         \\};
         \\static const TSStateTable ts_states[TS_STATE_COUNT] = {
         \\  {
@@ -923,12 +976,18 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\
         \\const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {
         \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-        \\  return entry ? entry->symbol : 0;
+        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
         \\}
         \\
         \\const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {
         \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-        \\  return entry ? entry->kind : 0;
+        \\  if (!entry) return 0;
+        \\  switch (entry->kind) {
+        \\    case TS_ACTION_SHIFT: return "shift";
+        \\    case TS_ACTION_REDUCE: return "reduce";
+        \\    case TS_ACTION_ACCEPT: return "accept";
+        \\    default: return 0;
+        \\  }
         \\}
         \\
         \\bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {
@@ -953,7 +1012,7 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\
         \\const char *ts_parser_goto_symbol(uint16_t state_id, uint16_t index) {
         \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
-        \\  return entry ? entry->symbol : 0;
+        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
         \\}
         \\
         \\uint16_t ts_parser_goto_target(uint16_t state_id, uint16_t index) {
@@ -963,12 +1022,17 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\
         \\const char *ts_parser_unresolved_symbol(uint16_t state_id, uint16_t index) {
         \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-        \\  return entry ? entry->symbol : 0;
+        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
         \\}
         \\
         \\const char *ts_parser_unresolved_reason(uint16_t state_id, uint16_t index) {
         \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-        \\  return entry ? entry->reason : 0;
+        \\  if (!entry) return 0;
+        \\  switch (entry->reason) {
+        \\    case TS_UNRESOLVED_SHIFT_REDUCE: return "shift_reduce";
+        \\    case TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED: return "reduce_reduce_deferred";
+        \\    default: return 0;
+        \\  }
         \\}
         \\
         \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
@@ -981,7 +1045,7 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  uint16_t i = 0;
         \\  while (i < count) {
         \\    const TSActionEntry *entry = ts_parser_action_at(state_id, i);
-        \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+        \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
         \\    i += 1;
         \\  }
         \\  return 0;
@@ -992,7 +1056,7 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  uint16_t i = 0;
         \\  while (i < count) {
         \\    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);
-        \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+        \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
         \\    i += 1;
         \\  }
         \\  return 0;
@@ -1003,7 +1067,7 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
         \\  uint16_t i = 0;
         \\  while (i < count) {
         \\    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);
-        \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+        \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
         \\    i += 1;
         \\  }
         \\  return 0;

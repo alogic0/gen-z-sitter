@@ -26,9 +26,14 @@ Current intended top-level shape for this stage:
 
 ### 2. Reduce string-heavy emitter surfaces
 
-- [ ] identify which currently emitted string-oriented helpers and entry surfaces are still primarily diagnostic
-- [ ] move the most important parser-facing data toward more table-oriented emitted structures
-- [ ] keep any remaining string-heavy helpers only when they are explicitly part of the staged compatibility layer
+- [x] identify which currently emitted string-oriented helpers and entry surfaces are still primarily diagnostic
+- [x] move the most important parser-facing data toward more table-oriented emitted structures
+- [x] keep any remaining string-heavy helpers only when they are explicitly part of the staged compatibility layer
+
+Current result for this stage:
+- core emitted `TSActionEntry`, `TSGotoEntry`, and `TSUnresolvedEntry` tables now use `symbol_id` and numeric codes instead of embedding symbol/kind/reason strings directly
+- string-returning helpers like `ts_parser_action_kind(...)`, `ts_parser_action_symbol(...)`, and `ts_parser_unresolved_reason(...)` remain only as compatibility-oriented wrappers over the lower-level emitted tables
+- the remaining string-heavy layer is now downstream API sugar, not the primary data representation
 
 ### 3. Strengthen symbol/runtime metadata
 

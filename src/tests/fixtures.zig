@@ -942,10 +942,15 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\#define TS_LANGUAGE_VERSION 15
             \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
+            \\#define TS_ACTION_SHIFT 1
+            \\#define TS_ACTION_REDUCE 2
+            \\#define TS_ACTION_ACCEPT 3
+            \\#define TS_UNRESOLVED_SHIFT_REDUCE 1
+            \\#define TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED 2
             \\
-            \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
-            \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
-            \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+            \\typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;
+            \\typedef struct { uint16_t symbol_id; uint16_t state; } TSGotoEntry;
+            \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidates; } TSUnresolvedEntry;
             \\
             \\typedef struct {
             \\  const char *name;
@@ -1041,11 +1046,11 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
-            \\  { "terminal:1", "shift", 3 },
+            \\  { 3, 1, 3 },
             \\};
             \\static const TSGotoEntry ts_state_0_gotos[] = {
-            \\  { "non_terminal:0", 1 },
-            \\  { "non_terminal:1", 2 },
+            \\  { 0, 1 },
+            \\  { 1, 2 },
             \\};
             \\
             \\/* state 1 */
@@ -1056,24 +1061,24 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\/* state 2 */
             \\static const TSActionEntry ts_state_2_actions[] = {
-            \\  { "terminal:0", "shift", 4 },
+            \\  { 2, 1, 4 },
             \\};
             \\static const TSGotoEntry ts_state_2_gotos[] = {
             \\};
             \\
             \\/* state 3 */
             \\static const TSActionEntry ts_state_3_actions[] = {
-            \\  { "terminal:0", "reduce", 2 },
+            \\  { 2, 2, 2 },
             \\};
             \\static const TSGotoEntry ts_state_3_gotos[] = {
             \\};
             \\
             \\/* state 4 */
             \\static const TSActionEntry ts_state_4_actions[] = {
-            \\  { "terminal:1", "shift", 6 },
+            \\  { 3, 1, 6 },
             \\};
             \\static const TSGotoEntry ts_state_4_gotos[] = {
-            \\  { "non_terminal:1", 5 },
+            \\  { 1, 5 },
             \\};
             \\
             \\/* state 5 */
@@ -1379,12 +1384,18 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {
             \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-            \\  return entry ? entry->symbol : 0;
+            \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
             \\}
             \\
             \\const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {
             \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-            \\  return entry ? entry->kind : 0;
+            \\  if (!entry) return 0;
+            \\  switch (entry->kind) {
+            \\    case TS_ACTION_SHIFT: return "shift";
+            \\    case TS_ACTION_REDUCE: return "reduce";
+            \\    case TS_ACTION_ACCEPT: return "accept";
+            \\    default: return 0;
+            \\  }
             \\}
             \\
             \\bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {
@@ -1409,7 +1420,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\const char *ts_parser_goto_symbol(uint16_t state_id, uint16_t index) {
             \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
-            \\  return entry ? entry->symbol : 0;
+            \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
             \\}
             \\
             \\uint16_t ts_parser_goto_target(uint16_t state_id, uint16_t index) {
@@ -1419,12 +1430,17 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\const char *ts_parser_unresolved_symbol(uint16_t state_id, uint16_t index) {
             \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-            \\  return entry ? entry->symbol : 0;
+            \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
             \\}
             \\
             \\const char *ts_parser_unresolved_reason(uint16_t state_id, uint16_t index) {
             \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-            \\  return entry ? entry->reason : 0;
+            \\  if (!entry) return 0;
+            \\  switch (entry->reason) {
+            \\    case TS_UNRESOLVED_SHIFT_REDUCE: return "shift_reduce";
+            \\    case TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED: return "reduce_reduce_deferred";
+            \\    default: return 0;
+            \\  }
             \\}
             \\
             \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
@@ -1437,7 +1453,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSActionEntry *entry = ts_parser_action_at(state_id, i);
-            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;
@@ -1448,7 +1464,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);
-            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;
@@ -1459,7 +1475,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);
-            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;
@@ -1496,10 +1512,15 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\#define TS_LANGUAGE_VERSION 15
             \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
+            \\#define TS_ACTION_SHIFT 1
+            \\#define TS_ACTION_REDUCE 2
+            \\#define TS_ACTION_ACCEPT 3
+            \\#define TS_UNRESOLVED_SHIFT_REDUCE 1
+            \\#define TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED 2
             \\
-            \\typedef struct { const char *symbol; const char *kind; uint16_t value; } TSActionEntry;
-            \\typedef struct { const char *symbol; uint16_t state; } TSGotoEntry;
-            \\typedef struct { const char *symbol; const char *reason; uint16_t candidates; } TSUnresolvedEntry;
+            \\typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;
+            \\typedef struct { uint16_t symbol_id; uint16_t state; } TSGotoEntry;
+            \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidates; } TSUnresolvedEntry;
             \\
             \\typedef struct {
             \\  const char *name;
@@ -1595,11 +1616,11 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
-            \\  { "terminal:1", "shift", 3 },
+            \\  { 3, 1, 3 },
             \\};
             \\static const TSGotoEntry ts_state_0_gotos[] = {
-            \\  { "non_terminal:0", 1 },
-            \\  { "non_terminal:1", 2 },
+            \\  { 0, 1 },
+            \\  { 1, 2 },
             \\};
             \\
             \\/* state 1 */
@@ -1610,24 +1631,24 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\/* state 2 */
             \\static const TSActionEntry ts_state_2_actions[] = {
-            \\  { "terminal:0", "shift", 4 },
+            \\  { 2, 1, 4 },
             \\};
             \\static const TSGotoEntry ts_state_2_gotos[] = {
             \\};
             \\
             \\/* state 3 */
             \\static const TSActionEntry ts_state_3_actions[] = {
-            \\  { "terminal:0", "reduce", 3 },
+            \\  { 2, 2, 3 },
             \\};
             \\static const TSGotoEntry ts_state_3_gotos[] = {
             \\};
             \\
             \\/* state 4 */
             \\static const TSActionEntry ts_state_4_actions[] = {
-            \\  { "terminal:1", "shift", 3 },
+            \\  { 3, 1, 3 },
             \\};
             \\static const TSGotoEntry ts_state_4_gotos[] = {
-            \\  { "non_terminal:1", 5 },
+            \\  { 1, 5 },
             \\};
             \\
             \\/* state 5 */
@@ -1636,7 +1657,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\static const TSGotoEntry ts_state_5_gotos[] = {
             \\};
             \\static const TSUnresolvedEntry ts_state_5_unresolved[] = {
-            \\  { "terminal:0", "shift_reduce", 2 },
+            \\  { 2, 1, 2 },
             \\};
             \\static const TSStateTable ts_states[TS_STATE_COUNT] = {
             \\  {
@@ -1916,12 +1937,18 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {
             \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-            \\  return entry ? entry->symbol : 0;
+            \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
             \\}
             \\
             \\const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {
             \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-            \\  return entry ? entry->kind : 0;
+            \\  if (!entry) return 0;
+            \\  switch (entry->kind) {
+            \\    case TS_ACTION_SHIFT: return "shift";
+            \\    case TS_ACTION_REDUCE: return "reduce";
+            \\    case TS_ACTION_ACCEPT: return "accept";
+            \\    default: return 0;
+            \\  }
             \\}
             \\
             \\bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {
@@ -1946,7 +1973,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\const char *ts_parser_goto_symbol(uint16_t state_id, uint16_t index) {
             \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
-            \\  return entry ? entry->symbol : 0;
+            \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
             \\}
             \\
             \\uint16_t ts_parser_goto_target(uint16_t state_id, uint16_t index) {
@@ -1956,12 +1983,17 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\const char *ts_parser_unresolved_symbol(uint16_t state_id, uint16_t index) {
             \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-            \\  return entry ? entry->symbol : 0;
+            \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
             \\}
             \\
             \\const char *ts_parser_unresolved_reason(uint16_t state_id, uint16_t index) {
             \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-            \\  return entry ? entry->reason : 0;
+            \\  if (!entry) return 0;
+            \\  switch (entry->reason) {
+            \\    case TS_UNRESOLVED_SHIFT_REDUCE: return "shift_reduce";
+            \\    case TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED: return "reduce_reduce_deferred";
+            \\    default: return 0;
+            \\  }
             \\}
             \\
             \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
@@ -1974,7 +2006,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSActionEntry *entry = ts_parser_action_at(state_id, i);
-            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;
@@ -1985,7 +2017,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);
-            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;
@@ -1996,7 +2028,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  uint16_t i = 0;
             \\  while (i < count) {
             \\    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);
-            \\    if (entry and ts_string_eq(entry->symbol, symbol)) return entry;
+            \\    if (entry and ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
             \\    i += 1;
             \\  }
             \\  return 0;
