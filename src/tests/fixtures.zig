@@ -888,6 +888,137 @@ pub fn alternativeFieldsNodeTypesJson() Fixture {
     };
 }
 
+pub fn hiddenAlternativeFieldsGrammarJson() Fixture {
+    return .{
+        .name = "hidden_alternative_fields",
+        .contents =
+            \\{
+            \\  "name": "hidden_alternative_fields",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "CHOICE",
+            \\      "members": [
+            \\        { "type": "SYMBOL", "name": "_pair_both" },
+            \\        { "type": "SYMBOL", "name": "_pair_left_only" }
+            \\      ]
+            \\    },
+            \\    "_pair_both": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "left",
+            \\          "content": { "type": "SYMBOL", "name": "expr" }
+            \\        },
+            \\        {
+            \\          "type": "FIELD",
+            \\          "name": "right",
+            \\          "content": {
+            \\            "type": "ALIAS",
+            \\            "named": true,
+            \\            "value": "rhs",
+            \\            "content": { "type": "SYMBOL", "name": "term" }
+            \\          }
+            \\        }
+            \\      ]
+            \\    },
+            \\    "_pair_left_only": {
+            \\      "type": "FIELD",
+            \\      "name": "left",
+            \\      "content": { "type": "SYMBOL", "name": "expr" }
+            \\    },
+            \\    "expr": { "type": "STRING", "value": "x" },
+            \\    "term": { "type": "STRING", "value": "y" }
+            \\  }
+            \\}
+        ,
+    };
+}
+
+pub fn hiddenAlternativeFieldsNodeTypesJson() Fixture {
+    return .{
+        .name = "hidden_alternative_fields_node_types",
+        .contents =
+            \\[
+            \\  {
+            \\    "type": "expr",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "expr",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "rhs",
+            \\    "named": true,
+            \\    "children": {
+            \\      "multiple": false,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "term",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "source_file",
+            \\    "named": true,
+            \\    "root": true,
+            \\    "fields": {
+            \\      "left": {
+            \\        "multiple": false,
+            \\        "required": true,
+            \\        "types": [
+            \\          {
+            \\            "type": "expr",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      },
+            \\      "right": {
+            \\        "multiple": false,
+            \\        "required": false,
+            \\        "types": [
+            \\          {
+            \\            "type": "rhs",
+            \\            "named": true
+            \\          }
+            \\        ]
+            \\      }
+            \\    },
+            \\    "children": {
+            \\      "multiple": true,
+            \\      "required": true,
+            \\      "types": [
+            \\        {
+            \\          "type": "expr",
+            \\          "named": true
+            \\        },
+            \\        {
+            \\          "type": "rhs",
+            \\          "named": true
+            \\        }
+            \\      ]
+            \\    }
+            \\  },
+            \\  {
+            \\    "type": "term",
+            \\    "named": true
+            \\  }
+            \\]
+            \\
+        ,
+    };
+}
+
 pub fn undefinedSymbolGrammarJson() Fixture {
     return .{
         .name = "undefined_symbol",
