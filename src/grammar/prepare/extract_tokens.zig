@@ -11,6 +11,7 @@ const parse_grammar = @import("../parse_grammar.zig");
 
 pub const ExtractTokensError = error{
     InvalidSupertypeSymbol,
+    InvalidSupertypeStructure,
     UnsupportedRuleShape,
     OutOfMemory,
 };
@@ -57,6 +58,7 @@ const Extractor = struct {
         const precedence_orderings = try self.convertPrecedenceOrderings();
         const variables_to_inline = try self.extractVariablesToInline();
         const supertype_symbols = try self.extractSupertypeSymbols();
+        try self.validateSupertypeStructures(supertype_symbols, variables);
         const word_token = try self.extractWordToken();
 
         return .{
@@ -254,6 +256,30 @@ const Extractor = struct {
         }
 
         return try result.toOwnedSlice();
+    }
+
+    fn validateSupertypeStructures(
+        self: *Extractor,
+        supertype_symbols: []const syntax_ir.SymbolRef,
+        variables: []const syntax_ir.SyntaxVariable,
+    ) ExtractTokensError!void {
+        _ = self;
+        for (supertype_symbols) |symbol| {
+            const index = switch (symbol) {
+                .non_terminal => |i| i,
+                else => return error.InvalidSupertypeSymbol,
+            };
+
+            const variable = variables[index];
+            for (variable.productions) |production| {
+                for (production.steps) |step| {
+                    switch (step.symbol) {
+                        .external => return error.InvalidSupertypeStructure,
+                        .non_terminal, .terminal => {},
+                    }
+                }
+            }
+        }
     }
 
     fn isPromotedTopLevelRepeatSymbol(self: *Extractor, symbol: ir_symbols.SymbolId) bool {
@@ -699,6 +725,67 @@ test "extractTokens rejects external supertype symbols" {
     defer arena.deinit();
 
     try std.testing.expectError(error.InvalidSupertypeSymbol, extractTokens(arena.allocator(), prepared));
+}
+
+test "extractTokens rejects supertypes that lower to external steps" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "bad-supertype-structure",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+            .{
+                .name = "expression",
+                .symbol = ir_symbols.SymbolId.nonTerminal(1),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .external_tokens = &.{
+            .{
+                .name = "template_chars",
+                .symbol = ir_symbols.SymbolId.external(0),
+                .kind = .named,
+                .rule = 2,
+            },
+        },
+        .rules = &.{ .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) }, .{ .symbol = ir_symbols.SymbolId.external(0) }, .{ .blank = {} } },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(1),
+                .name = "expression",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.external(0),
+                .name = "template_chars",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{ir_symbols.SymbolId.nonTerminal(1)},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(error.InvalidSupertypeStructure, extractTokens(arena.allocator(), prepared));
 }
 
 test "extractTokens promotes hidden top-level repeats in place and removes them from inline symbols" {
