@@ -6,6 +6,8 @@ const ir_rules = @import("../ir/rules.zig");
 const ir = @import("../ir/grammar_ir.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
+pub threadlocal var last_error_message: ?[]const u8 = null;
+
 pub const ParseGrammarError = error{
     HiddenStartRule,
     UndefinedSymbol,
@@ -18,8 +20,22 @@ pub const ParseGrammarError = error{
 };
 
 pub fn parseRawGrammar(allocator: std.mem.Allocator, grammar: *const raw.RawGrammar) ParseGrammarError!ir.PreparedGrammar {
+    last_error_message = null;
     var builder = Builder.init(allocator, grammar);
     return builder.build();
+}
+
+pub fn errorMessage(err: ParseGrammarError) []const u8 {
+    return last_error_message orelse switch (err) {
+        error.HiddenStartRule => "a grammar's start rule must be visible",
+        error.UndefinedSymbol => "undefined symbol",
+        error.UndefinedSupertype => "undefined symbol in grammar's supertypes array",
+        error.UndefinedConflict => "undefined symbol in grammar's conflicts array",
+        error.UndefinedWordToken => "undefined symbol as grammar's word token",
+        error.UndeclaredPrecedence => "undeclared precedence used in grammar rule",
+        error.ConflictingPrecedenceOrdering => "conflicting orderings for precedences",
+        error.OutOfMemory => "out of memory while lowering grammar",
+    };
 }
 
 const Builder = struct {
@@ -37,6 +53,7 @@ const Builder = struct {
 
     fn build(self: *Builder) ParseGrammarError!ir.PreparedGrammar {
         if (self.grammar.rules.len > 0 and isHidden(self.grammar.rules[0].name)) {
+            last_error_message = "a grammar's start rule must be visible";
             return error.HiddenStartRule;
         }
 
@@ -91,53 +108,54 @@ const Builder = struct {
                     else => {},
                 }
             }
-            try validatePrecedenceOrderingPairs(&pairs, ordering);
+            try validatePrecedenceOrderingPairs(self, &pairs, ordering);
         }
 
         for (self.grammar.rules) |entry| {
-            try self.validateRulePrecedences(entry.rule, &declared);
+            try self.validateRulePrecedences(entry.name, entry.rule, &declared);
         }
         for (self.grammar.externals) |entry| {
-            try self.validateRulePrecedences(entry, &declared);
+            try self.validateRulePrecedences("<external token>", entry, &declared);
         }
         for (self.grammar.extras) |entry| {
-            try self.validateRulePrecedences(entry, &declared);
+            try self.validateRulePrecedences("<extra>", entry, &declared);
         }
         for (self.grammar.reserved) |reserved_set| {
             for (reserved_set.members) |member| {
-                try self.validateRulePrecedences(member, &declared);
+                try self.validateRulePrecedences(reserved_set.context_name, member, &declared);
             }
         }
     }
 
     fn validateRulePrecedences(
         self: *Builder,
+        rule_name: []const u8,
         rule: *const raw.RawRule,
         declared: *const std.StringHashMap(void),
     ) ParseGrammarError!void {
         switch (rule.*) {
-            .alias => |alias| try self.validateRulePrecedences(alias.content, declared),
-            .field => |field| try self.validateRulePrecedences(field.content, declared),
-            .choice => |members| for (members) |member| try self.validateRulePrecedences(member, declared),
-            .seq => |members| for (members) |member| try self.validateRulePrecedences(member, declared),
-            .repeat => |inner| try self.validateRulePrecedences(inner, declared),
-            .repeat1 => |inner| try self.validateRulePrecedences(inner, declared),
-            .prec_dynamic => |prec| try self.validateRulePrecedences(prec.content, declared),
+            .alias => |alias| try self.validateRulePrecedences(rule_name, alias.content, declared),
+            .field => |field| try self.validateRulePrecedences(rule_name, field.content, declared),
+            .choice => |members| for (members) |member| try self.validateRulePrecedences(rule_name, member, declared),
+            .seq => |members| for (members) |member| try self.validateRulePrecedences(rule_name, member, declared),
+            .repeat => |inner| try self.validateRulePrecedences(rule_name, inner, declared),
+            .repeat1 => |inner| try self.validateRulePrecedences(rule_name, inner, declared),
+            .prec_dynamic => |prec| try self.validateRulePrecedences(rule_name, prec.content, declared),
             .prec_left => |prec| {
-                try validatePrecedenceValueDeclared(prec.value, declared);
-                try self.validateRulePrecedences(prec.content, declared);
+                try self.validatePrecedenceValueDeclared(rule_name, prec.value, declared);
+                try self.validateRulePrecedences(rule_name, prec.content, declared);
             },
             .prec_right => |prec| {
-                try validatePrecedenceValueDeclared(prec.value, declared);
-                try self.validateRulePrecedences(prec.content, declared);
+                try self.validatePrecedenceValueDeclared(rule_name, prec.value, declared);
+                try self.validateRulePrecedences(rule_name, prec.content, declared);
             },
             .prec => |prec| {
-                try validatePrecedenceValueDeclared(prec.value, declared);
-                try self.validateRulePrecedences(prec.content, declared);
+                try self.validatePrecedenceValueDeclared(rule_name, prec.value, declared);
+                try self.validateRulePrecedences(rule_name, prec.content, declared);
             },
-            .token => |inner| try self.validateRulePrecedences(inner, declared),
-            .immediate_token => |inner| try self.validateRulePrecedences(inner, declared),
-            .reserved => |reserved| try self.validateRulePrecedences(reserved.content, declared),
+            .token => |inner| try self.validateRulePrecedences(rule_name, inner, declared),
+            .immediate_token => |inner| try self.validateRulePrecedences(rule_name, inner, declared),
+            .reserved => |reserved| try self.validateRulePrecedences(rule_name, reserved.content, declared),
             .blank, .string, .pattern, .symbol => {},
         }
     }
@@ -216,7 +234,7 @@ const Builder = struct {
             defer members.deinit();
 
             for (conflict_set) |name| {
-                const symbol = self.resolveName(name) orelse return error.UndefinedConflict;
+                const symbol = self.resolveName(name) orelse return self.failUndefinedConflict(name);
                 try members.append(symbol);
             }
 
@@ -268,7 +286,7 @@ const Builder = struct {
         defer result.deinit();
 
         for (self.grammar.supertypes) |name| {
-            const symbol = self.resolveName(name) orelse return error.UndefinedSupertype;
+            const symbol = self.resolveName(name) orelse return self.failUndefinedSupertype(name);
             try appendUniqueSymbol(&result, symbol);
         }
 
@@ -277,7 +295,7 @@ const Builder = struct {
 
     fn resolveWordToken(self: *Builder) ParseGrammarError!?ir_symbols.SymbolId {
         const name = self.grammar.word orelse return null;
-        return self.resolveName(name) orelse error.UndefinedWordToken;
+        return self.resolveName(name) orelse self.failUndefinedWordToken(name);
     }
 
     fn resolveReservedWordSets(self: *Builder) ParseGrammarError![]const ir.ReservedWordSet {
@@ -320,7 +338,7 @@ const Builder = struct {
                 .value = pattern.value,
                 .flags = pattern.flags,
             } }),
-            .symbol => |name| self.appendRule(.{ .symbol = self.resolveName(name) orelse return error.UndefinedSymbol }),
+            .symbol => |name| self.appendRule(.{ .symbol = self.resolveName(name) orelse return self.failUndefinedSymbol(name) }),
             .choice => |members| self.appendRule(.{ .choice = try self.lowerRuleList(members) }),
             .seq => |members| self.appendRule(.{ .seq = try self.lowerRuleList(members) }),
             .repeat => |inner| self.appendRule(.{ .repeat = try self.lowerRule(inner) }),
@@ -411,6 +429,78 @@ const Builder = struct {
             .external => self.grammar.rules.len + @as(usize, @intCast(symbol.index)),
         };
     }
+
+    fn validatePrecedenceValueDeclared(
+        self: *Builder,
+        rule_name: []const u8,
+        value: raw.RawPrecedenceValue,
+        declared: *const std.StringHashMap(void),
+    ) ParseGrammarError!void {
+        switch (value) {
+            .integer => {},
+            .name => |name| {
+                if (!declared.contains(name)) {
+                    return self.failUndeclaredPrecedence(name, rule_name);
+                }
+            },
+        }
+    }
+
+    fn failUndefinedSymbol(self: *Builder, name: []const u8) ParseGrammarError {
+        self.setErrorMessage("Undefined symbol `{s}`", .{name}, "undefined symbol");
+        return error.UndefinedSymbol;
+    }
+
+    fn failUndefinedSupertype(self: *Builder, name: []const u8) ParseGrammarError {
+        self.setErrorMessage(
+            "Undefined symbol `{s}` in grammar's supertypes array",
+            .{name},
+            "undefined symbol in grammar's supertypes array",
+        );
+        return error.UndefinedSupertype;
+    }
+
+    fn failUndefinedConflict(self: *Builder, name: []const u8) ParseGrammarError {
+        self.setErrorMessage(
+            "Undefined symbol `{s}` in grammar's conflicts array",
+            .{name},
+            "undefined symbol in grammar's conflicts array",
+        );
+        return error.UndefinedConflict;
+    }
+
+    fn failUndefinedWordToken(self: *Builder, name: []const u8) ParseGrammarError {
+        self.setErrorMessage(
+            "Undefined symbol `{s}` as grammar's word token",
+            .{name},
+            "undefined symbol as grammar's word token",
+        );
+        return error.UndefinedWordToken;
+    }
+
+    fn failUndeclaredPrecedence(self: *Builder, precedence_name: []const u8, rule_name: []const u8) ParseGrammarError {
+        self.setErrorMessage(
+            "Undeclared precedence '{s}' in rule '{s}'",
+            .{ precedence_name, rule_name },
+            "undeclared precedence used in grammar rule",
+        );
+        return error.UndeclaredPrecedence;
+    }
+
+    fn failConflictingPrecedenceOrdering(self: *Builder, left: OrderingEntry, right: OrderingEntry) ParseGrammarError {
+        const left_text = left.displayName();
+        const right_text = right.displayName();
+        self.setErrorMessage(
+            "Conflicting orderings for precedences {s} and {s}",
+            .{ left_text, right_text },
+            "conflicting orderings for precedences",
+        );
+        return error.ConflictingPrecedenceOrdering;
+    }
+
+    fn setErrorMessage(self: *Builder, comptime fmt: []const u8, args: anytype, fallback: []const u8) void {
+        last_error_message = std.fmt.allocPrint(self.allocator, fmt, args) catch fallback;
+    }
 };
 
 const PrecedencePairOrdering = struct {
@@ -422,6 +512,13 @@ const PrecedencePairOrdering = struct {
 const OrderingEntry = union(enum) {
     name: []const u8,
     symbol: []const u8,
+
+    fn displayName(self: OrderingEntry) []const u8 {
+        return switch (self) {
+            .name => |value| value,
+            .symbol => |value| value,
+        };
+    }
 };
 
 fn variableKindForName(name: []const u8) ir.VariableKind {
@@ -439,21 +536,8 @@ fn lowerPrecedenceValue(value: raw.RawPrecedenceValue) ir_rules.PrecedenceValue 
     };
 }
 
-fn validatePrecedenceValueDeclared(
-    value: raw.RawPrecedenceValue,
-    declared: *const std.StringHashMap(void),
-) ParseGrammarError!void {
-    switch (value) {
-        .integer => {},
-        .name => |name| {
-            if (!declared.contains(name)) {
-                return error.UndeclaredPrecedence;
-            }
-        },
-    }
-}
-
 fn validatePrecedenceOrderingPairs(
+    builder: *Builder,
     pairs: *std.array_list.Managed(PrecedencePairOrdering),
     ordering: raw.PrecedenceList,
 ) ParseGrammarError!void {
@@ -475,7 +559,7 @@ fn validatePrecedenceOrderingPairs(
             for (pairs.items) |existing| {
                 if (precedenceEntryEql(existing.left, left) and precedenceEntryEql(existing.right, right)) {
                     if (existing.direction != direction) {
-                        return error.ConflictingPrecedenceOrdering;
+                        return builder.failConflictingPrecedenceOrdering(left, right);
                     }
                     break;
                 }
@@ -628,6 +712,7 @@ test "parseRawGrammar rejects conflicting precedence orderings" {
 
     const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
     try std.testing.expectError(error.ConflictingPrecedenceOrdering, parseRawGrammar(parse_arena.allocator(), &raw_grammar));
+    try std.testing.expectEqualStrings("Conflicting orderings for precedences a and b", errorMessage(error.ConflictingPrecedenceOrdering));
 }
 
 test "parseRawGrammar prefers internal symbols over duplicate external names" {
@@ -645,6 +730,20 @@ test "parseRawGrammar prefers internal symbols over duplicate external names" {
 
     try std.testing.expectEqual(ir_symbols.SymbolKind.non_terminal, symbol.kind);
     try std.testing.expectEqual(@as(u32, 2), symbol.index);
+}
+
+test "parseRawGrammar stores a readable undefined symbol message" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), fixtures.undefinedSymbolGrammarJson().contents, .{});
+    defer parsed.deinit();
+
+    const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
+    try std.testing.expectError(error.UndefinedSymbol, parseRawGrammar(parse_arena.allocator(), &raw_grammar));
+    try std.testing.expectEqualStrings("Undefined symbol `missing`", errorMessage(error.UndefinedSymbol));
 }
 
 test "parseRawGrammar merges nested metadata wrappers" {

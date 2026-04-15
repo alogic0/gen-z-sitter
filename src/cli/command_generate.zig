@@ -46,7 +46,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
     const prepared = parse_grammar.parseRawGrammar(parse_arena.allocator(), &loaded.json.grammar) catch |err| {
         try diag.printStderr(.{
             .kind = .usage,
-            .message = @errorName(err),
+            .message = parse_grammar.errorMessage(err),
             .path = opts.grammar_path,
         });
         return error.InvalidArguments;
