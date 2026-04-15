@@ -198,12 +198,25 @@ const Extractor = struct {
             }
 
             switch (rule) {
-                .symbol => |symbol| try result.append(try self.convertSymbol(symbol)),
+                .symbol => |symbol| try result.append(try self.extractExtraSymbol(symbol)),
                 else => try self.separators.append(rule_id),
             }
         }
 
         return try result.toOwnedSlice();
+    }
+
+    fn extractExtraSymbol(self: *Extractor, symbol: ir_symbols.SymbolId) ExtractTokensError!syntax_ir.SymbolRef {
+        switch (symbol.kind) {
+            .non_terminal => {
+                const variable = self.prepared.variables[symbol.index];
+                if (self.findLexicalVariable(variable.rule)) |terminal_index| {
+                    return .{ .terminal = terminal_index };
+                }
+                return .{ .non_terminal = symbol.index };
+            },
+            .external => return .{ .external = symbol.index },
+        }
     }
 
     fn convertConflictSets(self: *Extractor) ExtractTokensError![]const []const syntax_ir.SymbolRef {
@@ -628,6 +641,56 @@ test "extractTokens rewrites precedence symbols to extracted terminals" {
         .symbol => |symbol| try std.testing.expectEqual(@as(u32, 0), symbol.terminal),
         .name => return error.TestUnexpectedResult,
     }
+}
+
+test "extractTokens rewrites symbol extras to extracted terminals" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "extra-token-rewrite",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+            .{
+                .name = "space",
+                .symbol = ir_symbols.SymbolId.nonTerminal(1),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{ .{ .blank = {} }, .{ .string = " " }, .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) } },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(1),
+                .name = "space",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{2},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.extra_symbols.len);
+    try std.testing.expectEqual(@as(u32, 0), extracted.syntax.extra_symbols[0].terminal);
 }
 
 test "extractTokens uses literal token names inside hidden wrappers" {
