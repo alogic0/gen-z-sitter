@@ -108,6 +108,7 @@ fn resolveShiftReduce(
 
     if (metadata.max_integer_precedence) |value| {
         if (value > 0) return reduce_action;
+        if (value < 0) return shift_action;
         if (value == 0) {
             if (metadata.associativity) |assoc| switch (assoc) {
                 .left => return reduce_action,
@@ -272,6 +273,59 @@ test "resolveActionTable chooses reduce for a positive integer precedence shift/
 
     try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
     try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .reduce => |id| id == 1, else => false });
+}
+
+test "resolveActionTable chooses shift for a negative integer precedence shift/reduce pair" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{
+            .lhs = 1,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{
+                    .symbol = .{ .non_terminal = 1 },
+                    .precedence = .{ .integer = -1 },
+                },
+            },
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 3,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTable(allocator, productions[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidates);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try std.testing.expectEqual(ResolutionKind.chosen, resolved.groupsForState(3)[0].kind);
+    try std.testing.expect(switch (resolved.groupsForState(3)[0].chosen.?) { .shift => |id| id == 4, else => false });
 }
 
 test "resolveActionTable chooses reduce for equal-precedence left associativity" {
