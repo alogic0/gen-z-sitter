@@ -12,6 +12,7 @@ const parse_grammar = @import("../parse_grammar.zig");
 pub const ExtractTokensError = error{
     InvalidConflictSymbol,
     InvalidInlineSymbol,
+    InvalidPrecedenceSymbol,
     InvalidSupertypeSymbol,
     InvalidSupertypeStructure,
     InvalidWordToken,
@@ -224,7 +225,10 @@ const Extractor = struct {
             for (ordering) |entry| {
                 try entries.append(switch (entry) {
                     .name => |name| .{ .name = name },
-                    .symbol => |symbol| .{ .symbol = try self.convertSymbol(symbol) },
+                    .symbol => |symbol| switch (symbol.kind) {
+                        .non_terminal => .{ .symbol = .{ .non_terminal = symbol.index } },
+                        .external => return error.InvalidPrecedenceSymbol,
+                    },
                 });
             }
 
@@ -1142,4 +1146,55 @@ test "extractTokens rejects external conflict symbols" {
     defer arena.deinit();
 
     try std.testing.expectError(error.InvalidConflictSymbol, extractTokens(arena.allocator(), prepared));
+}
+
+test "extractTokens rejects external precedence symbols" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "bad-precedence",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+        },
+        .external_tokens = &.{
+            .{
+                .name = "template_chars",
+                .symbol = ir_symbols.SymbolId.external(0),
+                .kind = .named,
+                .rule = 1,
+            },
+        },
+        .rules = &.{ .{ .blank = {} }, .{ .blank = {} } },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.external(0),
+                .name = "template_chars",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{&.{
+            prepared_ir.PrecedenceEntry{ .symbol = ir_symbols.SymbolId.external(0) },
+        }},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(error.InvalidPrecedenceSymbol, extractTokens(arena.allocator(), prepared));
 }
