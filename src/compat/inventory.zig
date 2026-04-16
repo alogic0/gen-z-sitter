@@ -294,29 +294,31 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     var report = try buildInventoryReportAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 11), report.boundary.total_shortlist_targets);
+    try std.testing.expectEqual(@as(usize, 12), report.boundary.total_shortlist_targets);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_targets);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_passed);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.scanner_wave_targets);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.scanner_wave_passed);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_control_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.frozen_control_fixtures);
-    try std.testing.expectEqual(@as(usize, 0), report.boundary.deferred_scanner_targets);
+    try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_scanner_targets);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.excluded_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.blocked_control_targets);
-    try std.testing.expectEqual(@as(usize, 9), report.family_coverage.len);
+    try std.testing.expectEqual(@as(usize, 10), report.family_coverage.len);
     try std.testing.expectEqual(targets.TargetFamily.haskell, report.family_coverage[5].family);
     try std.testing.expectEqual(@as(usize, 1), report.family_coverage[5].target_count);
     try std.testing.expectEqual(@as(usize, 1), report.family_coverage[5].passed_count);
-    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[6].control_count);
-    try std.testing.expectEqual(targets.TargetFamily.hidden_external_fields, report.family_coverage[7].family);
-    try std.testing.expectEqual(@as(usize, 2), report.family_coverage[7].passed_count);
-    try std.testing.expectEqual(targets.TargetFamily.mixed_semantics, report.family_coverage[8].family);
+    try std.testing.expectEqual(targets.TargetFamily.bash, report.family_coverage[6].family);
+    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[6].deferred_count);
+    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[7].control_count);
+    try std.testing.expectEqual(targets.TargetFamily.hidden_external_fields, report.family_coverage[8].family);
     try std.testing.expectEqual(@as(usize, 2), report.family_coverage[8].passed_count);
+    try std.testing.expectEqual(targets.TargetFamily.mixed_semantics, report.family_coverage[9].family);
+    try std.testing.expectEqual(@as(usize, 2), report.family_coverage[9].passed_count);
     try std.testing.expectEqual(@as(usize, 5), report.proven_first_wave_targets.len);
     try std.testing.expectEqual(@as(usize, 5), report.proven_scanner_wave_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
-    try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
+    try std.testing.expectEqual(@as(usize, 1), report.deferred_scanner_targets.len);
 }
 
 test "renderInventoryReportAlloc emits deterministic boundary JSON" {

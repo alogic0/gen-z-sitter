@@ -109,11 +109,14 @@ What the repo can credibly claim today:
   - `compat_targets/external_repo_inventory.json`
 - real external scanner proof currently comes from:
   - `compat_targets/external_scanner_repo_inventory.json`
-- that dedicated external scanner artifact now records the first onboarded real external scanner snapshot, `tree_sitter_haskell_json`
+- that dedicated external scanner artifact now records:
+  - `tree_sitter_haskell_json` as a passing sampled real external scanner snapshot
+  - `tree_sitter_bash_json` as a deferred real external scanner snapshot
 - the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos do not change that state for this milestone because both available `src/grammar.json` snapshots declare `externals: []` and neither repo includes a scanner implementation file
-- the current real external scanner boundary is explicit: `tree_sitter_haskell_json` now passes within a sampled external-sequence proof layer after structural first-boundary extraction, but that is still narrower than full runtime scanner support
-- that dedicated external artifact now also states the broader real-evidence limitation directly: the checked-in real external evidence includes promoted parser-only snapshots plus one deferred real external scanner snapshot, so scanner-family proof is still narrower
-  - after M30, that scanner-family proof is no longer deferred, but it still remains a sampled proof layer rather than runtime parity
+- the current real external scanner boundary is explicit:
+  - `tree_sitter_haskell_json` passes within a sampled external-sequence proof layer after structural first-boundary extraction
+  - `tree_sitter_bash_json` currently defers at scanner-boundary token extraction with `InvalidSupertypeStructure`
+  - both remain narrower than full runtime scanner support
 - `compat_targets/README.md` explains the relationship between shortlist policy, aggregate boundary, mismatch inventory, and coverage decision artifacts
 - the checked-in shortlist inventory and full report now expose family-level coverage alongside aggregate target totals
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:
@@ -133,14 +136,15 @@ What the repo can credibly claim today:
     - `hidden_external_fields`
     - `mixed_semantics`
     - `haskell`
-- scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the staged first-boundary checks plus one sampled real external scanner sequence proof
+    - `bash`
+- scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the staged first-boundary checks, one sampled real external scanner sequence proof, and one deferred real external scanner snapshot
 - `mixed_semantics` widens that scanner proof by showing that a grammar can still carry extras elsewhere while remaining compatible on a narrower first-boundary sample path
 - compatibility-sensitive behavioral proof currently covers:
   - `behavioral_config`
   - `hidden_external_fields`
 - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but now rejects on the staged blocked path as `missing_action`
 - the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
-- the current checked-in coverage decision now recommends broader compatibility polish from this stronger mixed parser-only and sampled-scanner boundary
+- the current checked-in coverage decision now points back toward scanner and external-scanner compatibility onboarding because Bash remains deferred
 
 ## Milestone Compatibility Targets
 

@@ -2,7 +2,17 @@
   "schema_version": 1,
   "first_wave_non_passing_count": 0,
   "parser_only_incompatibilities": [],
-  "scanner_boundary_targets": [],
+  "scanner_boundary_targets": [
+    {
+      "id": "tree_sitter_bash_json",
+      "display_name": "tree-sitter-bash (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_bash/grammar.json",
+      "candidate_status": "deferred_scanner_wave",
+      "first_failed_stage": "serialize",
+      "detail": "scanner-boundary token extraction failed: InvalidSupertypeStructure",
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-bash repo, with scanner-heavy heredoc and expansion externals; onboarded in M31 as a high-value scanner-family evidence target before any sampled or parser-integrated claim"
+    }
+  ],
   "grammar_input_shape_issues": [],
   "compile_surface_issues": [],
   "harness_limitations": [],
@@ -17,6 +27,16 @@
       "notes": "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations"
     }
   ],
-  "deferred_scanner_targets": [],
+  "deferred_scanner_targets": [
+    {
+      "id": "tree_sitter_bash_json",
+      "display_name": "tree-sitter-bash (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_bash/grammar.json",
+      "candidate_status": "deferred_scanner_wave",
+      "first_failed_stage": "serialize",
+      "detail": "scanner-boundary token extraction failed: InvalidSupertypeStructure",
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-bash repo, with scanner-heavy heredoc and expansion externals; onboarded in M31 as a high-value scanner-family evidence target before any sampled or parser-integrated claim"
+    }
+  ],
   "out_of_scope_targets": []
 }

@@ -192,11 +192,11 @@ test "buildExternalScannerRepoInventoryAlloc summarizes the current real externa
     var report = try buildExternalScannerRepoInventoryAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 1), report.total_external_scanner_targets);
+    try std.testing.expectEqual(@as(usize, 2), report.total_external_scanner_targets);
     try std.testing.expectEqual(@as(usize, 1), report.passed_external_scanner_targets);
     try std.testing.expectEqual(@as(usize, 3), report.current_limitations.len);
     try std.testing.expectEqual(ExternalScannerEvidenceNextStep.broader_compatibility_polish, report.recommended_next_step);
-    try std.testing.expectEqual(@as(usize, 1), report.targets.len);
+    try std.testing.expectEqual(@as(usize, 2), report.targets.len);
 }
 
 test "renderExternalScannerRepoInventoryAlloc matches the checked-in external scanner repo inventory artifact" {

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "total_external_scanner_targets": 1,
+  "total_external_scanner_targets": 2,
   "passed_external_scanner_targets": 1,
   "current_limitations": [
     "real external scanner evidence is now represented by at least one passing external scanner snapshot",
@@ -21,6 +21,19 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; M30 promotes it into a sampled external-sequence proof layer before any broader parser-integrated scanner claim"
+    },
+    {
+      "id": "tree_sitter_bash_json",
+      "family": "bash",
+      "display_name": "tree-sitter-bash (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_bash/grammar.json",
+      "source_kind": "grammar_json",
+      "upstream_repository": "tree-sitter-bash",
+      "upstream_revision": "a06c2e4415e9bc0346c6b86d401879ffb44058f7",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "deferred_for_scanner_boundary",
+      "mismatch_category": "scanner_external_scanner_boundary_gap",
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-bash repo, with scanner-heavy heredoc and expansion externals; onboarded in M31 as a high-value scanner-family evidence target before any sampled or parser-integrated claim"
     }
   ]
 }

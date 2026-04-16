@@ -113,11 +113,12 @@ Current staged compatibility boundary:
 - real external snapshot proof is also exposed separately under `compat_targets/`:
   - `compat_targets/external_repo_inventory.json`
   - this keeps the promoted real external parser-only evidence visible without mixing it into staged fixture-only summaries
-  - it now records the current mixed real-evidence state explicitly: 2 passing external parser-only snapshots plus 1 passing sampled real external scanner snapshot
+  - it now records the current mixed real-evidence state explicitly: 2 passing external parser-only snapshots, 1 passing sampled real external scanner snapshot, and 1 deferred real external scanner snapshot
 - real external scanner proof is now exposed separately under `compat_targets/`:
   - `compat_targets/external_scanner_repo_inventory.json`
-  - it now records the first passing real external scanner target: `tree_sitter_haskell_json`
-  - that target currently passes within a sampled external-sequence boundary, not full scanner.c runtime equivalence
+  - it now records one passing real external scanner target, `tree_sitter_haskell_json`, and one deferred real external scanner target, `tree_sitter_bash_json`
+  - the Haskell target currently passes within a sampled external-sequence boundary, not full scanner.c runtime equivalence
+  - the Bash target currently defers at scanner-boundary token extraction with `InvalidSupertypeStructure`
   - the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos still do not change that scanner story, because their available snapshots have `externals: []` and no scanner implementation files
 - parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
   - `compat_targets/shortlist.json`
@@ -147,6 +148,7 @@ Current staged compatibility boundary:
   - `hidden_external_fields`
   - `mixed_semantics`
   - `haskell`
+  - `bash`
 - the shortlist now also carries a promoted multi-family scanner wave with explicit family-level coverage in the checked-in artifacts:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`
@@ -163,12 +165,13 @@ Current staged compatibility boundary:
   - `hidden_external_fields` also proves that the invalid path makes less progress than the valid path through the first staged scanner boundary
   - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it now rejects on the staged blocked path as `missing_action` rather than advancing into a promoted parser-only pass
 - scanner/external-scanner proof is staged as a narrow promoted multi-family wave rather than left entirely out of the shortlist
-- real external scanner evidence is now no longer empty, and it now includes one passing sampled real external scanner snapshot
-- that real external Haskell boundary is now explicit:
+- real external scanner evidence is now no longer empty, and it now includes one passing sampled real external scanner snapshot plus one deferred scanner-heavy external snapshot
+- that real external scanner boundary is now explicit:
   - structural first-boundary extraction remains the lower proof layer
   - sampled external-sequence proof now passes for `tree_sitter_haskell_json`
+  - `tree_sitter_bash_json` is onboarded but still defers at scanner-boundary token extraction with `InvalidSupertypeStructure`
   - full runtime scanner equivalence is still out of scope
-- the current checked-in coverage decision now points to broader compatibility polish from this boundary
+- the current checked-in coverage decision now points back toward scanner and external-scanner compatibility onboarding from this boundary
 
 ## Repository Layout
 

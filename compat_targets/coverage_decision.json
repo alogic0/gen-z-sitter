@@ -18,11 +18,18 @@
       "notes": "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations"
     }
   ],
-  "deferred_scanner_targets": [],
-  "recommended_next_milestone": "broader_compatibility_polish",
+  "deferred_scanner_targets": [
+    {
+      "id": "tree_sitter_bash_json",
+      "display_name": "tree-sitter-bash (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_bash/grammar.json",
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-bash repo, with scanner-heavy heredoc and expansion externals; onboarded in M31 as a high-value scanner-family evidence target before any sampled or parser-integrated claim"
+    }
+  ],
+  "recommended_next_milestone": "scanner_and_external_scanner_compatibility_onboarding",
   "recommendation_rationale": [
     "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
     "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
-    "a second scanner grammar family now passes within the staged first-boundary checks, so the next promoted milestone can shift from scanner onboarding toward broader compatibility polish"
+    "the initial staged scanner wave now has compatibility-safe promoted targets, but second-wave scanner targets remain deferred, so the current promoted milestone should focus on broadening scanner evidence across additional grammar families"
   ]
 }

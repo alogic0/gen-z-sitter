@@ -36,7 +36,7 @@ Versioned artifacts:
   - this keeps real external evidence separate from the broader staged shortlist, which still includes staged fixtures and frozen controls
 - `external_scanner_repo_inventory.json`
   - dedicated machine-readable inventory of real external scanner or external-scanner evidence
-  - now records the first onboarded real external scanner snapshot, its first blocker classification, current real-scanner limitations, and the recommended next scanner-evidence step
+  - now records one passing real external scanner snapshot, one deferred real external scanner snapshot, their current limitations, and the recommended next scanner-evidence step
 - `shortlist_inventory.json`
   - aggregate boundary summary plus family-level coverage and explicit proven first-wave, deferred-control, deferred-scanner, and out-of-scope target sections
 - `shortlist_report.json`
@@ -77,8 +77,12 @@ Current staged boundary summary:
   - it now passes structural first-boundary extraction
   - it also now passes a sampled external-sequence scanner proof layer
   - this is still narrower than full scanner.c runtime equivalence
+- 1 additional real external scanner snapshot is now onboarded but still deferred:
+  - `tree_sitter_bash_json`
+  - it adds a second real external scanner family to the evidence set
+  - its first recorded blocker is `InvalidSupertypeStructure` during scanner-boundary token extraction
 
 Recommended next step after this staged boundary:
 
-- keep the parser-only, staged scanner, and sampled real external scanner boundaries stable while shifting the promoted roadmap toward broader compatibility polish
+- keep the parser-only, staged scanner, and sampled real external scanner boundaries stable while narrowing the new Bash blocker
 - widen real external scanner-family coverage only after preserving the distinction between sampled real scanner proof and full runtime scanner behavior
