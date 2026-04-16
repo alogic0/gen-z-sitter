@@ -187,6 +187,7 @@ fn generateJsonSummaryAlloc(
     try writer.print("  \"extra_count\": {d},\n", .{grammar.extras.len});
     try writer.print("  \"symbol_count\": {d},\n", .{prepared.symbols.len});
     try writer.print("  \"state_count\": {d},\n", .{parser_stats.state_count});
+    try writer.print("  \"merged_state_count\": {d},\n", .{parser_stats.merged_state_count});
     try writer.print("  \"action_entry_count\": {d},\n", .{parser_stats.action_entry_count});
     try writer.print("  \"goto_entry_count\": {d},\n", .{parser_stats.goto_entry_count});
     try writer.print("  \"unresolved_entry_count\": {d},\n", .{parser_stats.unresolved_entry_count});
@@ -258,6 +259,7 @@ test "generateJsonSummaryAlloc reports parser row-sharing stats" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"blocked\": true"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 6"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_entry_count\": 4"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"unresolved_entry_count\": 1"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_rows\": { \"total_rows\": 6, \"empty_rows\": 2, \"unique_non_empty_rows\": 3, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 4 }"));

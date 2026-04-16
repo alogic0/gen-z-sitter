@@ -937,7 +937,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\#include <stdint.h>
             \\
             \\#define TS_PARSER_BLOCKED false
-            \\#define TS_STATE_COUNT 7
+            \\#define TS_STATE_COUNT 5
             \\#define TS_SYMBOL_COUNT 4
             \\
             \\#define TS_LANGUAGE_VERSION 15
@@ -1085,15 +1085,11 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\/* state 4 */
             \\static const TSActionEntry ts_state_4_actions[] = {
-            \\  { 3, 1, 6 },
+            \\  { 3, 1, 1 },
             \\};
             \\static const TSGotoEntry ts_state_4_gotos[] = {
-            \\  { 1, 5 },
+            \\  { 1, 1 },
             \\};
-            \\
-            \\/* state 5 */
-            \\
-            \\/* state 6 */
             \\static const TSStateTable ts_states[TS_STATE_COUNT] = {
             \\  {
             \\    .actions = ts_state_0_actions,
@@ -1132,22 +1128,6 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\    .action_count = 1,
             \\    .gotos = ts_state_4_gotos,
             \\    .goto_count = 1,
-            \\    .unresolved = 0,
-            \\    .unresolved_count = 0,
-            \\  },
-            \\  {
-            \\    .actions = ts_empty_actions,
-            \\    .action_count = 0,
-            \\    .gotos = ts_empty_gotos,
-            \\    .goto_count = 0,
-            \\    .unresolved = 0,
-            \\    .unresolved_count = 0,
-            \\  },
-            \\  {
-            \\    .actions = ts_empty_actions,
-            \\    .action_count = 0,
-            \\    .gotos = ts_empty_gotos,
-            \\    .goto_count = 0,
             \\    .unresolved = 0,
             \\    .unresolved_count = 0,
             \\  },
@@ -1190,18 +1170,6 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  {
             \\    .action_count = 1,
             \\    .goto_count = 1,
-            \\    .unresolved_count = 0,
-            \\    .has_unresolved = false,
-            \\  },
-            \\  {
-            \\    .action_count = 0,
-            \\    .goto_count = 0,
-            \\    .unresolved_count = 0,
-            \\    .has_unresolved = false,
-            \\  },
-            \\  {
-            \\    .action_count = 0,
-            \\    .goto_count = 0,
             \\    .unresolved_count = 0,
             \\    .has_unresolved = false,
             \\  },

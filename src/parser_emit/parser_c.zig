@@ -1,4 +1,6 @@
 const std = @import("std");
+const parse_actions = @import("../parse_table/actions.zig");
+const parse_state = @import("../parse_table/state.zig");
 const serialize = @import("../parse_table/serialize.zig");
 const syntax_grammar = @import("../ir/syntax_grammar.zig");
 const common = @import("common.zig");
@@ -16,6 +18,7 @@ pub const RowSharingStats = struct {
 
 pub const EmissionStats = struct {
     state_count: usize,
+    merged_state_count: usize,
     blocked: bool,
     action_entry_count: usize,
     goto_entry_count: usize,
@@ -39,31 +42,36 @@ pub fn collectEmissionStats(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
 ) std.mem.Allocator.Error!EmissionStats {
-    const action_owners = try collectStateArrayOwners(allocator, serialize.SerializedActionEntry, serialized.states, stateActions);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const compacted = try compactSerializedTable(arena.allocator(), serialized);
+    const action_owners = try collectStateArrayOwners(allocator, serialize.SerializedActionEntry, compacted.states, stateActions);
     defer allocator.free(action_owners);
-    const goto_owners = try collectStateArrayOwners(allocator, serialize.SerializedGotoEntry, serialized.states, stateGotos);
+    const goto_owners = try collectStateArrayOwners(allocator, serialize.SerializedGotoEntry, compacted.states, stateGotos);
     defer allocator.free(goto_owners);
-    const unresolved_owners = try collectStateArrayOwners(allocator, serialize.SerializedUnresolvedEntry, serialized.states, stateUnresolved);
+    const unresolved_owners = try collectStateArrayOwners(allocator, serialize.SerializedUnresolvedEntry, compacted.states, stateUnresolved);
     defer allocator.free(unresolved_owners);
 
     var action_entry_count: usize = 0;
     var goto_entry_count: usize = 0;
     var unresolved_entry_count: usize = 0;
-    for (serialized.states) |serialized_state| {
+    for (compacted.states) |serialized_state| {
         action_entry_count += serialized_state.actions.len;
         goto_entry_count += serialized_state.gotos.len;
         unresolved_entry_count += serialized_state.unresolved.len;
     }
 
     return .{
-        .state_count = serialized.states.len,
-        .blocked = serialized.blocked,
+        .state_count = compacted.states.len,
+        .merged_state_count = serialized.states.len - compacted.states.len,
+        .blocked = compacted.blocked,
         .action_entry_count = action_entry_count,
         .goto_entry_count = goto_entry_count,
         .unresolved_entry_count = unresolved_entry_count,
-        .action_rows = collectRowSharingStats(serialize.SerializedActionEntry, serialized.states, action_owners, stateActions, true),
-        .goto_rows = collectRowSharingStats(serialize.SerializedGotoEntry, serialized.states, goto_owners, stateGotos, true),
-        .unresolved_rows = collectRowSharingStats(serialize.SerializedUnresolvedEntry, serialized.states, unresolved_owners, stateUnresolved, false),
+        .action_rows = collectRowSharingStats(serialize.SerializedActionEntry, compacted.states, action_owners, stateActions, true),
+        .goto_rows = collectRowSharingStats(serialize.SerializedGotoEntry, compacted.states, goto_owners, stateGotos, true),
+        .unresolved_rows = collectRowSharingStats(serialize.SerializedUnresolvedEntry, compacted.states, unresolved_owners, stateUnresolved, false),
     };
 }
 
@@ -72,19 +80,23 @@ pub fn writeParserC(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
 ) !void {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const compacted = try compactSerializedTable(arena.allocator(), serialized);
     const compatibility = compat.currentRuntimeCompatibility();
-    const emitted_symbols = try collectEmittedSymbols(allocator, serialized);
+    const emitted_symbols = try collectEmittedSymbols(allocator, compacted);
     defer deinitEmittedSymbols(allocator, emitted_symbols);
-    const action_owners = try collectStateArrayOwners(allocator, serialize.SerializedActionEntry, serialized.states, stateActions);
+    const action_owners = try collectStateArrayOwners(allocator, serialize.SerializedActionEntry, compacted.states, stateActions);
     defer allocator.free(action_owners);
-    const goto_owners = try collectStateArrayOwners(allocator, serialize.SerializedGotoEntry, serialized.states, stateGotos);
+    const goto_owners = try collectStateArrayOwners(allocator, serialize.SerializedGotoEntry, compacted.states, stateGotos);
     defer allocator.free(goto_owners);
-    const unresolved_owners = try collectStateArrayOwners(allocator, serialize.SerializedUnresolvedEntry, serialized.states, stateUnresolved);
+    const unresolved_owners = try collectStateArrayOwners(allocator, serialize.SerializedUnresolvedEntry, compacted.states, stateUnresolved);
     defer allocator.free(unresolved_owners);
 
     try compat.writeContractPrelude(writer, compatibility);
-    try writer.print("#define TS_PARSER_BLOCKED {}\n", .{serialized.blocked});
-    try writer.print("#define TS_STATE_COUNT {d}\n", .{serialized.states.len});
+    try writer.print("#define TS_PARSER_BLOCKED {}\n", .{compacted.blocked});
+    try writer.print("#define TS_STATE_COUNT {d}\n", .{compacted.states.len});
     try writer.print("#define TS_SYMBOL_COUNT {d}\n\n", .{emitted_symbols.len});
     try compat.writeContractTypesAndConstants(writer, compatibility);
     try writer.writeAll("static bool ts_string_eq(const char *a, const char *b) {\n");
@@ -124,7 +136,7 @@ pub fn writeParserC(
     try writer.writeAll("static const TSGotoEntry ts_empty_gotos[] = {\n");
     try writer.writeAll("};\n\n");
 
-    for (serialized.states, 0..) |serialized_state, index| {
+    for (compacted.states, 0..) |serialized_state, index| {
         try writer.print("/* state {d} */\n", .{serialized_state.id});
 
         if (serialized_state.actions.len > 0 and action_owners[index] == index) {
@@ -172,26 +184,26 @@ pub fn writeParserC(
             try writer.writeAll("};\n");
         }
 
-        if (index + 1 < serialized.states.len) try writer.writeByte('\n');
+        if (index + 1 < compacted.states.len) try writer.writeByte('\n');
     }
 
     try writer.writeAll("static const TSStateTable ts_states[TS_STATE_COUNT] = {\n");
-    for (serialized.states, 0..) |serialized_state, index| {
+    for (compacted.states, 0..) |serialized_state, index| {
         try writer.writeAll("  {\n");
         if (serialized_state.actions.len > 0) {
-            try writer.print("    .actions = ts_state_{d}_actions,\n", .{serialized.states[action_owners[index]].id});
+            try writer.print("    .actions = ts_state_{d}_actions,\n", .{compacted.states[action_owners[index]].id});
         } else {
             try writer.writeAll("    .actions = ts_empty_actions,\n");
         }
         try writer.print("    .action_count = {d},\n", .{serialized_state.actions.len});
         if (serialized_state.gotos.len > 0) {
-            try writer.print("    .gotos = ts_state_{d}_gotos,\n", .{serialized.states[goto_owners[index]].id});
+            try writer.print("    .gotos = ts_state_{d}_gotos,\n", .{compacted.states[goto_owners[index]].id});
         } else {
             try writer.writeAll("    .gotos = ts_empty_gotos,\n");
         }
         try writer.print("    .goto_count = {d},\n", .{serialized_state.gotos.len});
         if (serialized_state.unresolved.len > 0) {
-            try writer.print("    .unresolved = ts_state_{d}_unresolved,\n", .{serialized.states[unresolved_owners[index]].id});
+            try writer.print("    .unresolved = ts_state_{d}_unresolved,\n", .{compacted.states[unresolved_owners[index]].id});
         } else {
             try writer.writeAll("    .unresolved = 0,\n");
         }
@@ -201,7 +213,7 @@ pub fn writeParserC(
     try writer.writeAll("};\n");
     try writer.writeAll("\n");
     try writer.writeAll("static const TSParser ts_parser = {\n");
-    try writer.print("  .blocked = {},\n", .{serialized.blocked});
+    try writer.print("  .blocked = {},\n", .{compacted.blocked});
     try writer.writeAll("  .symbol_count = TS_SYMBOL_COUNT,\n");
     try writer.writeAll("  .state_count = TS_STATE_COUNT,\n");
     try writer.writeAll("  .symbols = ts_symbols,\n");
@@ -210,7 +222,7 @@ pub fn writeParserC(
     try writer.writeAll("};\n");
     try writer.writeAll("\n");
     try writer.writeAll("static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {\n");
-    for (serialized.states) |serialized_state| {
+    for (compacted.states) |serialized_state| {
         try writer.writeAll("  {\n");
         try writer.print("    .action_count = {d},\n", .{serialized_state.actions.len});
         try writer.print("    .goto_count = {d},\n", .{serialized_state.gotos.len});
@@ -221,8 +233,8 @@ pub fn writeParserC(
     try writer.writeAll("};\n");
     try writer.writeAll("\n");
     try writer.writeAll("static const TSParserRuntime ts_runtime = {\n");
-    try writer.print("  .blocked = {},\n", .{serialized.blocked});
-    try writer.print("  .has_unresolved_states = {},\n", .{hasUnresolvedStates(serialized)});
+    try writer.print("  .blocked = {},\n", .{compacted.blocked});
+    try writer.print("  .has_unresolved_states = {},\n", .{hasUnresolvedStates(compacted)});
     try writer.writeAll("  .state_count = TS_STATE_COUNT,\n");
     try writer.writeAll("  .parser = &ts_parser,\n");
     try writer.writeAll("  .states = ts_runtime_states,\n");
@@ -400,6 +412,157 @@ pub fn writeParserC(
     try writer.writeAll("bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {\n");
     try writer.writeAll("  return ts_parser_find_unresolved(state_id, symbol) != 0;\n");
     try writer.writeAll("}\n");
+}
+
+fn compactSerializedTable(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+) std.mem.Allocator.Error!serialize.SerializedTable {
+    for (serialized.states, 0..) |serialized_state, index| {
+        std.debug.assert(serialized_state.id == index);
+    }
+
+    const state_owners = try collectStateOwners(allocator, serialized.states);
+    const owner_new_ids = try allocator.alloc(parse_state.StateId, serialized.states.len);
+    var unique_count: usize = 0;
+
+    for (serialized.states, 0..) |_, index| {
+        owner_new_ids[index] = std.math.maxInt(parse_state.StateId);
+        if (state_owners[index] == index) {
+            owner_new_ids[index] = @intCast(unique_count);
+            unique_count += 1;
+        }
+    }
+
+    const compacted_states = try allocator.alloc(serialize.SerializedState, unique_count);
+    var compacted_index: usize = 0;
+    for (serialized.states, 0..) |serialized_state, index| {
+        if (state_owners[index] != index) continue;
+        compacted_states[compacted_index] = .{
+            .id = @intCast(compacted_index),
+            .actions = try remapActionEntries(allocator, serialized.states, serialized_state.actions, state_owners, owner_new_ids),
+            .gotos = try remapGotoEntries(allocator, serialized.states, serialized_state.gotos, state_owners, owner_new_ids),
+            .unresolved = try remapUnresolvedEntries(allocator, serialized.states, serialized_state.unresolved, state_owners, owner_new_ids),
+        };
+        compacted_index += 1;
+    }
+
+    return .{
+        .states = compacted_states,
+        .blocked = serialized.blocked,
+    };
+}
+
+fn collectStateOwners(
+    allocator: std.mem.Allocator,
+    states: []const serialize.SerializedState,
+) std.mem.Allocator.Error![]usize {
+    const owners = try allocator.alloc(usize, states.len);
+    for (states, 0..) |state_value, index| {
+        owners[index] = index;
+        for (states[0..index], 0..) |previous_state, previous_index| {
+            if (serializedStatesEql(state_value, previous_state)) {
+                owners[index] = previous_index;
+                break;
+            }
+        }
+    }
+    return owners;
+}
+
+fn serializedStatesEql(left: serialize.SerializedState, right: serialize.SerializedState) bool {
+    return serializedEntrySlicesEql(serialize.SerializedActionEntry, left.actions, right.actions) and
+        serializedEntrySlicesEql(serialize.SerializedGotoEntry, left.gotos, right.gotos) and
+        serializedEntrySlicesEql(serialize.SerializedUnresolvedEntry, left.unresolved, right.unresolved);
+}
+
+fn remapActionEntries(
+    allocator: std.mem.Allocator,
+    states: []const serialize.SerializedState,
+    entries: []const serialize.SerializedActionEntry,
+    state_owners: []const usize,
+    owner_new_ids: []const parse_state.StateId,
+) std.mem.Allocator.Error![]const serialize.SerializedActionEntry {
+    const remapped = try allocator.alloc(serialize.SerializedActionEntry, entries.len);
+    for (entries, 0..) |entry, index| {
+        remapped[index] = .{
+            .symbol = entry.symbol,
+            .action = remapParseAction(states, entry.action, state_owners, owner_new_ids),
+        };
+    }
+    return remapped;
+}
+
+fn remapGotoEntries(
+    allocator: std.mem.Allocator,
+    states: []const serialize.SerializedState,
+    entries: []const serialize.SerializedGotoEntry,
+    state_owners: []const usize,
+    owner_new_ids: []const parse_state.StateId,
+) std.mem.Allocator.Error![]const serialize.SerializedGotoEntry {
+    const remapped = try allocator.alloc(serialize.SerializedGotoEntry, entries.len);
+    for (entries, 0..) |entry, index| {
+        remapped[index] = .{
+            .symbol = entry.symbol,
+            .state = remapStateId(states, entry.state, state_owners, owner_new_ids),
+        };
+    }
+    return remapped;
+}
+
+fn remapUnresolvedEntries(
+    allocator: std.mem.Allocator,
+    states: []const serialize.SerializedState,
+    entries: []const serialize.SerializedUnresolvedEntry,
+    state_owners: []const usize,
+    owner_new_ids: []const parse_state.StateId,
+) std.mem.Allocator.Error![]const serialize.SerializedUnresolvedEntry {
+    const remapped = try allocator.alloc(serialize.SerializedUnresolvedEntry, entries.len);
+    for (entries, 0..) |entry, index| {
+        const candidate_actions = try allocator.alloc(parse_actions.ParseAction, entry.candidate_actions.len);
+        for (entry.candidate_actions, 0..) |candidate_action, candidate_index| {
+            candidate_actions[candidate_index] = remapParseAction(states, candidate_action, state_owners, owner_new_ids);
+        }
+        remapped[index] = .{
+            .symbol = entry.symbol,
+            .reason = entry.reason,
+            .candidate_actions = candidate_actions,
+        };
+    }
+    return remapped;
+}
+
+fn remapParseAction(
+    states: []const serialize.SerializedState,
+    action: parse_actions.ParseAction,
+    state_owners: []const usize,
+    owner_new_ids: []const parse_state.StateId,
+) parse_actions.ParseAction {
+    return switch (action) {
+        .shift => |state_id| .{ .shift = remapStateId(states, state_id, state_owners, owner_new_ids) },
+        .reduce => |production_id| .{ .reduce = production_id },
+        .accept => .{ .accept = {} },
+    };
+}
+
+fn remapStateId(
+    states: []const serialize.SerializedState,
+    state_id: parse_state.StateId,
+    state_owners: []const usize,
+    owner_new_ids: []const parse_state.StateId,
+) parse_state.StateId {
+    if (findStateIndexById(states, state_id)) |state_index| {
+        const owner = state_owners[state_index];
+        return owner_new_ids[owner];
+    }
+    return state_id;
+}
+
+fn findStateIndexById(states: []const serialize.SerializedState, state_id: parse_state.StateId) ?usize {
+    for (states, 0..) |state_value, index| {
+        if (state_value.id == state_id) return index;
+    }
+    return null;
 }
 
 fn collectStateArrayOwners(
@@ -1152,7 +1315,7 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
     , emitted);
 }
 
-test "emitParserCAlloc reuses canonical non-empty state arrays" {
+test "emitParserCAlloc compacts identical serialized states before row sharing" {
     const allocator = std.testing.allocator;
     const duplicate_unresolved = [_]@import("../parse_table/actions.zig").ParseAction{
         .{ .shift = 7 },
@@ -1199,16 +1362,16 @@ test "emitParserCAlloc reuses canonical non-empty state arrays" {
     const emitted = try emitParserCAlloc(allocator, serialized);
     defer allocator.free(emitted);
 
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define TS_STATE_COUNT 1\n"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSActionEntry ts_state_0_actions[] = {\n"));
     try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSActionEntry ts_state_1_actions[] = {\n"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSGotoEntry ts_state_0_gotos[] = {\n"));
     try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSGotoEntry ts_state_1_gotos[] = {\n"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSUnresolvedEntry ts_state_0_unresolved[] = {\n"));
     try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSUnresolvedEntry ts_state_1_unresolved[] = {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .actions = ts_state_0_actions,\n    .action_count = 1,\n    .gotos = ts_state_0_gotos,\n    .goto_count = 1,\n    .unresolved = ts_state_0_unresolved,\n    .unresolved_count = 1,\n"));
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, emitted, "    .actions = ts_state_0_actions,\n"));
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, emitted, "    .gotos = ts_state_0_gotos,\n"));
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, emitted, "    .unresolved = ts_state_0_unresolved,\n"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "    .actions = ts_state_0_actions,\n"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "    .gotos = ts_state_0_gotos,\n"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "    .unresolved = ts_state_0_unresolved,\n"));
 }
 
 test "collectEmissionStats reports shared empty and canonical non-empty rows" {
@@ -1263,31 +1426,32 @@ test "collectEmissionStats reports shared empty and canonical non-empty rows" {
 
     const stats = try collectEmissionStats(allocator, serialized);
 
-    try std.testing.expectEqual(@as(usize, 3), stats.state_count);
+    try std.testing.expectEqual(@as(usize, 2), stats.state_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.merged_state_count);
     try std.testing.expect(stats.blocked);
-    try std.testing.expectEqual(@as(usize, 2), stats.action_entry_count);
-    try std.testing.expectEqual(@as(usize, 2), stats.goto_entry_count);
-    try std.testing.expectEqual(@as(usize, 2), stats.unresolved_entry_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.action_entry_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.goto_entry_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.unresolved_entry_count);
 
     try std.testing.expectEqual(RowSharingStats{
-        .total_rows = 3,
+        .total_rows = 2,
         .empty_rows = 1,
         .unique_non_empty_rows = 1,
-        .shared_non_empty_rows = 1,
+        .shared_non_empty_rows = 0,
         .emitted_array_definitions = 2,
     }, stats.action_rows);
     try std.testing.expectEqual(RowSharingStats{
-        .total_rows = 3,
+        .total_rows = 2,
         .empty_rows = 1,
         .unique_non_empty_rows = 1,
-        .shared_non_empty_rows = 1,
+        .shared_non_empty_rows = 0,
         .emitted_array_definitions = 2,
     }, stats.goto_rows);
     try std.testing.expectEqual(RowSharingStats{
-        .total_rows = 3,
+        .total_rows = 2,
         .empty_rows = 1,
         .unique_non_empty_rows = 1,
-        .shared_non_empty_rows = 1,
+        .shared_non_empty_rows = 0,
         .emitted_array_definitions = 1,
     }, stats.unresolved_rows);
 }
