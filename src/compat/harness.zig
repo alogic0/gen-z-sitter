@@ -149,6 +149,8 @@ pub fn runTarget(
     };
 
     if (emission_stats.blocked != target.expected_blocked) {
+        const blocked_summary = try summarizeBlockedBoundaryAlloc(allocator, serialized);
+        defer allocator.free(blocked_summary);
         return failRun(
             &run,
             .emit_parser_c,
@@ -156,8 +158,8 @@ pub fn runTarget(
             .parse_table_construction_gap,
             try std.fmt.allocPrint(
                 allocator,
-                "unexpected blocked status: expected {}, got {}",
-                .{ target.expected_blocked, emission_stats.blocked },
+                "unexpected blocked status: expected {}, got {}; {s}",
+                .{ target.expected_blocked, emission_stats.blocked, blocked_summary },
             ),
         );
     }
@@ -242,6 +244,82 @@ fn mismatchCategoryForLoadFailure(err: grammar_loader.LoaderError) result_model.
     return switch (err) {
         error.IoFailure, error.ProcessFailure => .infrastructure_failure,
         else => .grammar_input_load_mismatch,
+    };
+}
+
+fn summarizeBlockedBoundaryAlloc(
+    allocator: std.mem.Allocator,
+    serialized: @import("../parse_table/serialize.zig").SerializedTable,
+) ![]const u8 {
+    var unresolved_states: usize = 0;
+    var unresolved_entries: usize = 0;
+    var shift_reduce: usize = 0;
+    var reduce_reduce_deferred: usize = 0;
+    var multiple_candidates: usize = 0;
+    var unsupported_action_mix: usize = 0;
+
+    var samples = std.array_list.Managed([]const u8).init(allocator);
+    defer {
+        for (samples.items) |sample| allocator.free(sample);
+        samples.deinit();
+    }
+
+    for (serialized.states) |state_value| {
+        if (state_value.unresolved.len == 0) continue;
+        unresolved_states += 1;
+        unresolved_entries += state_value.unresolved.len;
+
+        for (state_value.unresolved) |entry| {
+            switch (entry.reason) {
+                .shift_reduce => shift_reduce += 1,
+                .reduce_reduce_deferred => reduce_reduce_deferred += 1,
+                .multiple_candidates => multiple_candidates += 1,
+                .unsupported_action_mix => unsupported_action_mix += 1,
+            }
+
+            if (samples.items.len < 4) {
+                try samples.append(try std.fmt.allocPrint(
+                    allocator,
+                    "state {d} {s} {s} candidates={d}",
+                    .{
+                        state_value.id,
+                        symbolRefLabel(entry.symbol),
+                        @tagName(entry.reason),
+                        entry.candidate_actions.len,
+                    },
+                ));
+            }
+        }
+    }
+
+    var sample_text = std.array_list.Managed(u8).init(allocator);
+    defer sample_text.deinit();
+    const sample_writer = sample_text.writer();
+    for (samples.items, 0..) |sample, index| {
+        if (index > 0) try sample_writer.writeAll("; ");
+        try sample_writer.writeAll(sample);
+    }
+
+    return try std.fmt.allocPrint(
+        allocator,
+        "blocked boundary summary: states={d}, entries={d}, reasons={{shift_reduce:{d}, reduce_reduce_deferred:{d}, multiple_candidates:{d}, unsupported_action_mix:{d}}}, samples=[{s}]",
+        .{
+            unresolved_states,
+            unresolved_entries,
+            shift_reduce,
+            reduce_reduce_deferred,
+            multiple_candidates,
+            unsupported_action_mix,
+            sample_text.items,
+        },
+    );
+}
+
+fn symbolRefLabel(symbol: @import("../ir/syntax_grammar.zig").SymbolRef) []const u8 {
+    return switch (symbol) {
+        .terminal => "terminal",
+        .non_terminal => "non_terminal",
+        .external => "external",
     };
 }
 
@@ -340,4 +418,18 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     try std.testing.expectEqual(result_model.FinalClassification.failed_due_to_parser_only_gap, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.failed_due_to_parser_only_gap, runs[4].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.out_of_scope_for_scanner_boundary, runs[6].final_classification);
+}
+
+test "runShortlistTargetsAlloc records blocked-boundary summaries for deferred Ziggy targets" {
+    const allocator = std.testing.allocator;
+
+    const runs = try runShortlistTargetsAlloc(allocator, .{});
+    defer result_model.deinitRunResults(allocator, runs);
+
+    try std.testing.expect(runs[3].emit_parser_c.detail != null);
+    try std.testing.expect(runs[4].emit_parser_c.detail != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[3].emit_parser_c.detail.?, "blocked boundary summary:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[4].emit_parser_c.detail.?, "blocked boundary summary:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[3].emit_parser_c.detail.?, "shift_reduce") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[4].emit_parser_c.detail.?, "shift_reduce") != null);
 }
