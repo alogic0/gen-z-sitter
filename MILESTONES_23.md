@@ -129,6 +129,13 @@ Acceptance:
 
 - the target either emits within the current boundary or has a narrower promotion blocker than a generic blocked parser surface
 
+Current progress:
+
+- the deferred external targets now carry structured blocked-boundary snapshots instead of only free-form detail text
+- a checked-in `shortlist_shift_reduce_profile.json` artifact is the focused source of truth for the shared unresolved `shift_reduce` blocker
+- the blocker profile now includes readable symbol names, candidate-action summaries, and dominant repeated signatures instead of only terminal indexes
+- the remaining work in this slice is to use those ranked signatures to reduce or eliminate the dominant unresolved decision pattern
+
 ### PR 3
 
 Goal:

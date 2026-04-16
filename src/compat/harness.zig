@@ -5,6 +5,7 @@ const compile_smoke = @import("compile_smoke.zig");
 const report_json = @import("report_json.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
+const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
 const c_tables_emit = @import("../parser_emit/c_tables.zig");
@@ -147,11 +148,23 @@ pub fn runTarget(
         .c_tables_bytes = c_tables.len,
         .parser_c_bytes = parser_c.len,
     };
+    if (emission_stats.blocked) {
+        const extracted = extract_tokens.extractTokens(arena.allocator(), prepared) catch |err| {
+            return failRun(
+                &run,
+                .emit_parser_c,
+                .infrastructure_failure,
+                .infrastructure_failure,
+                try std.fmt.allocPrint(allocator, "blocked-boundary replay extraction failed: {s}", .{@errorName(err)}),
+            );
+        };
+        run.blocked_boundary = try buildBlockedBoundarySnapshotAlloc(allocator, serialized, extracted);
+    }
 
     if (emission_stats.blocked != target.expected_blocked) {
-        const blocked_summary = try summarizeBlockedBoundaryAlloc(allocator, serialized);
+        const blocked_summary = try summarizeBlockedBoundaryAlloc(allocator, run.blocked_boundary.?);
         defer allocator.free(blocked_summary);
-        const blocked_category = classifyBlockedBoundary(serialized);
+        const blocked_category = classifyBlockedBoundary(run.blocked_boundary.?);
         return failRun(
             &run,
             .emit_parser_c,
@@ -250,47 +263,28 @@ fn mismatchCategoryForLoadFailure(err: grammar_loader.LoaderError) result_model.
 
 fn summarizeBlockedBoundaryAlloc(
     allocator: std.mem.Allocator,
-    serialized: @import("../parse_table/serialize.zig").SerializedTable,
+    snapshot: result_model.BlockedBoundarySnapshot,
 ) ![]const u8 {
-    var unresolved_states: usize = 0;
-    var unresolved_entries: usize = 0;
-    var shift_reduce: usize = 0;
-    var reduce_reduce_deferred: usize = 0;
-    var multiple_candidates: usize = 0;
-    var unsupported_action_mix: usize = 0;
-
     var samples = std.array_list.Managed([]const u8).init(allocator);
     defer {
         for (samples.items) |sample| allocator.free(sample);
         samples.deinit();
     }
 
-    for (serialized.states) |state_value| {
-        if (state_value.unresolved.len == 0) continue;
-        unresolved_states += 1;
-        unresolved_entries += state_value.unresolved.len;
-
-        for (state_value.unresolved) |entry| {
-            switch (entry.reason) {
-                .shift_reduce => shift_reduce += 1,
-                .reduce_reduce_deferred => reduce_reduce_deferred += 1,
-                .multiple_candidates => multiple_candidates += 1,
-                .unsupported_action_mix => unsupported_action_mix += 1,
-            }
-
-            if (samples.items.len < 4) {
-                try samples.append(try std.fmt.allocPrint(
-                    allocator,
-                    "state {d} {s} {s} candidates={d}",
-                    .{
-                        state_value.id,
-                        symbolRefLabel(entry.symbol),
-                        @tagName(entry.reason),
-                        entry.candidate_actions.len,
-                    },
-                ));
-            }
-        }
+    for (snapshot.samples) |sample| {
+        try samples.append(try std.fmt.allocPrint(
+            allocator,
+            "state {d} {s}:{d} ({s}) {s} candidates={d} actions=[{s}]",
+            .{
+                sample.state_id,
+                @tagName(sample.symbol_kind),
+                sample.symbol_index,
+                sample.symbol_name,
+                sample.reason,
+                sample.candidate_count,
+                sample.candidate_actions_summary,
+            },
+        ));
     }
 
     var sample_text = std.array_list.Managed(u8).init(allocator);
@@ -301,41 +295,213 @@ fn summarizeBlockedBoundaryAlloc(
         try sample_writer.writeAll(sample);
     }
 
+    const dominant_text = try formatDominantSignaturesAlloc(allocator, snapshot.dominant_signatures);
+    defer allocator.free(dominant_text);
+
     return try std.fmt.allocPrint(
         allocator,
-        "blocked boundary summary: states={d}, entries={d}, reasons={{shift_reduce:{d}, reduce_reduce_deferred:{d}, multiple_candidates:{d}, unsupported_action_mix:{d}}}, samples=[{s}]",
+        "blocked boundary summary: states={d}, entries={d}, reasons={{shift_reduce:{d}, reduce_reduce_deferred:{d}, multiple_candidates:{d}, unsupported_action_mix:{d}}}, dominant_signatures=[{s}], samples=[{s}]",
         .{
-            unresolved_states,
-            unresolved_entries,
-            shift_reduce,
-            reduce_reduce_deferred,
-            multiple_candidates,
-            unsupported_action_mix,
+            snapshot.unresolved_state_count,
+            snapshot.unresolved_entry_count,
+            snapshot.reasons.shift_reduce,
+            snapshot.reasons.reduce_reduce_deferred,
+            snapshot.reasons.multiple_candidates,
+            snapshot.reasons.unsupported_action_mix,
+            dominant_text,
             sample_text.items,
         },
     );
 }
 
 fn classifyBlockedBoundary(
-    serialized: @import("../parse_table/serialize.zig").SerializedTable,
+    snapshot: result_model.BlockedBoundarySnapshot,
 ) result_model.MismatchCategory {
-    var saw_unresolved = false;
-    for (serialized.states) |state_value| {
-        for (state_value.unresolved) |entry| {
-            saw_unresolved = true;
-            if (entry.reason != .shift_reduce) return .parse_table_construction_gap;
-        }
+    const reasons = snapshot.reasons;
+    if (reasons.shift_reduce > 0 and
+        reasons.reduce_reduce_deferred == 0 and
+        reasons.multiple_candidates == 0 and
+        reasons.unsupported_action_mix == 0)
+    {
+        return .shift_reduce_boundary;
     }
-
-    if (saw_unresolved) return .shift_reduce_boundary;
     return .parse_table_construction_gap;
 }
 
-fn symbolRefLabel(symbol: @import("../ir/syntax_grammar.zig").SymbolRef) []const u8 {
+fn buildBlockedBoundarySnapshotAlloc(
+    allocator: std.mem.Allocator,
+    serialized: @import("../parse_table/serialize.zig").SerializedTable,
+    extracted: extract_tokens.ExtractedGrammars,
+) !result_model.BlockedBoundarySnapshot {
+    var unresolved_state_count: usize = 0;
+    var unresolved_entry_count: usize = 0;
+    var reasons = result_model.BlockedBoundaryReasonCounts{};
+    var samples = std.array_list.Managed(result_model.BlockedBoundarySample).init(allocator);
+    defer samples.deinit();
+    var signature_counts = std.array_list.Managed(result_model.BlockedBoundarySignature).init(allocator);
+    defer {
+        for (signature_counts.items) |signature| {
+            allocator.free(signature.symbol_name);
+            allocator.free(signature.reason);
+            allocator.free(signature.candidate_actions_summary);
+        }
+        signature_counts.deinit();
+    }
+
+    for (serialized.states) |state_value| {
+        if (state_value.unresolved.len == 0) continue;
+        unresolved_state_count += 1;
+        unresolved_entry_count += state_value.unresolved.len;
+
+        for (state_value.unresolved) |entry| {
+            switch (entry.reason) {
+                .shift_reduce => reasons.shift_reduce += 1,
+                .reduce_reduce_deferred => reasons.reduce_reduce_deferred += 1,
+                .multiple_candidates => reasons.multiple_candidates += 1,
+                .unsupported_action_mix => reasons.unsupported_action_mix += 1,
+            }
+
+            const symbol_name = symbolNameFor(extracted, entry.symbol);
+            const candidate_actions_summary = try formatCandidateActionsAlloc(allocator, entry.candidate_actions);
+            defer allocator.free(candidate_actions_summary);
+            try recordDominantSignature(allocator, &signature_counts, symbol_name, @tagName(entry.reason), candidate_actions_summary);
+
+            if (samples.items.len < 6) {
+                const symbol_parts = symbolParts(entry.symbol);
+                try samples.append(.{
+                    .state_id = state_value.id,
+                    .symbol_kind = symbol_parts.kind,
+                    .symbol_index = symbol_parts.index,
+                    .symbol_name = try allocator.dupe(u8, symbol_name),
+                    .reason = try allocator.dupe(u8, @tagName(entry.reason)),
+                    .candidate_count = entry.candidate_actions.len,
+                    .candidate_actions_summary = try allocator.dupe(u8, candidate_actions_summary),
+                });
+            }
+        }
+    }
+
+    sortDominantSignatures(signature_counts.items);
+    const dominant_len = @min(signature_counts.items.len, 8);
+    const dominant_signatures = try allocator.alloc(result_model.BlockedBoundarySignature, dominant_len);
+    for (signature_counts.items[0..dominant_len], 0..) |signature, index| {
+        dominant_signatures[index] = .{
+            .symbol_name = try allocator.dupe(u8, signature.symbol_name),
+            .reason = try allocator.dupe(u8, signature.reason),
+            .candidate_actions_summary = try allocator.dupe(u8, signature.candidate_actions_summary),
+            .count = signature.count,
+        };
+    }
+
+    return .{
+        .unresolved_state_count = unresolved_state_count,
+        .unresolved_entry_count = unresolved_entry_count,
+        .reasons = reasons,
+        .samples = try samples.toOwnedSlice(),
+        .dominant_signatures = dominant_signatures,
+    };
+}
+
+fn symbolNameFor(extracted: extract_tokens.ExtractedGrammars, symbol: @import("../ir/syntax_grammar.zig").SymbolRef) []const u8 {
     return switch (symbol) {
-        .terminal => "terminal",
-        .non_terminal => "non_terminal",
-        .external => "external",
+        .terminal => |index| if (index < extracted.lexical.variables.len)
+            extracted.lexical.variables[index].name
+        else
+            "<unknown-terminal>",
+        .non_terminal => |index| if (index < extracted.syntax.variables.len)
+            extracted.syntax.variables[index].name
+        else
+            "<unknown-non-terminal>",
+        .external => |index| if (index < extracted.syntax.external_tokens.len)
+            extracted.syntax.external_tokens[index].name
+        else
+            "<unknown-external>",
+    };
+}
+
+fn formatCandidateActionsAlloc(
+    allocator: std.mem.Allocator,
+    candidate_actions: []const @import("../parse_table/actions.zig").ParseAction,
+) ![]const u8 {
+    var out = std.array_list.Managed(u8).init(allocator);
+    defer out.deinit();
+
+    const writer = out.writer();
+    for (candidate_actions, 0..) |action, index| {
+        if (index > 0) try writer.writeAll(", ");
+        switch (action) {
+            .shift => |state_id| try writer.print("shift:{d}", .{state_id}),
+            .reduce => |production_id| try writer.print("reduce:{d}", .{production_id}),
+            .accept => try writer.writeAll("accept"),
+        }
+    }
+
+    return try out.toOwnedSlice();
+}
+
+fn recordDominantSignature(
+    allocator: std.mem.Allocator,
+    signatures: *std.array_list.Managed(result_model.BlockedBoundarySignature),
+    symbol_name: []const u8,
+    reason: []const u8,
+    candidate_actions_summary: []const u8,
+) !void {
+    for (signatures.items) |*signature| {
+        if (!std.mem.eql(u8, signature.symbol_name, symbol_name)) continue;
+        if (!std.mem.eql(u8, signature.reason, reason)) continue;
+        if (!std.mem.eql(u8, signature.candidate_actions_summary, candidate_actions_summary)) continue;
+        signature.count += 1;
+        return;
+    }
+
+    try signatures.append(.{
+        .symbol_name = try allocator.dupe(u8, symbol_name),
+        .reason = try allocator.dupe(u8, reason),
+        .candidate_actions_summary = try allocator.dupe(u8, candidate_actions_summary),
+        .count = 1,
+    });
+}
+
+fn sortDominantSignatures(signatures: []result_model.BlockedBoundarySignature) void {
+    std.mem.sort(result_model.BlockedBoundarySignature, signatures, {}, struct {
+        fn lessThan(_: void, left: result_model.BlockedBoundarySignature, right: result_model.BlockedBoundarySignature) bool {
+            if (left.count != right.count) return left.count > right.count;
+            const name_order = std.mem.order(u8, left.symbol_name, right.symbol_name);
+            if (name_order != .eq) return name_order == .lt;
+            const action_order = std.mem.order(u8, left.candidate_actions_summary, right.candidate_actions_summary);
+            if (action_order != .eq) return action_order == .lt;
+            return std.mem.order(u8, left.reason, right.reason) == .lt;
+        }
+    }.lessThan);
+}
+
+fn formatDominantSignaturesAlloc(
+    allocator: std.mem.Allocator,
+    signatures: []const result_model.BlockedBoundarySignature,
+) ![]const u8 {
+    var out = std.array_list.Managed(u8).init(allocator);
+    defer out.deinit();
+
+    const writer = out.writer();
+    for (signatures, 0..) |signature, index| {
+        if (index > 0) try writer.writeAll("; ");
+        try writer.print(
+            "{s} {s} actions=[{s}] count={d}",
+            .{ signature.symbol_name, signature.reason, signature.candidate_actions_summary, signature.count },
+        );
+    }
+
+    return try out.toOwnedSlice();
+}
+
+fn symbolParts(symbol: @import("../ir/syntax_grammar.zig").SymbolRef) struct {
+    kind: result_model.BlockedSymbolKind,
+    index: u32,
+} {
+    return switch (symbol) {
+        .terminal => |index| .{ .kind = .terminal, .index = index },
+        .non_terminal => |index| .{ .kind = .non_terminal, .index = index },
+        .external => |index| .{ .kind = .external, .index = index },
     };
 }
 
@@ -444,10 +610,19 @@ test "runShortlistTargetsAlloc records blocked-boundary summaries for deferred Z
 
     try std.testing.expectEqual(result_model.MismatchCategory.shift_reduce_boundary, runs[3].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.shift_reduce_boundary, runs[4].mismatch_category);
+    try std.testing.expect(runs[3].blocked_boundary != null);
+    try std.testing.expect(runs[4].blocked_boundary != null);
     try std.testing.expect(runs[3].emit_parser_c.detail != null);
     try std.testing.expect(runs[4].emit_parser_c.detail != null);
     try std.testing.expect(std.mem.indexOf(u8, runs[3].emit_parser_c.detail.?, "blocked boundary summary:") != null);
     try std.testing.expect(std.mem.indexOf(u8, runs[4].emit_parser_c.detail.?, "blocked boundary summary:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[3].emit_parser_c.detail.?, "dominant_signatures=[") != null);
     try std.testing.expect(std.mem.indexOf(u8, runs[3].emit_parser_c.detail.?, "shift_reduce") != null);
     try std.testing.expect(std.mem.indexOf(u8, runs[4].emit_parser_c.detail.?, "shift_reduce") != null);
+    try std.testing.expectEqual(@as(usize, 177), runs[3].blocked_boundary.?.reasons.shift_reduce);
+    try std.testing.expectEqual(@as(usize, 36), runs[4].blocked_boundary.?.reasons.shift_reduce);
+    try std.testing.expect(runs[3].blocked_boundary.?.samples[0].symbol_name.len > 0);
+    try std.testing.expect(runs[4].blocked_boundary.?.samples[0].candidate_actions_summary.len > 0);
+    try std.testing.expect(runs[3].blocked_boundary.?.dominant_signatures.len > 0);
+    try std.testing.expect(runs[4].blocked_boundary.?.dominant_signatures[0].count > 0);
 }

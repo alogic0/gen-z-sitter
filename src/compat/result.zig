@@ -60,6 +60,123 @@ pub const EmissionSnapshot = struct {
     parser_c_bytes: usize,
 };
 
+pub const BlockedSymbolKind = enum {
+    terminal,
+    non_terminal,
+    external,
+};
+
+pub const BlockedBoundaryReasonCounts = struct {
+    shift_reduce: usize = 0,
+    reduce_reduce_deferred: usize = 0,
+    multiple_candidates: usize = 0,
+    unsupported_action_mix: usize = 0,
+};
+
+pub const BlockedBoundarySample = struct {
+    state_id: u32,
+    symbol_kind: BlockedSymbolKind,
+    symbol_index: u32,
+    symbol_name: []const u8,
+    reason: []const u8,
+    candidate_count: usize,
+    candidate_actions_summary: []const u8,
+
+    pub fn cloneAlloc(self: BlockedBoundarySample, allocator: std.mem.Allocator) !BlockedBoundarySample {
+        return .{
+            .state_id = self.state_id,
+            .symbol_kind = self.symbol_kind,
+            .symbol_index = self.symbol_index,
+            .symbol_name = try allocator.dupe(u8, self.symbol_name),
+            .reason = try allocator.dupe(u8, self.reason),
+            .candidate_count = self.candidate_count,
+            .candidate_actions_summary = try allocator.dupe(u8, self.candidate_actions_summary),
+        };
+    }
+};
+
+pub const BlockedBoundarySignature = struct {
+    symbol_name: []const u8,
+    reason: []const u8,
+    candidate_actions_summary: []const u8,
+    count: usize,
+
+    pub fn cloneAlloc(self: BlockedBoundarySignature, allocator: std.mem.Allocator) !BlockedBoundarySignature {
+        return .{
+            .symbol_name = try allocator.dupe(u8, self.symbol_name),
+            .reason = try allocator.dupe(u8, self.reason),
+            .candidate_actions_summary = try allocator.dupe(u8, self.candidate_actions_summary),
+            .count = self.count,
+        };
+    }
+};
+
+pub const BlockedBoundarySnapshot = struct {
+    unresolved_state_count: usize,
+    unresolved_entry_count: usize,
+    reasons: BlockedBoundaryReasonCounts,
+    samples: []const BlockedBoundarySample,
+    dominant_signatures: []const BlockedBoundarySignature,
+
+    pub fn cloneAlloc(self: BlockedBoundarySnapshot, allocator: std.mem.Allocator) !BlockedBoundarySnapshot {
+        const cloned_samples = try allocator.alloc(BlockedBoundarySample, self.samples.len);
+        var initialized: usize = 0;
+        errdefer {
+            for (cloned_samples[0..initialized]) |cloned_sample| {
+                allocator.free(cloned_sample.symbol_name);
+                allocator.free(cloned_sample.reason);
+                allocator.free(cloned_sample.candidate_actions_summary);
+            }
+            allocator.free(cloned_samples);
+        }
+
+        const cloned_signatures = try allocator.alloc(BlockedBoundarySignature, self.dominant_signatures.len);
+        var initialized_signatures: usize = 0;
+        errdefer {
+            for (cloned_signatures[0..initialized_signatures]) |cloned_signature| {
+                allocator.free(cloned_signature.symbol_name);
+                allocator.free(cloned_signature.reason);
+                allocator.free(cloned_signature.candidate_actions_summary);
+            }
+            allocator.free(cloned_signatures);
+        }
+
+        for (self.samples, 0..) |sample, index| {
+            cloned_samples[index] = try sample.cloneAlloc(allocator);
+            initialized += 1;
+        }
+
+        for (self.dominant_signatures, 0..) |signature, index| {
+            cloned_signatures[index] = try signature.cloneAlloc(allocator);
+            initialized_signatures += 1;
+        }
+
+        return .{
+            .unresolved_state_count = self.unresolved_state_count,
+            .unresolved_entry_count = self.unresolved_entry_count,
+            .reasons = self.reasons,
+            .samples = cloned_samples,
+            .dominant_signatures = cloned_signatures,
+        };
+    }
+
+    pub fn deinit(self: *BlockedBoundarySnapshot, allocator: std.mem.Allocator) void {
+        for (self.samples) |sample| {
+            allocator.free(sample.symbol_name);
+            allocator.free(sample.reason);
+            allocator.free(sample.candidate_actions_summary);
+        }
+        allocator.free(self.samples);
+        for (self.dominant_signatures) |signature| {
+            allocator.free(signature.symbol_name);
+            allocator.free(signature.reason);
+            allocator.free(signature.candidate_actions_summary);
+        }
+        allocator.free(self.dominant_signatures);
+        self.* = undefined;
+    }
+};
+
 pub const TargetRunResult = struct {
     id: []const u8,
     display_name: []const u8,
@@ -82,6 +199,7 @@ pub const TargetRunResult = struct {
     compat_check: StepResult = .{},
     compile_smoke: StepResult = .{},
     emission: ?EmissionSnapshot = null,
+    blocked_boundary: ?BlockedBoundarySnapshot = null,
 
     pub fn init(target: targets.Target) TargetRunResult {
         return .{
@@ -106,6 +224,7 @@ pub const TargetRunResult = struct {
         self.emit_parser_c.deinit(allocator);
         self.compat_check.deinit(allocator);
         self.compile_smoke.deinit(allocator);
+        if (self.blocked_boundary) |*blocked_boundary| blocked_boundary.deinit(allocator);
         self.* = undefined;
     }
 };

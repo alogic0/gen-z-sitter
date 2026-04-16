@@ -23,6 +23,8 @@ Versioned artifacts:
   - full per-target machine-readable harness report
 - `shortlist_mismatch_inventory.json`
   - classified mismatch and deferred/out-of-scope inventory
+- `shortlist_shift_reduce_profile.json`
+  - focused machine-readable profile for deferred targets currently blocked only by unresolved `shift_reduce` decisions, including readable symbol names, candidate-action summaries, and dominant repeated signatures
 - `coverage_decision.json`
   - current closeout decision and recommended next promoted milestone
 - `../update_compat_artifacts.zig`
@@ -34,6 +36,7 @@ Current staged boundary summary:
 - 2 real external parser-only snapshots are now onboarded as deferred later-wave targets:
   - `tree_sitter_ziggy_json`
   - `tree_sitter_ziggy_schema_json`
+  - both now have a dedicated checked-in `shift_reduce` blocker profile instead of only a free-form summary string
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`
 - 1 external-scanner target is tracked explicitly as out of scope

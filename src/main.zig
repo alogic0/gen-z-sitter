@@ -54,6 +54,7 @@ test {
     _ = @import("compat/mismatch_inventory.zig");
     _ = @import("compat/report_json.zig");
     _ = @import("compat/shortlist_json.zig");
+    _ = @import("compat/shift_reduce_profile.zig");
     _ = @import("behavioral/harness.zig");
     _ = @import("cli/args.zig");
     _ = @import("cli/command_generate.zig");

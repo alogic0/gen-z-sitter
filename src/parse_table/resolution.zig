@@ -464,25 +464,29 @@ fn extractShiftResolutionMetadata(
         if (!symbolRefEql(step.symbol, shift_symbol)) continue;
 
         saw_match = true;
-
-        switch (step.precedence) {
-            .integer => |value| {
-                if (metadata.max_integer_precedence == null or value > metadata.max_integer_precedence.?) {
-                    metadata.max_integer_precedence = value;
-                }
-            },
-            .name => |value| {
-                if (metadata.named_precedence == null) metadata.named_precedence = value;
-            },
-            else => {},
-        }
-
-        if (step.associativity != .none and metadata.associativity == null) {
-            metadata.associativity = step.associativity;
-        }
+        metadata = mergeResolutionMetadata(metadata, extractResolutionMetadata(production));
     }
 
     return if (saw_match) metadata else null;
+}
+
+fn mergeResolutionMetadata(
+    existing: ProductionResolutionMetadata,
+    candidate: ProductionResolutionMetadata,
+) ProductionResolutionMetadata {
+    var merged = existing;
+
+    if (candidate.max_integer_precedence) |value| {
+        if (merged.max_integer_precedence == null or value > merged.max_integer_precedence.?) {
+            merged.max_integer_precedence = value;
+        }
+    }
+
+    if (merged.named_precedence == null) merged.named_precedence = candidate.named_precedence;
+    if (merged.associativity == null) merged.associativity = candidate.associativity;
+    merged.dynamic_precedence += candidate.dynamic_precedence;
+
+    return merged;
 }
 
 fn findState(states: []const state.ParseState, state_id: state.StateId) ?state.ParseState {
@@ -1549,6 +1553,87 @@ test "resolveActionTable uses shift-side named precedence from the current state
         parse_states[0..],
         grouped,
     );
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
+}
+
+test "resolveActionTable uses production-level shift precedence from the current state when the conflicted step itself has none" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const reduce_steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .non_terminal = 1 },
+            .precedence = .{ .integer = 1 },
+        },
+    };
+    const shift_steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .non_terminal = 1 },
+            .precedence = .{ .integer = 2 },
+        },
+        .{ .symbol = .{ .terminal = 0 } },
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = reduce_steps[0..] },
+        .{ .lhs = 1, .steps = shift_steps[0..] },
+    };
+
+    const parse_items = [_]item.ParseItem{
+        .{
+            .production_id = 1,
+            .step_index = 1,
+            .lookahead = .{ .terminal = 0 },
+        },
+        .{
+            .production_id = 2,
+            .step_index = 1,
+            .lookahead = null,
+        },
+    };
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 6,
+            .items = parse_items[0..],
+            .transitions = &.{},
+            .conflicts = &.{},
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 6,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, parse_states[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
             for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
