@@ -390,6 +390,8 @@ Current partial progress for this stage:
   - out-of-scope scanner boundary
   - infrastructure failure
 - excluded shortlist candidates are now reported explicitly as out-of-scope instead of being silently omitted
+- the current generated inventory is now also checked in as:
+  - `compat_targets/shortlist_inventory.json`
 - a fuller mismatch inventory for real later-wave failures is still pending
 
 Current boundary summary from the generated inventory surface:
@@ -423,6 +425,12 @@ This report may be:
 - a deterministic generated JSON artifact
 - a deterministic text report if JSON is premature
 
+Current result:
+
+- the deterministic generated JSON artifact now also has a checked-in golden form:
+  - `compat_targets/shortlist_inventory.json`
+- tests now verify that the rendered inventory report still matches that checked-in artifact
+
 ### 9. Tighten docs to the new parser-only real-repo boundary
 
 - [ ] update milestone docs after the harness result boundary is real
@@ -435,6 +443,15 @@ Docs that may need follow-up after the harness exists:
 
 - `MASTER_PLAN_2.md`
 - `MILESTONES_21.md`
+
+Current partial progress for this stage:
+
+- `README.md` now points to the versioned parser-only shortlist and checked-in inventory artifact under `compat_targets/`
+- `compatibility-matrix.md` now distinguishes:
+  - curated fixture and harness proof
+  - the narrower parser-only shortlist boundary
+  - explicitly deferred scanner/external-scanner coverage
+- broader milestone-plan follow-up docs are still pending
 - `README.md`
 - `compatibility-matrix.md`
 

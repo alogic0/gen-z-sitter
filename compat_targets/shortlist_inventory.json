@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "boundary": {
+    "total_shortlist_targets": 5,
+    "first_wave_targets": 3,
+    "first_wave_passed": 3,
+    "first_wave_non_passing": 0,
+    "deferred_targets": 1,
+    "excluded_targets": 1,
+    "blocked_targets": 2
+  },
+  "in_scope_failures": [],
+  "out_of_scope_targets": [
+    {
+      "id": "hidden_external_fields_json",
+      "display_name": "Hidden External Fields (JSON)",
+      "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
+      "candidate_status": "excluded_out_of_scope",
+      "final_classification": "out_of_scope_for_scanner_boundary",
+      "mismatch_category": "out_of_scope_scanner_boundary",
+      "first_failed_stage": "load",
+      "detail": "target is excluded from parser-only execution: requires external scanner handling outside the current parser-only boundary",
+      "notes": "requires external scanner handling outside the current parser-only boundary"
+    }
+  ],
+  "deferred_targets": [
+    {
+      "id": "parse_table_conflict_json",
+      "display_name": "Parse Table Conflict (JSON)",
+      "grammar_path": "compat_targets/parse_table_conflict/grammar.json",
+      "candidate_status": "deferred_later_wave",
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "first_failed_stage": null,
+      "detail": null,
+      "notes": "parser-only ambiguity case deferred until mismatch classification is richer"
+    }
+  ]
+}

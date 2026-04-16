@@ -91,6 +91,13 @@ What the repo can credibly claim today:
   - compile smoke tests
   - structural compatibility checks
   - local behavioral harness checks
+- parser-only compatibility coverage now also has a versioned shortlist and checked-in boundary artifact:
+  - `compat_targets/shortlist.json`
+  - `compat_targets/shortlist_inventory.json`
+- the current parser-only shortlist boundary is narrower than real external-repo proof:
+  - 3 intended first-wave parser-only targets currently pass within the staged boundary
+  - 1 deferred later-wave target is tracked separately for mismatch expansion
+  - 1 external-scanner target is tracked explicitly as out of scope
 - compatibility-sensitive behavioral proof currently covers:
   - `behavioral_config`
   - `hidden_external_fields`
