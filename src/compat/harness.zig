@@ -157,6 +157,48 @@ pub fn runTarget(
             );
         }
 
+        const invalid_input_path = target.scanner_invalid_input_path orelse
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(allocator, "scanner target is missing an invalid input path: {s}", .{target.id}),
+            );
+        const invalid_input = std.fs.cwd().readFileAlloc(arena.allocator(), invalid_input_path, 64 * 1024) catch |err| {
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .infrastructure_failure,
+                .infrastructure_failure,
+                try std.fmt.allocPrint(allocator, "failed to read scanner invalid input {s}: {s}", .{ invalid_input_path, @errorName(err) }),
+            );
+        };
+
+        const invalid_simulation = behavioral_harness.simulatePreparedWithFirstExternalBoundary(
+            arena.allocator(),
+            prepared,
+            invalid_input,
+        ) catch |err| {
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(allocator, "scanner invalid-path simulation failed: {s}", .{@errorName(err)}),
+            );
+        };
+
+        if (!(progressOf(simulation) > progressOf(invalid_simulation))) {
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(allocator, "scanner invalid path did not make less progress than the valid path for {s}", .{target.id}),
+            );
+        }
+
         run.scanner_boundary_check.status = .passed;
         return run;
     }
@@ -335,6 +377,13 @@ fn isCompatibilitySafeValidResult(result: behavioral_harness.SimulationResult) b
     return switch (result) {
         .accepted => |accepted| accepted.consumed_bytes > 0 and accepted.shifted_tokens > 0,
         .rejected => |rejected| rejected.consumed_bytes > 0 and rejected.shifted_tokens > 0 and rejected.reason != .unresolved_decision and rejected.reason != .missing_goto,
+    };
+}
+
+fn progressOf(result: behavioral_harness.SimulationResult) usize {
+    return switch (result) {
+        .accepted => |accepted| accepted.consumed_bytes,
+        .rejected => |rejected| rejected.consumed_bytes,
     };
 }
 
@@ -766,6 +815,7 @@ test "runShortlistTargetsAlloc promotes scanner-wave targets through the staged 
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[6].serialize.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[6].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[6].final_classification);
+    try std.testing.expect(std.mem.indexOf(u8, runs[6].success_criteria, "invalid path makes less progress") != null);
 
     try std.testing.expectEqualStrings("hidden_external_fields_js", runs[7].id);
     try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[7].candidate_status);
@@ -774,4 +824,5 @@ test "runShortlistTargetsAlloc promotes scanner-wave targets through the staged 
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].serialize.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
+    try std.testing.expect(std.mem.indexOf(u8, runs[7].success_criteria, "invalid path makes less progress") != null);
 }

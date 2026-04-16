@@ -100,7 +100,7 @@ What the repo can credibly claim today:
   - 5 intended first-wave parser-only targets currently pass within the staged boundary
   - 1 staged deferred target remains intentionally frozen as an ambiguity/control fixture
   - 2 staged scanner/external-scanner targets now pass within the first staged scanner boundary
-- scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the first staged boundary plus compatibility-safe valid-path behavior
+- scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the first staged boundary plus compatibility-safe valid-path behavior and weaker invalid-path progress
 - compatibility-sensitive behavioral proof currently covers:
   - `behavioral_config`
   - `hidden_external_fields`

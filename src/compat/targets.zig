@@ -40,6 +40,7 @@ pub const Target = struct {
     candidate_status: CandidateStatus,
     expected_blocked: bool = false,
     scanner_valid_input_path: ?[]const u8 = null,
+    scanner_invalid_input_path: ?[]const u8 = null,
     notes: []const u8,
     success_criteria: []const u8,
 };
@@ -137,8 +138,9 @@ pub const shortlist_targets = [_]Target{
         .candidate_status = .intended_scanner_wave,
         .expected_blocked = false,
         .scanner_valid_input_path = "compat_targets/hidden_external_fields/valid.txt",
-        .notes = "staged external-scanner JSON target promoted into the first scanner wave when the valid path stays compatibility-safe through the first external boundary",
-        .success_criteria = "load, prepare, extract the first external-scanner boundary, and keep the valid-path simulation compatibility-safe",
+        .scanner_invalid_input_path = "compat_targets/hidden_external_fields/invalid.txt",
+        .notes = "staged external-scanner JSON target promoted into the first scanner wave when the valid path stays compatibility-safe and the invalid path makes less progress through the first external boundary",
+        .success_criteria = "load, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress",
     },
     .{
         .id = "hidden_external_fields_js",
@@ -150,8 +152,9 @@ pub const shortlist_targets = [_]Target{
         .candidate_status = .intended_scanner_wave,
         .expected_blocked = false,
         .scanner_valid_input_path = "compat_targets/hidden_external_fields/valid.txt",
-        .notes = "staged external-scanner JS target promoted into the first scanner wave when the valid path stays compatibility-safe through the node loader and first external boundary",
-        .success_criteria = "load through node, prepare, extract the first external-scanner boundary, and keep the valid-path simulation compatibility-safe",
+        .scanner_invalid_input_path = "compat_targets/hidden_external_fields/invalid.txt",
+        .notes = "staged external-scanner JS target promoted into the first scanner wave when the valid path stays compatibility-safe and the invalid path makes less progress through the node loader and first external boundary",
+        .success_criteria = "load through node, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress",
     },
 };
 
@@ -173,6 +176,7 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[6].candidate_status == .intended_scanner_wave);
     try std.testing.expect(shortlist[7].boundary_kind == .scanner_external_scanner);
     try std.testing.expect(shortlist[7].scanner_valid_input_path != null);
+    try std.testing.expect(shortlist[7].scanner_invalid_input_path != null);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {

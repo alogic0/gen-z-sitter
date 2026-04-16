@@ -119,7 +119,7 @@ Acceptance:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`
 - `parse_table_conflict_json` remains the only deferred control fixture
-- this milestone still does not claim full scanner/runtime parity; it only proves the first staged external-scanner boundary with compatibility-safe valid-path behavior
+- this milestone still does not claim full scanner/runtime parity; it only proves the first staged external-scanner boundary with compatibility-safe valid-path behavior and weaker invalid-path progress
 
 ## Non-Goals
 

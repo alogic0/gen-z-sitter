@@ -42,7 +42,7 @@ Current staged boundary summary:
 - 2 staged scanner/external-scanner targets now pass within the first scanner wave:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`
-  - both currently prove load, prepare, first external-boundary extraction, and compatibility-safe valid-path behavior
+  - both currently prove load, prepare, first external-boundary extraction, compatibility-safe valid-path behavior, and weaker invalid-path progress
 
 Recommended next step after this staged boundary:
 

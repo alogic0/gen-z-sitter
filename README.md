@@ -118,10 +118,11 @@ Current staged compatibility boundary:
 - the shortlist now also carries an initial promoted scanner wave:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`
-  - both currently prove load, prepare, first external-boundary extraction, and compatibility-safe valid-path behavior through the staged scanner boundary
+  - both currently prove load, prepare, first external-boundary extraction, compatibility-safe valid-path behavior, and weaker invalid-path progress through the staged scanner boundary
 - the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
+  - `hidden_external_fields` also proves that the invalid path makes less progress than the valid path through the first staged scanner boundary
   - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it now rejects on the staged blocked path as `missing_action` rather than advancing into a promoted parser-only pass
 - scanner/external-scanner proof is now staged as a narrow promoted wave rather than left entirely out of the shortlist
 - the current promoted milestone is scanner and external-scanner compatibility onboarding

@@ -101,8 +101,8 @@
       "upstream_repository": null,
       "upstream_revision": null,
       "upstream_grammar_path": null,
-      "why": "staged external-scanner JSON target promoted into the first scanner wave when the valid path stays compatibility-safe through the first external boundary",
-      "success_means": "load, prepare, extract the first external-scanner boundary, and keep the valid-path simulation compatibility-safe"
+      "why": "staged external-scanner JSON target promoted into the first scanner wave when the valid path stays compatibility-safe and the invalid path makes less progress through the first external boundary",
+      "success_means": "load, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress"
     },
     {
       "id": "hidden_external_fields_js",
@@ -114,8 +114,8 @@
       "upstream_repository": null,
       "upstream_revision": null,
       "upstream_grammar_path": null,
-      "why": "staged external-scanner JS target promoted into the first scanner wave when the valid path stays compatibility-safe through the node loader and first external boundary",
-      "success_means": "load through node, prepare, extract the first external-scanner boundary, and keep the valid-path simulation compatibility-safe"
+      "why": "staged external-scanner JS target promoted into the first scanner wave when the valid path stays compatibility-safe and the invalid path makes less progress through the node loader and first external boundary",
+      "success_means": "load through node, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress"
     }
   ]
 }
