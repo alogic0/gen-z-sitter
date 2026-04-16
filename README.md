@@ -25,6 +25,7 @@ What this means in practice:
 - the top-level `generate` path is currently most concrete for validation, debug dumps, `node-types.json`, and `--json-summary`
 - the parser-emission and compatibility layers are exercised mainly through lower-level tests, compile-smoke checks, structural compatibility checks, and the behavioral harness
 - the repo now also carries a versioned parser-only shortlist and a checked-in shortlist boundary artifact under `compat_targets/`
+- the repo now also carries a checked-in full shortlist run report under `compat_targets/`
 - the repo is still an in-progress rewrite rather than a drop-in replacement for upstream Tree-sitter
 
 What is still not a first-class top-level product surface:
@@ -100,8 +101,10 @@ Current staged compatibility boundary:
 
 - parser/runtime compatibility work is exercised primarily through lower-level emitter, golden, compile-smoke, structural-compatibility, and behavioral-harness tests
 - parser-only compatibility coverage now also has a versioned shortlist and checked-in inventory artifact:
+- parser-only compatibility coverage now also has versioned checked-in artifacts:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`
+  - `compat_targets/shortlist_report.json`
 - the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks

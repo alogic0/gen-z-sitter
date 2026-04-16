@@ -20,7 +20,7 @@ It does not assume broader lexer/scanner repo parity. It explicitly stays inside
 
 - [x] define the parser-only repo shortlist and acceptance rules
 - [ ] add a repeatable harness that runs the current generator against real parser-only grammars/repos
-- [ ] record generation, compile-smoke, and structural compatibility results in one place
+- [x] record generation, compile-smoke, and structural compatibility results in one place
 - [ ] make known parser-only repo mismatches explicit instead of anecdotal
 - [ ] establish concrete exit criteria for “parser-only compatibility coverage exists”
 
@@ -49,6 +49,13 @@ The third implementation slice is now landed as well:
   - deferred later-wave targets
   - out-of-scope scanner-boundary targets
 - the current parser-only compatibility boundary can now be stated from harness results instead of being inferred from scattered tests
+
+The fourth implementation slice is now landed as well:
+
+- the full shortlist run report is now also checked in as:
+  - `compat_targets/shortlist_report.json`
+- tests now lock both the boundary summary artifact and the full shortlist run report artifact to the current rendered harness output
+- generation, compile-smoke, structural-compatibility, and classification results now live in one versioned machine-readable artifact instead of only in test-only memory
 
 ## PR-Sized Slices
 
@@ -392,6 +399,8 @@ Current partial progress for this stage:
 - excluded shortlist candidates are now reported explicitly as out-of-scope instead of being silently omitted
 - the current generated inventory is now also checked in as:
   - `compat_targets/shortlist_inventory.json`
+- the full generated shortlist run report is now also checked in as:
+  - `compat_targets/shortlist_report.json`
 - a fuller mismatch inventory for real later-wave failures is still pending
 
 Current boundary summary from the generated inventory surface:
@@ -429,7 +438,8 @@ Current result:
 
 - the deterministic generated JSON artifact now also has a checked-in golden form:
   - `compat_targets/shortlist_inventory.json`
-- tests now verify that the rendered inventory report still matches that checked-in artifact
+  - `compat_targets/shortlist_report.json`
+- tests now verify that the rendered inventory and full shortlist report still match those checked-in artifacts
 
 ### 9. Tighten docs to the new parser-only real-repo boundary
 

@@ -101,3 +101,21 @@ test "renderRunReportAlloc emits deterministic structured JSON" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"results\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"mismatch_categories\"") != null);
 }
+
+test "renderRunReportAlloc matches the checked-in shortlist report artifact" {
+    const allocator = std.testing.allocator;
+    const harness = @import("harness.zig");
+
+    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
+    defer result_model.deinitRunResults(allocator, runs);
+
+    const rendered = try renderRunReportAlloc(allocator, runs);
+    defer allocator.free(rendered);
+
+    const expected = try std.fs.cwd().readFileAlloc(allocator, "compat_targets/shortlist_report.json", 1024 * 1024);
+    defer allocator.free(expected);
+
+    const normalized_expected = std.mem.trimRight(u8, expected, "\n");
+    const normalized_rendered = std.mem.trimRight(u8, rendered, "\n");
+    try std.testing.expectEqualStrings(normalized_expected, normalized_rendered);
+}

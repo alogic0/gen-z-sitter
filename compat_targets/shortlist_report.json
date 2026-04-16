@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "aggregate": {
+    "total_targets": 5,
+    "passed_within_current_boundary": 4,
+    "failed_due_to_parser_only_gap": 0,
+    "out_of_scope_for_scanner_boundary": 1,
+    "infrastructure_failure": 0,
+    "blocked_targets": 2,
+    "mismatch_categories": {
+      "grammar_input_load_mismatch": 0,
+      "preparation_lowering_mismatch": 0,
+      "parse_table_construction_gap": 0,
+      "emitted_surface_structural_gap": 0,
+      "compile_smoke_failure": 0,
+      "out_of_scope_scanner_boundary": 1,
+      "infrastructure_failure": 0
+    }
+  },
+  "results": [
+    {
+      "id": "parse_table_tiny_json",
+      "display_name": "Parse Table Tiny (JSON)",
+      "grammar_path": "compat_targets/parse_table_tiny/grammar.json",
+      "source_kind": "grammar_json",
+      "candidate_status": "intended_first_wave",
+      "expected_blocked": false,
+      "notes": "smallest staged parser-only JSON target",
+      "success_criteria": "load, prepare, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "load": {
+        "status": "passed",
+        "detail": null
+      },
+      "prepare": {
+        "status": "passed",
+        "detail": null
+      },
+      "serialize": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_c_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "passed",
+        "detail": null
+      },
+      "compat_check": {
+        "status": "passed",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "passed",
+        "detail": null
+      },
+      "emission": {
+        "blocked": false,
+        "serialized_state_count": 4,
+        "emitted_state_count": 2,
+        "merged_state_count": 2,
+        "action_entry_count": 1,
+        "goto_entry_count": 2,
+        "unresolved_entry_count": 0,
+        "parser_tables_bytes": 142,
+        "c_tables_bytes": 438,
+        "parser_c_bytes": 13853
+      }
+    },
+    {
+      "id": "behavioral_config_json",
+      "display_name": "Behavioral Config (JSON)",
+      "grammar_path": "compat_targets/behavioral_config/grammar.json",
+      "source_kind": "grammar_json",
+      "candidate_status": "intended_first_wave",
+      "expected_blocked": false,
+      "notes": "richer scanner-free JSON target",
+      "success_criteria": "load, prepare, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "load": {
+        "status": "passed",
+        "detail": null
+      },
+      "prepare": {
+        "status": "passed",
+        "detail": null
+      },
+      "serialize": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_c_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "passed",
+        "detail": null
+      },
+      "compat_check": {
+        "status": "passed",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "passed",
+        "detail": null
+      },
+      "emission": {
+        "blocked": false,
+        "serialized_state_count": 57,
+        "emitted_state_count": 45,
+        "merged_state_count": 12,
+        "action_entry_count": 84,
+        "goto_entry_count": 19,
+        "unresolved_entry_count": 0,
+        "parser_tables_bytes": 3580,
+        "c_tables_bytes": 9083,
+        "parser_c_bytes": 32011
+      }
+    },
+    {
+      "id": "repeat_choice_seq_js",
+      "display_name": "Repeat Choice Seq (JS)",
+      "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
+      "source_kind": "grammar_js",
+      "candidate_status": "intended_first_wave",
+      "expected_blocked": true,
+      "notes": "parser-only JS target that exercises the staged blocked boundary",
+      "success_criteria": "load through node, emit parser surfaces, and preserve the staged blocked boundary without infrastructure failure",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "load": {
+        "status": "passed",
+        "detail": null
+      },
+      "prepare": {
+        "status": "passed",
+        "detail": null
+      },
+      "serialize": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_c_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "passed",
+        "detail": null
+      },
+      "compat_check": {
+        "status": "passed",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "passed",
+        "detail": null
+      },
+      "emission": {
+        "blocked": true,
+        "serialized_state_count": 16,
+        "emitted_state_count": 16,
+        "merged_state_count": 0,
+        "action_entry_count": 25,
+        "goto_entry_count": 14,
+        "unresolved_entry_count": 3,
+        "parser_tables_bytes": 1471,
+        "c_tables_bytes": 3682,
+        "parser_c_bytes": 20344
+      }
+    },
+    {
+      "id": "parse_table_conflict_json",
+      "display_name": "Parse Table Conflict (JSON)",
+      "grammar_path": "compat_targets/parse_table_conflict/grammar.json",
+      "source_kind": "grammar_json",
+      "candidate_status": "deferred_later_wave",
+      "expected_blocked": true,
+      "notes": "parser-only ambiguity case deferred until mismatch classification is richer",
+      "success_criteria": "classify the unresolved conflict boundary explicitly before promoting it into the first-wave run set",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "load": {
+        "status": "passed",
+        "detail": null
+      },
+      "prepare": {
+        "status": "passed",
+        "detail": null
+      },
+      "serialize": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_c_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "passed",
+        "detail": null
+      },
+      "compat_check": {
+        "status": "passed",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "passed",
+        "detail": null
+      },
+      "emission": {
+        "blocked": true,
+        "serialized_state_count": 6,
+        "emitted_state_count": 6,
+        "merged_state_count": 0,
+        "action_entry_count": 4,
+        "goto_entry_count": 3,
+        "unresolved_entry_count": 1,
+        "parser_tables_bytes": 352,
+        "c_tables_bytes": 1149,
+        "parser_c_bytes": 15412
+      }
+    },
+    {
+      "id": "hidden_external_fields_json",
+      "display_name": "Hidden External Fields (JSON)",
+      "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
+      "source_kind": "grammar_json",
+      "candidate_status": "excluded_out_of_scope",
+      "expected_blocked": false,
+      "notes": "requires external scanner handling outside the current parser-only boundary",
+      "success_criteria": "remain explicitly excluded until external-scanner coverage is in scope",
+      "first_failed_stage": "load",
+      "final_classification": "out_of_scope_for_scanner_boundary",
+      "mismatch_category": "out_of_scope_scanner_boundary",
+      "load": {
+        "status": "failed",
+        "detail": "target is excluded from parser-only execution: requires external scanner handling outside the current parser-only boundary"
+      },
+      "prepare": {
+        "status": "not_run",
+        "detail": null
+      },
+      "serialize": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emit_parser_tables": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emit_c_tables": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "not_run",
+        "detail": null
+      },
+      "compat_check": {
+        "status": "not_run",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emission": null
+    }
+  ]
+}
