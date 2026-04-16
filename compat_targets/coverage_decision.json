@@ -17,18 +17,24 @@
       "notes": "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations"
     }
   ],
-  "out_of_scope_targets": [
+  "deferred_scanner_targets": [
     {
       "id": "hidden_external_fields_json",
       "display_name": "Hidden External Fields (JSON)",
       "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
-      "notes": "requires external scanner handling outside the current parser-only boundary"
+      "notes": "staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only"
+    },
+    {
+      "id": "hidden_external_fields_js",
+      "display_name": "Hidden External Fields (JS)",
+      "grammar_path": "compat_targets/hidden_external_fields/grammar.js",
+      "notes": "staged external-scanner JS target that mirrors the JSON fixture through the node loader path"
     }
   ],
-  "recommended_next_milestone": "broader_compatibility_polish",
+  "recommended_next_milestone": "scanner_and_external_scanner_compatibility_onboarding",
   "recommendation_rationale": [
     "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
     "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
-    "external-scanner cases remain explicitly out of scope, so the next milestone should broaden compatibility goals rather than continue second-wave parser-only repo onboarding"
+    "scanner and external-scanner targets are now onboarded as a deferred wave, so the current promoted milestone should focus on classifying and shrinking those scanner-specific gaps"
   ]
 }

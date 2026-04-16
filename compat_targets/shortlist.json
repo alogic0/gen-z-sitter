@@ -1,20 +1,21 @@
 {
   "schema_version": 1,
   "selection_rules": [
-    "grammar must not require external scanners for its primary parse path",
+    "parser-only first-wave targets must not require external scanners for their primary parse path",
+    "scanner-wave targets may depend on the first external-scanner boundary if that dependency is explicit and staged",
     "grammar should avoid depending on runtime surfaces that the repo does not yet claim",
     "grammar should be small enough to keep harness iteration cheap",
     "the shortlist should include more than one grammar style"
   ],
   "disqualification_rules": [
-    "requires external scanner support for the normal parse path",
-    "requires broader lexer or scanner parity than the current staged surface",
+    "requires broader scanner or runtime parity than the current staged surface",
     "depends on runtime or ABI surfaces explicitly deferred beyond current milestones",
     "is too large or brittle to serve as a stable first-wave harness target"
   ],
   "targets": [
     {
       "id": "parse_table_tiny_json",
+      "boundary_kind": "parser_only",
       "status": "intended_first_wave",
       "source_kind": "grammar_json",
       "origin_kind": "staged_in_repo",
@@ -27,6 +28,7 @@
     },
     {
       "id": "behavioral_config_json",
+      "boundary_kind": "parser_only",
       "status": "intended_first_wave",
       "source_kind": "grammar_json",
       "origin_kind": "staged_in_repo",
@@ -39,6 +41,7 @@
     },
     {
       "id": "repeat_choice_seq_js",
+      "boundary_kind": "parser_only",
       "status": "intended_first_wave",
       "source_kind": "grammar_js",
       "origin_kind": "staged_in_repo",
@@ -51,6 +54,7 @@
     },
     {
       "id": "tree_sitter_ziggy_json",
+      "boundary_kind": "parser_only",
       "status": "intended_first_wave",
       "source_kind": "grammar_json",
       "origin_kind": "external_repo_snapshot",
@@ -63,6 +67,7 @@
     },
     {
       "id": "tree_sitter_ziggy_schema_json",
+      "boundary_kind": "parser_only",
       "status": "intended_first_wave",
       "source_kind": "grammar_json",
       "origin_kind": "external_repo_snapshot",
@@ -75,7 +80,8 @@
     },
     {
       "id": "parse_table_conflict_json",
-      "status": "deferred_later_wave",
+      "boundary_kind": "parser_only",
+      "status": "deferred_control_fixture",
       "source_kind": "grammar_json",
       "origin_kind": "staged_in_repo",
       "grammar_path": "compat_targets/parse_table_conflict/grammar.json",
@@ -87,15 +93,29 @@
     },
     {
       "id": "hidden_external_fields_json",
-      "status": "excluded_out_of_scope",
+      "boundary_kind": "scanner_external_scanner",
+      "status": "deferred_scanner_wave",
       "source_kind": "grammar_json",
       "origin_kind": "staged_in_repo",
       "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
       "upstream_repository": null,
       "upstream_revision": null,
       "upstream_grammar_path": null,
-      "why": "requires external scanner handling outside the current parser-only boundary",
-      "success_means": "remain explicitly excluded until external-scanner coverage is in scope"
+      "why": "staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only",
+      "success_means": "load, prepare, and reach the staged external-scanner boundary while scanner-specific reporting remains explicit"
+    },
+    {
+      "id": "hidden_external_fields_js",
+      "boundary_kind": "scanner_external_scanner",
+      "status": "deferred_scanner_wave",
+      "source_kind": "grammar_js",
+      "origin_kind": "staged_in_repo",
+      "grammar_path": "compat_targets/hidden_external_fields/grammar.js",
+      "upstream_repository": null,
+      "upstream_revision": null,
+      "upstream_grammar_path": null,
+      "why": "staged external-scanner JS target that mirrors the JSON fixture through the node loader path",
+      "success_means": "load through node, prepare, and reach the staged external-scanner boundary while scanner-specific reporting remains explicit"
     }
   ]
 }

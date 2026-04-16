@@ -2,6 +2,26 @@
   "schema_version": 1,
   "first_wave_non_passing_count": 0,
   "parser_only_incompatibilities": [],
+  "scanner_boundary_targets": [
+    {
+      "id": "hidden_external_fields_json",
+      "display_name": "Hidden External Fields (JSON)",
+      "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
+      "candidate_status": "deferred_scanner_wave",
+      "first_failed_stage": "serialize",
+      "detail": "scanner target reached the staged external-scanner boundary after load and prepare: staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only",
+      "notes": "staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only"
+    },
+    {
+      "id": "hidden_external_fields_js",
+      "display_name": "Hidden External Fields (JS)",
+      "grammar_path": "compat_targets/hidden_external_fields/grammar.js",
+      "candidate_status": "deferred_scanner_wave",
+      "first_failed_stage": "serialize",
+      "detail": "scanner target reached the staged external-scanner boundary after load and prepare: staged external-scanner JS target that mirrors the JSON fixture through the node loader path",
+      "notes": "staged external-scanner JS target that mirrors the JSON fixture through the node loader path"
+    }
+  ],
   "grammar_input_shape_issues": [],
   "compile_surface_issues": [],
   "harness_limitations": [],
@@ -10,21 +30,31 @@
       "id": "parse_table_conflict_json",
       "display_name": "Parse Table Conflict (JSON)",
       "grammar_path": "compat_targets/parse_table_conflict/grammar.json",
-      "candidate_status": "deferred_later_wave",
+      "candidate_status": "deferred_control_fixture",
       "first_failed_stage": null,
       "detail": null,
       "notes": "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations"
     }
   ],
-  "out_of_scope_targets": [
+  "deferred_scanner_targets": [
     {
       "id": "hidden_external_fields_json",
       "display_name": "Hidden External Fields (JSON)",
       "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
-      "candidate_status": "excluded_out_of_scope",
-      "first_failed_stage": "load",
-      "detail": "target is excluded from parser-only execution: requires external scanner handling outside the current parser-only boundary",
-      "notes": "requires external scanner handling outside the current parser-only boundary"
+      "candidate_status": "deferred_scanner_wave",
+      "first_failed_stage": "serialize",
+      "detail": "scanner target reached the staged external-scanner boundary after load and prepare: staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only",
+      "notes": "staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only"
+    },
+    {
+      "id": "hidden_external_fields_js",
+      "display_name": "Hidden External Fields (JS)",
+      "grammar_path": "compat_targets/hidden_external_fields/grammar.js",
+      "candidate_status": "deferred_scanner_wave",
+      "first_failed_stage": "serialize",
+      "detail": "scanner target reached the staged external-scanner boundary after load and prepare: staged external-scanner JS target that mirrors the JSON fixture through the node loader path",
+      "notes": "staged external-scanner JS target that mirrors the JSON fixture through the node loader path"
     }
-  ]
+  ],
+  "out_of_scope_targets": []
 }

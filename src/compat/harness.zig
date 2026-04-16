@@ -13,6 +13,7 @@ const c_tables_emit = @import("../parser_emit/c_tables.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const compat_checks = @import("../parser_emit/compat_checks.zig");
 const emit_optimize = @import("../parser_emit/optimize.zig");
+const scanner_serialize = @import("../scanner/serialize.zig");
 
 pub const RunOptions = struct {
     optimize: emit_optimize.Options = .{},
@@ -91,6 +92,39 @@ pub fn runTarget(
         );
     };
     run.prepare.status = .passed;
+
+    if (target.boundary_kind == .scanner_external_scanner) {
+        const extracted = extract_tokens.extractTokens(arena.allocator(), prepared) catch |err| {
+            return failRun(
+                &run,
+                .serialize,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(allocator, "scanner-boundary token extraction failed: {s}", .{@errorName(err)}),
+            );
+        };
+        _ = scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax) catch |err| {
+            return failRun(
+                &run,
+                .serialize,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(allocator, "external-scanner boundary extraction failed: {s}", .{@errorName(err)}),
+            );
+        };
+
+        return failRun(
+            &run,
+            .serialize,
+            .deferred_for_scanner_boundary,
+            .scanner_external_scanner_boundary_gap,
+            try std.fmt.allocPrint(
+                allocator,
+                "scanner target reached the staged external-scanner boundary after load and prepare: {s}",
+                .{target.notes},
+            ),
+        );
+    }
 
     const serialized = parse_table_pipeline.serializeTableFromPrepared(arena.allocator(), prepared, .diagnostic) catch |err| {
         return failRun(
@@ -188,7 +222,7 @@ pub fn runTarget(
         );
     }
 
-    if (target.candidate_status == .deferred_later_wave and emission_stats.blocked) {
+    if (target.candidate_status == .deferred_control_fixture and emission_stats.blocked) {
         run.mismatch_category = .intentional_control_fixture;
     }
 
@@ -586,19 +620,20 @@ test "runTarget reports infrastructure failures for missing files" {
     try std.testing.expectEqual(result_model.StepStatus.failed, run.load.status);
 }
 
-test "runTarget reports out-of-scope classification for excluded shortlist candidates" {
+test "runTarget reports out-of-scope classification for explicitly excluded candidates" {
     const allocator = std.testing.allocator;
 
-    const shortlist = targets.shortlistTargets();
-    var excluded_target: ?targets.Target = null;
-    for (shortlist) |target| {
-        if (target.candidate_status == .excluded_out_of_scope) {
-            excluded_target = target;
-            break;
-        }
-    }
-
-    var run = try runTarget(allocator, excluded_target.?, .{});
+    var run = try runTarget(allocator, .{
+        .id = "excluded_scanner",
+        .display_name = "Excluded Scanner",
+        .grammar_path = "compat_targets/hidden_external_fields/grammar.json",
+        .source_kind = .grammar_json,
+        .boundary_kind = .scanner_external_scanner,
+        .provenance = .{ .origin_kind = .staged_in_repo },
+        .candidate_status = .excluded_out_of_scope,
+        .notes = "explicitly excluded compatibility case",
+        .success_criteria = "stay excluded",
+    }, .{});
     defer run.deinit(allocator);
 
     try std.testing.expectEqual(result_model.FinalClassification.out_of_scope_for_scanner_boundary, run.final_classification);
@@ -630,10 +665,11 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     const runs = try runShortlistTargetsAlloc(allocator, .{});
     defer result_model.deinitRunResults(allocator, runs);
 
-    try std.testing.expectEqual(@as(usize, 7), runs.len);
+    try std.testing.expectEqual(@as(usize, 8), runs.len);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.out_of_scope_for_scanner_boundary, runs[6].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[6].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[7].final_classification);
 }
 
 test "runShortlistTargetsAlloc promotes the external Ziggy targets and keeps only staged blocked controls" {
@@ -651,6 +687,8 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets and keeps onl
     try std.testing.expect(runs[5].blocked_boundary != null);
     try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[5].mismatch_category);
     try std.testing.expectEqual(@as(usize, 1), runs[5].blocked_boundary.?.reasons.shift_reduce);
+    try std.testing.expectEqual(result_model.MismatchCategory.scanner_external_scanner_boundary_gap, runs[6].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.scanner_external_scanner_boundary_gap, runs[7].mismatch_category);
 }
 
 test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked control case" {
@@ -660,7 +698,7 @@ test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked
     defer result_model.deinitRunResults(allocator, runs);
 
     try std.testing.expectEqualStrings("parse_table_conflict_json", runs[5].id);
-    try std.testing.expectEqual(targets.CandidateStatus.deferred_later_wave, runs[5].candidate_status);
+    try std.testing.expectEqual(targets.CandidateStatus.deferred_control_fixture, runs[5].candidate_status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[5].mismatch_category);
     try std.testing.expectEqual(true, runs[5].expected_blocked);
@@ -669,4 +707,25 @@ test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked
     try std.testing.expectEqualStrings("expr", runs[5].blocked_boundary.?.samples[0].symbol_name);
     try std.testing.expect(std.mem.indexOf(u8, runs[5].blocked_boundary.?.samples[0].candidate_actions_summary, "reduce:2(expr)") != null);
     try std.testing.expect(std.mem.indexOf(u8, runs[5].notes, "intentionally ambiguous") != null);
+}
+
+test "runShortlistTargetsAlloc onboards scanner-wave targets through load and prepare" {
+    const allocator = std.testing.allocator;
+
+    const runs = try runShortlistTargetsAlloc(allocator, .{});
+    defer result_model.deinitRunResults(allocator, runs);
+
+    try std.testing.expectEqualStrings("hidden_external_fields_json", runs[6].id);
+    try std.testing.expectEqual(targets.CandidateStatus.deferred_scanner_wave, runs[6].candidate_status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[6].load.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[6].prepare.status);
+    try std.testing.expectEqual(result_model.StepStatus.failed, runs[6].serialize.status);
+    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[6].final_classification);
+
+    try std.testing.expectEqualStrings("hidden_external_fields_js", runs[7].id);
+    try std.testing.expectEqual(targets.CandidateStatus.deferred_scanner_wave, runs[7].candidate_status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].load.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].prepare.status);
+    try std.testing.expectEqual(result_model.StepStatus.failed, runs[7].serialize.status);
+    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[7].final_classification);
 }

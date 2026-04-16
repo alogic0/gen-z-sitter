@@ -20,6 +20,7 @@ pub const StepStatus = enum {
 
 pub const FinalClassification = enum {
     passed_within_current_boundary,
+    deferred_for_scanner_boundary,
     failed_due_to_parser_only_gap,
     out_of_scope_for_scanner_boundary,
     infrastructure_failure,
@@ -29,6 +30,7 @@ pub const MismatchCategory = enum {
     none,
     grammar_input_load_mismatch,
     preparation_lowering_mismatch,
+    scanner_external_scanner_boundary_gap,
     parse_table_construction_gap,
     shift_reduce_boundary,
     intentional_control_fixture,
@@ -183,6 +185,7 @@ pub const TargetRunResult = struct {
     display_name: []const u8,
     grammar_path: []const u8,
     source_kind: targets.SourceKind,
+    boundary_kind: targets.BoundaryKind = .parser_only,
     provenance: targets.Provenance,
     candidate_status: targets.CandidateStatus,
     expected_blocked: bool,
@@ -208,6 +211,7 @@ pub const TargetRunResult = struct {
             .display_name = target.display_name,
             .grammar_path = target.grammar_path,
             .source_kind = target.source_kind,
+            .boundary_kind = target.boundary_kind,
             .provenance = target.provenance,
             .candidate_status = target.candidate_status,
             .expected_blocked = target.expected_blocked,

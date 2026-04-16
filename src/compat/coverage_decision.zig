@@ -4,6 +4,7 @@ const result_model = @import("result.zig");
 const targets = @import("targets.zig");
 
 pub const NextMilestone = enum {
+    scanner_and_external_scanner_compatibility_onboarding,
     second_wave_parser_only_repo_coverage,
     broader_compatibility_polish,
     deeper_parse_table_minimization,
@@ -24,14 +25,14 @@ pub const CoverageDecisionReport = struct {
     parser_only_boundary_proven: bool,
     proven_boundary: []const []const u8,
     deferred_parser_only_targets: []TargetSummary,
-    out_of_scope_targets: []TargetSummary,
+    deferred_scanner_targets: []TargetSummary,
     recommended_next_milestone: NextMilestone,
     recommendation_rationale: []const []const u8,
 
     pub fn deinit(self: *CoverageDecisionReport, allocator: std.mem.Allocator) void {
         deinitStringSlice(allocator, self.proven_boundary);
         deinitTargetSummaries(allocator, self.deferred_parser_only_targets);
-        deinitTargetSummaries(allocator, self.out_of_scope_targets);
+        deinitTargetSummaries(allocator, self.deferred_scanner_targets);
         deinitStringSlice(allocator, self.recommendation_rationale);
         self.* = undefined;
     }
@@ -52,13 +53,13 @@ pub fn buildCoverageDecisionAlloc(
         .first_wave_non_passing_count = first_wave_non_passing_count,
         .parser_only_boundary_proven = first_wave_non_passing_count == 0,
         .proven_boundary = try collectProvenBoundaryAlloc(allocator, runs),
-        .deferred_parser_only_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_later_wave),
-        .out_of_scope_targets = try collectTargetSummariesAlloc(allocator, runs, .excluded_out_of_scope),
-        .recommended_next_milestone = .broader_compatibility_polish,
+        .deferred_parser_only_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_control_fixture),
+        .deferred_scanner_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_scanner_wave),
+        .recommended_next_milestone = .scanner_and_external_scanner_compatibility_onboarding,
         .recommendation_rationale = try duplicateStringSliceAlloc(allocator, &.{
             "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
             "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
-            "external-scanner cases remain explicitly out of scope, so the next milestone should broaden compatibility goals rather than continue second-wave parser-only repo onboarding",
+            "scanner and external-scanner targets are now onboarded as a deferred wave, so the current promoted milestone should focus on classifying and shrinking those scanner-specific gaps",
         }),
     };
 }
@@ -177,9 +178,9 @@ test "buildCoverageDecisionAlloc summarizes the current next-step decision" {
     try std.testing.expectEqual(@as(usize, 5), report.first_wave_passed_count);
     try std.testing.expectEqual(@as(usize, 0), report.first_wave_non_passing_count);
     try std.testing.expect(report.parser_only_boundary_proven);
-    try std.testing.expectEqual(NextMilestone.broader_compatibility_polish, report.recommended_next_milestone);
+    try std.testing.expectEqual(NextMilestone.scanner_and_external_scanner_compatibility_onboarding, report.recommended_next_milestone);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_only_targets.len);
-    try std.testing.expectEqual(@as(usize, 1), report.out_of_scope_targets.len);
+    try std.testing.expectEqual(@as(usize, 2), report.deferred_scanner_targets.len);
 }
 
 test "renderCoverageDecisionAlloc matches the checked-in coverage decision artifact" {

@@ -5,6 +5,11 @@ pub const SourceKind = enum {
     grammar_js,
 };
 
+pub const BoundaryKind = enum {
+    parser_only,
+    scanner_external_scanner,
+};
+
 pub const OriginKind = enum {
     staged_in_repo,
     external_repo_snapshot,
@@ -12,7 +17,8 @@ pub const OriginKind = enum {
 
 pub const CandidateStatus = enum {
     intended_first_wave,
-    deferred_later_wave,
+    deferred_control_fixture,
+    deferred_scanner_wave,
     excluded_out_of_scope,
 };
 
@@ -28,6 +34,7 @@ pub const Target = struct {
     display_name: []const u8,
     grammar_path: []const u8,
     source_kind: SourceKind,
+    boundary_kind: BoundaryKind = .parser_only,
     provenance: Provenance = .{ .origin_kind = .staged_in_repo },
     candidate_status: CandidateStatus,
     expected_blocked: bool = false,
@@ -41,6 +48,7 @@ pub const shortlist_targets = [_]Target{
         .display_name = "Parse Table Tiny (JSON)",
         .grammar_path = "compat_targets/parse_table_tiny/grammar.json",
         .source_kind = .grammar_json,
+        .boundary_kind = .parser_only,
         .provenance = .{ .origin_kind = .staged_in_repo },
         .candidate_status = .intended_first_wave,
         .expected_blocked = false,
@@ -52,6 +60,7 @@ pub const shortlist_targets = [_]Target{
         .display_name = "Behavioral Config (JSON)",
         .grammar_path = "compat_targets/behavioral_config/grammar.json",
         .source_kind = .grammar_json,
+        .boundary_kind = .parser_only,
         .provenance = .{ .origin_kind = .staged_in_repo },
         .candidate_status = .intended_first_wave,
         .expected_blocked = false,
@@ -63,6 +72,7 @@ pub const shortlist_targets = [_]Target{
         .display_name = "Repeat Choice Seq (JS)",
         .grammar_path = "compat_targets/repeat_choice_seq/grammar.js",
         .source_kind = .grammar_js,
+        .boundary_kind = .parser_only,
         .provenance = .{ .origin_kind = .staged_in_repo },
         .candidate_status = .intended_first_wave,
         .expected_blocked = true,
@@ -74,6 +84,7 @@ pub const shortlist_targets = [_]Target{
         .display_name = "tree-sitter-ziggy (JSON snapshot)",
         .grammar_path = "compat_targets/tree_sitter_ziggy/grammar.json",
         .source_kind = .grammar_json,
+        .boundary_kind = .parser_only,
         .provenance = .{
             .origin_kind = .external_repo_snapshot,
             .upstream_repository = "tree-sitter-ziggy",
@@ -90,6 +101,7 @@ pub const shortlist_targets = [_]Target{
         .display_name = "tree-sitter-ziggy-schema (JSON snapshot)",
         .grammar_path = "compat_targets/tree_sitter_ziggy_schema/grammar.json",
         .source_kind = .grammar_json,
+        .boundary_kind = .parser_only,
         .provenance = .{
             .origin_kind = .external_repo_snapshot,
             .upstream_repository = "tree-sitter-ziggy-schema",
@@ -106,8 +118,9 @@ pub const shortlist_targets = [_]Target{
         .display_name = "Parse Table Conflict (JSON)",
         .grammar_path = "compat_targets/parse_table_conflict/grammar.json",
         .source_kind = .grammar_json,
+        .boundary_kind = .parser_only,
         .provenance = .{ .origin_kind = .staged_in_repo },
-        .candidate_status = .deferred_later_wave,
+        .candidate_status = .deferred_control_fixture,
         .expected_blocked = true,
         .notes = "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations",
         .success_criteria = "remain explicitly blocked as a control case unless a later milestone intentionally broadens conflict-resolution policy",
@@ -117,11 +130,24 @@ pub const shortlist_targets = [_]Target{
         .display_name = "Hidden External Fields (JSON)",
         .grammar_path = "compat_targets/hidden_external_fields/grammar.json",
         .source_kind = .grammar_json,
+        .boundary_kind = .scanner_external_scanner,
         .provenance = .{ .origin_kind = .staged_in_repo },
-        .candidate_status = .excluded_out_of_scope,
+        .candidate_status = .deferred_scanner_wave,
         .expected_blocked = false,
-        .notes = "requires external scanner handling outside the current parser-only boundary",
-        .success_criteria = "remain explicitly excluded until external-scanner coverage is in scope",
+        .notes = "staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only",
+        .success_criteria = "load, prepare, and reach the staged external-scanner boundary while scanner-specific reporting remains explicit",
+    },
+    .{
+        .id = "hidden_external_fields_js",
+        .display_name = "Hidden External Fields (JS)",
+        .grammar_path = "compat_targets/hidden_external_fields/grammar.js",
+        .source_kind = .grammar_js,
+        .boundary_kind = .scanner_external_scanner,
+        .provenance = .{ .origin_kind = .staged_in_repo },
+        .candidate_status = .deferred_scanner_wave,
+        .expected_blocked = false,
+        .notes = "staged external-scanner JS target that mirrors the JSON fixture through the node loader path",
+        .success_criteria = "load through node, prepare, and reach the staged external-scanner boundary while scanner-specific reporting remains explicit",
     },
 };
 
@@ -135,12 +161,13 @@ pub fn firstWaveTargets() []const Target {
 
 test "stagedTargets exposes a small versioned shortlist" {
     const shortlist = shortlistTargets();
-    try std.testing.expectEqual(@as(usize, 7), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 8), shortlist.len);
     try std.testing.expect(shortlist[0].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
-    try std.testing.expect(shortlist[5].candidate_status == .deferred_later_wave);
-    try std.testing.expect(shortlist[6].candidate_status == .excluded_out_of_scope);
+    try std.testing.expect(shortlist[5].candidate_status == .deferred_control_fixture);
+    try std.testing.expect(shortlist[6].candidate_status == .deferred_scanner_wave);
+    try std.testing.expect(shortlist[7].boundary_kind == .scanner_external_scanner);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {

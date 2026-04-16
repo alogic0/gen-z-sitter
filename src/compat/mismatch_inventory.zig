@@ -17,18 +17,22 @@ pub const MismatchInventoryReport = struct {
     schema_version: u32,
     first_wave_non_passing_count: usize,
     parser_only_incompatibilities: []MismatchEntry,
+    scanner_boundary_targets: []MismatchEntry,
     grammar_input_shape_issues: []MismatchEntry,
     compile_surface_issues: []MismatchEntry,
     harness_limitations: []MismatchEntry,
     deferred_control_targets: []MismatchEntry,
+    deferred_scanner_targets: []MismatchEntry,
     out_of_scope_targets: []MismatchEntry,
 
     pub fn deinit(self: *MismatchInventoryReport, allocator: std.mem.Allocator) void {
         deinitEntries(allocator, self.parser_only_incompatibilities);
+        deinitEntries(allocator, self.scanner_boundary_targets);
         deinitEntries(allocator, self.grammar_input_shape_issues);
         deinitEntries(allocator, self.compile_surface_issues);
         deinitEntries(allocator, self.harness_limitations);
         deinitEntries(allocator, self.deferred_control_targets);
+        deinitEntries(allocator, self.deferred_scanner_targets);
         deinitEntries(allocator, self.out_of_scope_targets);
         self.* = undefined;
     }
@@ -42,10 +46,12 @@ pub fn buildMismatchInventoryAlloc(
         .schema_version = 1,
         .first_wave_non_passing_count = countFirstWaveNonPassing(runs),
         .parser_only_incompatibilities = try collectEntriesAlloc(allocator, runs, includeParserOnlyIncompatibility),
+        .scanner_boundary_targets = try collectEntriesAlloc(allocator, runs, includeScannerBoundaryTarget),
         .grammar_input_shape_issues = try collectEntriesAlloc(allocator, runs, includeGrammarInputShapeIssue),
         .compile_surface_issues = try collectEntriesAlloc(allocator, runs, includeCompileSurfaceIssue),
         .harness_limitations = try collectEntriesAlloc(allocator, runs, includeHarnessLimitation),
         .deferred_control_targets = try collectEntriesAlloc(allocator, runs, includeDeferredControl),
+        .deferred_scanner_targets = try collectEntriesAlloc(allocator, runs, includeDeferredScannerTarget),
         .out_of_scope_targets = try collectEntriesAlloc(allocator, runs, includeOutOfScope),
     };
 }
@@ -134,6 +140,10 @@ fn includeParserOnlyIncompatibility(run: result_model.TargetRunResult) bool {
     };
 }
 
+fn includeScannerBoundaryTarget(run: result_model.TargetRunResult) bool {
+    return run.mismatch_category == .scanner_external_scanner_boundary_gap;
+}
+
 fn includeGrammarInputShapeIssue(run: result_model.TargetRunResult) bool {
     return run.mismatch_category == .grammar_input_load_mismatch;
 }
@@ -154,6 +164,10 @@ fn includeDeferredControl(run: result_model.TargetRunResult) bool {
     return run.mismatch_category == .intentional_control_fixture;
 }
 
+fn includeDeferredScannerTarget(run: result_model.TargetRunResult) bool {
+    return run.mismatch_category == .scanner_external_scanner_boundary_gap;
+}
+
 test "buildMismatchInventoryAlloc classifies the current shortlist" {
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
@@ -166,11 +180,13 @@ test "buildMismatchInventoryAlloc classifies the current shortlist" {
 
     try std.testing.expectEqual(@as(usize, 0), report.first_wave_non_passing_count);
     try std.testing.expectEqual(@as(usize, 0), report.parser_only_incompatibilities.len);
+    try std.testing.expectEqual(@as(usize, 2), report.scanner_boundary_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.grammar_input_shape_issues.len);
     try std.testing.expectEqual(@as(usize, 0), report.compile_surface_issues.len);
     try std.testing.expectEqual(@as(usize, 0), report.harness_limitations.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
-    try std.testing.expectEqual(@as(usize, 1), report.out_of_scope_targets.len);
+    try std.testing.expectEqual(@as(usize, 2), report.deferred_scanner_targets.len);
+    try std.testing.expectEqual(@as(usize, 0), report.out_of_scope_targets.len);
 }
 
 test "renderMismatchInventoryAlloc matches the checked-in shortlist mismatch inventory artifact" {

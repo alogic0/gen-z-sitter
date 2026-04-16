@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "boundary": {
-    "total_shortlist_targets": 7,
+    "total_shortlist_targets": 8,
     "first_wave_targets": 5,
     "first_wave_passed": 5,
     "first_wave_non_passing": 0,
     "deferred_control_targets": 1,
-    "excluded_targets": 1,
+    "deferred_scanner_targets": 2,
+    "excluded_targets": 0,
     "blocked_targets": 2,
     "blocked_control_targets": 1
   },
@@ -15,6 +16,7 @@
       "id": "parse_table_tiny_json",
       "display_name": "Parse Table Tiny (JSON)",
       "grammar_path": "compat_targets/parse_table_tiny/grammar.json",
+      "boundary_kind": "parser_only",
       "candidate_status": "intended_first_wave",
       "expected_blocked": false,
       "emission_blocked": false,
@@ -28,6 +30,7 @@
       "id": "behavioral_config_json",
       "display_name": "Behavioral Config (JSON)",
       "grammar_path": "compat_targets/behavioral_config/grammar.json",
+      "boundary_kind": "parser_only",
       "candidate_status": "intended_first_wave",
       "expected_blocked": false,
       "emission_blocked": false,
@@ -41,6 +44,7 @@
       "id": "repeat_choice_seq_js",
       "display_name": "Repeat Choice Seq (JS)",
       "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
+      "boundary_kind": "parser_only",
       "candidate_status": "intended_first_wave",
       "expected_blocked": true,
       "emission_blocked": true,
@@ -54,6 +58,7 @@
       "id": "tree_sitter_ziggy_json",
       "display_name": "tree-sitter-ziggy (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_ziggy/grammar.json",
+      "boundary_kind": "parser_only",
       "candidate_status": "intended_first_wave",
       "expected_blocked": false,
       "emission_blocked": false,
@@ -67,6 +72,7 @@
       "id": "tree_sitter_ziggy_schema_json",
       "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
+      "boundary_kind": "parser_only",
       "candidate_status": "intended_first_wave",
       "expected_blocked": false,
       "emission_blocked": false,
@@ -82,7 +88,8 @@
       "id": "parse_table_conflict_json",
       "display_name": "Parse Table Conflict (JSON)",
       "grammar_path": "compat_targets/parse_table_conflict/grammar.json",
-      "candidate_status": "deferred_later_wave",
+      "boundary_kind": "parser_only",
+      "candidate_status": "deferred_control_fixture",
       "expected_blocked": true,
       "emission_blocked": true,
       "final_classification": "passed_within_current_boundary",
@@ -92,20 +99,36 @@
       "notes": "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations"
     }
   ],
-  "in_scope_failures": [],
-  "out_of_scope_targets": [
+  "deferred_scanner_targets": [
     {
       "id": "hidden_external_fields_json",
       "display_name": "Hidden External Fields (JSON)",
       "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
-      "candidate_status": "excluded_out_of_scope",
+      "boundary_kind": "scanner_external_scanner",
+      "candidate_status": "deferred_scanner_wave",
       "expected_blocked": false,
       "emission_blocked": false,
-      "final_classification": "out_of_scope_for_scanner_boundary",
-      "mismatch_category": "out_of_scope_scanner_boundary",
-      "first_failed_stage": "load",
-      "detail": "target is excluded from parser-only execution: requires external scanner handling outside the current parser-only boundary",
-      "notes": "requires external scanner handling outside the current parser-only boundary"
+      "final_classification": "deferred_for_scanner_boundary",
+      "mismatch_category": "scanner_external_scanner_boundary_gap",
+      "first_failed_stage": "serialize",
+      "detail": "scanner target reached the staged external-scanner boundary after load and prepare: staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only",
+      "notes": "staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only"
+    },
+    {
+      "id": "hidden_external_fields_js",
+      "display_name": "Hidden External Fields (JS)",
+      "grammar_path": "compat_targets/hidden_external_fields/grammar.js",
+      "boundary_kind": "scanner_external_scanner",
+      "candidate_status": "deferred_scanner_wave",
+      "expected_blocked": false,
+      "emission_blocked": false,
+      "final_classification": "deferred_for_scanner_boundary",
+      "mismatch_category": "scanner_external_scanner_boundary_gap",
+      "first_failed_stage": "serialize",
+      "detail": "scanner target reached the staged external-scanner boundary after load and prepare: staged external-scanner JS target that mirrors the JSON fixture through the node loader path",
+      "notes": "staged external-scanner JS target that mirrors the JSON fixture through the node loader path"
     }
-  ]
+  ],
+  "in_scope_failures": [],
+  "out_of_scope_targets": []
 }

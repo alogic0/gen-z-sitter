@@ -9,6 +9,7 @@ pub const BoundarySummary = struct {
     first_wave_passed: usize,
     first_wave_non_passing: usize,
     deferred_control_targets: usize,
+    deferred_scanner_targets: usize,
     excluded_targets: usize,
     blocked_targets: usize,
     blocked_control_targets: usize,
@@ -18,6 +19,7 @@ pub const InventoryEntry = struct {
     id: []const u8,
     display_name: []const u8,
     grammar_path: []const u8,
+    boundary_kind: targets.BoundaryKind,
     candidate_status: targets.CandidateStatus,
     expected_blocked: bool,
     emission_blocked: bool,
@@ -33,12 +35,14 @@ pub const InventoryReport = struct {
     boundary: BoundarySummary,
     proven_first_wave_targets: []InventoryEntry,
     deferred_control_targets: []InventoryEntry,
+    deferred_scanner_targets: []InventoryEntry,
     in_scope_failures: []InventoryEntry,
     out_of_scope_targets: []InventoryEntry,
 
     pub fn deinit(self: *InventoryReport, allocator: std.mem.Allocator) void {
         deinitInventoryEntries(allocator, self.proven_first_wave_targets);
         deinitInventoryEntries(allocator, self.deferred_control_targets);
+        deinitInventoryEntries(allocator, self.deferred_scanner_targets);
         deinitInventoryEntries(allocator, self.in_scope_failures);
         deinitInventoryEntries(allocator, self.out_of_scope_targets);
         self.* = undefined;
@@ -54,6 +58,7 @@ pub fn buildInventoryReportAlloc(
         .boundary = collectBoundarySummary(runs),
         .proven_first_wave_targets = try collectEntriesAlloc(allocator, runs, includeProvenFirstWaveTarget),
         .deferred_control_targets = try collectEntriesAlloc(allocator, runs, includeDeferredControl),
+        .deferred_scanner_targets = try collectEntriesAlloc(allocator, runs, includeDeferredScannerTarget),
         .in_scope_failures = try collectEntriesAlloc(allocator, runs, includeInScopeFailure),
         .out_of_scope_targets = try collectEntriesAlloc(allocator, runs, includeOutOfScope),
     };
@@ -75,6 +80,7 @@ pub fn collectBoundarySummary(runs: []const result_model.TargetRunResult) Bounda
         .first_wave_passed = 0,
         .first_wave_non_passing = 0,
         .deferred_control_targets = 0,
+        .deferred_scanner_targets = 0,
         .excluded_targets = 0,
         .blocked_targets = 0,
         .blocked_control_targets = 0,
@@ -90,13 +96,14 @@ pub fn collectBoundarySummary(runs: []const result_model.TargetRunResult) Bounda
                     summary.first_wave_non_passing += 1;
                 }
             },
-            .deferred_later_wave => summary.deferred_control_targets += 1,
+            .deferred_control_fixture => summary.deferred_control_targets += 1,
+            .deferred_scanner_wave => summary.deferred_scanner_targets += 1,
             .excluded_out_of_scope => summary.excluded_targets += 1,
         }
         if (run.emission) |emission| {
             if (emission.blocked) {
                 summary.blocked_targets += 1;
-                if (run.candidate_status == .deferred_later_wave) summary.blocked_control_targets += 1;
+                if (run.candidate_status == .deferred_control_fixture) summary.blocked_control_targets += 1;
             }
         }
     }
@@ -128,6 +135,7 @@ fn cloneInventoryEntry(
         .id = try allocator.dupe(u8, run.id),
         .display_name = try allocator.dupe(u8, run.display_name),
         .grammar_path = try allocator.dupe(u8, run.grammar_path),
+        .boundary_kind = run.boundary_kind,
         .candidate_status = run.candidate_status,
         .expected_blocked = run.expected_blocked,
         .emission_blocked = if (run.emission) |emission| emission.blocked else false,
@@ -167,7 +175,7 @@ fn firstFailureDetail(run: result_model.TargetRunResult) ?[]const u8 {
 }
 
 fn includeInScopeFailure(run: result_model.TargetRunResult) bool {
-    return run.candidate_status != .excluded_out_of_scope and run.final_classification != .passed_within_current_boundary;
+    return run.candidate_status == .intended_first_wave and run.final_classification != .passed_within_current_boundary;
 }
 
 fn includeProvenFirstWaveTarget(run: result_model.TargetRunResult) bool {
@@ -175,7 +183,11 @@ fn includeProvenFirstWaveTarget(run: result_model.TargetRunResult) bool {
 }
 
 fn includeDeferredControl(run: result_model.TargetRunResult) bool {
-    return run.candidate_status == .deferred_later_wave;
+    return run.candidate_status == .deferred_control_fixture;
+}
+
+fn includeDeferredScannerTarget(run: result_model.TargetRunResult) bool {
+    return run.candidate_status == .deferred_scanner_wave;
 }
 
 fn includeOutOfScope(run: result_model.TargetRunResult) bool {
@@ -192,15 +204,16 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     var report = try buildInventoryReportAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 7), report.boundary.total_shortlist_targets);
+    try std.testing.expectEqual(@as(usize, 8), report.boundary.total_shortlist_targets);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_targets);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_passed);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_control_targets);
-    try std.testing.expectEqual(@as(usize, 1), report.boundary.excluded_targets);
+    try std.testing.expectEqual(@as(usize, 2), report.boundary.deferred_scanner_targets);
+    try std.testing.expectEqual(@as(usize, 0), report.boundary.excluded_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.blocked_control_targets);
     try std.testing.expectEqual(@as(usize, 5), report.proven_first_wave_targets.len);
-    try std.testing.expectEqual(@as(usize, 1), report.out_of_scope_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
+    try std.testing.expectEqual(@as(usize, 2), report.deferred_scanner_targets.len);
 }
 
 test "renderInventoryReportAlloc emits deterministic boundary JSON" {
@@ -216,6 +229,7 @@ test "renderInventoryReportAlloc emits deterministic boundary JSON" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"boundary\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"proven_first_wave_targets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"deferred_control_targets\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"deferred_scanner_targets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"in_scope_failures\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"out_of_scope_targets\"") != null);
 }

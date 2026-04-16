@@ -7,7 +7,9 @@ pub const AggregateCounts = struct {
     first_wave_targets: usize,
     first_wave_passed: usize,
     deferred_control_targets: usize,
+    deferred_scanner_targets: usize,
     passed_within_current_boundary: usize,
+    deferred_for_scanner_boundary: usize,
     failed_due_to_parser_only_gap: usize,
     out_of_scope_for_scanner_boundary: usize,
     infrastructure_failure: usize,
@@ -19,6 +21,7 @@ pub const AggregateCounts = struct {
 pub const MismatchCategoryCounts = struct {
     grammar_input_load_mismatch: usize,
     preparation_lowering_mismatch: usize,
+    scanner_external_scanner_boundary_gap: usize,
     parse_table_construction_gap: usize,
     shift_reduce_boundary: usize,
     intentional_control_fixture: usize,
@@ -46,7 +49,9 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
         .first_wave_targets = 0,
         .first_wave_passed = 0,
         .deferred_control_targets = 0,
+        .deferred_scanner_targets = 0,
         .passed_within_current_boundary = 0,
+        .deferred_for_scanner_boundary = 0,
         .failed_due_to_parser_only_gap = 0,
         .out_of_scope_for_scanner_boundary = 0,
         .infrastructure_failure = 0,
@@ -55,6 +60,7 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
         .mismatch_categories = .{
             .grammar_input_load_mismatch = 0,
             .preparation_lowering_mismatch = 0,
+            .scanner_external_scanner_boundary_gap = 0,
             .parse_table_construction_gap = 0,
             .shift_reduce_boundary = 0,
             .intentional_control_fixture = 0,
@@ -68,7 +74,8 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
     for (results) |run| {
         switch (run.candidate_status) {
             .intended_first_wave => counts.first_wave_targets += 1,
-            .deferred_later_wave => counts.deferred_control_targets += 1,
+            .deferred_control_fixture => counts.deferred_control_targets += 1,
+            .deferred_scanner_wave => counts.deferred_scanner_targets += 1,
             .excluded_out_of_scope => {},
         }
         switch (run.final_classification) {
@@ -76,6 +83,7 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
                 counts.passed_within_current_boundary += 1;
                 if (run.candidate_status == .intended_first_wave) counts.first_wave_passed += 1;
             },
+            .deferred_for_scanner_boundary => counts.deferred_for_scanner_boundary += 1,
             .failed_due_to_parser_only_gap => counts.failed_due_to_parser_only_gap += 1,
             .out_of_scope_for_scanner_boundary => counts.out_of_scope_for_scanner_boundary += 1,
             .infrastructure_failure => counts.infrastructure_failure += 1,
@@ -84,6 +92,7 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
             .none => {},
             .grammar_input_load_mismatch => counts.mismatch_categories.grammar_input_load_mismatch += 1,
             .preparation_lowering_mismatch => counts.mismatch_categories.preparation_lowering_mismatch += 1,
+            .scanner_external_scanner_boundary_gap => counts.mismatch_categories.scanner_external_scanner_boundary_gap += 1,
             .parse_table_construction_gap => counts.mismatch_categories.parse_table_construction_gap += 1,
             .shift_reduce_boundary => counts.mismatch_categories.shift_reduce_boundary += 1,
             .intentional_control_fixture => counts.mismatch_categories.intentional_control_fixture += 1,
@@ -95,7 +104,7 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
         if (run.emission) |emission| {
             if (emission.blocked) {
                 counts.blocked_targets += 1;
-                if (run.candidate_status == .deferred_later_wave) counts.blocked_control_targets += 1;
+                if (run.candidate_status == .deferred_control_fixture) counts.blocked_control_targets += 1;
             }
         }
     }

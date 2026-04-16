@@ -11,6 +11,7 @@ pub const ShortlistArtifact = struct {
 
 pub const ShortlistEntry = struct {
     id: []const u8,
+    boundary_kind: targets.BoundaryKind,
     status: targets.CandidateStatus,
     source_kind: targets.SourceKind,
     origin_kind: targets.OriginKind,
@@ -42,6 +43,7 @@ fn collectShortlistEntriesAlloc(
     for (shortlist, 0..) |target, index| {
         entries[index] = .{
             .id = target.id,
+            .boundary_kind = target.boundary_kind,
             .status = target.candidate_status,
             .source_kind = target.source_kind,
             .origin_kind = target.provenance.origin_kind,
@@ -57,15 +59,15 @@ fn collectShortlistEntriesAlloc(
 }
 
 const selection_rules = [_][]const u8{
-    "grammar must not require external scanners for its primary parse path",
+    "parser-only first-wave targets must not require external scanners for their primary parse path",
+    "scanner-wave targets may depend on the first external-scanner boundary if that dependency is explicit and staged",
     "grammar should avoid depending on runtime surfaces that the repo does not yet claim",
     "grammar should be small enough to keep harness iteration cheap",
     "the shortlist should include more than one grammar style",
 };
 
 const disqualification_rules = [_][]const u8{
-    "requires external scanner support for the normal parse path",
-    "requires broader lexer or scanner parity than the current staged surface",
+    "requires broader scanner or runtime parity than the current staged surface",
     "depends on runtime or ABI surfaces explicitly deferred beyond current milestones",
     "is too large or brittle to serve as a stable first-wave harness target",
 };
@@ -79,6 +81,7 @@ test "renderShortlistArtifactAlloc emits provenance-aware shortlist JSON" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"tree_sitter_ziggy_json\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"external_repo_snapshot\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"upstream_revision\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"scanner_external_scanner\"") != null);
 }
 
 test "renderShortlistArtifactAlloc matches the checked-in shortlist artifact" {

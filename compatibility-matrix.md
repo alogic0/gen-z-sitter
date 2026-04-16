@@ -99,15 +99,14 @@ What the repo can credibly claim today:
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:
   - 5 intended first-wave parser-only targets currently pass within the staged boundary
   - 1 staged deferred target remains intentionally frozen as an ambiguity/control fixture
-  - 1 external-scanner target is tracked explicitly as out of scope
-- scanner/external-scanner repo proof remains explicitly deferred beyond the current parser-only boundary
+  - 2 staged scanner/external-scanner targets are now tracked as a deferred onboarding wave
+- scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the first staged boundary extraction surface
 - compatibility-sensitive behavioral proof currently covers:
   - `behavioral_config`
   - `hidden_external_fields`
 - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but now rejects on the staged blocked path as `missing_action`
 - the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
-- the current post-M23 direction is broader compatibility polish, not another parser-only onboarding wave by default
-- the recommended next promoted milestone after that polish work is scanner and external-scanner compatibility onboarding
+- the current promoted milestone is scanner and external-scanner compatibility onboarding
 
 ## Milestone Compatibility Targets
 
