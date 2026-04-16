@@ -1,8 +1,8 @@
-# Later Work Checklist
+# MILESTONES 21 (Optimization Later)
 
-This checklist covers the longer-tail generator work that remains after the currently active milestone sequence.
+This milestone covers the longer-tail generator work that remains after the currently active milestone sequence.
 
-Use this file for follow-on implementation once the active milestone work in [MASTER_PLAN.md](./MASTER_PLAN.md) has moved far enough that broader generator parity becomes the immediate priority.
+Use this file for follow-on implementation once the active milestone work in [MASTER_PLAN.md](./MASTER_PLAN.md) and [MASTER_PLAN_2.md](./MASTER_PLAN_2.md) has moved far enough that broader generator parity and optimization become the immediate priority.
 
 ## Fuller Generator Parity
 
@@ -20,13 +20,13 @@ Immediate promotion candidates after the first behavioral-equivalence stage:
 - [x] complete the first external-scanner follow-on checklist
 - [ ] decide whether `broader real-grammar/repo compatibility coverage` waits on lexer/scanner support or starts with parser-only repo cases first
 
-Promoted checklist:
-- [x] [LEXER_SCANNER_CHECKLIST.md](./LEXER_SCANNER_CHECKLIST.md)
-- [x] [EXTERNAL_SCANNER_CHECKLIST.md](./EXTERNAL_SCANNER_CHECKLIST.md)
+Promoted milestones:
+- [x] [MILESTONES_18.md](./MILESTONES_18.md)
+- [x] [MILESTONES_19.md](./MILESTONES_19.md)
 
 ## Notes
 
-- These items are intentionally separated from the active milestone checklist.
+- These items are intentionally separated from the active milestone sequence.
 - They are still real project work, but they should not dilute the milestone-by-milestone closeout process in `MASTER_PLAN.md`.
-- When one of these becomes the next concrete implementation target, it should usually be promoted into its own milestone checklist first.
+- When one of these becomes the next concrete implementation target, it should usually be promoted into its own milestone file first.
 - The completed behavioral-equivalence stage establishes only the first scanner-free parser-walk boundary; broader real-grammar/repo coverage remains active later work here.

@@ -1,6 +1,6 @@
-# External Scanner Checklist
+# MILESTONES 19 (External Scanner Integration)
 
-This checklist turns the deferred external-scanner work from the first lexer/scanner stage into a concrete execution plan.
+This milestone turns the deferred external-scanner work from the first lexer/scanner stage into a concrete execution plan.
 
 Its purpose is to move the project from a serialized lexical boundary with explicit external-token blockers to the first real external-scanner integration boundary.
 
@@ -117,7 +117,7 @@ Current behavioral coverage added by this checklist:
 - [x] decide whether the first external-scanner stage is strong enough to close the checklist
 
 Closeout decision:
-- this checklist is complete as the first staged external-scanner boundary
+- this milestone is complete as the first staged external-scanner boundary
 - delivered now:
   - a ready external-token subset for a single leading named external token
   - deterministic serialized external-scanner artifacts
@@ -142,7 +142,7 @@ Closeout decision:
 - [x] the new behavioral coverage enabled by external-token handling is explicit
 - [x] remaining scanner/runtime and compatibility gaps are documented rather than implicit
 
-## Explicit Non-Goals For This Checklist
+## Explicit Non-Goals For This Milestone
 
 - [x] do not claim full upstream external-scanner ABI parity here
 - [x] do not fold broad compatibility hardening into the first external-scanner stage

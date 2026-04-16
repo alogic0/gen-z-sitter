@@ -775,6 +775,104 @@ test "simulatePreparedWithFirstExternalBoundary preserves hidden external fields
     try expectSameSimulationResult(json_invalid, invalid);
 }
 
+test "supported compatibility boundary avoids internal contract failures on valid config and external-token inputs" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const behavioral_prepared = try parsePreparedFromJsonFixture(arena.allocator(), fixtures.behavioralConfigGrammarJson().contents);
+    const behavioral_valid = try simulatePreparedScannerFree(
+        arena.allocator(),
+        behavioral_prepared,
+        fixtures.behavioralConfigValidInput().contents,
+    );
+    try expectCompatibilitySafeValidResult(behavioral_valid);
+
+    const external_prepared = try parsePreparedFromJsonFixture(arena.allocator(), fixtures.hiddenExternalFieldsGrammarJson().contents);
+    const external_valid = try simulatePreparedWithFirstExternalBoundary(
+        arena.allocator(),
+        external_prepared,
+        fixtures.hiddenExternalFieldsValidInput().contents,
+    );
+    try expectCompatibilitySafeValidResult(external_valid);
+}
+
+test "supported compatibility boundary preserves compatibility-safe valid config and external-token outcomes through grammar.js" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "behavioral_config.js",
+        .data = fixtures.behavioralConfigGrammarJs().contents,
+    });
+    const external_js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{fixtures.hiddenExternalFieldsGrammarJson().contents});
+    defer std.testing.allocator.free(external_js);
+    try tmp.dir.writeFile(.{
+        .sub_path = "hidden_external_fields.js",
+        .data = external_js,
+    });
+
+    const behavioral_path = try tmp.dir.realpathAlloc(std.testing.allocator, "behavioral_config.js");
+    defer std.testing.allocator.free(behavioral_path);
+    const external_path = try tmp.dir.realpathAlloc(std.testing.allocator, "hidden_external_fields.js");
+    defer std.testing.allocator.free(external_path);
+
+    const behavioral_valid = try simulateValidGrammarJsPath(
+        behavioral_path,
+        fixtures.behavioralConfigValidInput().contents,
+        false,
+    );
+    try expectCompatibilitySafeValidResult(behavioral_valid);
+
+    const external_valid = try simulateValidGrammarJsPath(
+        external_path,
+        fixtures.hiddenExternalFieldsValidInput().contents,
+        true,
+    );
+    try expectCompatibilitySafeValidResult(external_valid);
+}
+
+test "repeat choice seq valid path remains parity-safe but still reaches the staged unresolved boundary" {
+    var json_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer json_arena.deinit();
+    const prepared_from_json = try parsePreparedFromJsonFixture(json_arena.allocator(), fixtures.repeatChoiceSeqGrammarJson().contents);
+    const json_valid = try simulatePreparedScannerFree(
+        json_arena.allocator(),
+        prepared_from_json,
+        fixtures.repeatChoiceSeqValidInput().contents,
+    );
+
+    switch (json_valid) {
+        .accepted => |accepted| {
+            try std.testing.expect(accepted.consumed_bytes > 0);
+            try std.testing.expect(accepted.shifted_tokens > 0);
+        },
+        .rejected => |rejected| {
+            try std.testing.expect(rejected.consumed_bytes > 0);
+            try std.testing.expect(rejected.shifted_tokens > 0);
+            try std.testing.expectEqual(RejectReason.unresolved_decision, rejected.reason);
+        },
+    }
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const repeat_js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{fixtures.repeatChoiceSeqGrammarJson().contents});
+    defer std.testing.allocator.free(repeat_js);
+    try tmp.dir.writeFile(.{
+        .sub_path = "repeat_choice_seq.js",
+        .data = repeat_js,
+    });
+    const repeat_path = try tmp.dir.realpathAlloc(std.testing.allocator, "repeat_choice_seq.js");
+    defer std.testing.allocator.free(repeat_path);
+
+    const js_valid = try simulateValidGrammarJsPath(
+        repeat_path,
+        fixtures.repeatChoiceSeqValidInput().contents,
+        false,
+    );
+    try expectSameSimulationResult(json_valid, js_valid);
+}
+
 fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResult) !void {
     try std.testing.expectEqual(@intFromEnum(expected), @intFromEnum(actual));
     switch (expected) {
@@ -790,6 +888,40 @@ fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResu
             try std.testing.expectEqual(left.reason, right.reason);
         },
     }
+}
+
+fn expectCompatibilitySafeValidResult(result: SimulationResult) !void {
+    switch (result) {
+        .accepted => |accepted| {
+            try std.testing.expect(accepted.consumed_bytes > 0);
+            try std.testing.expect(accepted.shifted_tokens > 0);
+        },
+        .rejected => |rejected| {
+            try std.testing.expect(rejected.consumed_bytes > 0);
+            try std.testing.expect(rejected.shifted_tokens > 0);
+            try std.testing.expect(rejected.reason != .unresolved_decision);
+            try std.testing.expect(rejected.reason != .missing_goto);
+        },
+    }
+}
+
+fn simulateValidGrammarJsPath(
+    grammar_path: []const u8,
+    input: []const u8,
+    use_external_boundary: bool,
+) !SimulationResult {
+    var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+
+    if (use_external_boundary) {
+        return try simulatePreparedWithFirstExternalBoundary(arena.allocator(), prepared, input);
+    }
+    return try simulatePreparedScannerFree(arena.allocator(), prepared, input);
 }
 
 fn progressOf(result: SimulationResult) usize {

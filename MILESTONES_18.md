@@ -1,6 +1,6 @@
-# Lexer / Scanner Checklist
+# MILESTONES 18 (Lexer / Scanner Path)
 
-This checklist turns the lexer/scanner direction into a concrete execution plan.
+This milestone turns the lexer/scanner direction into a concrete execution plan.
 
 Its purpose is to move the project beyond parser-table-only coverage and establish the first credible emitted lexer boundary for grammars that cannot be handled by the current scanner-free parser-walk surface.
 
@@ -109,7 +109,7 @@ Current behavioral coverage added by this checklist:
 - [x] decide whether this first lexer/scanner boundary is strong enough to close the checklist
 
 Closeout decision:
-- this checklist is complete as the first staged lexer/scanner boundary
+- this milestone is complete as the first staged lexer/scanner boundary
 - delivered now:
   - a ready lexical subset for string and simple pattern terminals
   - deterministic serialized lexical artifacts
@@ -123,10 +123,10 @@ Closeout decision:
   - runtime ABI claims that depend on a full scanner surface
   - broader compatibility hardening after this first lexer boundary
 - those deferrals map directly to:
-  - `NEXT_DIRECTION_CHECKLIST.md`
-    - `Compatibility Hardening`
-  - `LATER_WORK_CHECKLIST.md`
-    - `external scanner integration`
+  - `MASTER_PLAN_2.md`
+    - `MILESTONES 19 (External Scanner Integration)`
+    - `MILESTONES 20 (Compatibility Hardening)`
+  - `MILESTONES_21.md`
     - `broader real-grammar/repo compatibility coverage`
 
 ## Exit Criteria
@@ -137,7 +137,7 @@ Closeout decision:
 - [x] the new behavioral coverage enabled by lexer/scanner support is explicit
 - [x] external-scanner and broader compatibility gaps are documented rather than implicit
 
-## Explicit Non-Goals For This Checklist
+## Explicit Non-Goals For This Milestone
 
 - [x] do not claim full external scanner integration here
 - [x] do not claim full Tree-sitter runtime ABI compatibility here

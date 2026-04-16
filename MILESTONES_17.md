@@ -1,6 +1,6 @@
-# Fuller `parser.c` Checklist
+# MILESTONES 17 (Fuller `parser.c` Output)
 
-This checklist turns the `fuller parser output closer to upstream parser.c` direction into an executable implementation plan.
+This milestone turns the `fuller parser output closer to upstream parser.c` direction into an executable implementation plan.
 
 Its purpose is not to claim full upstream parity. Its purpose is to make the emitted `parser.c` artifact meaningfully closer to a runtime-consumable Tree-sitter translation unit, with explicit completion criteria and explicit deferrals.
 
@@ -78,7 +78,7 @@ Current result for this stage:
 - [x] document the completion boundary for this checklist in the later-work docs
 
 Closeout decision:
-- this checklist is complete
+- this milestone is complete
 - the current emitted parser.c is now a language-centered, compile-smoke-checked, compatibility-checked staged runtime artifact
 - it is intentionally still short of full upstream `parser.c` parity and full C runtime ABI compatibility
 
@@ -98,7 +98,7 @@ Deferred beyond this checklist:
 - [x] emitted `parser.c` passes a basic compile smoke test
 - [x] remaining differences from fuller upstream-style `parser.c` are explicitly documented as deferred
 
-## Explicit Non-Goals For This Checklist
+## Explicit Non-Goals For This Milestone
 
 - [x] do not claim full upstream `parser.c` parity
 - [x] do not take on lexer/scanner emission here

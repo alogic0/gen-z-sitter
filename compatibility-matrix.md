@@ -4,6 +4,13 @@
 
 Define what compatibility means for a Zig rewrite of `tree-sitter generate`, and how each behavior should be validated.
 
+This document mixes two scopes on purpose:
+
+- the long-term compatibility target for the project
+- the current staged compatibility boundary that the repo can actually claim today
+
+Unless a section explicitly says otherwise, table entries below describe the intended target contract, not necessarily the current top-level CLI surface.
+
 ## Compatibility Levels
 
 Use four compatibility levels:
@@ -20,17 +27,17 @@ Use four compatibility levels:
 | `grammar.json` loading | Accept current schema used by Tree-sitter grammars | Exact | fixture decode tests |
 | `grammar.js` loading via Node | Accept current DSL bootstrap contract | Stable | integration against real grammars |
 | path handling | support file and explicit path arguments | Stable | CLI integration tests |
-| ABI option | support ABI version selection | Exact | golden output and compile tests |
-| `--no-parser` | emit only JSON artifacts | Exact | output presence tests |
-| state reporting flags | same flag meaning | Stable | report fixture tests |
+| ABI option | support ABI version selection in the eventual top-level contract | Exact | golden output and compile tests |
+| `--no-parser` | emit only JSON artifacts in the eventual top-level contract | Exact | output presence tests |
+| state reporting flags | preserve the same meaning once surfaced as first-class top-level features | Stable | report fixture tests |
 
 ## Output Compatibility
 
 | Artifact | Requirement | Level | Validation |
 |---|---|---:|---|
-| `src/grammar.json` | schema-compatible normalized grammar | Stable | JSON semantic compare |
+| `src/grammar.json` | schema-compatible normalized grammar once exposed as a top-level emitted artifact | Stable | JSON semantic compare |
 | `src/node-types.json` | same node/type/field semantics | Stable | canonical JSON compare |
-| `src/parser.c` | compilable and ABI-compatible parser source | Equivalent | compile + corpus parse tests |
+| `src/parser.c` | compilable and ABI-compatible parser source at the eventual target boundary; current repo state is still a staged parser.c-like compatibility surface | Equivalent | compile + corpus parse tests |
 | conflict JSON summary | same data model and meaning | Stable | JSON schema compare |
 | state reports | same rule/state meaning | Deferred | textual spot checks |
 
@@ -39,8 +46,8 @@ Use four compatibility levels:
 | Area | Requirement | Level | Validation |
 |---|---|---:|---|
 | grammar rejection | invalid grammars fail in the same cases | Equivalent | error fixture tests |
-| parse table semantics | generated parser accepts/rejects same corpus | Equivalent | corpus parse compare |
-| external tokens | scanner interactions preserve behavior | Equivalent | scanner fixture tests |
+| parse table semantics | generated parser accepts/rejects same corpus at the eventual target boundary; current staged proof is narrower | Equivalent | corpus parse compare |
+| external tokens | scanner interactions preserve behavior; current staged proof covers only the first external-token boundary | Equivalent | scanner fixture tests |
 | aliases | visible node kinds and fields preserved | Stable | node-types + parse-tree compare |
 | supertypes | same supertype relationships | Stable | canonical node-types compare |
 | precedence/conflicts | same ambiguity resolution | Equivalent | parse-tree compare on targeted fixtures |
@@ -72,6 +79,23 @@ Validation:
 
 - run the same fixture multiple times in one test
 - hash outputs and assert equality
+
+## Current Staged Boundary
+
+What the repo can credibly claim today:
+
+- `grammar.json` and `grammar.js` loading paths are implemented and exercised
+- `node-types.json` output is the most directly surfaced top-level generated artifact
+- parser/runtime compatibility work is currently validated mostly through:
+  - emitted parser.c-like goldens
+  - compile smoke tests
+  - structural compatibility checks
+  - local behavioral harness checks
+- compatibility-sensitive behavioral proof currently covers:
+  - `behavioral_config`
+  - `hidden_external_fields`
+- `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but remains on the staged `unresolved_decision` boundary for its valid path
+- the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 
 ## Milestone Compatibility Targets
 

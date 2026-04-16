@@ -1,164 +1,117 @@
-# Zig Tree-sitter Rewrite Notes
+# Zig Tree-sitter Generator Rewrite
 
-This directory contains planning documents for a Zig rewrite of the Tree-sitter generator/tooling stack.
+This repository is a Zig rewrite of the Tree-sitter generator pipeline. The goal is to reproduce the practical behavior of `tree-sitter generate` while keeping the existing ecosystem contract: load `grammar.json` or `grammar.js`, compute the same core grammar artifacts, and eventually emit parser output that remains compatible with the current C runtime expectations.
 
-Milestone 3 is complete. Milestone 4 is also complete: the deferred `node-types.json` parity work has been implemented, including the later post-processing cleanup around supertypes and final node ordering.
+The codebase is past the early planning-only stage. It contains a working compiler-style pipeline, tests, and a CLI for loading grammars, inspecting prepared IR, and generating `node-types.json`. It also contains a large set of milestone and architecture documents that track the broader rewrite plan.
 
-Milestone 5 is complete and establishes the first parser-table foundation:
+## Current Status
 
-- parser item/state IR
-- deterministic narrow LR(0)-style state construction
-- structured conflict reporting
-- exact parser-state dump goldens for both simple and conflict grammars
-- deterministic state-reuse coverage
-- focused reduce/reduce conflict coverage through the real preparation pipeline
+What is implemented in the current code:
 
-The remaining parser-generation work is now Milestone 7+:
+- grammar loading from `grammar.json`
+- `grammar.js` loading through a `node` subprocess path
+- validation, normalization, and lowering into prepared grammar IR
+- lexer/scanner pipeline modules
+- parse-table construction, resolution, serialization, and emitter layers
+- `node-types.json` generation
+- ABI/compatibility-oriented parser emission modules
+- unit and golden-test coverage across the pipeline
 
-- broader grammar support beyond the current narrow LR(0)-style subset
-- conflict resolution
-- parse-table serialization and eventual `parser.c` emission
+What this means in practice:
 
-Milestone 6 is complete and includes:
+- the repository builds and tests as a Zig project
+- the CLI can load grammars and expose debug views
+- the top-level generate path is currently most concrete for validation and `node-types.json`
+- the parser-emission work exists in the codebase, but this repo is still positioned as an in-progress rewrite rather than a drop-in replacement for upstream Tree-sitter
 
-- FIRST-set computation
-- lookahead-aware closure propagation
-- explicit parse-action IR
-- builder-owned action tables
-- action-derived conflict reporting
-- exact state, action-table, and grouped-action-table goldens across tiny, conflict, reduce/reduce, and metadata-rich fixtures
+## Quick Start
 
-Milestone 7 is complete and implements a real supported resolution subset:
+Requirements:
 
-- integer precedence in both directions
-- named precedence in both directions when directly ordered against the conflicted symbol
-- dynamic precedence in both directions
-- dynamic-versus-named precedence priority on the reduce side
-- equal-precedence associativity handling
-- explicit unresolved classification for shift/reduce and reduce/reduce cases
+- Zig 0.15.x
+- `node` available on `PATH` if you want to load `grammar.js`
 
-Milestone 8 is complete and established the next parser-decision boundary before serialization:
+Common commands:
 
-- builder-owned resolved actions in `BuildResult`
-- an explicit `reduce_reduce_deferred` policy boundary
-- richer shift-side precedence support at the direct resolver boundary for:
-  - integer precedence
-  - named precedence
+```bash
+zig build
+zig build test
+zig build run -- help
+zig build run -- generate path/to/grammar.json
+zig build run -- generate --debug-prepared path/to/grammar.json
+zig build run -- generate --debug-node-types path/to/grammar.json
+zig build run -- generate --output out path/to/grammar.json
+```
 
-Milestone 9 is complete and establishes the final pre-serialization parser-decision handoff:
+Expected current behavior:
 
-- serializer-facing resolved decisions via `ResolvedDecision`
-- structured chosen and unresolved decision refs
-- explicit readiness checks on both `ResolvedActionTable` and `BuildResult`
-- a single serializer-facing `DecisionSnapshot`
-- real-path tests for both serialization-ready and blocked grammars
+- `generate <grammar-path>` validates and loads the grammar, then prints a short summary
+- `generate --debug-prepared` prints the prepared grammar IR
+- `generate --debug-node-types` prints generated `node-types.json`
+- `generate --output <dir>` writes `node-types.json` into the target directory
 
-Milestone 9 closes with two explicit boundary decisions:
+## CLI
 
-- `DecisionSnapshot` is the pre-serialization handoff
-- `reduce_reduce_deferred` remains the explicit unresolved reduce/reduce boundary
+The executable is `zig-tree-sit`.
 
-Milestone 10 is complete and establishes the first real serialization/code-emission boundary:
+Usage:
 
-- serialized parse-table IR
-- explicit ready vs blocked serialization behavior
-- deterministic serialized-table artifacts
-- the first narrow emitter-facing boundary on top of serialized parser data
+```text
+zig-tree-sit help
+zig-tree-sit generate [options] <grammar-path>
+```
 
-Milestone 10 includes:
+Supported generate options:
 
-- `src/parse_table/serialize.zig` as the serialized parse-table boundary
-- explicit strict vs diagnostic serialization policy
-- exact serialized-table goldens for ready and blocked grammars
-- a first textual emitter-facing parser-table skeleton
-- a first C-like table skeleton consumer of serialized parser data
+- `--output <dir>`
+- `--abi <version>`
+- `--no-parser`
+- `--json-summary`
+- `--debug-prepared`
+- `--debug-node-types`
+- `--report-states-for-rule <rule>`
+- `--js-runtime <runtime>`
+- `--no-optimize-merge-states`
 
-Milestone 11 is complete and establishes the first broader parser-emission boundary on top of `SerializedTable`.
+Not every flag currently maps to a fully surfaced end-user feature. The parser and compatibility layers are present in the codebase, but the most directly exercised user-facing paths today are grammar loading, preparation, debug dumps, and `node-types.json` output.
 
-Milestone 11 includes:
+Current staged compatibility boundary:
 
-- a broader `parser.c`-like emitter on top of `SerializedTable`
-- exact real-path emitter goldens for ready and blocked grammars
-- shared emitter helpers in `src/parser_emit/common.zig`
-- a broader emitted parser translation unit with:
-  - per-state arrays
-  - state-table descriptors
-  - a top-level parser descriptor
-  - basic accessor/query helpers
+- parser/runtime compatibility work is exercised primarily through lower-level emitter, golden, compile-smoke, structural-compatibility, and behavioral-harness tests
+- the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
+- the current supported behavioral subset is still staged:
+  - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
+  - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it remains on the staged `unresolved_decision` boundary for its valid path
 
-Milestone 12 is complete and establishes a richer runtime-facing parser-emission boundary.
+## Repository Layout
 
-Milestone 12 includes:
+```text
+src/
+  main.zig                 process entry point
+  cli/                     argument parsing and command dispatch
+  grammar/                 loading, validation, normalization, preparation
+  ir/                      core grammar and symbol IR
+  lexer/                   lexer pipeline and serialization
+  scanner/                 external scanner pipeline and serialization
+  parse_table/             item/state/action building and serialization
+  parser_emit/             parser.c-oriented emission and compatibility helpers
+  node_types/              node-types computation and JSON rendering
+  support/                 generic helpers
+  tests/                   fixtures and golden helpers
+  behavioral/              behavioral harness support
+```
 
-- richer parser output on top of the Milestone 11 boundary
-- a clearer runtime-facing emitted API boundary
-- deterministic richer parser-emission goldens
-- explicit blocked behavior at that richer emitted boundary
-- emitted parser helpers for:
-  - parser-level queries
-  - per-state queries
-  - indexed entry access
-  - field-level access
-  - symbol-based lookup
-  - predicate helpers
+## Key Documents
 
-Milestone 13 is complete and establishes the first compatibility-oriented parser boundary.
+Start here:
 
-Milestone 13 includes:
+- [MASTER_PLAN.md](./MASTER_PLAN.md): primary roadmap and project framing
+- [zig-generator-architecture.md](./zig-generator-architecture.md): architecture notes
+- [compatibility-matrix.md](./compatibility-matrix.md): compatibility targets and gaps
+- [test-strategy.md](./test-strategy.md): testing approach
 
-- an explicit emitted API scope before any ABI claim
-- compatibility layering through an intermediate layer rather than a direct upstream ABI claim
-- richer parser output beyond the Milestone 12 helper/query layer
-- exact ready/blocked artifacts for the richer runtime-facing parser surface
-- explicit blocked-output behavior at the richer runtime-facing layer
-- richer compatibility-oriented emitted helpers, including:
-  - runtime summary structs
-  - state summary access
-  - symbol-based lookup
-  - predicate helpers
+Implementation history and milestone tracking:
 
-Milestone 14 is complete:
-
-- `grammar.js` end-to-end support through a `node` subprocess path
-- `grammar.json` kept as the native/core path
-- deterministic `grammar.json`, `node-types.json`, and parser emission through the JS loading path
-- non-Node JS runtimes explicitly deferred
-
-Milestone 15 is complete:
-
-- first concrete parser/runtime compatibility target
-- centralized ABI/version handling
-- structural compatibility checks for ready and blocked parser output
-- deterministic emitted symbol-table contract and symbol accessors
-- explicit remaining compatibility mismatches deferred to later milestones
-
-The next parser-generation work is now Milestone 16:
-
-- behavioral equivalence and corpus verification
-- compiled-parser comparison against upstream generated output
-- classification of remaining semantic mismatches
-
-The promoted lexer/scanner execution checklists are now complete:
-
-- [LEXER_SCANNER_CHECKLIST.md](./LEXER_SCANNER_CHECKLIST.md)
-  - first lexer/scanner emission boundary
-  - deterministic lexer/scanner artifacts
-  - staged proof before external scanner integration and broader compatibility hardening
-- [EXTERNAL_SCANNER_CHECKLIST.md](./EXTERNAL_SCANNER_CHECKLIST.md)
-  - first external-scanner integration boundary
-  - deterministic external-token artifacts
-  - staged proof before broader compatibility hardening and fuller scanner/runtime parity
-
-The next recommended direction after those completed stages is:
-
-- compatibility hardening
-  - document the remaining runtime-surface mismatches against expected Tree-sitter contracts
-  - shrink the emitted compatibility gaps that still block credible runtime use
-  - make ABI and compatibility-layer boundaries explicit and testable
-
-## Documents
-
-- [MASTER_PLAN.md](./MASTER_PLAN.md)
 - [MILESTONE_1_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_1_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_2_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_2_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_3_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_3_IMPLEMENTATION_CHECKLIST.md)
@@ -173,35 +126,24 @@ The next recommended direction after those completed stages is:
 - [MILESTONE_12_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_12_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_13_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_13_IMPLEMENTATION_CHECKLIST.md)
 - [MILESTONE_15_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_15_IMPLEMENTATION_CHECKLIST.md)
-- [BEHAVIORAL_EQUIVALENCE_CHECKLIST.md](./BEHAVIORAL_EQUIVALENCE_CHECKLIST.md)
-- [LEXER_SCANNER_CHECKLIST.md](./LEXER_SCANNER_CHECKLIST.md)
-- [EXTERNAL_SCANNER_CHECKLIST.md](./EXTERNAL_SCANNER_CHECKLIST.md)
-- [NEXT_DIRECTION_CHECKLIST.md](./NEXT_DIRECTION_CHECKLIST.md)
-- [LATER_WORK_CHECKLIST.md](./LATER_WORK_CHECKLIST.md)
-- [zig-generator-architecture.md](./zig-generator-architecture.md)
-- [compatibility-matrix.md](./compatibility-matrix.md)
+
+Focused supporting notes:
+
+- [MASTER_PLAN_2.md](./MASTER_PLAN_2.md)
+- [MILESTONES_16.md](./MILESTONES_16.md)
+- [MILESTONES_17.md](./MILESTONES_17.md)
+- [MILESTONES_18.md](./MILESTONES_18.md)
+- [MILESTONES_19.md](./MILESTONES_19.md)
+- [MILESTONES_20.md](./MILESTONES_20.md)
+- [MILESTONES_21.md](./MILESTONES_21.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)
 - [parse-table-algorithm-plan.md](./parse-table-algorithm-plan.md)
-- [test-strategy.md](./test-strategy.md)
 - [milestone-0-task-list.md](./milestone-0-task-list.md)
 
-## Project Commands
+## Recommended Reading Order
 
-- `zig build`
-- `zig build test`
-- `zig build run -- help`
-- `zig build run -- generate path/to/grammar.json`
-- `zig build run -- generate --debug-prepared path/to/grammar.json`
-
-## Suggested Reading Order
-
-1. master plan
-2. milestone 1 checklist
-3. milestone 2 checklist
-4. milestone 3 checklist
-5. architecture
-6. compatibility matrix
-7. prepared grammar IR
-8. test strategy
-9. milestone 0 task list
-10. parse-table algorithm plan
+1. [MASTER_PLAN.md](./MASTER_PLAN.md)
+2. [zig-generator-architecture.md](./zig-generator-architecture.md)
+3. [compatibility-matrix.md](./compatibility-matrix.md)
+4. [test-strategy.md](./test-strategy.md)
+5. the milestone checklist for the subsystem you care about

@@ -185,6 +185,14 @@ The Zig generator must preserve these visible behaviors:
 
 The compatibility target is current observable behavior, not internal Rust structure.
 
+This section describes the intended target contract, not the fully surfaced current CLI boundary.
+
+Current implementation note:
+
+- the top-level `generate` command is still most concrete for validation, debug dumps, and `node-types.json`
+- parser/runtime compatibility work is currently exercised more through lower-level emission, structural checks, compile-smoke checks, and behavioral harnesses than through first-class top-level emitted artifacts
+- emitted `parser.c`, emitted `grammar.json`, ABI selection, and report/state surfaces remain part of the target contract even where the current CLI does not yet expose them end to end
+
 ## Compatibility Model
 
 Use four compatibility levels:
@@ -791,7 +799,8 @@ This checklist covers only work that is still outstanding from the current proje
 
 The longer-tail generator work is tracked separately in:
 
-- [LATER_WORK_CHECKLIST.md](./LATER_WORK_CHECKLIST.md)
+- [MASTER_PLAN_2.md](./MASTER_PLAN_2.md)
+- [MILESTONES_21.md](./MILESTONES_21.md)
 
 ## Risks
 

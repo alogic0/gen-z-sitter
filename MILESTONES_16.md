@@ -1,6 +1,6 @@
-# Behavioral Equivalence Checklist
+# MILESTONES 16 (Behavioral Equivalence)
 
-This checklist turns the behavioral-equivalence direction into an executable implementation plan.
+This milestone turns the behavioral-equivalence direction into an executable implementation plan.
 
 Its purpose is to prove that the generator is producing parsers with credible real-grammar behavior, not only deterministic emitted artifacts. This is still not full ecosystem-wide equivalence; it is a staged proof boundary before broader compatibility and optimization work.
 
@@ -83,13 +83,12 @@ Current recorded boundary:
   - broad runtime ABI equivalence
   - broader real-repo corpus coverage
 - those deferrals map directly to later work in:
-  - `NEXT_DIRECTION_CHECKLIST.md`:
-    - `Lexer / Scanner Path`
-    - `Compatibility Hardening`
-  - `LATER_WORK_CHECKLIST.md`:
-    - `lexer/scanner emission`
-    - `external scanner integration`
-    - `broader real-grammar/repo compatibility coverage`
+    - `MASTER_PLAN_2.md`:
+      - `MILESTONES 18 (Lexer / Scanner Path)`
+      - `MILESTONES 19 (External Scanner Integration)`
+      - `MILESTONES 20 (Compatibility Hardening)`
+    - `MILESTONES_21.md`:
+      - `broader real-grammar/repo compatibility coverage`
 
 ### 6. Closeout review
 
@@ -98,7 +97,7 @@ Current recorded boundary:
 - [x] document the completion boundary in the later-work and direction docs
 
 Closeout decision:
-- this checklist is complete as the first staged behavioral-equivalence boundary
+- this milestone is complete as the first staged behavioral-equivalence boundary
 - it proves more than emitted-text determinism:
   - real input behavior is now exercised through a deterministic local harness
   - invalid inputs are classified explicitly
@@ -108,15 +107,14 @@ Closeout decision:
   - scanner/external-scanner behavior
   - full runtime ABI equivalence
   - broad ecosystem corpus parity
-- those are later checklist items, not blockers for closing this first behavioral stage
+- those are later milestone items, not blockers for closing this first behavioral stage
 
-Next follow-on checklist items after this stage:
-- `NEXT_DIRECTION_CHECKLIST.md`
-  - `Lexer / Scanner Path`
-  - `Compatibility Hardening`
-- `LATER_WORK_CHECKLIST.md`
-  - `lexer/scanner emission`
-  - `external scanner integration`
+Next follow-on milestone items after this stage:
+- `MASTER_PLAN_2.md`
+  - `MILESTONES 18 (Lexer / Scanner Path)`
+  - `MILESTONES 19 (External Scanner Integration)`
+  - `MILESTONES 20 (Compatibility Hardening)`
+- `MILESTONES_21.md`
   - `broader real-grammar/repo compatibility coverage`
 
 ## Exit Criteria
@@ -127,7 +125,7 @@ Next follow-on checklist items after this stage:
 - [x] known behavioral gaps are explicitly documented rather than left implicit
 - [x] remaining broader-equivalence work is clearly deferred
 
-## Explicit Non-Goals For This Checklist
+## Explicit Non-Goals For This Milestone
 
 - [x] do not claim full corpus parity across the Tree-sitter ecosystem
 - [x] do not require full runtime ABI compatibility here
