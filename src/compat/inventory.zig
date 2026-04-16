@@ -22,6 +22,7 @@ pub const InventoryEntry = struct {
     id: []const u8,
     display_name: []const u8,
     grammar_path: []const u8,
+    family: targets.TargetFamily,
     boundary_kind: targets.BoundaryKind,
     candidate_status: targets.CandidateStatus,
     expected_blocked: bool,
@@ -33,9 +34,19 @@ pub const InventoryEntry = struct {
     notes: []const u8,
 };
 
+pub const FamilyCoverageEntry = struct {
+    family: targets.TargetFamily,
+    boundary_kind: targets.BoundaryKind,
+    target_count: usize,
+    passed_count: usize,
+    deferred_count: usize,
+    blocked_count: usize,
+};
+
 pub const InventoryReport = struct {
     schema_version: u32,
     boundary: BoundarySummary,
+    family_coverage: []FamilyCoverageEntry,
     proven_first_wave_targets: []InventoryEntry,
     proven_scanner_wave_targets: []InventoryEntry,
     deferred_control_targets: []InventoryEntry,
@@ -44,6 +55,7 @@ pub const InventoryReport = struct {
     out_of_scope_targets: []InventoryEntry,
 
     pub fn deinit(self: *InventoryReport, allocator: std.mem.Allocator) void {
+        allocator.free(self.family_coverage);
         deinitInventoryEntries(allocator, self.proven_first_wave_targets);
         deinitInventoryEntries(allocator, self.proven_scanner_wave_targets);
         deinitInventoryEntries(allocator, self.deferred_control_targets);
@@ -61,6 +73,7 @@ pub fn buildInventoryReportAlloc(
     return .{
         .schema_version = 1,
         .boundary = collectBoundarySummary(runs),
+        .family_coverage = try collectFamilyCoverageAlloc(allocator, runs),
         .proven_first_wave_targets = try collectEntriesAlloc(allocator, runs, includeProvenFirstWaveTarget),
         .proven_scanner_wave_targets = try collectEntriesAlloc(allocator, runs, includeProvenScannerWaveTarget),
         .deferred_control_targets = try collectEntriesAlloc(allocator, runs, includeDeferredControl),
@@ -152,6 +165,7 @@ fn cloneInventoryEntry(
         .id = try allocator.dupe(u8, run.id),
         .display_name = try allocator.dupe(u8, run.display_name),
         .grammar_path = try allocator.dupe(u8, run.grammar_path),
+        .family = run.family,
         .boundary_kind = run.boundary_kind,
         .candidate_status = run.candidate_status,
         .expected_blocked = run.expected_blocked,
@@ -173,6 +187,50 @@ fn deinitInventoryEntries(allocator: std.mem.Allocator, entries: []InventoryEntr
         allocator.free(entry.notes);
     }
     allocator.free(entries);
+}
+
+fn collectFamilyCoverageAlloc(
+    allocator: std.mem.Allocator,
+    runs: []const result_model.TargetRunResult,
+) ![]FamilyCoverageEntry {
+    var items = std.array_list.Managed(FamilyCoverageEntry).init(allocator);
+    defer items.deinit();
+
+    for (runs) |run| {
+        const index = findFamilyCoverageIndex(items.items, run.family) orelse blk: {
+            try items.append(.{
+                .family = run.family,
+                .boundary_kind = run.boundary_kind,
+                .target_count = 0,
+                .passed_count = 0,
+                .deferred_count = 0,
+                .blocked_count = 0,
+            });
+            break :blk items.items.len - 1;
+        };
+
+        items.items[index].target_count += 1;
+        switch (run.final_classification) {
+            .passed_within_current_boundary => items.items[index].passed_count += 1,
+            .deferred_for_scanner_boundary => items.items[index].deferred_count += 1,
+            .failed_due_to_parser_only_gap,
+            .out_of_scope_for_scanner_boundary,
+            .infrastructure_failure,
+            => {},
+        }
+        if (run.emission) |emission| {
+            if (emission.blocked) items.items[index].blocked_count += 1;
+        }
+    }
+
+    return try items.toOwnedSlice();
+}
+
+fn findFamilyCoverageIndex(items: []const FamilyCoverageEntry, family: targets.TargetFamily) ?usize {
+    for (items, 0..) |item, index| {
+        if (item.family == family) return index;
+    }
+    return null;
 }
 
 fn firstFailureDetail(run: result_model.TargetRunResult) ?[]const u8 {
@@ -235,6 +293,11 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     try std.testing.expectEqual(@as(usize, 0), report.boundary.deferred_scanner_targets);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.excluded_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.blocked_control_targets);
+    try std.testing.expectEqual(@as(usize, 8), report.family_coverage.len);
+    try std.testing.expectEqual(targets.TargetFamily.hidden_external_fields, report.family_coverage[6].family);
+    try std.testing.expectEqual(@as(usize, 2), report.family_coverage[6].passed_count);
+    try std.testing.expectEqual(targets.TargetFamily.mixed_semantics, report.family_coverage[7].family);
+    try std.testing.expectEqual(@as(usize, 2), report.family_coverage[7].passed_count);
     try std.testing.expectEqual(@as(usize, 5), report.proven_first_wave_targets.len);
     try std.testing.expectEqual(@as(usize, 4), report.proven_scanner_wave_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
@@ -252,6 +315,7 @@ test "renderInventoryReportAlloc emits deterministic boundary JSON" {
     defer allocator.free(json);
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"boundary\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"family_coverage\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"proven_first_wave_targets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"proven_scanner_wave_targets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"deferred_control_targets\"") != null);

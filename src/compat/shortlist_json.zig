@@ -11,6 +11,7 @@ pub const ShortlistArtifact = struct {
 
 pub const ShortlistEntry = struct {
     id: []const u8,
+    family: targets.TargetFamily,
     boundary_kind: targets.BoundaryKind,
     status: targets.CandidateStatus,
     source_kind: targets.SourceKind,
@@ -43,6 +44,7 @@ fn collectShortlistEntriesAlloc(
     for (shortlist, 0..) |target, index| {
         entries[index] = .{
             .id = target.id,
+            .family = target.family,
             .boundary_kind = target.boundary_kind,
             .status = target.candidate_status,
             .source_kind = target.source_kind,
@@ -79,6 +81,7 @@ test "renderShortlistArtifactAlloc emits provenance-aware shortlist JSON" {
     defer allocator.free(json);
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"tree_sitter_ziggy_json\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"mixed_semantics\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"external_repo_snapshot\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"upstream_revision\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"scanner_external_scanner\"") != null);

@@ -1,6 +1,7 @@
 const std = @import("std");
 const json_support = @import("../support/json.zig");
 const result_model = @import("result.zig");
+const targets = @import("targets.zig");
 
 pub const AggregateCounts = struct {
     total_targets: usize,
@@ -33,14 +34,26 @@ pub const MismatchCategoryCounts = struct {
     infrastructure_failure: usize,
 };
 
+pub const FamilyAggregate = struct {
+    family: targets.TargetFamily,
+    boundary_kind: targets.BoundaryKind,
+    target_count: usize,
+    passed_count: usize,
+    deferred_count: usize,
+    blocked_count: usize,
+};
+
 pub fn renderRunReportAlloc(
     allocator: std.mem.Allocator,
     results: []const result_model.TargetRunResult,
 ) ![]u8 {
     const aggregate = collectAggregateCounts(results);
+    const family_coverage = try collectFamilyAggregatesAlloc(allocator, results);
+    defer allocator.free(family_coverage);
     return try json_support.stringifyAlloc(allocator, .{
         .schema_version = 1,
         .aggregate = aggregate,
+        .family_coverage = family_coverage,
         .results = results,
     });
 }
@@ -118,6 +131,50 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
     return counts;
 }
 
+fn collectFamilyAggregatesAlloc(
+    allocator: std.mem.Allocator,
+    results: []const result_model.TargetRunResult,
+) ![]FamilyAggregate {
+    var items = std.array_list.Managed(FamilyAggregate).init(allocator);
+    defer items.deinit();
+
+    for (results) |run| {
+        const index = findFamilyAggregateIndex(items.items, run.family) orelse blk: {
+            try items.append(.{
+                .family = run.family,
+                .boundary_kind = run.boundary_kind,
+                .target_count = 0,
+                .passed_count = 0,
+                .deferred_count = 0,
+                .blocked_count = 0,
+            });
+            break :blk items.items.len - 1;
+        };
+
+        items.items[index].target_count += 1;
+        switch (run.final_classification) {
+            .passed_within_current_boundary => items.items[index].passed_count += 1,
+            .deferred_for_scanner_boundary => items.items[index].deferred_count += 1,
+            .failed_due_to_parser_only_gap,
+            .out_of_scope_for_scanner_boundary,
+            .infrastructure_failure,
+            => {},
+        }
+        if (run.emission) |emission| {
+            if (emission.blocked) items.items[index].blocked_count += 1;
+        }
+    }
+
+    return try items.toOwnedSlice();
+}
+
+fn findFamilyAggregateIndex(items: []const FamilyAggregate, family: targets.TargetFamily) ?usize {
+    for (items, 0..) |item, index| {
+        if (item.family == family) return index;
+    }
+    return null;
+}
+
 test "renderRunReportAlloc emits deterministic structured JSON" {
     const allocator = std.testing.allocator;
 
@@ -126,6 +183,7 @@ test "renderRunReportAlloc emits deterministic structured JSON" {
             .id = "sample",
             .display_name = "Sample",
             .grammar_path = "grammar.json",
+            .family = .behavioral_config,
             .source_kind = .grammar_json,
             .provenance = .{ .origin_kind = .staged_in_repo },
             .candidate_status = .intended_first_wave,
@@ -139,6 +197,7 @@ test "renderRunReportAlloc emits deterministic structured JSON" {
     defer allocator.free(json);
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"schema_version\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"family_coverage\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"results\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"mismatch_categories\"") != null);
 }

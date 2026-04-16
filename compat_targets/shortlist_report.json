@@ -28,11 +28,78 @@
       "infrastructure_failure": 0
     }
   },
+  "family_coverage": [
+    {
+      "family": "parse_table_tiny",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 1,
+      "deferred_count": 0,
+      "blocked_count": 0
+    },
+    {
+      "family": "behavioral_config",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 1,
+      "deferred_count": 0,
+      "blocked_count": 0
+    },
+    {
+      "family": "repeat_choice_seq",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 1,
+      "deferred_count": 0,
+      "blocked_count": 1
+    },
+    {
+      "family": "ziggy",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 1,
+      "deferred_count": 0,
+      "blocked_count": 0
+    },
+    {
+      "family": "ziggy_schema",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 1,
+      "deferred_count": 0,
+      "blocked_count": 0
+    },
+    {
+      "family": "parse_table_conflict",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 1,
+      "deferred_count": 0,
+      "blocked_count": 1
+    },
+    {
+      "family": "hidden_external_fields",
+      "boundary_kind": "scanner_external_scanner",
+      "target_count": 2,
+      "passed_count": 2,
+      "deferred_count": 0,
+      "blocked_count": 0
+    },
+    {
+      "family": "mixed_semantics",
+      "boundary_kind": "scanner_external_scanner",
+      "target_count": 2,
+      "passed_count": 2,
+      "deferred_count": 0,
+      "blocked_count": 0
+    }
+  ],
   "results": [
     {
       "id": "parse_table_tiny_json",
       "display_name": "Parse Table Tiny (JSON)",
       "grammar_path": "compat_targets/parse_table_tiny/grammar.json",
+      "family": "parse_table_tiny",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
       "provenance": {
@@ -102,6 +169,7 @@
       "id": "behavioral_config_json",
       "display_name": "Behavioral Config (JSON)",
       "grammar_path": "compat_targets/behavioral_config/grammar.json",
+      "family": "behavioral_config",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
       "provenance": {
@@ -171,6 +239,7 @@
       "id": "repeat_choice_seq_js",
       "display_name": "Repeat Choice Seq (JS)",
       "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
+      "family": "repeat_choice_seq",
       "source_kind": "grammar_js",
       "boundary_kind": "parser_only",
       "provenance": {
@@ -283,6 +352,7 @@
       "id": "tree_sitter_ziggy_json",
       "display_name": "tree-sitter-ziggy (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_ziggy/grammar.json",
+      "family": "ziggy",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
       "provenance": {
@@ -352,6 +422,7 @@
       "id": "tree_sitter_ziggy_schema_json",
       "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
+      "family": "ziggy_schema",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
       "provenance": {
@@ -421,6 +492,7 @@
       "id": "parse_table_conflict_json",
       "display_name": "Parse Table Conflict (JSON)",
       "grammar_path": "compat_targets/parse_table_conflict/grammar.json",
+      "family": "parse_table_conflict",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
       "provenance": {
@@ -518,6 +590,7 @@
       "id": "hidden_external_fields_json",
       "display_name": "Hidden External Fields (JSON)",
       "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
+      "family": "hidden_external_fields",
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
       "provenance": {
@@ -576,6 +649,7 @@
       "id": "hidden_external_fields_js",
       "display_name": "Hidden External Fields (JS)",
       "grammar_path": "compat_targets/hidden_external_fields/grammar.js",
+      "family": "hidden_external_fields",
       "source_kind": "grammar_js",
       "boundary_kind": "scanner_external_scanner",
       "provenance": {
@@ -634,6 +708,7 @@
       "id": "mixed_semantics_json",
       "display_name": "Mixed Semantics (JSON)",
       "grammar_path": "compat_targets/mixed_semantics/grammar.json",
+      "family": "mixed_semantics",
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
       "provenance": {
@@ -692,6 +767,7 @@
       "id": "mixed_semantics_js",
       "display_name": "Mixed Semantics (JS)",
       "grammar_path": "compat_targets/mixed_semantics/grammar.js",
+      "family": "mixed_semantics",
       "source_kind": "grammar_js",
       "boundary_kind": "scanner_external_scanner",
       "provenance": {

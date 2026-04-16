@@ -15,6 +15,7 @@
   "targets": [
     {
       "id": "parse_table_tiny_json",
+      "family": "parse_table_tiny",
       "boundary_kind": "parser_only",
       "status": "intended_first_wave",
       "source_kind": "grammar_json",
@@ -28,6 +29,7 @@
     },
     {
       "id": "behavioral_config_json",
+      "family": "behavioral_config",
       "boundary_kind": "parser_only",
       "status": "intended_first_wave",
       "source_kind": "grammar_json",
@@ -41,6 +43,7 @@
     },
     {
       "id": "repeat_choice_seq_js",
+      "family": "repeat_choice_seq",
       "boundary_kind": "parser_only",
       "status": "intended_first_wave",
       "source_kind": "grammar_js",
@@ -54,6 +57,7 @@
     },
     {
       "id": "tree_sitter_ziggy_json",
+      "family": "ziggy",
       "boundary_kind": "parser_only",
       "status": "intended_first_wave",
       "source_kind": "grammar_json",
@@ -67,6 +71,7 @@
     },
     {
       "id": "tree_sitter_ziggy_schema_json",
+      "family": "ziggy_schema",
       "boundary_kind": "parser_only",
       "status": "intended_first_wave",
       "source_kind": "grammar_json",
@@ -80,6 +85,7 @@
     },
     {
       "id": "parse_table_conflict_json",
+      "family": "parse_table_conflict",
       "boundary_kind": "parser_only",
       "status": "deferred_control_fixture",
       "source_kind": "grammar_json",
@@ -93,6 +99,7 @@
     },
     {
       "id": "hidden_external_fields_json",
+      "family": "hidden_external_fields",
       "boundary_kind": "scanner_external_scanner",
       "status": "intended_scanner_wave",
       "source_kind": "grammar_json",
@@ -106,6 +113,7 @@
     },
     {
       "id": "hidden_external_fields_js",
+      "family": "hidden_external_fields",
       "boundary_kind": "scanner_external_scanner",
       "status": "intended_scanner_wave",
       "source_kind": "grammar_js",
@@ -119,6 +127,7 @@
     },
     {
       "id": "mixed_semantics_json",
+      "family": "mixed_semantics",
       "boundary_kind": "scanner_external_scanner",
       "status": "intended_scanner_wave",
       "source_kind": "grammar_json",
@@ -132,6 +141,7 @@
     },
     {
       "id": "mixed_semantics_js",
+      "family": "mixed_semantics",
       "boundary_kind": "scanner_external_scanner",
       "status": "intended_scanner_wave",
       "source_kind": "grammar_js",

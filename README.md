@@ -106,7 +106,8 @@ Current staged compatibility boundary:
   - `compat_targets/shortlist_inventory.json`
   - `compat_targets/shortlist_report.json`
 - `compat_targets/README.md` describes how the shortlist, inventory, mismatch, and coverage-decision artifacts relate to the current staged boundary
-- the currently proven first-wave parser-only boundary is now a 5-target set:
+- the shortlist inventory and full report now expose family-level coverage so the current staged boundary is readable by grammar family, not only by flat target counts
+- the currently proven first-wave parser-only boundary is now a 5-target set across 5 parser-only families:
   - `parse_table_tiny_json`
   - `behavioral_config_json`
   - `repeat_choice_seq_js`
@@ -115,7 +116,7 @@ Current staged compatibility boundary:
 - the shortlist now carries one intentionally deferred parser-only control fixture:
   - `parse_table_conflict_json`
   - it remains blocked on purpose as a known ambiguity boundary without precedence annotations
-- the shortlist now also carries a promoted multi-family scanner wave:
+- the shortlist now also carries a promoted multi-family scanner wave with explicit family-level coverage in the checked-in artifacts:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`
   - `mixed_semantics_json`

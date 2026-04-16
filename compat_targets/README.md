@@ -18,9 +18,9 @@ Versioned artifacts:
 - `shortlist.json`
   - target selection policy, boundary kind, candidate classification, and success criteria
 - `shortlist_inventory.json`
-  - aggregate boundary summary plus explicit proven first-wave, deferred-control, deferred-scanner, and out-of-scope target sections
+  - aggregate boundary summary plus family-level coverage and explicit proven first-wave, deferred-control, deferred-scanner, and out-of-scope target sections
 - `shortlist_report.json`
-  - full per-target machine-readable harness report with aggregate counts for first-wave, deferred-control, and deferred-scanner buckets
+  - full per-target machine-readable harness report with aggregate counts and family-level coverage for the current staged boundary
 - `shortlist_mismatch_inventory.json`
   - classified mismatch inventory with explicit scanner-boundary and deferred-control buckets backed by dedicated classifications
 - `shortlist_shift_reduce_profile.json`

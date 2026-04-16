@@ -96,6 +96,7 @@ What the repo can credibly claim today:
   - `compat_targets/shortlist_inventory.json`
   - `compat_targets/shortlist_report.json`
 - `compat_targets/README.md` explains the relationship between shortlist policy, aggregate boundary, mismatch inventory, and coverage decision artifacts
+- the checked-in shortlist inventory and full report now expose family-level coverage alongside aggregate target totals
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:
   - 5 intended first-wave parser-only targets currently pass within the staged boundary
   - 1 staged deferred target remains intentionally frozen as an ambiguity/control fixture

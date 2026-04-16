@@ -10,6 +10,17 @@ pub const BoundaryKind = enum {
     scanner_external_scanner,
 };
 
+pub const TargetFamily = enum {
+    parse_table_tiny,
+    behavioral_config,
+    repeat_choice_seq,
+    ziggy,
+    ziggy_schema,
+    parse_table_conflict,
+    hidden_external_fields,
+    mixed_semantics,
+};
+
 pub const OriginKind = enum {
     staged_in_repo,
     external_repo_snapshot,
@@ -34,6 +45,7 @@ pub const Target = struct {
     id: []const u8,
     display_name: []const u8,
     grammar_path: []const u8,
+    family: TargetFamily,
     source_kind: SourceKind,
     boundary_kind: BoundaryKind = .parser_only,
     provenance: Provenance = .{ .origin_kind = .staged_in_repo },
@@ -50,6 +62,7 @@ pub const shortlist_targets = [_]Target{
         .id = "parse_table_tiny_json",
         .display_name = "Parse Table Tiny (JSON)",
         .grammar_path = "compat_targets/parse_table_tiny/grammar.json",
+        .family = .parse_table_tiny,
         .source_kind = .grammar_json,
         .boundary_kind = .parser_only,
         .provenance = .{ .origin_kind = .staged_in_repo },
@@ -62,6 +75,7 @@ pub const shortlist_targets = [_]Target{
         .id = "behavioral_config_json",
         .display_name = "Behavioral Config (JSON)",
         .grammar_path = "compat_targets/behavioral_config/grammar.json",
+        .family = .behavioral_config,
         .source_kind = .grammar_json,
         .boundary_kind = .parser_only,
         .provenance = .{ .origin_kind = .staged_in_repo },
@@ -74,6 +88,7 @@ pub const shortlist_targets = [_]Target{
         .id = "repeat_choice_seq_js",
         .display_name = "Repeat Choice Seq (JS)",
         .grammar_path = "compat_targets/repeat_choice_seq/grammar.js",
+        .family = .repeat_choice_seq,
         .source_kind = .grammar_js,
         .boundary_kind = .parser_only,
         .provenance = .{ .origin_kind = .staged_in_repo },
@@ -86,6 +101,7 @@ pub const shortlist_targets = [_]Target{
         .id = "tree_sitter_ziggy_json",
         .display_name = "tree-sitter-ziggy (JSON snapshot)",
         .grammar_path = "compat_targets/tree_sitter_ziggy/grammar.json",
+        .family = .ziggy,
         .source_kind = .grammar_json,
         .boundary_kind = .parser_only,
         .provenance = .{
@@ -103,6 +119,7 @@ pub const shortlist_targets = [_]Target{
         .id = "tree_sitter_ziggy_schema_json",
         .display_name = "tree-sitter-ziggy-schema (JSON snapshot)",
         .grammar_path = "compat_targets/tree_sitter_ziggy_schema/grammar.json",
+        .family = .ziggy_schema,
         .source_kind = .grammar_json,
         .boundary_kind = .parser_only,
         .provenance = .{
@@ -120,6 +137,7 @@ pub const shortlist_targets = [_]Target{
         .id = "parse_table_conflict_json",
         .display_name = "Parse Table Conflict (JSON)",
         .grammar_path = "compat_targets/parse_table_conflict/grammar.json",
+        .family = .parse_table_conflict,
         .source_kind = .grammar_json,
         .boundary_kind = .parser_only,
         .provenance = .{ .origin_kind = .staged_in_repo },
@@ -132,6 +150,7 @@ pub const shortlist_targets = [_]Target{
         .id = "hidden_external_fields_json",
         .display_name = "Hidden External Fields (JSON)",
         .grammar_path = "compat_targets/hidden_external_fields/grammar.json",
+        .family = .hidden_external_fields,
         .source_kind = .grammar_json,
         .boundary_kind = .scanner_external_scanner,
         .provenance = .{ .origin_kind = .staged_in_repo },
@@ -146,6 +165,7 @@ pub const shortlist_targets = [_]Target{
         .id = "hidden_external_fields_js",
         .display_name = "Hidden External Fields (JS)",
         .grammar_path = "compat_targets/hidden_external_fields/grammar.js",
+        .family = .hidden_external_fields,
         .source_kind = .grammar_js,
         .boundary_kind = .scanner_external_scanner,
         .provenance = .{ .origin_kind = .staged_in_repo },
@@ -160,6 +180,7 @@ pub const shortlist_targets = [_]Target{
         .id = "mixed_semantics_json",
         .display_name = "Mixed Semantics (JSON)",
         .grammar_path = "compat_targets/mixed_semantics/grammar.json",
+        .family = .mixed_semantics,
         .source_kind = .grammar_json,
         .boundary_kind = .scanner_external_scanner,
         .provenance = .{ .origin_kind = .staged_in_repo },
@@ -174,6 +195,7 @@ pub const shortlist_targets = [_]Target{
         .id = "mixed_semantics_js",
         .display_name = "Mixed Semantics (JS)",
         .grammar_path = "compat_targets/mixed_semantics/grammar.js",
+        .family = .mixed_semantics,
         .source_kind = .grammar_js,
         .boundary_kind = .scanner_external_scanner,
         .provenance = .{ .origin_kind = .staged_in_repo },
@@ -206,8 +228,10 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[7].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[7].scanner_invalid_input_path != null);
     try std.testing.expect(shortlist[8].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[8].family == .mixed_semantics);
     try std.testing.expect(shortlist[8].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[9].source_kind == .grammar_js);
+    try std.testing.expect(shortlist[9].family == .mixed_semantics);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {
