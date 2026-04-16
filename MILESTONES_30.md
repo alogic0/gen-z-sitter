@@ -38,10 +38,10 @@ Out of scope:
 
 ## Exit Criteria
 
-- [ ] the harness can represent a richer sampled scanner-boundary path than the current staged single-token matcher
-- [ ] `tree_sitter_haskell_json` is either promoted into sampled real external scanner proof or deferred with a narrower explicit rationale than in M29
-- [ ] checked-in artifacts distinguish structural real scanner proof from sampled real scanner proof
-- [ ] the milestone ends with a clearer real external scanner modeling boundary than it started with
+- [x] the harness can represent a richer sampled scanner-boundary path than the current staged single-token matcher
+- [x] `tree_sitter_haskell_json` is either promoted into sampled real external scanner proof or deferred with a narrower explicit rationale than in M29
+- [x] checked-in artifacts distinguish structural real scanner proof from sampled real scanner proof
+- [x] the milestone ends with a clearer real external scanner modeling boundary than it started with
 
 ## PR-Sized Slices
 
@@ -70,14 +70,14 @@ Goal:
 
 Checklist:
 
-- [ ] wire the richer sampled model into the Haskell compatibility path
-- [ ] add or refine targeted tests around the new sampled scanner path
-- [ ] regenerate checked-in artifacts
-- [ ] keep `zig build test` passing
+- [x] wire the richer sampled model into the Haskell compatibility path
+- [x] add or refine targeted tests around the new sampled scanner path
+- [x] regenerate checked-in artifacts
+- [x] keep `zig build test` passing
 
 Acceptance:
 
-- [ ] the checked-in artifacts show a more specific sampled real external scanner state than the structural-only M29 baseline
+- [x] the checked-in artifacts show a more specific sampled real external scanner state than the structural-only M29 baseline
 
 ### PR 3
 
@@ -87,14 +87,14 @@ Goal:
 
 Checklist:
 
-- [ ] promote `tree_sitter_haskell_json` if the sampled path is compatibility-safe
+- [x] promote `tree_sitter_haskell_json` if the sampled path is compatibility-safe
 - [ ] or freeze it with a narrower explicit rationale if the next blocker remains outside milestone scope
-- [ ] update milestone/docs to match
-- [ ] keep `zig build test` passing
+- [x] update milestone/docs to match
+- [x] keep `zig build test` passing
 
 Acceptance:
 
-- [ ] the Haskell target no longer sits at the vague “broader modeling needed” boundary it inherited from M29
+- [x] the Haskell target no longer sits at the vague “broader modeling needed” boundary it inherited from M29
 
 ### PR 4
 
@@ -104,21 +104,21 @@ Goal:
 
 Checklist:
 
-- [ ] update milestone progress and closeout language
-- [ ] update any affected compatibility docs
-- [ ] keep the next-step recommendation explicit
+- [x] update milestone progress and closeout language
+- [x] update any affected compatibility docs
+- [x] keep the next-step recommendation explicit
 
 Acceptance:
 
-- [ ] the milestone closes without confusing sampled real external scanner proof with full runtime scanner support
+- [x] the milestone closes without confusing sampled real external scanner proof with full runtime scanner support
 
 ## Progress Checklist
 
 - [x] PR 1 completed
-- [ ] PR 2 completed
-- [ ] PR 3 completed
-- [ ] PR 4 completed
-- [ ] M30 ready for closeout
+- [x] PR 2 completed
+- [x] PR 3 completed
+- [x] PR 4 completed
+- [x] M30 ready for closeout
 
 ## Non-Goals
 
@@ -129,11 +129,11 @@ Acceptance:
 
 ## Initial Candidate
 
-- `tree_sitter_haskell_json` is the concrete M30 target
-- the current honest next step is:
-  - keep structural first-boundary extraction as the proven baseline
-  - add a richer sampled scanner-boundary model for the concrete layout-sensitive sample path
-  - either promote that sampled path or narrow the remaining blocker explicitly
+- `tree_sitter_haskell_json` was the concrete M30 target
+- the milestone outcome is:
+  - structural first-boundary extraction remains the lower proof layer inherited from M29
+  - M30 adds a richer sampled scanner-boundary model for layout-token families and lightweight lexical fallback
+  - that richer sampled model is now enough to promote the Haskell snapshot into sampled real external scanner proof
 
 ## PR 1 Outcome
 
@@ -144,4 +144,24 @@ Acceptance:
   - `_cond_layout_end`, including EOF closeout
 - this is still a sampled model, not runtime scanner equivalence:
   - the new test uses a small synthetic layout grammar to validate the model shape
-  - the real Haskell target remains structural-only until PR 2 wires an honest sampled path into that external grammar
+  - PR 2 then wires that richer sampled model into the real Haskell target without claiming scanner.c runtime equivalence
+
+## PR 2 Outcome
+
+- the harness now has a `sampled_external_only` scanner-boundary mode for real external scanner targets
+- that mode samples:
+  - layout-token families
+  - lightweight lexical fallback for the concrete external sample path
+  - valid-vs-invalid progress without requiring full parse-state construction
+- `tree_sitter_haskell_json` now passes within that sampled real external scanner boundary
+
+## Closeout
+
+- M30 now ends with:
+  - a richer sampled scanner-boundary model than the old single-token staged matcher
+  - one passing real external scanner snapshot under a sampled external-sequence proof layer
+  - explicit machine-readable distinction between:
+    - structural real scanner proof
+    - sampled real scanner proof
+    - full runtime scanner parity, which is still out of scope
+- the next recommended milestone is broader compatibility polish, not another immediate Haskell-specific rescue step

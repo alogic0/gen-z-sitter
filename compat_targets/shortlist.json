@@ -92,16 +92,16 @@
       "id": "tree_sitter_haskell_json",
       "family": "haskell",
       "boundary_kind": "scanner_external_scanner",
-      "scanner_boundary_check_mode": "structural_only",
-      "status": "deferred_scanner_wave",
+      "scanner_boundary_check_mode": "sampled_external_only",
+      "status": "intended_scanner_wave",
       "source_kind": "grammar_json",
       "origin_kind": "external_repo_snapshot",
       "grammar_path": "compat_targets/tree_sitter_haskell/grammar.json",
       "upstream_repository": "tree-sitter-haskell",
       "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
       "upstream_grammar_path": "src/grammar.json",
-      "why": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; current M29 support stops at the structural first-boundary surface rather than a full sampled behavioral check",
-      "success_means": "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and classify the deeper stateful multi-token scanner boundary explicitly"
+      "why": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; M30 promotes it into a sampled external-sequence proof layer before any broader parser-integrated scanner claim",
+      "success_means": "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove a sampled real external scanner path makes stronger progress on the valid input than on the invalid input"
     },
     {
       "id": "parse_table_conflict_json",

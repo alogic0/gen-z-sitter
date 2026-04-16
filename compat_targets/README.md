@@ -71,13 +71,14 @@ Current staged boundary summary:
   - `mixed_semantics_json`
   - `mixed_semantics_js`
   - these targets keep extras elsewhere in the grammar while proving a narrower first-boundary path that does not depend on them
-- 1 real external scanner snapshot is now onboarded but still deferred:
+- 1 real external scanner snapshot now passes within the current sampled real scanner boundary:
   - `tree_sitter_haskell_json`
   - it is the first real external scanner-family target in the shortlist
   - it now passes structural first-boundary extraction
-  - it still defers the sampled scanner-boundary check because broader stateful multi-token external-scanner modeling is outside the current staged harness
+  - it also now passes a sampled external-sequence scanner proof layer
+  - this is still narrower than full scanner.c runtime equivalence
 
 Recommended next step after this staged boundary:
 
-- keep the parser-only and staged scanner boundaries stable while shifting the promoted roadmap toward broader compatibility polish
-- for real-repo evidence specifically, narrow or promote the onboarded Haskell scanner snapshot before broadening the real external scanner wave further
+- keep the parser-only, staged scanner, and sampled real external scanner boundaries stable while shifting the promoted roadmap toward broader compatibility polish
+- widen real external scanner-family coverage only after preserving the distinction between sampled real scanner proof and full runtime scanner behavior

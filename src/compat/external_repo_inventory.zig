@@ -34,6 +34,7 @@ pub const ExternalRepoBoundaryEntry = struct {
 pub const ExternalEvidenceNextStep = enum {
     onboard_additional_local_external_snapshots_when_available,
     narrow_or_promote_onboarded_external_scanner_targets,
+    broader_compatibility_polish,
 };
 
 pub const ExternalRepoInventoryReport = struct {
@@ -78,6 +79,8 @@ pub fn buildExternalRepoInventoryAlloc(
         ),
         .recommended_next_step = if (total_external_scanner_targets != 0 and passed_external_scanner_targets == 0)
             .narrow_or_promote_onboarded_external_scanner_targets
+        else if (total_external_scanner_targets != 0 and passed_external_scanner_targets > 0)
+            .broader_compatibility_polish
         else
             .onboard_additional_local_external_snapshots_when_available,
         .targets = try collectEntriesAlloc(allocator, runs),
@@ -307,7 +310,7 @@ test "buildExternalRepoInventoryAlloc summarizes the current external evidence" 
     defer report.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 3), report.total_external_repo_targets);
-    try std.testing.expectEqual(@as(usize, 2), report.passed_external_repo_targets);
+    try std.testing.expectEqual(@as(usize, 3), report.passed_external_repo_targets);
     try std.testing.expectEqual(@as(usize, 3), report.family_coverage.len);
     try std.testing.expectEqual(@as(usize, 2), report.boundary_coverage.len);
     try std.testing.expectEqual(targets.BoundaryKind.parser_only, report.boundary_coverage[0].boundary_kind);
@@ -315,8 +318,8 @@ test "buildExternalRepoInventoryAlloc summarizes the current external evidence" 
     try std.testing.expectEqual(targets.TargetFamily.ziggy, report.family_coverage[0].family);
     try std.testing.expectEqual(targets.TargetFamily.ziggy_schema, report.family_coverage[1].family);
     try std.testing.expectEqual(targets.TargetFamily.haskell, report.family_coverage[2].family);
-    try std.testing.expectEqual(@as(usize, 3), report.current_limitations.len);
-    try std.testing.expectEqual(ExternalEvidenceNextStep.narrow_or_promote_onboarded_external_scanner_targets, report.recommended_next_step);
+    try std.testing.expectEqual(@as(usize, 2), report.current_limitations.len);
+    try std.testing.expectEqual(ExternalEvidenceNextStep.broader_compatibility_polish, report.recommended_next_step);
     try std.testing.expectEqual(@as(usize, 3), report.targets.len);
 }
 

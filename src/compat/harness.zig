@@ -140,6 +140,99 @@ pub fn runTarget(
             );
         }
 
+        if (target.scanner_boundary_check_mode == .sampled_external_only) {
+            const valid_input_path = target.scanner_valid_input_path orelse
+                return failRun(
+                    &run,
+                    .scanner_boundary_check,
+                    .deferred_for_scanner_boundary,
+                    .scanner_external_scanner_boundary_gap,
+                    try std.fmt.allocPrint(allocator, "scanner target is missing a valid input path: {s}", .{target.id}),
+                );
+            const valid_input = std.fs.cwd().readFileAlloc(arena.allocator(), valid_input_path, 64 * 1024) catch |err| {
+                return failRun(
+                    &run,
+                    .scanner_boundary_check,
+                    .infrastructure_failure,
+                    .infrastructure_failure,
+                    try std.fmt.allocPrint(allocator, "failed to read scanner valid input {s}: {s}", .{ valid_input_path, @errorName(err) }),
+                );
+            };
+
+            const valid_sample = behavioral_harness.sampleExtractedExternalBoundaryOnly(
+                arena.allocator(),
+                prepared,
+                extracted.lexical,
+                serialized_boundary,
+                valid_input,
+            ) catch |err| {
+                return failRun(
+                    &run,
+                    .scanner_boundary_check,
+                    .deferred_for_scanner_boundary,
+                    .scanner_external_scanner_boundary_gap,
+                    try std.fmt.allocPrint(allocator, "scanner sampled external-only valid-path probe failed: {s}", .{@errorName(err)}),
+                );
+            };
+
+            const invalid_input_path = target.scanner_invalid_input_path orelse
+                return failRun(
+                    &run,
+                    .scanner_boundary_check,
+                    .deferred_for_scanner_boundary,
+                    .scanner_external_scanner_boundary_gap,
+                    try std.fmt.allocPrint(allocator, "scanner target is missing an invalid input path: {s}", .{target.id}),
+                );
+            const invalid_input = std.fs.cwd().readFileAlloc(arena.allocator(), invalid_input_path, 64 * 1024) catch |err| {
+                return failRun(
+                    &run,
+                    .scanner_boundary_check,
+                    .infrastructure_failure,
+                    .infrastructure_failure,
+                    try std.fmt.allocPrint(allocator, "failed to read scanner invalid input {s}: {s}", .{ invalid_input_path, @errorName(err) }),
+                );
+            };
+
+            const invalid_sample = behavioral_harness.sampleExtractedExternalBoundaryOnly(
+                arena.allocator(),
+                prepared,
+                extracted.lexical,
+                serialized_boundary,
+                invalid_input,
+            ) catch |err| {
+                return failRun(
+                    &run,
+                    .scanner_boundary_check,
+                    .deferred_for_scanner_boundary,
+                    .scanner_external_scanner_boundary_gap,
+                    try std.fmt.allocPrint(allocator, "scanner sampled external-only invalid-path probe failed: {s}", .{@errorName(err)}),
+                );
+            };
+
+            if (!(valid_sample.external_matches > 0 and valid_sample.consumed_bytes > invalid_sample.consumed_bytes)) {
+                return failRun(
+                    &run,
+                    .scanner_boundary_check,
+                    .deferred_for_scanner_boundary,
+                    .scanner_external_scanner_boundary_gap,
+                    try std.fmt.allocPrint(
+                        allocator,
+                        "sampled external-only scanner probe did not make stronger valid-path progress for {s}: valid bytes={d} externals={d}, invalid bytes={d} externals={d}",
+                        .{
+                            target.id,
+                            valid_sample.consumed_bytes,
+                            valid_sample.external_matches,
+                            invalid_sample.consumed_bytes,
+                            invalid_sample.external_matches,
+                        },
+                    ),
+                );
+            }
+
+            run.scanner_boundary_check.status = .passed;
+            return run;
+        }
+
         const flattened = flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax) catch |err| {
             return failRun(
                 &run,
@@ -843,7 +936,7 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     try std.testing.expectEqual(@as(usize, 11), runs.len);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[5].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[8].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[9].final_classification);
@@ -862,7 +955,7 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets and keeps onl
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[4].blocked_boundary);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
-    try std.testing.expectEqual(result_model.MismatchCategory.scanner_external_scanner_boundary_gap, runs[5].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[5].mismatch_category);
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[5].blocked_boundary);
     try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[6].mismatch_category);
     try std.testing.expect(runs[6].blocked_boundary != null);
@@ -873,22 +966,20 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets and keeps onl
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[10].mismatch_category);
 }
 
-test "runShortlistTargetsAlloc onboards tree_sitter_haskell as a deferred real external scanner target" {
+test "runShortlistTargetsAlloc promotes tree_sitter_haskell into sampled real external scanner proof" {
     const allocator = std.testing.allocator;
 
     const runs = try runShortlistTargetsAlloc(allocator, .{});
     defer result_model.deinitRunResults(allocator, runs);
 
     try std.testing.expectEqualStrings("tree_sitter_haskell_json", runs[5].id);
-    try std.testing.expectEqual(targets.CandidateStatus.deferred_scanner_wave, runs[5].candidate_status);
+    try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[5].candidate_status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].load.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].prepare.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].serialize.status);
-    try std.testing.expectEqual(result_model.StepStatus.failed, runs[5].scanner_boundary_check.status);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[5].final_classification);
-    try std.testing.expectEqual(result_model.MismatchCategory.scanner_external_scanner_boundary_gap, runs[5].mismatch_category);
-    try std.testing.expect(std.mem.indexOf(u8, runs[5].scanner_boundary_check.detail.?, "structural first-boundary extraction") != null);
-    try std.testing.expect(std.mem.indexOf(u8, runs[5].scanner_boundary_check.detail.?, "multi-token external-scanner modeling") != null);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].scanner_boundary_check.status);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[5].mismatch_category);
 }
 
 test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked control case" {

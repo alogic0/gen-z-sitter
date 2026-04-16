@@ -20,6 +20,7 @@ pub const ExternalScannerRepoEntry = struct {
 pub const ExternalScannerEvidenceNextStep = enum {
     acquire_or_snapshot_local_external_scanner_grammars,
     narrow_or_promote_onboarded_external_scanner_targets,
+    broader_compatibility_polish,
 };
 
 pub const ExternalScannerRepoInventoryReport = struct {
@@ -54,8 +55,10 @@ pub fn buildExternalScannerRepoInventoryAlloc(
         ),
         .recommended_next_step = if (total_external_scanner_targets == 0)
             .acquire_or_snapshot_local_external_scanner_grammars
+        else if (passed_external_scanner_targets == 0)
+            .narrow_or_promote_onboarded_external_scanner_targets
         else
-            .narrow_or_promote_onboarded_external_scanner_targets,
+            .broader_compatibility_polish,
         .targets = try collectEntriesAlloc(allocator, runs),
     };
 }
@@ -142,6 +145,7 @@ fn collectCurrentLimitationsAlloc(
 
     return try duplicateStringSliceAlloc(allocator, &.{
         "real external scanner evidence is now represented by at least one passing external scanner snapshot",
+        "the current real external scanner proof is still narrower than runtime scanner parity because it rests on a sampled external-sequence boundary rather than full scanner.c execution",
         "the next step is to widen real external scanner-family coverage without collapsing staged scanner proof and real scanner proof into one claim",
     });
 }
@@ -189,9 +193,9 @@ test "buildExternalScannerRepoInventoryAlloc summarizes the current real externa
     defer report.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 1), report.total_external_scanner_targets);
-    try std.testing.expectEqual(@as(usize, 0), report.passed_external_scanner_targets);
+    try std.testing.expectEqual(@as(usize, 1), report.passed_external_scanner_targets);
     try std.testing.expectEqual(@as(usize, 3), report.current_limitations.len);
-    try std.testing.expectEqual(ExternalScannerEvidenceNextStep.narrow_or_promote_onboarded_external_scanner_targets, report.recommended_next_step);
+    try std.testing.expectEqual(ExternalScannerEvidenceNextStep.broader_compatibility_polish, report.recommended_next_step);
     try std.testing.expectEqual(@as(usize, 1), report.targets.len);
 }
 

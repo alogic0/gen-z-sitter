@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "total_external_repo_targets": 3,
-  "passed_external_repo_targets": 2,
+  "passed_external_repo_targets": 3,
   "family_coverage": [
     {
       "family": "ziggy",
@@ -19,7 +19,7 @@
       "family": "haskell",
       "boundary_kind": "scanner_external_scanner",
       "target_count": 1,
-      "passed_count": 0
+      "passed_count": 1
     }
   ],
   "boundary_coverage": [
@@ -31,15 +31,14 @@
     {
       "boundary_kind": "scanner_external_scanner",
       "target_count": 1,
-      "passed_count": 0
+      "passed_count": 1
     }
   ],
   "current_limitations": [
-    "the checked-in real external evidence now includes both parser-only and scanner-family snapshots, but the real external scanner evidence is still deferred",
-    "tree-sitter-haskell is the first onboarded real external scanner snapshot and currently fails during external-boundary serialization because the scanner surface still uses unsupported features such as multiple external tokens and non-leading external steps",
-    "real external parser-only evidence is currently broader and more mature than real external scanner evidence"
+    "the checked-in real external evidence now includes at least one passing external scanner-family snapshot",
+    "the next step is to widen real external scanner-family coverage without collapsing parser-only and scanner evidence into a single flat claim"
   ],
-  "recommended_next_step": "narrow_or_promote_onboarded_external_scanner_targets",
+  "recommended_next_step": "broader_compatibility_polish",
   "targets": [
     {
       "id": "tree_sitter_ziggy_json",
@@ -79,9 +78,9 @@
       "upstream_repository": "tree-sitter-haskell",
       "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
       "upstream_grammar_path": "src/grammar.json",
-      "final_classification": "deferred_for_scanner_boundary",
-      "mismatch_category": "scanner_external_scanner_boundary_gap",
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; current M29 support stops at the structural first-boundary surface rather than a full sampled behavioral check"
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; M30 promotes it into a sampled external-sequence proof layer before any broader parser-integrated scanner claim"
     }
   ]
 }

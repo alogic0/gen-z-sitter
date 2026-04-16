@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "total_external_scanner_targets": 1,
-  "passed_external_scanner_targets": 0,
+  "passed_external_scanner_targets": 1,
   "current_limitations": [
-    "the checked-in real external scanner evidence now includes onboarded scanner snapshots, but none currently pass within the staged scanner boundary",
-    "tree-sitter-haskell currently fails during external-boundary serialization because the scanner surface still uses unsupported features such as multiple external tokens and non-leading external steps",
-    "the repo still has staged scanner-boundary proof, but real external scanner evidence remains narrower and deferred behind that first unsupported-feature boundary"
+    "real external scanner evidence is now represented by at least one passing external scanner snapshot",
+    "the current real external scanner proof is still narrower than runtime scanner parity because it rests on a sampled external-sequence boundary rather than full scanner.c execution",
+    "the next step is to widen real external scanner-family coverage without collapsing staged scanner proof and real scanner proof into one claim"
   ],
-  "recommended_next_step": "narrow_or_promote_onboarded_external_scanner_targets",
+  "recommended_next_step": "broader_compatibility_polish",
   "targets": [
     {
       "id": "tree_sitter_haskell_json",
@@ -18,9 +18,9 @@
       "upstream_repository": "tree-sitter-haskell",
       "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
       "upstream_grammar_path": "src/grammar.json",
-      "final_classification": "deferred_for_scanner_boundary",
-      "mismatch_category": "scanner_external_scanner_boundary_gap",
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; current M29 support stops at the structural first-boundary surface rather than a full sampled behavioral check"
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; M30 promotes it into a sampled external-sequence proof layer before any broader parser-integrated scanner claim"
     }
   ]
 }

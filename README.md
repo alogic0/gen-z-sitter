@@ -113,11 +113,11 @@ Current staged compatibility boundary:
 - real external snapshot proof is also exposed separately under `compat_targets/`:
   - `compat_targets/external_repo_inventory.json`
   - this keeps the promoted real external parser-only evidence visible without mixing it into staged fixture-only summaries
-  - it now records the current mixed real-evidence state explicitly: 2 passing external parser-only snapshots plus 1 deferred external scanner snapshot
+  - it now records the current mixed real-evidence state explicitly: 2 passing external parser-only snapshots plus 1 passing sampled real external scanner snapshot
 - real external scanner proof is now exposed separately under `compat_targets/`:
   - `compat_targets/external_scanner_repo_inventory.json`
-  - it now records the first onboarded real external scanner target: `tree_sitter_haskell_json`
-  - that target is currently deferred after structural first-boundary extraction, because the next honest check still requires broader stateful multi-token external-scanner modeling than the current sampled harness provides
+  - it now records the first passing real external scanner target: `tree_sitter_haskell_json`
+  - that target currently passes within a sampled external-sequence boundary, not full scanner.c runtime equivalence
   - the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos still do not change that scanner story, because their available snapshots have `externals: []` and no scanner implementation files
 - parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
   - `compat_targets/shortlist.json`
@@ -152,7 +152,10 @@ Current staged compatibility boundary:
   - `hidden_external_fields_js`
   - `mixed_semantics_json`
   - `mixed_semantics_js`
-  - together they currently prove load, prepare, first external-boundary extraction, compatibility-safe valid-path behavior, and weaker invalid-path progress through the staged scanner boundary
+  - `tree_sitter_haskell_json`
+  - together they currently prove load, prepare, and one of:
+    - staged compatibility-safe valid-path behavior with weaker invalid-path progress
+    - sampled external-sequence proof for the real external Haskell snapshot
   - `mixed_semantics` specifically keeps extras elsewhere in the grammar while proving a narrower first-boundary path that does not depend on them
 - the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 - the current supported behavioral subset is still staged:
@@ -160,11 +163,12 @@ Current staged compatibility boundary:
   - `hidden_external_fields` also proves that the invalid path makes less progress than the valid path through the first staged scanner boundary
   - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it now rejects on the staged blocked path as `missing_action` rather than advancing into a promoted parser-only pass
 - scanner/external-scanner proof is staged as a narrow promoted multi-family wave rather than left entirely out of the shortlist
-- real external scanner evidence is now no longer empty, but it is still deferred behind the first onboarded Haskell scanner boundary
+- real external scanner evidence is now no longer empty, and it now includes one passing sampled real external scanner snapshot
 - that real external Haskell boundary is now explicit:
-  - structural first-boundary extraction passes
-  - sampled behavioral scanner proof is still deferred for that target
-- the current checked-in coverage decision now points back to scanner and external-scanner compatibility onboarding because `tree_sitter_haskell_json` is a real deferred external scanner target
+  - structural first-boundary extraction remains the lower proof layer
+  - sampled external-sequence proof now passes for `tree_sitter_haskell_json`
+  - full runtime scanner equivalence is still out of scope
+- the current checked-in coverage decision now points to broader compatibility polish from this boundary
 
 ## Repository Layout
 

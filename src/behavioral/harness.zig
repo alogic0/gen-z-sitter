@@ -44,6 +44,12 @@ pub const SimulationResult = union(enum) {
     },
 };
 
+pub const ExternalBoundarySample = struct {
+    consumed_bytes: usize,
+    external_matches: usize,
+    lexical_matches: usize,
+};
+
 const SampledExternalEffect = union(enum) {
     none,
     push_layout: usize,
@@ -130,6 +136,66 @@ pub fn simulateBuiltWithSerializedExternalBoundary(
         external_boundary,
         input,
     );
+}
+
+pub fn sampleExtractedExternalBoundaryOnly(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
+    input: []const u8,
+) BehavioralError!ExternalBoundarySample {
+    if (!external_boundary.isReady()) return error.UnsupportedExternalScannerGrammar;
+
+    var external_state = SampledExternalState.init(allocator);
+    defer external_state.deinit();
+
+    var cursor: usize = 0;
+    var external_matches: usize = 0;
+    var lexical_matches: usize = 0;
+    var steps: usize = 0;
+    const max_steps = input.len * 32 + 64;
+
+    while (steps < max_steps) : (steps += 1) {
+        if (cursor >= input.len) {
+            if (matchExternalAtEof(external_boundary, external_state)) |match| {
+                if (match.len == 0 and match.effect == .none) break;
+                try external_state.applyEffect(match.effect);
+                external_matches += 1;
+                continue;
+            }
+            break;
+        }
+
+        if (matchExternalAtCursor(external_boundary, external_state, input[cursor..])) |match| {
+            if (match.len == 0 and match.effect == .none) break;
+            cursor += match.len;
+            try external_state.applyEffect(match.effect);
+            external_matches += 1;
+            continue;
+        }
+
+        if (skipSupportedExtraPrefix(input[cursor..])) |skip_len| {
+            cursor += skip_len;
+            continue;
+        }
+
+        if (matchLexicalPrefix(lexical, prepared.rules, input[cursor..])) |len| {
+            cursor += len;
+            lexical_matches += 1;
+            continue;
+        }
+
+        break;
+    }
+
+    if (steps >= max_steps) return error.SimulationStepLimitExceeded;
+
+    return .{
+        .consumed_bytes = cursor,
+        .external_matches = external_matches,
+        .lexical_matches = lexical_matches,
+    };
 }
 
 fn simulateBuiltScannerFree(
@@ -530,6 +596,32 @@ fn selectMatchingSymbolWithExternalBoundary(
     return best;
 }
 
+fn matchExternalAtCursor(
+    external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
+    external_state: SampledExternalState,
+    remaining: []const u8,
+) ?SampledExternalMatch {
+    var best: ?SampledExternalMatch = null;
+    for (external_boundary.tokens) |token| {
+        const external_match = matchSupportedExternalPrefix(token.name, external_state, remaining) orelse continue;
+        if (best == null or external_match.len > best.?.len) {
+            best = external_match;
+        }
+    }
+    return best;
+}
+
+fn matchExternalAtEof(
+    external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
+    external_state: SampledExternalState,
+) ?SampledExternalMatch {
+    for (external_boundary.tokens) |token| {
+        const external_match = matchSupportedExternalAtEof(token.name, external_state) orelse continue;
+        return external_match;
+    }
+    return null;
+}
+
 fn selectMatchingExternalAtBoundaryEof(
     result: build.BuildResult,
     state_id: u32,
@@ -626,6 +718,19 @@ fn ruleLiteralText(all_rules: []const rules.Rule, rule_id: rules.RuleId) ?[]cons
     };
 }
 
+fn matchLexicalPrefix(
+    lexical: lexical_ir.LexicalGrammar,
+    all_rules: []const rules.Rule,
+    input: []const u8,
+) ?usize {
+    var best: ?usize = null;
+    for (lexical.variables) |variable| {
+        const match_len = matchLexicalRulePrefix(all_rules, variable.rule, input) orelse continue;
+        if (best == null or match_len > best.?) best = match_len;
+    }
+    return best orelse matchSampledLexicalFallback(input);
+}
+
 fn matchLexicalRulePrefix(
     all_rules: []const rules.Rule,
     rule_id: rules.RuleId,
@@ -663,6 +768,36 @@ fn matchSupportedPatternPrefix(pattern: rules.Pattern, input: []const u8) ?usize
     }
 
     return if (len > 0) len else null;
+}
+
+fn skipSupportedExtraPrefix(input: []const u8) ?usize {
+    if (input.len == 0) return null;
+    return switch (input[0]) {
+        ' ', '\t', '\r', '\n' => 1,
+        else => null,
+    };
+}
+
+fn matchSampledLexicalFallback(input: []const u8) ?usize {
+    if (input.len == 0) return null;
+
+    if (std.ascii.isAlphabetic(input[0]) or input[0] == '_') {
+        var len: usize = 1;
+        while (len < input.len) : (len += 1) {
+            const ch = input[len];
+            if (!(std.ascii.isAlphanumeric(ch) or ch == '_' or ch == '\'')) break;
+        }
+        return len;
+    }
+
+    if (std.mem.startsWith(u8, input, "<-")) return 2;
+    if (std.mem.startsWith(u8, input, "->")) return 2;
+    if (std.mem.startsWith(u8, input, "::")) return 2;
+
+    return switch (input[0]) {
+        '=', '(', ')', '{', '}', '[', ']', ',', ';', '|', '\\' => 1,
+        else => null,
+    };
 }
 
 fn findGotoState(result: build.BuildResult, state_id: u32, lhs: u32) ?u32 {
@@ -1096,6 +1231,50 @@ test "simulatePreparedWithFirstExternalBoundary supports sampled layout token fa
     );
 
     try std.testing.expect(progressOf(valid) > progressOf(invalid));
+}
+
+test "sampleExtractedExternalBoundaryOnly samples the Haskell real external scanner path" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const grammar = try std.fs.cwd().readFileAlloc(
+        arena.allocator(),
+        "compat_targets/tree_sitter_haskell/grammar.json",
+        1024 * 1024,
+    );
+    const valid_input = try std.fs.cwd().readFileAlloc(
+        arena.allocator(),
+        "compat_targets/tree_sitter_haskell/valid.txt",
+        64 * 1024,
+    );
+    const invalid_input = try std.fs.cwd().readFileAlloc(
+        arena.allocator(),
+        "compat_targets/tree_sitter_haskell/invalid.txt",
+        64 * 1024,
+    );
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), grammar);
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const serialized = try scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax);
+
+    const valid = try sampleExtractedExternalBoundaryOnly(
+        arena.allocator(),
+        prepared,
+        extracted.lexical,
+        serialized,
+        valid_input,
+    );
+    const invalid = try sampleExtractedExternalBoundaryOnly(
+        arena.allocator(),
+        prepared,
+        extracted.lexical,
+        serialized,
+        invalid_input,
+    );
+
+    try std.testing.expect(valid.external_matches > 0);
+    try std.testing.expect(valid.consumed_bytes > invalid.consumed_bytes);
+    try std.testing.expect(valid.lexical_matches > 0);
 }
 
 test "supported compatibility boundary avoids internal contract failures on valid config and external-token inputs" {
