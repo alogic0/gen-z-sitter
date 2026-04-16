@@ -86,11 +86,16 @@ What the repo can credibly claim today:
 
 - `grammar.json` and `grammar.js` loading paths are implemented and exercised
 - `node-types.json` output is the most directly surfaced top-level generated artifact
-- curated fixture proof currently comes mostly from:
-  - emitted parser.c-like goldens
-  - compile smoke tests
-  - structural compatibility checks
-  - local behavioral harness checks
+- the repo currently relies on distinct proof layers, not one uniform compatibility claim:
+  - curated fixture proof:
+    - emitted parser.c-like goldens
+    - compile smoke tests
+    - structural compatibility checks
+    - local behavioral harness checks
+  - parser-only shortlist proof:
+    - versioned checked-in artifacts under `compat_targets/`
+  - staged scanner-boundary proof:
+    - the promoted scanner-wave entries in those same checked-in artifacts
 - parser-only shortlist proof currently comes from versioned checked-in artifacts:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`
@@ -101,6 +106,17 @@ What the repo can credibly claim today:
   - 5 intended first-wave parser-only targets currently pass within the staged boundary
   - 1 staged deferred target remains intentionally frozen as an ambiguity/control fixture
   - 4 staged scanner/external-scanner targets now pass within the staged scanner boundary across 2 grammar families
+- the currently represented families are:
+  - parser-only:
+    - `parse_table_tiny`
+    - `behavioral_config`
+    - `repeat_choice_seq`
+    - `ziggy`
+    - `ziggy_schema`
+    - `parse_table_conflict`
+  - scanner/external-scanner:
+    - `hidden_external_fields`
+    - `mixed_semantics`
 - scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the first staged boundary plus compatibility-safe valid-path behavior and weaker invalid-path progress
 - `mixed_semantics` widens that scanner proof by showing that a grammar can still carry extras elsewhere while remaining compatible on a narrower first-boundary sample path
 - compatibility-sensitive behavioral proof currently covers:

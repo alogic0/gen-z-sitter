@@ -13,10 +13,23 @@ Current proof layers:
 - scanner/external-scanner onboarding proof
   - tracked explicitly as a narrow promoted multi-family wave at the first staged external-scanner boundary
 
+Current represented families:
+
+- parser-only
+  - `parse_table_tiny`
+  - `behavioral_config`
+  - `repeat_choice_seq`
+  - `ziggy`
+  - `ziggy_schema`
+  - `parse_table_conflict`
+- scanner/external-scanner
+  - `hidden_external_fields`
+  - `mixed_semantics`
+
 Versioned artifacts:
 
 - `shortlist.json`
-  - target selection policy, boundary kind, candidate classification, and success criteria
+  - target selection policy, family, boundary kind, candidate classification, and success criteria
 - `shortlist_inventory.json`
   - aggregate boundary summary plus family-level coverage and explicit proven first-wave, deferred-control, deferred-scanner, and out-of-scope target sections
 - `shortlist_report.json`

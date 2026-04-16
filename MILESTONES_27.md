@@ -73,14 +73,14 @@ Goal:
 
 Checklist:
 
-- [ ] update the artifact guide to explain family-level coverage output
-- [ ] update top-level docs to distinguish proof layers from family representation
-- [ ] align milestone and compatibility docs with the refined artifact language
-- [ ] keep `zig build test` passing
+- [x] update the artifact guide to explain family-level coverage output
+- [x] update top-level docs to distinguish proof layers from family representation
+- [x] align milestone and compatibility docs with the refined artifact language
+- [x] keep `zig build test` passing
 
 Acceptance:
 
-- [ ] a reader can tell which parser-only and scanner families are represented without inferring that only from per-target lists
+- [x] a reader can tell which parser-only and scanner families are represented without inferring that only from per-target lists
 
 ### PR 3
 
@@ -106,7 +106,7 @@ Acceptance:
 ## Progress Checklist
 
 - [x] PR 1 completed
-- [ ] PR 2 completed
+- [x] PR 2 completed
 - [ ] PR 3 completed
 - [ ] M27 ready for closeout
 

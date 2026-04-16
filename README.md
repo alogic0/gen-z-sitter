@@ -100,14 +100,27 @@ Not every flag currently maps to a fully surfaced end-user feature. The most dir
 
 Current staged compatibility boundary:
 
-- curated fixture proof currently comes from lower-level emitter, golden, compile-smoke, structural-compatibility, and behavioral-harness tests
+- proof layers are currently staged, not all equivalent:
+  - curated fixture proof:
+    - lower-level emitter, golden, compile-smoke, structural-compatibility, and behavioral-harness tests
+  - parser-only shortlist proof:
+    - versioned checked-in artifacts under `compat_targets/`
+  - staged scanner-boundary proof:
+    - the promoted scanner-wave entries in the same checked-in compatibility artifacts
 - parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`
   - `compat_targets/shortlist_report.json`
 - `compat_targets/README.md` describes how the shortlist, inventory, mismatch, and coverage-decision artifacts relate to the current staged boundary
 - the shortlist inventory and full report now expose family-level coverage so the current staged boundary is readable by grammar family, not only by flat target counts
-- the currently proven first-wave parser-only boundary is now a 5-target set across 5 parser-only families:
+- the currently represented parser-only families are:
+  - `parse_table_tiny`
+  - `behavioral_config`
+  - `repeat_choice_seq`
+  - `ziggy`
+  - `ziggy_schema`
+  - `parse_table_conflict`
+- the currently proven first-wave parser-only boundary is a 5-target set across 5 passing parser-only families:
   - `parse_table_tiny_json`
   - `behavioral_config_json`
   - `repeat_choice_seq_js`
@@ -116,6 +129,9 @@ Current staged compatibility boundary:
 - the shortlist now carries one intentionally deferred parser-only control fixture:
   - `parse_table_conflict_json`
   - it remains blocked on purpose as a known ambiguity boundary without precedence annotations
+- the currently represented scanner/external-scanner families are:
+  - `hidden_external_fields`
+  - `mixed_semantics`
 - the shortlist now also carries a promoted multi-family scanner wave with explicit family-level coverage in the checked-in artifacts:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`
@@ -128,7 +144,7 @@ Current staged compatibility boundary:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
   - `hidden_external_fields` also proves that the invalid path makes less progress than the valid path through the first staged scanner boundary
   - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it now rejects on the staged blocked path as `missing_action` rather than advancing into a promoted parser-only pass
-- scanner/external-scanner proof is now staged as a narrow promoted multi-family wave rather than left entirely out of the shortlist
+- scanner/external-scanner proof is staged as a narrow promoted multi-family wave rather than left entirely out of the shortlist
 - the current checked-in coverage decision now points to broader compatibility polish rather than another scanner-onboarding-only milestone
 
 ## Repository Layout
