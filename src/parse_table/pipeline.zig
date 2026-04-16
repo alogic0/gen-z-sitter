@@ -121,6 +121,15 @@ pub fn generateParserCEmitterDumpFromPrepared(
     return try parser_c_emit.emitParserCAlloc(allocator, serialized);
 }
 
+pub fn serializeTableFromPrepared(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    mode: serialize.SerializeMode,
+) PipelineError!serialize.SerializedTable {
+    const result = try buildStatesFromPrepared(allocator, prepared);
+    return try serialize.serializeBuildResult(allocator, result, mode);
+}
+
 fn writeModuleExportsJsonFile(dir: std.fs.Dir, sub_path: []const u8, json_contents: []const u8) !void {
     const js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{json_contents});
     defer std.testing.allocator.free(js);

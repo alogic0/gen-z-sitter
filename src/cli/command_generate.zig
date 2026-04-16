@@ -3,10 +3,14 @@ const builtin = @import("builtin");
 const args = @import("args.zig");
 const diag = @import("../support/diag.zig");
 const debug_dump = @import("../grammar/debug_dump.zig");
+const grammar_ir = @import("../ir/grammar_ir.zig");
 const grammar_loader = @import("../grammar/loader.zig");
+const json_loader = @import("../grammar/json_loader.zig");
 const fs_support = @import("../support/fs.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const node_type_pipeline = @import("../node_types/pipeline.zig");
+const parse_table_pipeline = @import("../parse_table/pipeline.zig");
+const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
 pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !void {
@@ -103,11 +107,28 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
         defer allocator.free(output_path);
         try fs_support.writeFile(output_path, json);
 
-        try diag.printStdout(.{
-            .kind = .info,
-            .message = "wrote node-types.json",
-            .path = output_path,
-        });
+        if (!opts.json_summary) {
+            try diag.printStdout(.{
+                .kind = .info,
+                .message = "wrote node-types.json",
+                .path = output_path,
+            });
+        }
+    }
+
+    if (opts.json_summary) {
+        var pipeline_arena = std.heap.ArenaAllocator.init(allocator);
+        defer pipeline_arena.deinit();
+
+        const summary = try generateJsonSummaryAlloc(
+            pipeline_arena.allocator(),
+            loaded.json.grammar,
+            prepared,
+        );
+        if (!builtin.is_test) {
+            try std.fs.File.stdout().writeAll(summary);
+        }
+        return;
     }
 
     try diag.printStdout(.{
@@ -147,6 +168,51 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
     });
 }
 
+fn generateJsonSummaryAlloc(
+    allocator: std.mem.Allocator,
+    grammar: anytype,
+    prepared: grammar_ir.PreparedGrammar,
+) ![]const u8 {
+    const serialized = try parse_table_pipeline.serializeTableFromPrepared(allocator, prepared, .diagnostic);
+    const parser_stats = try parser_c_emit.collectEmissionStats(allocator, serialized);
+
+    var out = std.array_list.Managed(u8).init(allocator);
+    errdefer out.deinit();
+    const writer = out.writer();
+
+    try writer.writeAll("{\n");
+    try writer.print("  \"blocked\": {s},\n", .{if (parser_stats.blocked) "true" else "false"});
+    try writer.print("  \"rule_count\": {d},\n", .{grammar.ruleCount()});
+    try writer.print("  \"external_count\": {d},\n", .{grammar.externals.len});
+    try writer.print("  \"extra_count\": {d},\n", .{grammar.extras.len});
+    try writer.print("  \"symbol_count\": {d},\n", .{prepared.symbols.len});
+    try writer.print("  \"state_count\": {d},\n", .{parser_stats.state_count});
+    try writer.print("  \"action_entry_count\": {d},\n", .{parser_stats.action_entry_count});
+    try writer.print("  \"goto_entry_count\": {d},\n", .{parser_stats.goto_entry_count});
+    try writer.print("  \"unresolved_entry_count\": {d},\n", .{parser_stats.unresolved_entry_count});
+    try writer.writeAll("  \"action_rows\": ");
+    try writeRowSharingStats(writer, parser_stats.action_rows);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"goto_rows\": ");
+    try writeRowSharingStats(writer, parser_stats.goto_rows);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"unresolved_rows\": ");
+    try writeRowSharingStats(writer, parser_stats.unresolved_rows);
+    try writer.writeAll("\n}\n");
+
+    return try out.toOwnedSlice();
+}
+
+fn writeRowSharingStats(writer: anytype, stats: parser_c_emit.RowSharingStats) !void {
+    try writer.writeAll("{ ");
+    try writer.print("\"total_rows\": {d}, ", .{stats.total_rows});
+    try writer.print("\"empty_rows\": {d}, ", .{stats.empty_rows});
+    try writer.print("\"unique_non_empty_rows\": {d}, ", .{stats.unique_non_empty_rows});
+    try writer.print("\"shared_non_empty_rows\": {d}, ", .{stats.shared_non_empty_rows});
+    try writer.print("\"emitted_array_definitions\": {d}", .{stats.emitted_array_definitions});
+    try writer.writeAll(" }");
+}
+
 test "runGenerate rejects empty grammar path" {
     try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, .{
         .grammar_path = "",
@@ -168,6 +234,35 @@ test "runGenerate succeeds for a valid grammar.json file" {
     try runGenerate(std.testing.allocator, .{
         .grammar_path = path,
     });
+}
+
+test "generateJsonSummaryAlloc reports parser row-sharing stats" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var summary_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer summary_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableConflictGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"blocked\": true"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 6"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_entry_count\": 4"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"unresolved_entry_count\": 1"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_rows\": { \"total_rows\": 6, \"empty_rows\": 2, \"unique_non_empty_rows\": 3, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 4 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"goto_rows\": { \"total_rows\": 6, \"empty_rows\": 4, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"unresolved_rows\": { \"total_rows\": 6, \"empty_rows\": 5, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 1 }"));
 }
 
 test "runGenerate supports debug prepared output mode" {

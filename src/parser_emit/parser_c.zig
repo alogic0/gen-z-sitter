@@ -6,6 +6,25 @@ const compat = @import("compat.zig");
 
 pub const EmitError = std.mem.Allocator.Error || std.fs.File.WriteError;
 
+pub const RowSharingStats = struct {
+    total_rows: usize,
+    empty_rows: usize,
+    unique_non_empty_rows: usize,
+    shared_non_empty_rows: usize,
+    emitted_array_definitions: usize,
+};
+
+pub const EmissionStats = struct {
+    state_count: usize,
+    blocked: bool,
+    action_entry_count: usize,
+    goto_entry_count: usize,
+    unresolved_entry_count: usize,
+    action_rows: RowSharingStats,
+    goto_rows: RowSharingStats,
+    unresolved_rows: RowSharingStats,
+};
+
 pub fn emitParserCAlloc(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
@@ -14,6 +33,38 @@ pub fn emitParserCAlloc(
     defer out.deinit();
     try writeParserC(out.writer(), allocator, serialized);
     return try out.toOwnedSlice();
+}
+
+pub fn collectEmissionStats(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+) std.mem.Allocator.Error!EmissionStats {
+    const action_owners = try collectStateArrayOwners(allocator, serialize.SerializedActionEntry, serialized.states, stateActions);
+    defer allocator.free(action_owners);
+    const goto_owners = try collectStateArrayOwners(allocator, serialize.SerializedGotoEntry, serialized.states, stateGotos);
+    defer allocator.free(goto_owners);
+    const unresolved_owners = try collectStateArrayOwners(allocator, serialize.SerializedUnresolvedEntry, serialized.states, stateUnresolved);
+    defer allocator.free(unresolved_owners);
+
+    var action_entry_count: usize = 0;
+    var goto_entry_count: usize = 0;
+    var unresolved_entry_count: usize = 0;
+    for (serialized.states) |serialized_state| {
+        action_entry_count += serialized_state.actions.len;
+        goto_entry_count += serialized_state.gotos.len;
+        unresolved_entry_count += serialized_state.unresolved.len;
+    }
+
+    return .{
+        .state_count = serialized.states.len,
+        .blocked = serialized.blocked,
+        .action_entry_count = action_entry_count,
+        .goto_entry_count = goto_entry_count,
+        .unresolved_entry_count = unresolved_entry_count,
+        .action_rows = collectRowSharingStats(serialize.SerializedActionEntry, serialized.states, action_owners, stateActions, true),
+        .goto_rows = collectRowSharingStats(serialize.SerializedGotoEntry, serialized.states, goto_owners, stateGotos, true),
+        .unresolved_rows = collectRowSharingStats(serialize.SerializedUnresolvedEntry, serialized.states, unresolved_owners, stateUnresolved, false),
+    };
 }
 
 pub fn writeParserC(
@@ -370,6 +421,41 @@ fn collectStateArrayOwners(
         }
     }
     return owners;
+}
+
+fn collectRowSharingStats(
+    comptime T: type,
+    states: []const serialize.SerializedState,
+    owners: []const usize,
+    comptime getEntries: fn (serialize.SerializedState) []const T,
+    has_shared_empty_array: bool,
+) RowSharingStats {
+    var stats = RowSharingStats{
+        .total_rows = states.len,
+        .empty_rows = 0,
+        .unique_non_empty_rows = 0,
+        .shared_non_empty_rows = 0,
+        .emitted_array_definitions = 0,
+    };
+
+    for (states, 0..) |state_value, index| {
+        const entries = getEntries(state_value);
+        if (entries.len == 0) {
+            stats.empty_rows += 1;
+            continue;
+        }
+        if (owners[index] == index) {
+            stats.unique_non_empty_rows += 1;
+        } else {
+            stats.shared_non_empty_rows += 1;
+        }
+    }
+
+    stats.emitted_array_definitions = stats.unique_non_empty_rows;
+    if (has_shared_empty_array and stats.empty_rows > 0) {
+        stats.emitted_array_definitions += 1;
+    }
+    return stats;
 }
 
 fn stateActions(state_value: serialize.SerializedState) []const serialize.SerializedActionEntry {
@@ -1123,4 +1209,85 @@ test "emitParserCAlloc reuses canonical non-empty state arrays" {
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, emitted, "    .actions = ts_state_0_actions,\n"));
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, emitted, "    .gotos = ts_state_0_gotos,\n"));
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, emitted, "    .unresolved = ts_state_0_unresolved,\n"));
+}
+
+test "collectEmissionStats reports shared empty and canonical non-empty rows" {
+    const allocator = std.testing.allocator;
+    const duplicate_unresolved = [_]@import("../parse_table/actions.zig").ParseAction{
+        .{ .shift = 7 },
+        .{ .reduce = 8 },
+    };
+    const serialized = serialize.SerializedTable{
+        .blocked = true,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]serialize.SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                },
+                .gotos = &[_]serialize.SerializedGotoEntry{
+                    .{ .symbol = .{ .non_terminal = 0 }, .state = 9 },
+                },
+                .unresolved = &[_]serialize.SerializedUnresolvedEntry{
+                    .{
+                        .symbol = .{ .terminal = 1 },
+                        .reason = .shift_reduce,
+                        .candidate_actions = &duplicate_unresolved,
+                    },
+                },
+            },
+            .{
+                .id = 1,
+                .actions = &[_]serialize.SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                },
+                .gotos = &[_]serialize.SerializedGotoEntry{
+                    .{ .symbol = .{ .non_terminal = 0 }, .state = 9 },
+                },
+                .unresolved = &[_]serialize.SerializedUnresolvedEntry{
+                    .{
+                        .symbol = .{ .terminal = 1 },
+                        .reason = .shift_reduce,
+                        .candidate_actions = &duplicate_unresolved,
+                    },
+                },
+            },
+            .{
+                .id = 2,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const stats = try collectEmissionStats(allocator, serialized);
+
+    try std.testing.expectEqual(@as(usize, 3), stats.state_count);
+    try std.testing.expect(stats.blocked);
+    try std.testing.expectEqual(@as(usize, 2), stats.action_entry_count);
+    try std.testing.expectEqual(@as(usize, 2), stats.goto_entry_count);
+    try std.testing.expectEqual(@as(usize, 2), stats.unresolved_entry_count);
+
+    try std.testing.expectEqual(RowSharingStats{
+        .total_rows = 3,
+        .empty_rows = 1,
+        .unique_non_empty_rows = 1,
+        .shared_non_empty_rows = 1,
+        .emitted_array_definitions = 2,
+    }, stats.action_rows);
+    try std.testing.expectEqual(RowSharingStats{
+        .total_rows = 3,
+        .empty_rows = 1,
+        .unique_non_empty_rows = 1,
+        .shared_non_empty_rows = 1,
+        .emitted_array_definitions = 2,
+    }, stats.goto_rows);
+    try std.testing.expectEqual(RowSharingStats{
+        .total_rows = 3,
+        .empty_rows = 1,
+        .unique_non_empty_rows = 1,
+        .shared_non_empty_rows = 1,
+        .emitted_array_definitions = 1,
+    }, stats.unresolved_rows);
 }

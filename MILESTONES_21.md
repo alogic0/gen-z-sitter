@@ -17,9 +17,11 @@ Current first optimization slice:
 
 - emitted `parser.c` now shares canonical empty action and goto arrays instead of re-emitting identical empty arrays for every empty state
 - emitted `parser.c` now also reuses the first canonical non-empty action/goto/unresolved arrays when later states serialize the exact same row contents
+- `generate --json-summary` now reports parser-table and parser.c row-sharing stats so compression wins stay measurable before deeper minimization work
 - this is intentionally a low-risk compression step:
   - it reduces repeated emitted boilerplate
   - it only shares rows when the serialized action/value/target contents are exactly equal
+  - it makes the current sharing wins visible without changing parser state numbering or runtime behavior
   - it does not renumber parser states
   - it does not change the staged compatibility contract
   - it preserves existing parser behavior and test coverage
