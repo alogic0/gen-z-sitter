@@ -16,11 +16,18 @@ pub const RunOptions = struct {
     optimize: emit_optimize.Options = .{},
 };
 
+pub fn runShortlistTargetsAlloc(
+    allocator: std.mem.Allocator,
+    options: RunOptions,
+) ![]result_model.TargetRunResult {
+    return try runTargetsAlloc(allocator, targets.shortlistTargets(), options);
+}
+
 pub fn runStagedTargetsAlloc(
     allocator: std.mem.Allocator,
     options: RunOptions,
 ) ![]result_model.TargetRunResult {
-    return try runTargetsAlloc(allocator, targets.stagedTargets(), options);
+    return try runTargetsAlloc(allocator, targets.firstWaveTargets(), options);
 }
 
 pub fn runTargetsAlloc(
@@ -46,6 +53,16 @@ pub fn runTarget(
     var run = result_model.TargetRunResult.init(target);
     errdefer run.deinit(allocator);
 
+    if (target.candidate_status == .excluded_out_of_scope) {
+        return failRun(
+            &run,
+            .load,
+            .out_of_scope_for_scanner_boundary,
+            .out_of_scope_scanner_boundary,
+            try std.fmt.allocPrint(allocator, "target is excluded from parser-only execution: {s}", .{target.notes}),
+        );
+    }
+
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -54,6 +71,7 @@ pub fn runTarget(
             &run,
             .load,
             classifyLoadFailure(err),
+            mismatchCategoryForLoadFailure(err),
             try std.fmt.allocPrint(allocator, "{s}: {s}", .{ target.grammar_path, grammar_loader.errorMessage(err) }),
         );
     };
@@ -66,6 +84,7 @@ pub fn runTarget(
             &run,
             .prepare,
             .failed_due_to_parser_only_gap,
+            .preparation_lowering_mismatch,
             try std.fmt.allocPrint(allocator, "{s}: {s}", .{ target.grammar_path, diagnostic.summary }),
         );
     };
@@ -76,6 +95,7 @@ pub fn runTarget(
             &run,
             .serialize,
             .failed_due_to_parser_only_gap,
+            .parse_table_construction_gap,
             try std.fmt.allocPrint(allocator, "serialize failed: {s}", .{@errorName(err)}),
         );
     };
@@ -86,6 +106,7 @@ pub fn runTarget(
             &run,
             .emit_parser_tables,
             .failed_due_to_parser_only_gap,
+            .emitted_surface_structural_gap,
             try std.fmt.allocPrint(allocator, "parser-table emission failed: {s}", .{@errorName(err)}),
         );
     };
@@ -96,6 +117,7 @@ pub fn runTarget(
             &run,
             .emit_c_tables,
             .failed_due_to_parser_only_gap,
+            .emitted_surface_structural_gap,
             try std.fmt.allocPrint(allocator, "C-table emission failed: {s}", .{@errorName(err)}),
         );
     };
@@ -106,6 +128,7 @@ pub fn runTarget(
             &run,
             .emit_parser_c,
             .failed_due_to_parser_only_gap,
+            .emitted_surface_structural_gap,
             try std.fmt.allocPrint(allocator, "parser.c emission failed: {s}", .{@errorName(err)}),
         );
     };
@@ -125,11 +148,26 @@ pub fn runTarget(
         .parser_c_bytes = parser_c.len,
     };
 
+    if (emission_stats.blocked != target.expected_blocked) {
+        return failRun(
+            &run,
+            .emit_parser_c,
+            .failed_due_to_parser_only_gap,
+            .parse_table_construction_gap,
+            try std.fmt.allocPrint(
+                allocator,
+                "unexpected blocked status: expected {}, got {}",
+                .{ target.expected_blocked, emission_stats.blocked },
+            ),
+        );
+    }
+
     compat_checks.validateParserCCompatibilitySurface(parser_c) catch |err| {
         return failRun(
             &run,
             .compat_check,
             .failed_due_to_parser_only_gap,
+            .emitted_surface_structural_gap,
             try std.fmt.allocPrint(allocator, "compatibility check failed: {s}", .{@errorName(err)}),
         );
     };
@@ -139,6 +177,7 @@ pub fn runTarget(
         return failRun(
             &run,
             .compile_smoke,
+            .infrastructure_failure,
             .infrastructure_failure,
             try std.fmt.allocPrint(allocator, "compile-smoke infrastructure failure: {s}", .{@errorName(err)}),
         );
@@ -154,6 +193,7 @@ pub fn runTarget(
                 &run,
                 .compile_smoke,
                 .failed_due_to_parser_only_gap,
+                .compile_smoke_failure,
                 try std.fmt.allocPrint(allocator, "compiler rejected emitted parser.c:\n{s}", .{stderr}),
             );
         },
@@ -166,6 +206,7 @@ fn failRun(
     run: *result_model.TargetRunResult,
     stage: result_model.StepName,
     classification: result_model.FinalClassification,
+    mismatch_category: result_model.MismatchCategory,
     detail: []const u8,
 ) !result_model.TargetRunResult {
     const step = stepForName(run, stage);
@@ -173,6 +214,7 @@ fn failRun(
     step.detail = detail;
     run.first_failed_stage = stage;
     run.final_classification = classification;
+    run.mismatch_category = mismatch_category;
     return run.*;
 }
 
@@ -193,6 +235,13 @@ fn classifyLoadFailure(err: grammar_loader.LoaderError) result_model.FinalClassi
     return switch (err) {
         error.IoFailure, error.ProcessFailure => .infrastructure_failure,
         else => .failed_due_to_parser_only_gap,
+    };
+}
+
+fn mismatchCategoryForLoadFailure(err: grammar_loader.LoaderError) result_model.MismatchCategory {
+    return switch (err) {
+        error.IoFailure, error.ProcessFailure => .infrastructure_failure,
+        else => .grammar_input_load_mismatch,
     };
 }
 
@@ -230,11 +279,26 @@ test "runTarget reports infrastructure failures for missing files" {
         .display_name = "Missing",
         .grammar_path = "compat_targets/does_not_exist/grammar.json",
         .source_kind = .grammar_json,
+        .candidate_status = .intended_first_wave,
         .notes = "missing file test",
+        .success_criteria = "missing file should fail deterministically",
     }, .{});
     defer run.deinit(allocator);
 
     try std.testing.expectEqual(result_model.FinalClassification.infrastructure_failure, run.final_classification);
+    try std.testing.expectEqual(result_model.MismatchCategory.infrastructure_failure, run.mismatch_category);
+    try std.testing.expectEqual(result_model.StepName.load, run.first_failed_stage.?);
+    try std.testing.expectEqual(result_model.StepStatus.failed, run.load.status);
+}
+
+test "runTarget reports out-of-scope classification for excluded shortlist candidates" {
+    const allocator = std.testing.allocator;
+
+    var run = try runTarget(allocator, targets.shortlistTargets()[4], .{});
+    defer run.deinit(allocator);
+
+    try std.testing.expectEqual(result_model.FinalClassification.out_of_scope_for_scanner_boundary, run.final_classification);
+    try std.testing.expectEqual(result_model.MismatchCategory.out_of_scope_scanner_boundary, run.mismatch_category);
     try std.testing.expectEqual(result_model.StepName.load, run.first_failed_stage.?);
     try std.testing.expectEqual(result_model.StepStatus.failed, run.load.status);
 }
@@ -242,7 +306,7 @@ test "runTarget reports infrastructure failures for missing files" {
 test "runStagedTargetsAlloc can be rendered to a deterministic JSON report" {
     const allocator = std.testing.allocator;
 
-    const runs = try runStagedTargetsAlloc(allocator, .{});
+    const runs = try runShortlistTargetsAlloc(allocator, .{});
     defer result_model.deinitRunResults(allocator, runs);
 
     const json = try report_json.renderRunReportAlloc(allocator, runs);
@@ -250,5 +314,16 @@ test "runStagedTargetsAlloc can be rendered to a deterministic JSON report" {
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"parse_table_tiny_json\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"repeat_choice_seq_js\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"hidden_external_fields_json\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"blocked_targets\"") != null);
+}
+
+test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entries" {
+    const allocator = std.testing.allocator;
+
+    const runs = try runShortlistTargetsAlloc(allocator, .{});
+    defer result_model.deinitRunResults(allocator, runs);
+
+    try std.testing.expectEqual(@as(usize, 5), runs.len);
+    try std.testing.expectEqual(result_model.FinalClassification.out_of_scope_for_scanner_boundary, runs[4].final_classification);
 }

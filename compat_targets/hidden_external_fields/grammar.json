@@ -1,0 +1,46 @@
+{
+  "name": "hidden_external_fields",
+  "rules": {
+    "source_file": {
+      "type": "CHOICE",
+      "members": [
+        { "type": "SYMBOL", "name": "_with_indent" },
+        { "type": "SYMBOL", "name": "_without_indent" }
+      ]
+    },
+    "_with_indent": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "lead",
+          "content": { "type": "SYMBOL", "name": "indent" }
+        },
+        {
+          "type": "FIELD",
+          "name": "body",
+          "content": {
+            "type": "ALIAS",
+            "named": true,
+            "value": "statement",
+            "content": { "type": "SYMBOL", "name": "expr" }
+          }
+        }
+      ]
+    },
+    "_without_indent": {
+      "type": "FIELD",
+      "name": "body",
+      "content": {
+        "type": "ALIAS",
+        "named": true,
+        "value": "statement",
+        "content": { "type": "SYMBOL", "name": "expr" }
+      }
+    },
+    "expr": { "type": "STRING", "value": "x" }
+  },
+  "externals": [
+    { "type": "SYMBOL", "name": "indent" }
+  ]
+}

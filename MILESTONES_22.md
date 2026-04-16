@@ -18,7 +18,7 @@ It does not assume broader lexer/scanner repo parity. It explicitly stays inside
 
 ## Goal
 
-- [ ] define the parser-only repo shortlist and acceptance rules
+- [x] define the parser-only repo shortlist and acceptance rules
 - [ ] add a repeatable harness that runs the current generator against real parser-only grammars/repos
 - [ ] record generation, compile-smoke, and structural compatibility results in one place
 - [ ] make known parser-only repo mismatches explicit instead of anecdotal
@@ -32,6 +32,13 @@ The first implementation slice is now landed, but it is intentionally narrower t
 - a reusable harness now exists under `src/compat/`
 - the harness records structured per-target results, compile-smoke status, compatibility-check status, and aggregate JSON reporting
 - the current staged target set is still repo-local bootstrap coverage, not yet the real external repo shortlist described by this milestone
+
+The second implementation slice is now landed as well:
+
+- `compat_targets/shortlist.json` now records explicit selection rules, disqualification rules, candidate status, and success criteria
+- the compatibility target model now distinguishes intended first-wave, deferred later-wave, and excluded out-of-scope candidates
+- the harness can now run the full versioned shortlist and report excluded scanner-boundary candidates explicitly instead of leaving them implicit
+- the JSON report now aggregates concrete mismatch categories instead of only broad pass/fail buckets
 
 ## PR-Sized Slices
 
@@ -179,9 +186,9 @@ Out of scope:
 
 ## Exit Criteria
 
-- [ ] at least one parser-only repo shortlist file exists and is versioned in the repo
-- [ ] a repeatable harness can run that shortlist without manual per-repo scripting
-- [ ] the harness records per-repo outcomes for:
+- [x] at least one parser-only repo shortlist file exists and is versioned in the repo
+- [x] a repeatable harness can run that shortlist without manual per-repo scripting
+- [x] the harness records per-repo outcomes for:
   - grammar load/parse
   - parse-table generation
   - parser-table emission
@@ -196,9 +203,9 @@ Out of scope:
 
 ### 1. Freeze the parser-only repo selection policy
 
-- [ ] define what qualifies as a parser-only candidate repo/grammar
-- [ ] define what disqualifies a candidate from this milestone
-- [ ] record selection rules in this file before adding any repo fixtures
+- [x] define what qualifies as a parser-only candidate repo/grammar
+- [x] define what disqualifies a candidate from this milestone
+- [x] record selection rules in this file before adding any repo fixtures
 
 Selection rules to make explicit:
 
@@ -222,9 +229,9 @@ Intended output for this stage:
 
 ### 2. Create the initial parser-only repo shortlist
 
-- [ ] add a versioned shortlist file or section that enumerates the first-wave repo targets
-- [ ] keep the initial wave intentionally small
-- [ ] classify each candidate as:
+- [x] add a versioned shortlist file or section that enumerates the first-wave repo targets
+- [x] keep the initial wave intentionally small
+- [x] classify each candidate as:
   - intended first-wave target
   - deferred to later parser-only waves
   - excluded because it is outside the parser-only boundary
@@ -239,7 +246,7 @@ For each shortlisted target, record:
 
 Intended first-wave size:
 
-- [ ] 3 to 5 parser-only targets maximum
+- [x] 3 to 5 parser-only targets maximum
 
 Concrete output for this stage:
 
@@ -361,6 +368,19 @@ Intended output for this stage:
 
 - one explicit parser-only mismatch inventory
 - no hidden “some repos did not work” summary without classification
+
+Current partial progress for this stage:
+
+- the JSON report now records concrete mismatch categories:
+  - grammar input/load mismatch
+  - preparation/lowering mismatch
+  - parse-table construction gap
+  - emitted-surface structural gap
+  - compile-smoke failure
+  - out-of-scope scanner boundary
+  - infrastructure failure
+- excluded shortlist candidates are now reported explicitly as out-of-scope instead of being silently omitted
+- a fuller mismatch inventory for real later-wave failures is still pending
 
 ### 8. Add one stable compatibility report artifact
 

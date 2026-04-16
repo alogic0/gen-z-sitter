@@ -25,6 +25,17 @@ pub const FinalClassification = enum {
     infrastructure_failure,
 };
 
+pub const MismatchCategory = enum {
+    none,
+    grammar_input_load_mismatch,
+    preparation_lowering_mismatch,
+    parse_table_construction_gap,
+    emitted_surface_structural_gap,
+    compile_smoke_failure,
+    out_of_scope_scanner_boundary,
+    infrastructure_failure,
+};
+
 pub const StepResult = struct {
     status: StepStatus = .not_run,
     detail: ?[]const u8 = null,
@@ -53,10 +64,13 @@ pub const TargetRunResult = struct {
     display_name: []const u8,
     grammar_path: []const u8,
     source_kind: targets.SourceKind,
+    candidate_status: targets.CandidateStatus,
     expected_blocked: bool,
     notes: []const u8,
+    success_criteria: []const u8,
     first_failed_stage: ?StepName = null,
     final_classification: FinalClassification = .passed_within_current_boundary,
+    mismatch_category: MismatchCategory = .none,
     load: StepResult = .{},
     prepare: StepResult = .{},
     serialize: StepResult = .{},
@@ -73,8 +87,10 @@ pub const TargetRunResult = struct {
             .display_name = target.display_name,
             .grammar_path = target.grammar_path,
             .source_kind = target.source_kind,
+            .candidate_status = target.candidate_status,
             .expected_blocked = target.expected_blocked,
             .notes = target.notes,
+            .success_criteria = target.success_criteria,
         };
     }
 

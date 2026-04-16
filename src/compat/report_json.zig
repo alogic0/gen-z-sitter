@@ -9,6 +9,17 @@ pub const AggregateCounts = struct {
     out_of_scope_for_scanner_boundary: usize,
     infrastructure_failure: usize,
     blocked_targets: usize,
+    mismatch_categories: MismatchCategoryCounts,
+};
+
+pub const MismatchCategoryCounts = struct {
+    grammar_input_load_mismatch: usize,
+    preparation_lowering_mismatch: usize,
+    parse_table_construction_gap: usize,
+    emitted_surface_structural_gap: usize,
+    compile_smoke_failure: usize,
+    out_of_scope_scanner_boundary: usize,
+    infrastructure_failure: usize,
 };
 
 pub fn renderRunReportAlloc(
@@ -31,6 +42,15 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
         .out_of_scope_for_scanner_boundary = 0,
         .infrastructure_failure = 0,
         .blocked_targets = 0,
+        .mismatch_categories = .{
+            .grammar_input_load_mismatch = 0,
+            .preparation_lowering_mismatch = 0,
+            .parse_table_construction_gap = 0,
+            .emitted_surface_structural_gap = 0,
+            .compile_smoke_failure = 0,
+            .out_of_scope_scanner_boundary = 0,
+            .infrastructure_failure = 0,
+        },
     };
 
     for (results) |run| {
@@ -39,6 +59,16 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
             .failed_due_to_parser_only_gap => counts.failed_due_to_parser_only_gap += 1,
             .out_of_scope_for_scanner_boundary => counts.out_of_scope_for_scanner_boundary += 1,
             .infrastructure_failure => counts.infrastructure_failure += 1,
+        }
+        switch (run.mismatch_category) {
+            .none => {},
+            .grammar_input_load_mismatch => counts.mismatch_categories.grammar_input_load_mismatch += 1,
+            .preparation_lowering_mismatch => counts.mismatch_categories.preparation_lowering_mismatch += 1,
+            .parse_table_construction_gap => counts.mismatch_categories.parse_table_construction_gap += 1,
+            .emitted_surface_structural_gap => counts.mismatch_categories.emitted_surface_structural_gap += 1,
+            .compile_smoke_failure => counts.mismatch_categories.compile_smoke_failure += 1,
+            .out_of_scope_scanner_boundary => counts.mismatch_categories.out_of_scope_scanner_boundary += 1,
+            .infrastructure_failure => counts.mismatch_categories.infrastructure_failure += 1,
         }
         if (run.emission) |emission| {
             if (emission.blocked) counts.blocked_targets += 1;
@@ -57,8 +87,10 @@ test "renderRunReportAlloc emits deterministic structured JSON" {
             .display_name = "Sample",
             .grammar_path = "grammar.json",
             .source_kind = .grammar_json,
+            .candidate_status = .intended_first_wave,
             .expected_blocked = false,
             .notes = "sample",
+            .success_criteria = "sample",
         },
     };
 
@@ -67,4 +99,5 @@ test "renderRunReportAlloc emits deterministic structured JSON" {
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"schema_version\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"results\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"mismatch_categories\"") != null);
 }
