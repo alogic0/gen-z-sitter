@@ -135,7 +135,7 @@ fn collectCurrentLimitationsAlloc(
     if (passed_external_scanner_targets == 0) {
         return try duplicateStringSliceAlloc(allocator, &.{
             "the checked-in real external scanner evidence now includes onboarded scanner snapshots, but none currently pass within the staged scanner boundary",
-            "tree-sitter-haskell currently fails during external-boundary serialization because the scanner surface uses unsupported features such as multiple external tokens, non-leading external steps, and aliased external steps",
+            "tree-sitter-haskell currently fails during external-boundary serialization because the scanner surface still uses unsupported features such as multiple external tokens and non-leading external steps",
             "the repo still has staged scanner-boundary proof, but real external scanner evidence remains narrower and deferred behind that first unsupported-feature boundary",
         });
     }

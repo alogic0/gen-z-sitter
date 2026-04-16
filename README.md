@@ -117,7 +117,7 @@ Current staged compatibility boundary:
 - real external scanner proof is now exposed separately under `compat_targets/`:
   - `compat_targets/external_scanner_repo_inventory.json`
   - it now records the first onboarded real external scanner target: `tree_sitter_haskell_json`
-  - that target is currently deferred at external-boundary serialization because the scanner surface uses unsupported features such as multiple external tokens, non-leading external steps, and aliased external steps
+  - that target is currently deferred at external-boundary serialization because the scanner surface still uses unsupported features such as multiple external tokens and non-leading external steps
   - the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos still do not change that scanner story, because their available snapshots have `externals: []` and no scanner implementation files
 - parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
   - `compat_targets/shortlist.json`

@@ -39,10 +39,6 @@ pub fn writeSerializedExternalScanner(
                 "feature {d} non_leading_external_step {s} production {d} step {d}\n",
                 .{ index, location.variable_name, location.production_index, location.step_index },
             ),
-            .aliased_external_step => |location| try writer.print(
-                "feature {d} aliased_external_step {s} production {d} step {d}\n",
-                .{ index, location.variable_name, location.production_index, location.step_index },
-            ),
             .multiple_external_steps_in_production => |info| try writer.print(
                 "feature {d} multiple_external_steps_in_production {s} production {d} count {d}\n",
                 .{ index, info.variable_name, info.production_index, info.count },

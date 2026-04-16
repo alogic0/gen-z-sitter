@@ -33,7 +33,6 @@ pub const UnsupportedExternalScannerFeature = union(enum) {
     multiple_external_tokens: usize,
     extra_symbols: usize,
     non_leading_external_step: UseLocation,
-    aliased_external_step: UseLocation,
     multiple_external_steps_in_production: struct {
         variable_name: []const u8,
         production_index: usize,
@@ -101,9 +100,6 @@ pub fn serializeExternalScannerBoundary(
                 };
                 if (step_index != 0) {
                     try unsupported.append(.{ .non_leading_external_step = location });
-                }
-                if (step.alias != null) {
-                    try unsupported.append(.{ .aliased_external_step = location });
                 }
             }
 
@@ -183,7 +179,7 @@ test "serializeExternalScannerBoundary tolerates extras at the first external bo
     try std.testing.expectEqual(@as(usize, 0), serialized.unsupported_features.len);
 }
 
-test "serializeExternalScannerBoundary keeps aliased external steps blocked" {
+test "serializeExternalScannerBoundary tolerates aliased external steps at the first boundary" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -191,6 +187,8 @@ test "serializeExternalScannerBoundary keeps aliased external steps blocked" {
     const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
     const serialized = try serializeExternalScannerBoundary(arena.allocator(), extracted.syntax);
 
-    try std.testing.expect(!serialized.isReady());
-    try std.testing.expect(hasUnsupportedFeature(serialized.unsupported_features, .aliased_external_step));
+    try std.testing.expect(serialized.isReady());
+    try std.testing.expectEqual(@as(usize, 0), serialized.unsupported_features.len);
+    try std.testing.expectEqual(@as(usize, 1), serialized.uses.len);
+    try std.testing.expectEqualStrings("statement", serialized.uses[0].variable_name);
 }

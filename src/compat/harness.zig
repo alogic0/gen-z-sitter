@@ -485,11 +485,6 @@ fn formatUnsupportedExternalFeaturesAlloc(
                 "non_leading_external_step:{s}:{d}:{d}",
                 .{ location.variable_name, location.production_index, location.step_index },
             ),
-            .aliased_external_step => |location| try std.fmt.allocPrint(
-                allocator,
-                "aliased_external_step:{s}:{d}:{d}",
-                .{ location.variable_name, location.production_index, location.step_index },
-            ),
             .multiple_external_steps_in_production => |info| try std.fmt.allocPrint(
                 allocator,
                 "multiple_external_steps_in_production:{s}:{d}:{d}",
@@ -863,6 +858,7 @@ test "runShortlistTargetsAlloc onboards tree_sitter_haskell as a deferred real e
     try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[5].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.scanner_external_scanner_boundary_gap, runs[5].mismatch_category);
     try std.testing.expect(std.mem.indexOf(u8, runs[5].serialize.detail.?, "multiple_external_tokens") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[5].serialize.detail.?, "aliased_external_step") == null);
 }
 
 test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked control case" {

@@ -111,7 +111,7 @@ What the repo can credibly claim today:
   - `compat_targets/external_scanner_repo_inventory.json`
 - that dedicated external scanner artifact now records the first onboarded real external scanner snapshot, `tree_sitter_haskell_json`
 - the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos do not change that state for this milestone because both available `src/grammar.json` snapshots declare `externals: []` and neither repo includes a scanner implementation file
-- the current real external scanner blocker is explicit: `tree_sitter_haskell_json` fails during external-boundary serialization because the scanner surface uses unsupported features such as multiple external tokens, non-leading external steps, and aliased external steps
+- the current real external scanner blocker is explicit: `tree_sitter_haskell_json` fails during external-boundary serialization because the scanner surface still uses unsupported features such as multiple external tokens and non-leading external steps
 - that dedicated external artifact now also states the broader real-evidence limitation directly: the checked-in real external evidence includes promoted parser-only snapshots plus one deferred real external scanner snapshot, so scanner-family proof is still narrower
 - `compat_targets/README.md` explains the relationship between shortlist policy, aggregate boundary, mismatch inventory, and coverage decision artifacts
 - the checked-in shortlist inventory and full report now expose family-level coverage alongside aggregate target totals

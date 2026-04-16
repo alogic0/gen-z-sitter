@@ -253,7 +253,7 @@ fn collectCurrentLimitationsAlloc(
     if (passed_external_scanner_targets == 0) {
         return try duplicateStringSliceAlloc(allocator, &.{
             "the checked-in real external evidence now includes both parser-only and scanner-family snapshots, but the real external scanner evidence is still deferred",
-            "tree-sitter-haskell is the first onboarded real external scanner snapshot and currently fails during external-boundary serialization because the scanner surface uses unsupported features such as multiple external tokens, non-leading external steps, and aliased external steps",
+            "tree-sitter-haskell is the first onboarded real external scanner snapshot and currently fails during external-boundary serialization because the scanner surface still uses unsupported features such as multiple external tokens and non-leading external steps",
             "real external parser-only evidence is currently broader and more mature than real external scanner evidence",
         });
     }

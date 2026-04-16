@@ -147,7 +147,9 @@ Acceptance:
   - neither repo currently contains `scanner.c`, `scanner.cc`, `scanner.cpp`, or `scanner.js`
 - the first observed Haskell blocker is now explicit:
   - it fails during external-boundary serialization
-  - the current unsupported-feature surface includes `multiple_external_tokens`, `non_leading_external_step`, and `aliased_external_step`
+  - the current unsupported-feature surface now centers on `multiple_external_tokens` and `non_leading_external_step`
+- the current PR 3 reduction already landed:
+  - `aliased_external_step` no longer blocks the first-boundary serializer
 - PR 2 therefore ends with one onboarded real external scanner target plus an explicit first blocker classification
 
 ## PR 3 Candidate
