@@ -34,7 +34,7 @@ What is already true before this milestone starts:
 - those external targets now pass within the parser-only boundary after the word-token lowering and repeat-auxiliary shift/reduce fixes
 - the remaining deferred parser-only target is the staged control case:
   - `parse_table_conflict_json`
-    - still carries an explicit blocked parser surface for a non-repeat shift/reduce ambiguity
+    - intentionally remains blocked as a control fixture for a non-repeat shift/reduce ambiguity with no precedence annotations
 
 ## Scope Rules
 
@@ -70,6 +70,7 @@ Secondary target:
 - `parse_table_conflict_json`
   - current status: deferred staged target
   - role in this milestone: remaining parser-only control case after the external Ziggy promotions landed
+  - intended outcome: freeze explicitly as an intentional ambiguity/control fixture unless a later milestone broadens conflict-resolution policy on purpose
 
 ## Exit Criteria
 
@@ -158,6 +159,35 @@ Current progress:
 - `tree_sitter_ziggy_json` and `tree_sitter_ziggy_schema_json` are now promoted into the intended first-wave parser-only run set
 - the checked-in shortlist, report, inventory, mismatch, and coverage-decision artifacts now reflect that expanded proven boundary
 - the remaining deferred parser-only queue is down to the staged `parse_table_conflict_json` control case
+
+### PR 4
+
+Goal:
+
+- resolve or explicitly freeze `parse_table_conflict_json` as the last deferred parser-only control case in this milestone
+
+Scope:
+
+- inspect whether [compat_targets/parse_table_conflict/grammar.json](./compat_targets/parse_table_conflict/grammar.json) is intentionally ambiguous or still reducible within the current parser-only resolution model
+- if it is intentionally ambiguous:
+  - keep it deferred as an explicit control case
+  - tighten milestone and artifact language so this is a deliberate remaining boundary, not an unclassified gap
+- if it is reducible:
+  - implement only the narrow resolution improvement needed for this grammar
+  - regenerate the checked-in compatibility artifacts and update the closeout decision
+
+Acceptance:
+
+- `parse_table_conflict_json` is either:
+  - promoted into the proven boundary
+  - or kept deferred with an explicit rationale as an intentional conflict/control fixture
+- `MILESTONES_23.md` and the checked-in `compat_targets/` artifacts end in a consistent closeout state
+
+Current progress:
+
+- `parse_table_conflict_json` is now treated explicitly as an intentionally ambiguous control fixture, not an unclassified leftover parser-only blocker
+- the compatibility harness keeps it as a deferred blocked target with a locked shift/reduce signature on `expr`
+- the milestone closeout path is now to finish artifact/doc regeneration around that frozen control case rather than chase another parser-only promotion
 
 ## Non-Goals
 

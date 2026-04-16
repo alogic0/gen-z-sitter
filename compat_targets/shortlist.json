@@ -82,8 +82,8 @@
       "upstream_repository": null,
       "upstream_revision": null,
       "upstream_grammar_path": null,
-      "why": "parser-only ambiguity case deferred until mismatch classification is richer",
-      "success_means": "classify the unresolved conflict boundary explicitly before promoting it into the first-wave run set"
+      "why": "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations",
+      "success_means": "remain explicitly blocked as a control case unless a later milestone intentionally broadens conflict-resolution policy"
     },
     {
       "id": "hidden_external_fields_json",

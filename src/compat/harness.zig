@@ -648,3 +648,20 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets and keeps onl
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[5].mismatch_category);
     try std.testing.expectEqual(@as(usize, 1), runs[5].blocked_boundary.?.reasons.shift_reduce);
 }
+
+test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked control case" {
+    const allocator = std.testing.allocator;
+
+    const runs = try runShortlistTargetsAlloc(allocator, .{});
+    defer result_model.deinitRunResults(allocator, runs);
+
+    try std.testing.expectEqualStrings("parse_table_conflict_json", runs[5].id);
+    try std.testing.expectEqual(targets.CandidateStatus.deferred_later_wave, runs[5].candidate_status);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
+    try std.testing.expectEqual(true, runs[5].expected_blocked);
+    try std.testing.expect(runs[5].blocked_boundary != null);
+    try std.testing.expectEqual(@as(usize, 1), runs[5].blocked_boundary.?.unresolved_entry_count);
+    try std.testing.expectEqualStrings("expr", runs[5].blocked_boundary.?.samples[0].symbol_name);
+    try std.testing.expect(std.mem.indexOf(u8, runs[5].blocked_boundary.?.samples[0].candidate_actions_summary, "reduce:2(expr)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[5].notes, "intentionally ambiguous") != null);
+}

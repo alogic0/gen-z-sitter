@@ -109,8 +109,8 @@ pub const shortlist_targets = [_]Target{
         .provenance = .{ .origin_kind = .staged_in_repo },
         .candidate_status = .deferred_later_wave,
         .expected_blocked = true,
-        .notes = "parser-only ambiguity case deferred until mismatch classification is richer",
-        .success_criteria = "classify the unresolved conflict boundary explicitly before promoting it into the first-wave run set",
+        .notes = "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations",
+        .success_criteria = "remain explicitly blocked as a control case unless a later milestone intentionally broadens conflict-resolution policy",
     },
     .{
         .id = "hidden_external_fields_json",

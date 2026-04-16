@@ -38,8 +38,9 @@ Current staged boundary summary:
   - `tree_sitter_ziggy_schema_json`
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`
+  - this is now treated explicitly as an intentional ambiguity/control fixture, not as an unresolved external parser-only promotion gap
 - 1 external-scanner target is tracked explicitly as out of scope
 
 Recommended next step after this staged boundary:
 
-- decide whether the remaining staged deferred conflict target justifies another parser-only wave, or whether the next promoted direction should move on from Milestone 23
+- treat the remaining staged deferred conflict target as a frozen control case unless a later milestone intentionally expands conflict-resolution policy
