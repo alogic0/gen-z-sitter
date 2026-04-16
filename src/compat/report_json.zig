@@ -87,6 +87,7 @@ test "renderRunReportAlloc emits deterministic structured JSON" {
             .display_name = "Sample",
             .grammar_path = "grammar.json",
             .source_kind = .grammar_json,
+            .provenance = .{ .origin_kind = .staged_in_repo },
             .candidate_status = .intended_first_wave,
             .expected_blocked = false,
             .notes = "sample",

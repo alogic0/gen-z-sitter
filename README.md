@@ -26,6 +26,7 @@ What this means in practice:
 - the parser-emission and compatibility layers are exercised mainly through lower-level tests, compile-smoke checks, structural compatibility checks, and the behavioral harness
 - the repo now also carries a versioned parser-only shortlist and a checked-in shortlist boundary artifact under `compat_targets/`
 - the repo now also carries a checked-in full shortlist run report under `compat_targets/`
+- the repo now also carries a checked-in mismatch inventory and coverage decision under `compat_targets/`
 - the repo is still an in-progress rewrite rather than a drop-in replacement for upstream Tree-sitter
 
 What is still not a first-class top-level product surface:
@@ -39,8 +40,8 @@ What is still not a first-class top-level product surface:
 
 The immediate next goals are:
 
-- expand beyond curated local fixtures into parser-only compatibility coverage against a small shortlist of real grammars/repos
-- add a repeatable harness that records generation, emission, compile-smoke, and structural-compatibility results for those targets
+- promote the newly onboarded real external parser-only snapshots by shrinking their current parser-only gaps
+- continue expanding beyond curated local fixtures into parser-only compatibility coverage against additional real grammars/repos
 - keep parser-output optimization measurable while deeper parse-table compression/minimization remains future work
 - continue tightening the staged compatibility boundary before claiming broader runtime parity
 
@@ -99,17 +100,25 @@ Not every flag currently maps to a fully surfaced end-user feature. The most dir
 
 Current staged compatibility boundary:
 
-- parser/runtime compatibility work is exercised primarily through lower-level emitter, golden, compile-smoke, structural-compatibility, and behavioral-harness tests
-- parser-only compatibility coverage now also has a versioned shortlist and checked-in inventory artifact:
-- parser-only compatibility coverage now also has versioned checked-in artifacts:
+- curated fixture proof currently comes from lower-level emitter, golden, compile-smoke, structural-compatibility, and behavioral-harness tests
+- parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`
   - `compat_targets/shortlist_report.json`
+- `compat_targets/README.md` describes how the shortlist, inventory, mismatch, and coverage-decision artifacts relate to the current staged boundary
+- the currently proven first-wave parser-only boundary is still the staged 3-target set:
+  - `parse_table_tiny_json`
+  - `behavioral_config_json`
+  - `repeat_choice_seq_js`
+- the shortlist now also includes two real external parser-only snapshots as deferred later-wave targets:
+  - `tree_sitter_ziggy_json`
+  - `tree_sitter_ziggy_schema_json`
 - the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
   - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it remains on the staged `unresolved_decision` boundary for its valid path
-- broader real-grammar coverage is the next planned step, beginning with parser-only repo cases before broader scanner/runtime parity work
+- scanner/external-scanner repo proof is still explicitly deferred beyond the current parser-only boundary
+- broader real-grammar coverage is the next planned step, beginning with promotion of the deferred external parser-only snapshots before broader scanner/runtime parity work
 
 ## Repository Layout
 

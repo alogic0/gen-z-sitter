@@ -279,6 +279,7 @@ test "runTarget reports infrastructure failures for missing files" {
         .display_name = "Missing",
         .grammar_path = "compat_targets/does_not_exist/grammar.json",
         .source_kind = .grammar_json,
+        .provenance = .{ .origin_kind = .staged_in_repo },
         .candidate_status = .intended_first_wave,
         .notes = "missing file test",
         .success_criteria = "missing file should fail deterministically",
@@ -294,7 +295,16 @@ test "runTarget reports infrastructure failures for missing files" {
 test "runTarget reports out-of-scope classification for excluded shortlist candidates" {
     const allocator = std.testing.allocator;
 
-    var run = try runTarget(allocator, targets.shortlistTargets()[4], .{});
+    const shortlist = targets.shortlistTargets();
+    var excluded_target: ?targets.Target = null;
+    for (shortlist) |target| {
+        if (target.candidate_status == .excluded_out_of_scope) {
+            excluded_target = target;
+            break;
+        }
+    }
+
+    var run = try runTarget(allocator, excluded_target.?, .{});
     defer run.deinit(allocator);
 
     try std.testing.expectEqual(result_model.FinalClassification.out_of_scope_for_scanner_boundary, run.final_classification);
@@ -314,6 +324,8 @@ test "runStagedTargetsAlloc can be rendered to a deterministic JSON report" {
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"parse_table_tiny_json\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"repeat_choice_seq_js\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"tree_sitter_ziggy_json\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"tree_sitter_ziggy_schema_json\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"hidden_external_fields_json\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"blocked_targets\"") != null);
 }
@@ -324,6 +336,8 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     const runs = try runShortlistTargetsAlloc(allocator, .{});
     defer result_model.deinitRunResults(allocator, runs);
 
-    try std.testing.expectEqual(@as(usize, 5), runs.len);
-    try std.testing.expectEqual(result_model.FinalClassification.out_of_scope_for_scanner_boundary, runs[4].final_classification);
+    try std.testing.expectEqual(@as(usize, 7), runs.len);
+    try std.testing.expectEqual(result_model.FinalClassification.failed_due_to_parser_only_gap, runs[3].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.failed_due_to_parser_only_gap, runs[4].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.out_of_scope_for_scanner_boundary, runs[6].final_classification);
 }

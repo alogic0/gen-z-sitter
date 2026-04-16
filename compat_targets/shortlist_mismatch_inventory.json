@@ -1,7 +1,26 @@
 {
   "schema_version": 1,
   "first_wave_non_passing_count": 0,
-  "parser_only_incompatibilities": [],
+  "parser_only_incompatibilities": [
+    {
+      "id": "tree_sitter_ziggy_json",
+      "display_name": "tree-sitter-ziggy (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_ziggy/grammar.json",
+      "candidate_status": "deferred_later_wave",
+      "first_failed_stage": "emit_parser_c",
+      "detail": "unexpected blocked status: expected false, got true",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, deferred until its blocked parser-emission gap is classified for promotion"
+    },
+    {
+      "id": "tree_sitter_ziggy_schema_json",
+      "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
+      "candidate_status": "deferred_later_wave",
+      "first_failed_stage": "serialize",
+      "detail": "serialize failed: InvalidWordToken",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its InvalidWordToken parse-table gap is classified for promotion"
+    }
+  ],
   "grammar_input_shape_issues": [],
   "compile_surface_issues": [],
   "harness_limitations": [],
@@ -17,6 +36,24 @@
     }
   ],
   "deferred_targets": [
+    {
+      "id": "tree_sitter_ziggy_json",
+      "display_name": "tree-sitter-ziggy (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_ziggy/grammar.json",
+      "candidate_status": "deferred_later_wave",
+      "first_failed_stage": "emit_parser_c",
+      "detail": "unexpected blocked status: expected false, got true",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, deferred until its blocked parser-emission gap is classified for promotion"
+    },
+    {
+      "id": "tree_sitter_ziggy_schema_json",
+      "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
+      "candidate_status": "deferred_later_wave",
+      "first_failed_stage": "serialize",
+      "detail": "serialize failed: InvalidWordToken",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its InvalidWordToken parse-table gap is classified for promotion"
+    },
     {
       "id": "parse_table_conflict_json",
       "display_name": "Parse Table Conflict (JSON)",

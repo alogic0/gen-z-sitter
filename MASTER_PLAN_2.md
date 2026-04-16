@@ -83,7 +83,8 @@ Current parser-only shortlist boundary before broader real-repo onboarding:
   - `shortlist_mismatch_inventory.json`
 - current first-wave parser-only run set:
   - 3 intended first-wave targets pass within the staged boundary
-  - 1 deferred later-wave target is tracked separately
+  - 2 real external parser-only snapshots are onboarded as deferred later-wave targets
+  - 1 additional staged deferred target is tracked separately
   - 1 external-scanner target is tracked explicitly as out of scope
 
 ## Immediate Recommended Next Target

@@ -178,7 +178,7 @@ test "buildCoverageDecisionAlloc summarizes the current next-step decision" {
     try std.testing.expectEqual(@as(usize, 0), report.first_wave_non_passing_count);
     try std.testing.expect(report.parser_only_boundary_proven);
     try std.testing.expectEqual(NextMilestone.second_wave_parser_only_repo_coverage, report.recommended_next_milestone);
-    try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_only_targets.len);
+    try std.testing.expectEqual(@as(usize, 3), report.deferred_parser_only_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.out_of_scope_targets.len);
 }
 

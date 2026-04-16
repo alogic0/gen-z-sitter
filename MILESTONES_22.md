@@ -31,7 +31,7 @@ The first implementation slice is now landed, but it is intentionally narrower t
 - a staged in-repo parser-only shortlist now exists under `compat_targets/`
 - a reusable harness now exists under `src/compat/`
 - the harness records structured per-target results, compile-smoke status, compatibility-check status, and aggregate JSON reporting
-- the current staged target set is still repo-local bootstrap coverage, not yet the real external repo shortlist described by this milestone
+- the current proven first-wave target set is still the staged bootstrap coverage, but the shortlist now also includes deferred real external parser-only snapshots
 
 The second implementation slice is now landed as well:
 
@@ -63,7 +63,7 @@ The fifth implementation slice is now landed as well:
   - `compat_targets/shortlist_mismatch_inventory.json`
 - the current shortlist outcome is now explicit in one place:
   - 0 non-passing first-wave parser-only targets
-  - 1 deferred later-wave target
+  - 3 deferred later-wave targets
   - 1 out-of-scope external-scanner target
 - tests now lock the mismatch-inventory artifact to the current rendered classification output
 
@@ -77,6 +77,23 @@ The sixth implementation slice is now landed as well:
   - what parser-only targets remain deferred
   - what remains explicitly out of scope because it belongs to scanner/external-scanner coverage
   - what the next promoted milestone should be
+
+The seventh implementation slice is now landed as well:
+
+- the shortlist now includes two real external parser-only grammar snapshots:
+  - `tree_sitter_ziggy_json`
+  - `tree_sitter_ziggy_schema_json`
+- the target model and shortlist artifact now record target provenance for staged inputs vs external repo snapshots
+- the checked-in shortlist artifact is now rendered from code instead of drifting as a hand-maintained JSON file
+- `update_compat_artifacts.zig` now regenerates:
+  - `compat_targets/shortlist.json`
+  - `compat_targets/shortlist_inventory.json`
+  - `compat_targets/shortlist_report.json`
+  - `compat_targets/shortlist_mismatch_inventory.json`
+  - `compat_targets/coverage_decision.json`
+- the current real external parser-only gaps are now explicit:
+  - `tree_sitter_ziggy_json` currently hits a blocked parser-emission boundary
+  - `tree_sitter_ziggy_schema_json` currently fails parse-table serialization with `InvalidWordToken`
 
 ## PR-Sized Slices
 
@@ -234,7 +251,7 @@ Out of scope:
   - parser.c emission
   - parser.c compile-smoke
   - structural compatibility checks where applicable
-- [ ] known parser-only failures are classified and documented
+- [x] known parser-only failures are classified and documented
 - [x] the repo can state a concrete current parser-only compatibility boundary based on harness results, not only fixture tests
 
 ## Implementation Sequence
@@ -430,7 +447,10 @@ Current boundary summary from the generated inventory surface:
 
 - the first-wave parser-only run set contains 3 targets
 - all 3 current first-wave targets pass within the staged boundary
-- 1 deferred later-wave target is tracked separately for future mismatch expansion
+- 3 deferred later-wave targets are tracked separately for future mismatch expansion:
+  - `tree_sitter_ziggy_json`
+  - `tree_sitter_ziggy_schema_json`
+  - `parse_table_conflict_json`
 - 1 excluded out-of-scope target is tracked separately for the external-scanner boundary
 
 ### 8. Add one stable compatibility report artifact
@@ -467,7 +487,7 @@ Current result:
 ### 9. Tighten docs to the new parser-only real-repo boundary
 
 - [x] update milestone docs after the harness result boundary is real
-- [ ] update compatibility-facing docs to distinguish:
+- [x] update compatibility-facing docs to distinguish:
   - curated fixture proof
   - parser-only real-repo proof
   - still-deferred scanner/external-scanner repo proof
@@ -485,7 +505,12 @@ Current partial progress for this stage:
   - the narrower parser-only shortlist boundary
   - explicitly deferred scanner/external-scanner coverage
 - `MASTER_PLAN_2.md` and `MILESTONES_21.md` now also record the explicit shortlist boundary and checked-in parser-only artifacts
-- broader compatibility-facing follow-up is still pending if and when real external parser-only repo coverage lands
+- `compat_targets/README.md` now serves as the artifact-level guide for:
+  - shortlist policy
+  - aggregate boundary summary
+  - mismatch inventory
+  - coverage decision
+- broader compatibility-facing follow-up is still pending only after the newly onboarded external parser-only snapshots are either promoted or re-scoped
 
 Important rule for this stage:
 
@@ -511,7 +536,9 @@ Current closeout decision:
 
 - the current first-wave parser-only boundary is complete for the staged shortlist:
   - 3 intended first-wave targets pass
-- remaining parser-only target explicitly deferred:
+- remaining parser-only targets explicitly deferred:
+  - `tree_sitter_ziggy_json`
+  - `tree_sitter_ziggy_schema_json`
   - `parse_table_conflict_json`
 - scanner/external-scanner coverage explicitly deferred beyond this milestone:
   - `hidden_external_fields_json`
@@ -520,11 +547,11 @@ Current closeout decision:
 
 ## Deliverables
 
-- [ ] `MILESTONES_22.md` completed with concrete repo shortlist and classifications
-- [ ] harness code for parser-only repo compatibility runs
-- [ ] deterministic per-target result reporting
-- [ ] deterministic aggregate compatibility report
-- [ ] documented parser-only mismatch inventory
+- [x] `MILESTONES_22.md` completed with concrete repo shortlist and classifications
+- [x] harness code for parser-only repo compatibility runs
+- [x] deterministic per-target result reporting
+- [x] deterministic aggregate compatibility report
+- [x] documented parser-only mismatch inventory
 - [x] checked-in parser-only coverage decision artifact
 
 ## Non-Goals

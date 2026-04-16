@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "aggregate": {
-    "total_targets": 5,
+    "total_targets": 7,
     "passed_within_current_boundary": 4,
-    "failed_due_to_parser_only_gap": 0,
+    "failed_due_to_parser_only_gap": 2,
     "out_of_scope_for_scanner_boundary": 1,
     "infrastructure_failure": 0,
-    "blocked_targets": 2,
+    "blocked_targets": 3,
     "mismatch_categories": {
       "grammar_input_load_mismatch": 0,
       "preparation_lowering_mismatch": 0,
-      "parse_table_construction_gap": 0,
+      "parse_table_construction_gap": 2,
       "emitted_surface_structural_gap": 0,
       "compile_smoke_failure": 0,
       "out_of_scope_scanner_boundary": 1,
@@ -23,6 +23,12 @@
       "display_name": "Parse Table Tiny (JSON)",
       "grammar_path": "compat_targets/parse_table_tiny/grammar.json",
       "source_kind": "grammar_json",
+      "provenance": {
+        "origin_kind": "staged_in_repo",
+        "upstream_repository": null,
+        "upstream_revision": null,
+        "upstream_grammar_path": null
+      },
       "candidate_status": "intended_first_wave",
       "expected_blocked": false,
       "notes": "smallest staged parser-only JSON target",
@@ -80,6 +86,12 @@
       "display_name": "Behavioral Config (JSON)",
       "grammar_path": "compat_targets/behavioral_config/grammar.json",
       "source_kind": "grammar_json",
+      "provenance": {
+        "origin_kind": "staged_in_repo",
+        "upstream_repository": null,
+        "upstream_revision": null,
+        "upstream_grammar_path": null
+      },
       "candidate_status": "intended_first_wave",
       "expected_blocked": false,
       "notes": "richer scanner-free JSON target",
@@ -137,6 +149,12 @@
       "display_name": "Repeat Choice Seq (JS)",
       "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
       "source_kind": "grammar_js",
+      "provenance": {
+        "origin_kind": "staged_in_repo",
+        "upstream_repository": null,
+        "upstream_revision": null,
+        "upstream_grammar_path": null
+      },
       "candidate_status": "intended_first_wave",
       "expected_blocked": true,
       "notes": "parser-only JS target that exercises the staged blocked boundary",
@@ -190,10 +208,131 @@
       }
     },
     {
+      "id": "tree_sitter_ziggy_json",
+      "display_name": "tree-sitter-ziggy (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_ziggy/grammar.json",
+      "source_kind": "grammar_json",
+      "provenance": {
+        "origin_kind": "external_repo_snapshot",
+        "upstream_repository": "tree-sitter-ziggy",
+        "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
+        "upstream_grammar_path": "src/grammar.json"
+      },
+      "candidate_status": "deferred_later_wave",
+      "expected_blocked": false,
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, deferred until its blocked parser-emission gap is classified for promotion",
+      "success_criteria": "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set",
+      "first_failed_stage": "emit_parser_c",
+      "final_classification": "failed_due_to_parser_only_gap",
+      "mismatch_category": "parse_table_construction_gap",
+      "load": {
+        "status": "passed",
+        "detail": null
+      },
+      "prepare": {
+        "status": "passed",
+        "detail": null
+      },
+      "serialize": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_c_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "failed",
+        "detail": "unexpected blocked status: expected false, got true"
+      },
+      "compat_check": {
+        "status": "not_run",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emission": {
+        "blocked": true,
+        "serialized_state_count": 1124,
+        "emitted_state_count": 1078,
+        "merged_state_count": 46,
+        "action_entry_count": 3673,
+        "goto_entry_count": 681,
+        "unresolved_entry_count": 179,
+        "parser_tables_bytes": 157889,
+        "c_tables_bytes": 312147,
+        "parser_c_bytes": 493812
+      }
+    },
+    {
+      "id": "tree_sitter_ziggy_schema_json",
+      "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
+      "source_kind": "grammar_json",
+      "provenance": {
+        "origin_kind": "external_repo_snapshot",
+        "upstream_repository": "tree-sitter-ziggy-schema",
+        "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
+        "upstream_grammar_path": "src/grammar.json"
+      },
+      "candidate_status": "deferred_later_wave",
+      "expected_blocked": false,
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its InvalidWordToken parse-table gap is classified for promotion",
+      "success_criteria": "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set",
+      "first_failed_stage": "serialize",
+      "final_classification": "failed_due_to_parser_only_gap",
+      "mismatch_category": "parse_table_construction_gap",
+      "load": {
+        "status": "passed",
+        "detail": null
+      },
+      "prepare": {
+        "status": "passed",
+        "detail": null
+      },
+      "serialize": {
+        "status": "failed",
+        "detail": "serialize failed: InvalidWordToken"
+      },
+      "emit_parser_tables": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emit_c_tables": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "not_run",
+        "detail": null
+      },
+      "compat_check": {
+        "status": "not_run",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emission": null
+    },
+    {
       "id": "parse_table_conflict_json",
       "display_name": "Parse Table Conflict (JSON)",
       "grammar_path": "compat_targets/parse_table_conflict/grammar.json",
       "source_kind": "grammar_json",
+      "provenance": {
+        "origin_kind": "staged_in_repo",
+        "upstream_repository": null,
+        "upstream_revision": null,
+        "upstream_grammar_path": null
+      },
       "candidate_status": "deferred_later_wave",
       "expected_blocked": true,
       "notes": "parser-only ambiguity case deferred until mismatch classification is richer",
@@ -251,6 +390,12 @@
       "display_name": "Hidden External Fields (JSON)",
       "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
       "source_kind": "grammar_json",
+      "provenance": {
+        "origin_kind": "staged_in_repo",
+        "upstream_repository": null,
+        "upstream_revision": null,
+        "upstream_grammar_path": null
+      },
       "candidate_status": "excluded_out_of_scope",
       "expected_blocked": false,
       "notes": "requires external scanner handling outside the current parser-only boundary",

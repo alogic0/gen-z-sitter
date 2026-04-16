@@ -164,12 +164,12 @@ test "buildMismatchInventoryAlloc classifies the current shortlist" {
     defer report.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 0), report.first_wave_non_passing_count);
-    try std.testing.expectEqual(@as(usize, 0), report.parser_only_incompatibilities.len);
+    try std.testing.expectEqual(@as(usize, 2), report.parser_only_incompatibilities.len);
     try std.testing.expectEqual(@as(usize, 0), report.grammar_input_shape_issues.len);
     try std.testing.expectEqual(@as(usize, 0), report.compile_surface_issues.len);
     try std.testing.expectEqual(@as(usize, 0), report.harness_limitations.len);
     try std.testing.expectEqual(@as(usize, 1), report.out_of_scope_targets.len);
-    try std.testing.expectEqual(@as(usize, 1), report.deferred_targets.len);
+    try std.testing.expectEqual(@as(usize, 3), report.deferred_targets.len);
 }
 
 test "renderMismatchInventoryAlloc matches the checked-in shortlist mismatch inventory artifact" {

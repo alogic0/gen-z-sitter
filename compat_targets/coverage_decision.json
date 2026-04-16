@@ -7,9 +7,21 @@
   "proven_boundary": [
     "3 intended first-wave parser-only targets are currently in the run set",
     "3 intended first-wave targets currently pass within the staged parser-only boundary",
-    "2 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
+    "3 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
   ],
   "deferred_parser_only_targets": [
+    {
+      "id": "tree_sitter_ziggy_json",
+      "display_name": "tree-sitter-ziggy (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_ziggy/grammar.json",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, deferred until its blocked parser-emission gap is classified for promotion"
+    },
+    {
+      "id": "tree_sitter_ziggy_schema_json",
+      "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its InvalidWordToken parse-table gap is classified for promotion"
+    },
     {
       "id": "parse_table_conflict_json",
       "display_name": "Parse Table Conflict (JSON)",

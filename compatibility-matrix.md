@@ -86,20 +86,22 @@ What the repo can credibly claim today:
 
 - `grammar.json` and `grammar.js` loading paths are implemented and exercised
 - `node-types.json` output is the most directly surfaced top-level generated artifact
-- parser/runtime compatibility work is currently validated mostly through:
+- curated fixture proof currently comes mostly from:
   - emitted parser.c-like goldens
   - compile smoke tests
   - structural compatibility checks
   - local behavioral harness checks
-- parser-only compatibility coverage now also has a versioned shortlist and checked-in boundary artifact:
-- parser-only compatibility coverage now also has versioned checked-in artifacts:
+- parser-only shortlist proof currently comes from versioned checked-in artifacts:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`
   - `compat_targets/shortlist_report.json`
+- `compat_targets/README.md` explains the relationship between shortlist policy, aggregate boundary, mismatch inventory, and coverage decision artifacts
 - the current parser-only shortlist boundary is narrower than real external-repo proof:
   - 3 intended first-wave parser-only targets currently pass within the staged boundary
-  - 1 deferred later-wave target is tracked separately for mismatch expansion
+  - 2 real external parser-only snapshots are now tracked as deferred later-wave targets
+  - 1 additional staged deferred target remains tracked for mismatch expansion
   - 1 external-scanner target is tracked explicitly as out of scope
+- scanner/external-scanner repo proof remains explicitly deferred beyond the current parser-only boundary
 - compatibility-sensitive behavioral proof currently covers:
   - `behavioral_config`
   - `hidden_external_fields`

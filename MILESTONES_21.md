@@ -69,7 +69,8 @@ Current state after `MILESTONES_22` bootstrap slices:
   - `shortlist_mismatch_inventory.json`
 - this is still narrower than real external-repo proof:
   - 3 intended first-wave targets currently pass within the staged parser-only boundary
-  - 1 deferred later-wave target is held aside for future mismatch expansion
+  - 2 real external parser-only snapshots are now held as deferred later-wave targets
+  - 1 additional staged deferred target is held aside for future mismatch expansion
   - 1 external-scanner target is classified explicitly as out of scope
 
 Promoted milestones:
