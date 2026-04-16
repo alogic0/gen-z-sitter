@@ -30,6 +30,9 @@ Versioned artifacts:
 
 - `shortlist.json`
   - target selection policy, family, boundary kind, candidate classification, and success criteria
+- `external_repo_inventory.json`
+  - dedicated machine-readable inventory of the currently represented real external snapshots, including upstream provenance, represented families, and pass counts
+  - this keeps real external evidence separate from the broader staged shortlist, which still includes staged fixtures and frozen controls
 - `shortlist_inventory.json`
   - aggregate boundary summary plus family-level coverage and explicit proven first-wave, deferred-control, deferred-scanner, and out-of-scope target sections
 - `shortlist_report.json`
@@ -51,6 +54,7 @@ Current staged boundary summary:
 - 2 real external parser-only snapshots have been promoted into that first-wave proven set:
   - `tree_sitter_ziggy_json`
   - `tree_sitter_ziggy_schema_json`
+- those same 2 real snapshots are also exposed separately in `external_repo_inventory.json` so real-repo evidence can be read without mentally subtracting the staged fixture families
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`
   - this is now treated explicitly as an intentional ambiguity/control fixture, not as an unresolved external parser-only promotion gap
@@ -67,3 +71,4 @@ Current staged boundary summary:
 Recommended next step after this staged boundary:
 
 - keep the parser-only and staged scanner boundaries stable while shifting the promoted roadmap toward broader compatibility polish
+- for real-repo evidence specifically, either onboard additional local external snapshots when they become available or keep the current local-source limitation explicit instead of implying that a larger real-target pool already exists

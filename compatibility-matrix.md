@@ -92,14 +92,19 @@ What the repo can credibly claim today:
     - compile smoke tests
     - structural compatibility checks
     - local behavioral harness checks
+  - real external snapshot proof:
+    - dedicated machine-readable inventory for promoted external-repo snapshots under `compat_targets/external_repo_inventory.json`
   - parser-only shortlist proof:
     - versioned checked-in artifacts under `compat_targets/`
   - staged scanner-boundary proof:
     - the promoted scanner-wave entries in those same checked-in artifacts
+- the dedicated external-repo inventory keeps real snapshot evidence visible even when the main shortlist still includes staged fixtures and frozen controls
 - parser-only shortlist proof currently comes from versioned checked-in artifacts:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`
   - `compat_targets/shortlist_report.json`
+- real external snapshot proof currently comes from:
+  - `compat_targets/external_repo_inventory.json`
 - `compat_targets/README.md` explains the relationship between shortlist policy, aggregate boundary, mismatch inventory, and coverage decision artifacts
 - the checked-in shortlist inventory and full report now expose family-level coverage alongside aggregate target totals
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:

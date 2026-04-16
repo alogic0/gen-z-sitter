@@ -27,6 +27,7 @@ What this means in practice:
 - the repo now also carries a versioned parser-only shortlist and a checked-in shortlist boundary artifact under `compat_targets/`
 - the repo now also carries a checked-in full shortlist run report under `compat_targets/`
 - the repo now also carries a checked-in mismatch inventory and coverage decision under `compat_targets/`
+- the repo now also carries a dedicated checked-in external-repo inventory under `compat_targets/`
 - the repo is still an in-progress rewrite rather than a drop-in replacement for upstream Tree-sitter
 
 What is still not a first-class top-level product surface:
@@ -108,10 +109,15 @@ Current staged compatibility boundary:
   - staged scanner-boundary proof:
     - the promoted scanner-wave entries in the same checked-in compatibility artifacts
 - parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
+- real external snapshot proof is also exposed separately under `compat_targets/`:
+  - `compat_targets/external_repo_inventory.json`
+  - this keeps the promoted real external parser-only evidence visible without mixing it into staged fixture-only summaries
+- parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`
   - `compat_targets/shortlist_report.json`
 - `compat_targets/README.md` describes how the shortlist, inventory, mismatch, and coverage-decision artifacts relate to the current staged boundary
+- `compat_targets/README.md` also describes how `external_repo_inventory.json` separates real external snapshot evidence from the staged fixture-driven shortlist surfaces
 - the shortlist inventory and full report now expose family-level coverage so the current staged boundary is readable by grammar family, not only by flat target counts
 - the currently represented parser-only families are:
   - `parse_table_tiny`
