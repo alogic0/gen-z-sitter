@@ -24,6 +24,7 @@ Current first optimization slice:
 - `generate --json-summary` now reports both serialized-state counts and emitted-state counts, plus the active compaction toggle, so optimization wins are explicit in one summary
 - `generate --json-summary` now also reports baseline-vs-emitted row-sharing stats, so row-level savings are visible without manually toggling options and diffing results
 - `generate --json-summary` now also reports explicit savings deltas, including emitted-state reduction and emitted array-definition savings, so the optimization impact is directly quantified
+- `generate --json-summary` now also reports baseline-vs-emitted byte sizes for `parser_tables`, `c_tables`, and `parser.c`, so output-size savings are measurable across every emitted surface
 - this is intentionally a low-risk compression step:
   - it reduces repeated emitted boilerplate
   - it only shares rows when the serialized action/value/target contents are exactly equal
@@ -34,6 +35,7 @@ Current first optimization slice:
   - it now exposes both the pre-optimization and post-optimization emitted state counts in the summary path
   - it now exposes both the baseline and post-optimization row-sharing stats in the summary path as well
   - it now quantifies the emitted savings directly in the summary path instead of leaving them implicit in before/after numbers
+  - it now quantifies emitted byte-size savings across all current emitter surfaces in the summary path as well
   - it does not change the staged compatibility contract
   - it preserves existing parser behavior and test coverage
 
@@ -42,7 +44,21 @@ Immediate promotion candidates after the first behavioral-equivalence stage:
 - [x] decide whether `external scanner integration` stays coupled to that same checklist or becomes a separate follow-on checklist
 - [x] make `external scanner integration` a separate follow-on checklist
 - [x] complete the first external-scanner follow-on checklist
-- [ ] decide whether `broader real-grammar/repo compatibility coverage` waits on lexer/scanner support or starts with parser-only repo cases first
+- [x] decide whether `broader real-grammar/repo compatibility coverage` waits on lexer/scanner support or starts with parser-only repo cases first
+
+Decision:
+- start with parser-only repo cases first
+- do not wait on broader lexer/scanner support before beginning that coverage expansion
+
+Why this is the current order:
+- the current compatibility boundary is explicitly scanner-free, so parser-only repo cases extend the proven surface without changing the contract being tested
+- this keeps Milestones 21 focused on measurable parser-generator progress instead of mixing parser coverage growth with scanner/runtime unknowns
+- lexer/scanner-heavy repos can still follow later as a second wave once the parser-only compatibility harness is broader and cheaper to iterate on
+
+Initial parser-only repo coverage target shape:
+- repos/grammars that can run against the current parser-only emitted boundary without requiring external scanners
+- emphasis on fixture-driven compile, emit, and structural comparisons before deeper behavioral claims
+- promote this into its own milestone file once a concrete repo shortlist and harness boundary are written down
 
 Promoted milestones:
 - [x] [MILESTONES_18.md](./MILESTONES_18.md)
