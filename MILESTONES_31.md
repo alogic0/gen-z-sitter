@@ -44,8 +44,8 @@ Out of scope:
 - [x] at least one new real external target is added with provenance and explicit rationale
 - [x] checked-in artifacts record any new real blocker shape precisely instead of folding it into a generic bucket
 - [x] at least one newly added real external target is either promoted or explicitly frozen with a named rationale
-- [ ] the milestone ends with a clearer real external evidence boundary than M30
-- [ ] the next-step recommendation is updated from actual checked-in evidence rather than milestone intent
+- [x] the milestone ends with a clearer real external evidence boundary than M30
+- [x] the next-step recommendation is updated from actual checked-in evidence rather than milestone intent
 
 ## PR-Sized Slices
 
@@ -69,17 +69,17 @@ Out of scope:
 
 ### PR 4: Closeout
 
-- [ ] update coverage decision and external inventory artifacts from the final evidence state
-- [ ] tighten `README.md`, `compatibility-matrix.md`, and `compat_targets/README.md`
-- [ ] mark the final real external boundary and remaining limitations explicitly
+- [x] update coverage decision and external inventory artifacts from the final evidence state
+- [x] tighten `README.md`, `compatibility-matrix.md`, and `compat_targets/README.md`
+- [x] mark the final real external boundary and remaining limitations explicitly
 
 ## Progress
 
 - [x] PR 1 completed
 - [x] PR 2 completed
 - [x] PR 3 completed
-- [ ] PR 4 completed
-- [ ] M31 ready for closeout
+- [x] PR 4 completed
+- [x] M31 ready for closeout
 
 ## Non-Goals
 
@@ -119,3 +119,18 @@ Out of scope:
   - which real scanner families are represented
   - which newly added targets pass
   - which newly added targets remain frozen or deferred, and why
+
+## Closeout
+
+- M31 now ends with:
+  - 2 passing real external parser-only snapshots:
+    - `tree_sitter_ziggy_json`
+    - `tree_sitter_ziggy_schema_json`
+  - 2 passing real external scanner snapshots:
+    - `tree_sitter_haskell_json`
+    - `tree_sitter_bash_json`
+  - explicit family-level reporting for both parser-only and scanner/external-scanner real evidence
+  - an unchanged frozen parser-only control fixture:
+    - `parse_table_conflict_json`
+- the resulting boundary is broader than M30 because it adds a second passing real external scanner family, while still keeping the scanner claim narrower than full runtime parity
+- the checked-in next-step recommendation now returns to broader compatibility polish from actual evidence rather than milestone intent

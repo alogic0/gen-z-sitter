@@ -85,5 +85,5 @@ Current staged boundary summary:
 
 Recommended next step after this staged boundary:
 
-- keep the parser-only, staged scanner, and sampled real external scanner boundaries stable while deciding whether M31 should close or add one more real external target
+- keep the parser-only, staged scanner, and sampled real external scanner boundaries stable while shifting the promoted roadmap back toward broader compatibility polish
 - widen real external scanner-family coverage only after preserving the distinction between sampled real scanner proof and full runtime scanner behavior

@@ -155,9 +155,10 @@ Current staged compatibility boundary:
   - `mixed_semantics_json`
   - `mixed_semantics_js`
   - `tree_sitter_haskell_json`
+  - `tree_sitter_bash_json`
   - together they currently prove load, prepare, and one of:
     - staged compatibility-safe valid-path behavior with weaker invalid-path progress
-    - sampled external-sequence proof for the real external Haskell snapshot
+    - sampled real external scanner proof for the real external Haskell and Bash snapshots
   - `mixed_semantics` specifically keeps extras elsewhere in the grammar while proving a narrower first-boundary path that does not depend on them
 - the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 - the current supported behavioral subset is still staged:

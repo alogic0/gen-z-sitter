@@ -123,7 +123,7 @@ What the repo can credibly claim today:
   - 5 intended first-wave parser-only targets currently pass within the staged boundary
   - 1 staged deferred target remains intentionally frozen as an ambiguity/control fixture
   - that control case is now classified explicitly as a `frozen_control_fixture` in the checked-in reports rather than being counted as a normal pass
-  - 5 scanner/external-scanner targets now pass within the current sampled boundary across 3 grammar families
+  - 6 scanner/external-scanner targets now pass within the current sampled boundary across 4 grammar families
 - the currently represented families are:
   - parser-only:
     - `parse_table_tiny`
