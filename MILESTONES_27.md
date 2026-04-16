@@ -41,9 +41,9 @@ Out of scope:
 ## Exit Criteria
 
 - [x] checked-in compatibility artifacts expose coverage by grammar family rather than only flat target totals
-- [ ] the repo docs describe the current proof layers and family coverage consistently
-- [ ] at least one remaining coarse compatibility distinction is tightened or explicitly frozen with rationale
-- [ ] the staged compatibility claim is clearer at milestone closeout than it was at the start
+- [x] the repo docs describe the current proof layers and family coverage consistently
+- [x] at least one remaining coarse compatibility distinction is tightened or explicitly frozen with rationale
+- [x] the staged compatibility claim is clearer at milestone closeout than it was at the start
 
 ## PR-Sized Slices
 
@@ -90,25 +90,37 @@ Goal:
 
 Checklist:
 
-- [ ] choose one coarse remaining distinction
+- [x] choose one coarse remaining distinction
   - a proof-layer ambiguity
   - a family-coverage ambiguity
   - a still-blurry deferred/control distinction
-- [ ] implement or document the narrower classification
-- [ ] regenerate checked-in artifacts if needed
-- [ ] update milestone/docs to match
-- [ ] keep `zig build test` passing
+- [x] implement or document the narrower classification
+- [x] regenerate checked-in artifacts if needed
+- [x] update milestone/docs to match
+- [x] keep `zig build test` passing
 
 Acceptance:
 
-- [ ] the milestone ends with a more defensible staged compatibility claim than it started with
+- [x] the milestone ends with a more defensible staged compatibility claim than it started with
+
+## Closeout State
+
+- 5 intended first-wave parser-only targets still pass within the proven staged boundary
+- 4 intended scanner-wave targets still pass within the staged scanner boundary across 2 scanner families
+- `parse_table_conflict_json` remains the only deferred control fixture, but it is now classified explicitly as a `frozen_control_fixture` instead of being counted as a normal staged pass
+- the checked-in artifacts now distinguish:
+  - staged passes
+  - frozen control fixtures
+  - deferred scanner-boundary cases
+  - out-of-scope entries
+- the staged compatibility claim is now clearer both by family and by proof-layer/fixture role
 
 ## Progress Checklist
 
 - [x] PR 1 completed
 - [x] PR 2 completed
-- [ ] PR 3 completed
-- [ ] M27 ready for closeout
+- [x] PR 3 completed
+- [x] M27 ready for closeout
 
 ## Non-Goals
 

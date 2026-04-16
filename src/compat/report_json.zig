@@ -12,6 +12,7 @@ pub const AggregateCounts = struct {
     deferred_control_targets: usize,
     deferred_scanner_targets: usize,
     passed_within_current_boundary: usize,
+    frozen_control_fixture: usize,
     deferred_for_scanner_boundary: usize,
     failed_due_to_parser_only_gap: usize,
     out_of_scope_for_scanner_boundary: usize,
@@ -39,6 +40,7 @@ pub const FamilyAggregate = struct {
     boundary_kind: targets.BoundaryKind,
     target_count: usize,
     passed_count: usize,
+    control_count: usize,
     deferred_count: usize,
     blocked_count: usize,
 };
@@ -68,6 +70,7 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
         .deferred_control_targets = 0,
         .deferred_scanner_targets = 0,
         .passed_within_current_boundary = 0,
+        .frozen_control_fixture = 0,
         .deferred_for_scanner_boundary = 0,
         .failed_due_to_parser_only_gap = 0,
         .out_of_scope_for_scanner_boundary = 0,
@@ -102,6 +105,7 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
                 if (run.candidate_status == .intended_first_wave) counts.first_wave_passed += 1;
                 if (run.candidate_status == .intended_scanner_wave) counts.scanner_wave_passed += 1;
             },
+            .frozen_control_fixture => counts.frozen_control_fixture += 1,
             .deferred_for_scanner_boundary => counts.deferred_for_scanner_boundary += 1,
             .failed_due_to_parser_only_gap => counts.failed_due_to_parser_only_gap += 1,
             .out_of_scope_for_scanner_boundary => counts.out_of_scope_for_scanner_boundary += 1,
@@ -145,6 +149,7 @@ fn collectFamilyAggregatesAlloc(
                 .boundary_kind = run.boundary_kind,
                 .target_count = 0,
                 .passed_count = 0,
+                .control_count = 0,
                 .deferred_count = 0,
                 .blocked_count = 0,
             });
@@ -154,6 +159,7 @@ fn collectFamilyAggregatesAlloc(
         items.items[index].target_count += 1;
         switch (run.final_classification) {
             .passed_within_current_boundary => items.items[index].passed_count += 1,
+            .frozen_control_fixture => items.items[index].control_count += 1,
             .deferred_for_scanner_boundary => items.items[index].deferred_count += 1,
             .failed_due_to_parser_only_gap,
             .out_of_scope_for_scanner_boundary,

@@ -34,6 +34,8 @@ Versioned artifacts:
   - aggregate boundary summary plus family-level coverage and explicit proven first-wave, deferred-control, deferred-scanner, and out-of-scope target sections
 - `shortlist_report.json`
   - full per-target machine-readable harness report with aggregate counts and family-level coverage for the current staged boundary
+- frozen control fixtures
+  - appear in the main checked-in reports as `frozen_control_fixture` so intentionally blocked controls are not confused with ordinary staged passes
 - `shortlist_mismatch_inventory.json`
   - classified mismatch inventory with explicit scanner-boundary and deferred-control buckets backed by dedicated classifications
 - `shortlist_shift_reduce_profile.json`
@@ -52,6 +54,7 @@ Current staged boundary summary:
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`
   - this is now treated explicitly as an intentional ambiguity/control fixture, not as an unresolved external parser-only promotion gap
+  - the checked-in reports classify it as a `frozen_control_fixture`
 - 2 staged scanner/external-scanner targets now pass within the first scanner wave:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`

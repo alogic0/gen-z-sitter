@@ -105,6 +105,7 @@ What the repo can credibly claim today:
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:
   - 5 intended first-wave parser-only targets currently pass within the staged boundary
   - 1 staged deferred target remains intentionally frozen as an ambiguity/control fixture
+  - that control case is now classified explicitly as a `frozen_control_fixture` in the checked-in reports rather than being counted as a normal pass
   - 4 staged scanner/external-scanner targets now pass within the staged scanner boundary across 2 grammar families
 - the currently represented families are:
   - parser-only:

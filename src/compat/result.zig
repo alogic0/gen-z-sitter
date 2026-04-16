@@ -21,6 +21,7 @@ pub const StepStatus = enum {
 
 pub const FinalClassification = enum {
     passed_within_current_boundary,
+    frozen_control_fixture,
     deferred_for_scanner_boundary,
     failed_due_to_parser_only_gap,
     out_of_scope_for_scanner_boundary,

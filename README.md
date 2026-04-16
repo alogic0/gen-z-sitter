@@ -129,6 +129,7 @@ Current staged compatibility boundary:
 - the shortlist now carries one intentionally deferred parser-only control fixture:
   - `parse_table_conflict_json`
   - it remains blocked on purpose as a known ambiguity boundary without precedence annotations
+  - the checked-in reports now classify it explicitly as a `frozen_control_fixture` rather than counting it as a normal staged pass
 - the currently represented scanner/external-scanner families are:
   - `hidden_external_fields`
   - `mixed_semantics`

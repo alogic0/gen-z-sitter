@@ -8,7 +8,8 @@
     "scanner_wave_passed": 4,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
-    "passed_within_current_boundary": 10,
+    "passed_within_current_boundary": 9,
+    "frozen_control_fixture": 1,
     "deferred_for_scanner_boundary": 0,
     "failed_due_to_parser_only_gap": 0,
     "out_of_scope_for_scanner_boundary": 0,
@@ -34,6 +35,7 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     },
@@ -42,6 +44,7 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     },
@@ -50,6 +53,7 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 1
     },
@@ -58,6 +62,7 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     },
@@ -66,6 +71,7 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     },
@@ -73,7 +79,8 @@
       "family": "parse_table_conflict",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 1,
+      "passed_count": 0,
+      "control_count": 1,
       "deferred_count": 0,
       "blocked_count": 1
     },
@@ -82,6 +89,7 @@
       "boundary_kind": "scanner_external_scanner",
       "target_count": 2,
       "passed_count": 2,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     },
@@ -90,6 +98,7 @@
       "boundary_kind": "scanner_external_scanner",
       "target_count": 2,
       "passed_count": 2,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     }
@@ -506,7 +515,7 @@
       "notes": "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations",
       "success_criteria": "remain explicitly blocked as a control case unless a later milestone intentionally broadens conflict-resolution policy",
       "first_failed_stage": null,
-      "final_classification": "passed_within_current_boundary",
+      "final_classification": "frozen_control_fixture",
       "mismatch_category": "intentional_control_fixture",
       "load": {
         "status": "passed",

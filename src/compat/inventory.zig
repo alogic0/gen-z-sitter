@@ -12,6 +12,7 @@ pub const BoundarySummary = struct {
     scanner_wave_passed: usize,
     scanner_wave_non_passing: usize,
     deferred_control_targets: usize,
+    frozen_control_fixtures: usize,
     deferred_scanner_targets: usize,
     excluded_targets: usize,
     blocked_targets: usize,
@@ -39,6 +40,7 @@ pub const FamilyCoverageEntry = struct {
     boundary_kind: targets.BoundaryKind,
     target_count: usize,
     passed_count: usize,
+    control_count: usize,
     deferred_count: usize,
     blocked_count: usize,
 };
@@ -102,6 +104,7 @@ pub fn collectBoundarySummary(runs: []const result_model.TargetRunResult) Bounda
         .scanner_wave_passed = 0,
         .scanner_wave_non_passing = 0,
         .deferred_control_targets = 0,
+        .frozen_control_fixtures = 0,
         .deferred_scanner_targets = 0,
         .excluded_targets = 0,
         .blocked_targets = 0,
@@ -126,7 +129,12 @@ pub fn collectBoundarySummary(runs: []const result_model.TargetRunResult) Bounda
                     summary.scanner_wave_non_passing += 1;
                 }
             },
-            .deferred_control_fixture => summary.deferred_control_targets += 1,
+            .deferred_control_fixture => {
+                summary.deferred_control_targets += 1;
+                if (run.final_classification == .frozen_control_fixture) {
+                    summary.frozen_control_fixtures += 1;
+                }
+            },
             .deferred_scanner_wave => summary.deferred_scanner_targets += 1,
             .excluded_out_of_scope => summary.excluded_targets += 1,
         }
@@ -203,6 +211,7 @@ fn collectFamilyCoverageAlloc(
                 .boundary_kind = run.boundary_kind,
                 .target_count = 0,
                 .passed_count = 0,
+                .control_count = 0,
                 .deferred_count = 0,
                 .blocked_count = 0,
             });
@@ -212,6 +221,7 @@ fn collectFamilyCoverageAlloc(
         items.items[index].target_count += 1;
         switch (run.final_classification) {
             .passed_within_current_boundary => items.items[index].passed_count += 1,
+            .frozen_control_fixture => items.items[index].control_count += 1,
             .deferred_for_scanner_boundary => items.items[index].deferred_count += 1,
             .failed_due_to_parser_only_gap,
             .out_of_scope_for_scanner_boundary,
@@ -290,6 +300,7 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     try std.testing.expectEqual(@as(usize, 4), report.boundary.scanner_wave_targets);
     try std.testing.expectEqual(@as(usize, 4), report.boundary.scanner_wave_passed);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_control_targets);
+    try std.testing.expectEqual(@as(usize, 1), report.boundary.frozen_control_fixtures);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.deferred_scanner_targets);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.excluded_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.blocked_control_targets);
@@ -298,6 +309,7 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     try std.testing.expectEqual(@as(usize, 2), report.family_coverage[6].passed_count);
     try std.testing.expectEqual(targets.TargetFamily.mixed_semantics, report.family_coverage[7].family);
     try std.testing.expectEqual(@as(usize, 2), report.family_coverage[7].passed_count);
+    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[5].control_count);
     try std.testing.expectEqual(@as(usize, 5), report.proven_first_wave_targets.len);
     try std.testing.expectEqual(@as(usize, 4), report.proven_scanner_wave_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);

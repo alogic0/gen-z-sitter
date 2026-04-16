@@ -310,6 +310,7 @@ pub fn runTarget(
     }
 
     if (target.candidate_status == .deferred_control_fixture and emission_stats.blocked) {
+        run.final_classification = .frozen_control_fixture;
         run.mismatch_category = .intentional_control_fixture;
     }
 
@@ -853,7 +854,7 @@ test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked
 
     try std.testing.expectEqualStrings("parse_table_conflict_json", runs[5].id);
     try std.testing.expectEqual(targets.CandidateStatus.deferred_control_fixture, runs[5].candidate_status);
-    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.frozen_control_fixture, runs[5].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[5].mismatch_category);
     try std.testing.expectEqual(true, runs[5].expected_blocked);
     try std.testing.expect(runs[5].blocked_boundary != null);

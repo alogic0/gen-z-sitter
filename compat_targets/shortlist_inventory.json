@@ -9,6 +9,7 @@
     "scanner_wave_passed": 4,
     "scanner_wave_non_passing": 0,
     "deferred_control_targets": 1,
+    "frozen_control_fixtures": 1,
     "deferred_scanner_targets": 0,
     "excluded_targets": 0,
     "blocked_targets": 2,
@@ -20,6 +21,7 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     },
@@ -28,6 +30,7 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     },
@@ -36,6 +39,7 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 1
     },
@@ -44,6 +48,7 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     },
@@ -52,6 +57,7 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     },
@@ -59,7 +65,8 @@
       "family": "parse_table_conflict",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 1,
+      "passed_count": 0,
+      "control_count": 1,
       "deferred_count": 0,
       "blocked_count": 1
     },
@@ -68,6 +75,7 @@
       "boundary_kind": "scanner_external_scanner",
       "target_count": 2,
       "passed_count": 2,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     },
@@ -76,6 +84,7 @@
       "boundary_kind": "scanner_external_scanner",
       "target_count": 2,
       "passed_count": 2,
+      "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 0
     }
@@ -229,7 +238,7 @@
       "candidate_status": "deferred_control_fixture",
       "expected_blocked": true,
       "emission_blocked": true,
-      "final_classification": "passed_within_current_boundary",
+      "final_classification": "frozen_control_fixture",
       "mismatch_category": "intentional_control_fixture",
       "first_failed_stage": null,
       "detail": null,
