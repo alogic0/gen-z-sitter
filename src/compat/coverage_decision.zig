@@ -203,9 +203,9 @@ test "buildCoverageDecisionAlloc summarizes the current next-step decision" {
     try std.testing.expectEqual(@as(usize, 5), report.first_wave_passed_count);
     try std.testing.expectEqual(@as(usize, 0), report.first_wave_non_passing_count);
     try std.testing.expect(report.parser_only_boundary_proven);
-    try std.testing.expectEqual(NextMilestone.broader_compatibility_polish, report.recommended_next_milestone);
+    try std.testing.expectEqual(NextMilestone.scanner_and_external_scanner_compatibility_onboarding, report.recommended_next_milestone);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_only_targets.len);
-    try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
+    try std.testing.expectEqual(@as(usize, 1), report.deferred_scanner_targets.len);
 }
 
 test "renderCoverageDecisionAlloc matches the checked-in coverage decision artifact" {

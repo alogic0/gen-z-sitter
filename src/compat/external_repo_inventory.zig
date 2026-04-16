@@ -33,6 +33,7 @@ pub const ExternalRepoBoundaryEntry = struct {
 
 pub const ExternalEvidenceNextStep = enum {
     onboard_additional_local_external_snapshots_when_available,
+    narrow_or_promote_onboarded_external_scanner_targets,
 };
 
 pub const ExternalRepoInventoryReport = struct {
@@ -58,18 +59,27 @@ pub fn buildExternalRepoInventoryAlloc(
     allocator: std.mem.Allocator,
     runs: []const result_model.TargetRunResult,
 ) !ExternalRepoInventoryReport {
+    const total_external_repo_targets = countExternalTargets(runs);
+    const passed_external_repo_targets = countPassedExternalTargets(runs);
+    const total_external_scanner_targets = countExternalTargetsByBoundary(runs, .scanner_external_scanner);
+    const passed_external_scanner_targets = countPassedExternalTargetsByBoundary(runs, .scanner_external_scanner);
     return .{
         .schema_version = 1,
-        .total_external_repo_targets = countExternalTargets(runs),
-        .passed_external_repo_targets = countPassedExternalTargets(runs),
+        .total_external_repo_targets = total_external_repo_targets,
+        .passed_external_repo_targets = passed_external_repo_targets,
         .family_coverage = try collectFamilyCoverageAlloc(allocator, runs),
         .boundary_coverage = try collectBoundaryCoverageAlloc(allocator, runs),
-        .current_limitations = try duplicateStringSliceAlloc(allocator, &.{
-            "the current checked-in real external evidence is limited to 2 parser-only snapshots that were already available locally",
-            "the current local workspace does not contain additional checked-out real grammar repos beyond the already snapshotted Ziggy sources",
-            "no real external scanner or external-scanner snapshots are represented yet in the dedicated external-repo evidence artifact",
-        }),
-        .recommended_next_step = .onboard_additional_local_external_snapshots_when_available,
+        .current_limitations = try collectCurrentLimitationsAlloc(
+            allocator,
+            total_external_repo_targets,
+            passed_external_repo_targets,
+            total_external_scanner_targets,
+            passed_external_scanner_targets,
+        ),
+        .recommended_next_step = if (total_external_scanner_targets != 0 and passed_external_scanner_targets == 0)
+            .narrow_or_promote_onboarded_external_scanner_targets
+        else
+            .onboard_additional_local_external_snapshots_when_available,
         .targets = try collectEntriesAlloc(allocator, runs),
     };
 }
@@ -95,6 +105,31 @@ fn countPassedExternalTargets(runs: []const result_model.TargetRunResult) usize 
     var count: usize = 0;
     for (runs) |run| {
         if (run.provenance.origin_kind != .external_repo_snapshot) continue;
+        if (run.final_classification == .passed_within_current_boundary) count += 1;
+    }
+    return count;
+}
+
+fn countExternalTargetsByBoundary(
+    runs: []const result_model.TargetRunResult,
+    boundary_kind: targets.BoundaryKind,
+) usize {
+    var count: usize = 0;
+    for (runs) |run| {
+        if (run.provenance.origin_kind != .external_repo_snapshot) continue;
+        if (run.boundary_kind == boundary_kind) count += 1;
+    }
+    return count;
+}
+
+fn countPassedExternalTargetsByBoundary(
+    runs: []const result_model.TargetRunResult,
+    boundary_kind: targets.BoundaryKind,
+) usize {
+    var count: usize = 0;
+    for (runs) |run| {
+        if (run.provenance.origin_kind != .external_repo_snapshot) continue;
+        if (run.boundary_kind != boundary_kind) continue;
         if (run.final_classification == .passed_within_current_boundary) count += 1;
     }
     return count;
@@ -197,6 +232,38 @@ fn collectEntriesAlloc(
     return try items.toOwnedSlice();
 }
 
+fn collectCurrentLimitationsAlloc(
+    allocator: std.mem.Allocator,
+    total_external_repo_targets: usize,
+    passed_external_repo_targets: usize,
+    total_external_scanner_targets: usize,
+    passed_external_scanner_targets: usize,
+) ![]const []const u8 {
+    _ = total_external_repo_targets;
+    _ = passed_external_repo_targets;
+
+    if (total_external_scanner_targets == 0) {
+        return try duplicateStringSliceAlloc(allocator, &.{
+            "the current checked-in real external evidence is limited to parser-only snapshots that were already available locally",
+            "the current local workspace does not contain additional checked-out real grammar repos beyond the already snapshotted Ziggy sources",
+            "no real external scanner or external-scanner snapshots are represented yet in the dedicated external-repo evidence artifact",
+        });
+    }
+
+    if (passed_external_scanner_targets == 0) {
+        return try duplicateStringSliceAlloc(allocator, &.{
+            "the checked-in real external evidence now includes both parser-only and scanner-family snapshots, but the real external scanner evidence is still deferred",
+            "tree-sitter-haskell is the first onboarded real external scanner snapshot and currently fails during external-boundary serialization because the scanner surface uses unsupported features such as multiple external tokens, non-leading external steps, and aliased external steps",
+            "real external parser-only evidence is currently broader and more mature than real external scanner evidence",
+        });
+    }
+
+    return try duplicateStringSliceAlloc(allocator, &.{
+        "the checked-in real external evidence now includes at least one passing external scanner-family snapshot",
+        "the next step is to widen real external scanner-family coverage without collapsing parser-only and scanner evidence into a single flat claim",
+    });
+}
+
 fn deinitEntries(allocator: std.mem.Allocator, items: []ExternalRepoEntry) void {
     for (items) |item| {
         allocator.free(item.id);
@@ -239,16 +306,18 @@ test "buildExternalRepoInventoryAlloc summarizes the current external evidence" 
     var report = try buildExternalRepoInventoryAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 2), report.total_external_repo_targets);
+    try std.testing.expectEqual(@as(usize, 3), report.total_external_repo_targets);
     try std.testing.expectEqual(@as(usize, 2), report.passed_external_repo_targets);
-    try std.testing.expectEqual(@as(usize, 2), report.family_coverage.len);
-    try std.testing.expectEqual(@as(usize, 1), report.boundary_coverage.len);
+    try std.testing.expectEqual(@as(usize, 3), report.family_coverage.len);
+    try std.testing.expectEqual(@as(usize, 2), report.boundary_coverage.len);
     try std.testing.expectEqual(targets.BoundaryKind.parser_only, report.boundary_coverage[0].boundary_kind);
+    try std.testing.expectEqual(targets.BoundaryKind.scanner_external_scanner, report.boundary_coverage[1].boundary_kind);
     try std.testing.expectEqual(targets.TargetFamily.ziggy, report.family_coverage[0].family);
     try std.testing.expectEqual(targets.TargetFamily.ziggy_schema, report.family_coverage[1].family);
+    try std.testing.expectEqual(targets.TargetFamily.haskell, report.family_coverage[2].family);
     try std.testing.expectEqual(@as(usize, 3), report.current_limitations.len);
-    try std.testing.expectEqual(ExternalEvidenceNextStep.onboard_additional_local_external_snapshots_when_available, report.recommended_next_step);
-    try std.testing.expectEqual(@as(usize, 2), report.targets.len);
+    try std.testing.expectEqual(ExternalEvidenceNextStep.narrow_or_promote_onboarded_external_scanner_targets, report.recommended_next_step);
+    try std.testing.expectEqual(@as(usize, 3), report.targets.len);
 }
 
 test "renderExternalRepoInventoryAlloc matches the checked-in external repo inventory artifact" {

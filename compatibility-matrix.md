@@ -94,6 +94,8 @@ What the repo can credibly claim today:
     - local behavioral harness checks
   - real external snapshot proof:
     - dedicated machine-readable inventory for promoted external-repo snapshots under `compat_targets/external_repo_inventory.json`
+  - real external scanner proof:
+    - dedicated machine-readable inventory for real external scanner-family evidence under `compat_targets/external_scanner_repo_inventory.json`
   - parser-only shortlist proof:
     - versioned checked-in artifacts under `compat_targets/`
   - staged scanner-boundary proof:
@@ -105,7 +107,12 @@ What the repo can credibly claim today:
   - `compat_targets/shortlist_report.json`
 - real external snapshot proof currently comes from:
   - `compat_targets/external_repo_inventory.json`
-- that dedicated external artifact now also states the current limitation directly: the checked-in real external evidence is still limited to locally available parser-only Ziggy snapshots and does not yet include real external scanner families
+- real external scanner proof currently comes from:
+  - `compat_targets/external_scanner_repo_inventory.json`
+- that dedicated external scanner artifact now records the first onboarded real external scanner snapshot, `tree_sitter_haskell_json`
+- the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos do not change that state for this milestone because both available `src/grammar.json` snapshots declare `externals: []` and neither repo includes a scanner implementation file
+- the current real external scanner blocker is explicit: `tree_sitter_haskell_json` fails during external-boundary serialization because the scanner surface uses unsupported features such as multiple external tokens, non-leading external steps, and aliased external steps
+- that dedicated external artifact now also states the broader real-evidence limitation directly: the checked-in real external evidence includes promoted parser-only snapshots plus one deferred real external scanner snapshot, so scanner-family proof is still narrower
 - `compat_targets/README.md` explains the relationship between shortlist policy, aggregate boundary, mismatch inventory, and coverage decision artifacts
 - the checked-in shortlist inventory and full report now expose family-level coverage alongside aggregate target totals
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:
@@ -124,6 +131,7 @@ What the repo can credibly claim today:
   - scanner/external-scanner:
     - `hidden_external_fields`
     - `mixed_semantics`
+    - `haskell`
 - scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the first staged boundary plus compatibility-safe valid-path behavior and weaker invalid-path progress
 - `mixed_semantics` widens that scanner proof by showing that a grammar can still carry extras elsewhere while remaining compatible on a narrower first-boundary sample path
 - compatibility-sensitive behavioral proof currently covers:
@@ -131,7 +139,7 @@ What the repo can credibly claim today:
   - `hidden_external_fields`
 - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but now rejects on the staged blocked path as `missing_action`
 - the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
-- the current checked-in coverage decision recommends broader compatibility polish as the next promoted milestone
+- the current checked-in coverage decision recommends continued scanner and external-scanner compatibility onboarding because `tree_sitter_haskell_json` is now an onboarded but deferred real external scanner target
 
 ## Milestone Compatibility Targets
 

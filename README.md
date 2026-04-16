@@ -28,6 +28,7 @@ What this means in practice:
 - the repo now also carries a checked-in full shortlist run report under `compat_targets/`
 - the repo now also carries a checked-in mismatch inventory and coverage decision under `compat_targets/`
 - the repo now also carries a dedicated checked-in external-repo inventory under `compat_targets/`
+- the repo now also carries a dedicated checked-in real external scanner inventory under `compat_targets/`
 - the repo is still an in-progress rewrite rather than a drop-in replacement for upstream Tree-sitter
 
 What is still not a first-class top-level product surface:
@@ -112,13 +113,18 @@ Current staged compatibility boundary:
 - real external snapshot proof is also exposed separately under `compat_targets/`:
   - `compat_targets/external_repo_inventory.json`
   - this keeps the promoted real external parser-only evidence visible without mixing it into staged fixture-only summaries
-  - it now also records the current real-evidence limitation explicitly: the checked-in external proof is still parser-only and still limited to the locally available Ziggy snapshots
+  - it now records the current mixed real-evidence state explicitly: 2 passing external parser-only snapshots plus 1 deferred external scanner snapshot
+- real external scanner proof is now exposed separately under `compat_targets/`:
+  - `compat_targets/external_scanner_repo_inventory.json`
+  - it now records the first onboarded real external scanner target: `tree_sitter_haskell_json`
+  - that target is currently deferred at external-boundary serialization because the scanner surface uses unsupported features such as multiple external tokens, non-leading external steps, and aliased external steps
+  - the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos still do not change that scanner story, because their available snapshots have `externals: []` and no scanner implementation files
 - parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`
   - `compat_targets/shortlist_report.json`
 - `compat_targets/README.md` describes how the shortlist, inventory, mismatch, and coverage-decision artifacts relate to the current staged boundary
-- `compat_targets/README.md` also describes how `external_repo_inventory.json` separates real external snapshot evidence from the staged fixture-driven shortlist surfaces
+- `compat_targets/README.md` also describes how `external_repo_inventory.json` and `external_scanner_repo_inventory.json` separate real external evidence from the staged fixture-driven shortlist surfaces
 - the shortlist inventory and full report now expose family-level coverage so the current staged boundary is readable by grammar family, not only by flat target counts
 - the currently represented parser-only families are:
   - `parse_table_tiny`
@@ -140,6 +146,7 @@ Current staged compatibility boundary:
 - the currently represented scanner/external-scanner families are:
   - `hidden_external_fields`
   - `mixed_semantics`
+  - `haskell`
 - the shortlist now also carries a promoted multi-family scanner wave with explicit family-level coverage in the checked-in artifacts:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`
@@ -153,7 +160,8 @@ Current staged compatibility boundary:
   - `hidden_external_fields` also proves that the invalid path makes less progress than the valid path through the first staged scanner boundary
   - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it now rejects on the staged blocked path as `missing_action` rather than advancing into a promoted parser-only pass
 - scanner/external-scanner proof is staged as a narrow promoted multi-family wave rather than left entirely out of the shortlist
-- the current checked-in coverage decision now points to broader compatibility polish rather than another scanner-onboarding-only milestone
+- real external scanner evidence is now no longer empty, but it is still deferred behind the first onboarded Haskell scanner boundary
+- the current checked-in coverage decision now points back to scanner and external-scanner compatibility onboarding because `tree_sitter_haskell_json` is a real deferred external scanner target
 
 ## Repository Layout
 

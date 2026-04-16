@@ -9,6 +9,7 @@ const mismatch_inventory = @import("src/compat/mismatch_inventory.zig");
 const coverage_decision = @import("src/compat/coverage_decision.zig");
 const shift_reduce_profile = @import("src/compat/shift_reduce_profile.zig");
 const external_repo_inventory = @import("src/compat/external_repo_inventory.zig");
+const external_scanner_repo_inventory = @import("src/compat/external_scanner_repo_inventory.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -40,6 +41,9 @@ pub fn main() !void {
     const external_repo = try external_repo_inventory.renderExternalRepoInventoryAlloc(allocator, runs);
     defer allocator.free(external_repo);
 
+    const external_scanner_repo = try external_scanner_repo_inventory.renderExternalScannerRepoInventoryAlloc(allocator, runs);
+    defer allocator.free(external_scanner_repo);
+
     try fs_support.writeFile("compat_targets/shortlist.json", shortlist);
     try fs_support.writeFile("compat_targets/shortlist_inventory.json", inventory_json);
     try fs_support.writeFile("compat_targets/shortlist_report.json", report);
@@ -47,4 +51,5 @@ pub fn main() !void {
     try fs_support.writeFile("compat_targets/coverage_decision.json", decision);
     try fs_support.writeFile("compat_targets/shortlist_shift_reduce_profile.json", shift_reduce);
     try fs_support.writeFile("compat_targets/external_repo_inventory.json", external_repo);
+    try fs_support.writeFile("compat_targets/external_scanner_repo_inventory.json", external_scanner_repo);
 }

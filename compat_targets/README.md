@@ -25,6 +25,7 @@ Current represented families:
 - scanner/external-scanner
   - `hidden_external_fields`
   - `mixed_semantics`
+  - `haskell`
 
 Versioned artifacts:
 
@@ -33,6 +34,9 @@ Versioned artifacts:
 - `external_repo_inventory.json`
   - dedicated machine-readable inventory of the currently represented real external snapshots, including upstream provenance, represented families, boundary coverage, current real-evidence limitations, and the recommended next real-evidence step
   - this keeps real external evidence separate from the broader staged shortlist, which still includes staged fixtures and frozen controls
+- `external_scanner_repo_inventory.json`
+  - dedicated machine-readable inventory of real external scanner or external-scanner evidence
+  - now records the first onboarded real external scanner snapshot, its first blocker classification, current real-scanner limitations, and the recommended next scanner-evidence step
 - `shortlist_inventory.json`
   - aggregate boundary summary plus family-level coverage and explicit proven first-wave, deferred-control, deferred-scanner, and out-of-scope target sections
 - `shortlist_report.json`
@@ -67,8 +71,12 @@ Current staged boundary summary:
   - `mixed_semantics_json`
   - `mixed_semantics_js`
   - these targets keep extras elsewhere in the grammar while proving a narrower first-boundary path that does not depend on them
+- 1 real external scanner snapshot is now onboarded but still deferred:
+  - `tree_sitter_haskell_json`
+  - it is the first real external scanner-family target in the shortlist
+  - it currently fails during external-boundary serialization because the scanner surface uses unsupported features such as multiple external tokens, non-leading external steps, and aliased external steps
 
 Recommended next step after this staged boundary:
 
 - keep the parser-only and staged scanner boundaries stable while shifting the promoted roadmap toward broader compatibility polish
-- for real-repo evidence specifically, either onboard additional local external snapshots when they become available or keep the current local-source limitation explicit instead of implying that a larger real-target pool already exists
+- for real-repo evidence specifically, narrow or promote the onboarded Haskell scanner snapshot before broadening the real external scanner wave further

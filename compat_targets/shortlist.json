@@ -84,6 +84,20 @@
       "success_means": "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c"
     },
     {
+      "id": "tree_sitter_haskell_json",
+      "family": "haskell",
+      "boundary_kind": "scanner_external_scanner",
+      "status": "deferred_scanner_wave",
+      "source_kind": "grammar_json",
+      "origin_kind": "external_repo_snapshot",
+      "grammar_path": "compat_targets/tree_sitter_haskell/grammar.json",
+      "upstream_repository": "tree-sitter-haskell",
+      "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
+      "upstream_grammar_path": "src/grammar.json",
+      "why": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c",
+      "success_means": "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and either promote or explicitly classify the first real scanner blocker"
+    },
+    {
       "id": "parse_table_conflict_json",
       "family": "parse_table_conflict",
       "boundary_kind": "parser_only",

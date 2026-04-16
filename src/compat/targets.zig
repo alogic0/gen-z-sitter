@@ -16,6 +16,7 @@ pub const TargetFamily = enum {
     repeat_choice_seq,
     ziggy,
     ziggy_schema,
+    haskell,
     parse_table_conflict,
     hidden_external_fields,
     mixed_semantics,
@@ -134,6 +135,26 @@ pub const shortlist_targets = [_]Target{
         .success_criteria = "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
     },
     .{
+        .id = "tree_sitter_haskell_json",
+        .display_name = "tree-sitter-haskell (JSON snapshot)",
+        .grammar_path = "compat_targets/tree_sitter_haskell/grammar.json",
+        .family = .haskell,
+        .source_kind = .grammar_json,
+        .boundary_kind = .scanner_external_scanner,
+        .provenance = .{
+            .origin_kind = .external_repo_snapshot,
+            .upstream_repository = "tree-sitter-haskell",
+            .upstream_revision = "0975ef72fc3c47b530309ca93937d7d143523628",
+            .upstream_grammar_path = "src/grammar.json",
+        },
+        .candidate_status = .deferred_scanner_wave,
+        .expected_blocked = false,
+        .scanner_valid_input_path = "compat_targets/tree_sitter_haskell/valid.txt",
+        .scanner_invalid_input_path = "compat_targets/tree_sitter_haskell/invalid.txt",
+        .notes = "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c",
+        .success_criteria = "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and either promote or explicitly classify the first real scanner blocker",
+    },
+    .{
         .id = "parse_table_conflict_json",
         .display_name = "Parse Table Conflict (JSON)",
         .grammar_path = "compat_targets/parse_table_conflict/grammar.json",
@@ -218,20 +239,25 @@ pub fn firstWaveTargets() []const Target {
 
 test "stagedTargets exposes a small versioned shortlist" {
     const shortlist = shortlistTargets();
-    try std.testing.expectEqual(@as(usize, 10), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 11), shortlist.len);
     try std.testing.expect(shortlist[0].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
-    try std.testing.expect(shortlist[5].candidate_status == .deferred_control_fixture);
-    try std.testing.expect(shortlist[6].candidate_status == .intended_scanner_wave);
-    try std.testing.expect(shortlist[7].boundary_kind == .scanner_external_scanner);
-    try std.testing.expect(shortlist[7].scanner_valid_input_path != null);
-    try std.testing.expect(shortlist[7].scanner_invalid_input_path != null);
-    try std.testing.expect(shortlist[8].candidate_status == .intended_scanner_wave);
-    try std.testing.expect(shortlist[8].family == .mixed_semantics);
+    try std.testing.expect(shortlist[5].candidate_status == .deferred_scanner_wave);
+    try std.testing.expect(shortlist[5].family == .haskell);
+    try std.testing.expect(shortlist[5].provenance.origin_kind == .external_repo_snapshot);
+    try std.testing.expect(shortlist[5].scanner_valid_input_path != null);
+    try std.testing.expect(shortlist[5].scanner_invalid_input_path != null);
+    try std.testing.expect(shortlist[6].candidate_status == .deferred_control_fixture);
+    try std.testing.expect(shortlist[7].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[8].boundary_kind == .scanner_external_scanner);
     try std.testing.expect(shortlist[8].scanner_valid_input_path != null);
-    try std.testing.expect(shortlist[9].source_kind == .grammar_js);
+    try std.testing.expect(shortlist[8].scanner_invalid_input_path != null);
+    try std.testing.expect(shortlist[9].candidate_status == .intended_scanner_wave);
     try std.testing.expect(shortlist[9].family == .mixed_semantics);
+    try std.testing.expect(shortlist[9].scanner_valid_input_path != null);
+    try std.testing.expect(shortlist[10].source_kind == .grammar_js);
+    try std.testing.expect(shortlist[10].family == .mixed_semantics);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {

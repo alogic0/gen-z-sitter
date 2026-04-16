@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "total_external_repo_targets": 2,
+  "total_external_repo_targets": 3,
   "passed_external_repo_targets": 2,
   "family_coverage": [
     {
@@ -14,6 +14,12 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1
+    },
+    {
+      "family": "haskell",
+      "boundary_kind": "scanner_external_scanner",
+      "target_count": 1,
+      "passed_count": 0
     }
   ],
   "boundary_coverage": [
@@ -21,14 +27,19 @@
       "boundary_kind": "parser_only",
       "target_count": 2,
       "passed_count": 2
+    },
+    {
+      "boundary_kind": "scanner_external_scanner",
+      "target_count": 1,
+      "passed_count": 0
     }
   ],
   "current_limitations": [
-    "the current checked-in real external evidence is limited to 2 parser-only snapshots that were already available locally",
-    "the current local workspace does not contain additional checked-out real grammar repos beyond the already snapshotted Ziggy sources",
-    "no real external scanner or external-scanner snapshots are represented yet in the dedicated external-repo evidence artifact"
+    "the checked-in real external evidence now includes both parser-only and scanner-family snapshots, but the real external scanner evidence is still deferred",
+    "tree-sitter-haskell is the first onboarded real external scanner snapshot and currently fails during external-boundary serialization because the scanner surface uses unsupported features such as multiple external tokens, non-leading external steps, and aliased external steps",
+    "real external parser-only evidence is currently broader and more mature than real external scanner evidence"
   ],
-  "recommended_next_step": "onboard_additional_local_external_snapshots_when_available",
+  "recommended_next_step": "narrow_or_promote_onboarded_external_scanner_targets",
   "targets": [
     {
       "id": "tree_sitter_ziggy_json",
@@ -57,6 +68,20 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after the word-token lowering and repeat-auxiliary fixes"
+    },
+    {
+      "id": "tree_sitter_haskell_json",
+      "family": "haskell",
+      "display_name": "tree-sitter-haskell (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_haskell/grammar.json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "scanner_external_scanner",
+      "upstream_repository": "tree-sitter-haskell",
+      "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "deferred_for_scanner_boundary",
+      "mismatch_category": "scanner_external_scanner_boundary_gap",
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c"
     }
   ]
 }
