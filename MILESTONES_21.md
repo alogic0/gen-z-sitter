@@ -23,6 +23,7 @@ Current first optimization slice:
 - the existing `--no-optimize-merge-states` flag now disables that emitted-surface duplicate-state compaction path in the JSON summary/emitter option flow
 - `generate --json-summary` now reports both serialized-state counts and emitted-state counts, plus the active compaction toggle, so optimization wins are explicit in one summary
 - `generate --json-summary` now also reports baseline-vs-emitted row-sharing stats, so row-level savings are visible without manually toggling options and diffing results
+- `generate --json-summary` now also reports explicit savings deltas, including emitted-state reduction and emitted array-definition savings, so the optimization impact is directly quantified
 - this is intentionally a low-risk compression step:
   - it reduces repeated emitted boilerplate
   - it only shares rows when the serialized action/value/target contents are exactly equal
@@ -32,6 +33,7 @@ Current first optimization slice:
   - it is now explicitly switchable for comparison/debugging through the existing optimization toggle path
   - it now exposes both the pre-optimization and post-optimization emitted state counts in the summary path
   - it now exposes both the baseline and post-optimization row-sharing stats in the summary path as well
+  - it now quantifies the emitted savings directly in the summary path instead of leaving them implicit in before/after numbers
   - it does not change the staged compatibility contract
   - it preserves existing parser behavior and test coverage
 
