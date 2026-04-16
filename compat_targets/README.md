@@ -18,11 +18,11 @@ Versioned artifacts:
 - `shortlist.json`
   - target selection policy, candidate classification, and success criteria
 - `shortlist_inventory.json`
-  - aggregate boundary summary for the current shortlist run
+  - aggregate boundary summary plus explicit proven first-wave, deferred-control, and out-of-scope target sections
 - `shortlist_report.json`
-  - full per-target machine-readable harness report
+  - full per-target machine-readable harness report with aggregate counts for first-wave and deferred-control buckets
 - `shortlist_mismatch_inventory.json`
-  - classified mismatch and deferred/out-of-scope inventory
+  - classified mismatch inventory with an explicit deferred-control bucket
 - `shortlist_shift_reduce_profile.json`
   - focused machine-readable profile for deferred targets currently blocked only by unresolved `shift_reduce` decisions, including readable symbol names, candidate-action summaries, and dominant repeated signatures
 - `coverage_decision.json`

@@ -20,16 +20,16 @@ pub const MismatchInventoryReport = struct {
     grammar_input_shape_issues: []MismatchEntry,
     compile_surface_issues: []MismatchEntry,
     harness_limitations: []MismatchEntry,
+    deferred_control_targets: []MismatchEntry,
     out_of_scope_targets: []MismatchEntry,
-    deferred_targets: []MismatchEntry,
 
     pub fn deinit(self: *MismatchInventoryReport, allocator: std.mem.Allocator) void {
         deinitEntries(allocator, self.parser_only_incompatibilities);
         deinitEntries(allocator, self.grammar_input_shape_issues);
         deinitEntries(allocator, self.compile_surface_issues);
         deinitEntries(allocator, self.harness_limitations);
+        deinitEntries(allocator, self.deferred_control_targets);
         deinitEntries(allocator, self.out_of_scope_targets);
-        deinitEntries(allocator, self.deferred_targets);
         self.* = undefined;
     }
 };
@@ -45,8 +45,8 @@ pub fn buildMismatchInventoryAlloc(
         .grammar_input_shape_issues = try collectEntriesAlloc(allocator, runs, includeGrammarInputShapeIssue),
         .compile_surface_issues = try collectEntriesAlloc(allocator, runs, includeCompileSurfaceIssue),
         .harness_limitations = try collectEntriesAlloc(allocator, runs, includeHarnessLimitation),
+        .deferred_control_targets = try collectEntriesAlloc(allocator, runs, includeDeferredControl),
         .out_of_scope_targets = try collectEntriesAlloc(allocator, runs, includeOutOfScope),
-        .deferred_targets = try collectEntriesAlloc(allocator, runs, includeDeferred),
     };
 }
 
@@ -150,7 +150,7 @@ fn includeOutOfScope(run: result_model.TargetRunResult) bool {
     return run.mismatch_category == .out_of_scope_scanner_boundary;
 }
 
-fn includeDeferred(run: result_model.TargetRunResult) bool {
+fn includeDeferredControl(run: result_model.TargetRunResult) bool {
     return run.candidate_status == .deferred_later_wave;
 }
 
@@ -169,8 +169,8 @@ test "buildMismatchInventoryAlloc classifies the current shortlist" {
     try std.testing.expectEqual(@as(usize, 0), report.grammar_input_shape_issues.len);
     try std.testing.expectEqual(@as(usize, 0), report.compile_surface_issues.len);
     try std.testing.expectEqual(@as(usize, 0), report.harness_limitations.len);
+    try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.out_of_scope_targets.len);
-    try std.testing.expectEqual(@as(usize, 1), report.deferred_targets.len);
 }
 
 test "renderMismatchInventoryAlloc matches the checked-in shortlist mismatch inventory artifact" {

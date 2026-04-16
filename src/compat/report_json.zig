@@ -4,11 +4,15 @@ const result_model = @import("result.zig");
 
 pub const AggregateCounts = struct {
     total_targets: usize,
+    first_wave_targets: usize,
+    first_wave_passed: usize,
+    deferred_control_targets: usize,
     passed_within_current_boundary: usize,
     failed_due_to_parser_only_gap: usize,
     out_of_scope_for_scanner_boundary: usize,
     infrastructure_failure: usize,
     blocked_targets: usize,
+    blocked_control_targets: usize,
     mismatch_categories: MismatchCategoryCounts,
 };
 
@@ -38,11 +42,15 @@ pub fn renderRunReportAlloc(
 pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) AggregateCounts {
     var counts = AggregateCounts{
         .total_targets = results.len,
+        .first_wave_targets = 0,
+        .first_wave_passed = 0,
+        .deferred_control_targets = 0,
         .passed_within_current_boundary = 0,
         .failed_due_to_parser_only_gap = 0,
         .out_of_scope_for_scanner_boundary = 0,
         .infrastructure_failure = 0,
         .blocked_targets = 0,
+        .blocked_control_targets = 0,
         .mismatch_categories = .{
             .grammar_input_load_mismatch = 0,
             .preparation_lowering_mismatch = 0,
@@ -56,8 +64,16 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
     };
 
     for (results) |run| {
+        switch (run.candidate_status) {
+            .intended_first_wave => counts.first_wave_targets += 1,
+            .deferred_later_wave => counts.deferred_control_targets += 1,
+            .excluded_out_of_scope => {},
+        }
         switch (run.final_classification) {
-            .passed_within_current_boundary => counts.passed_within_current_boundary += 1,
+            .passed_within_current_boundary => {
+                counts.passed_within_current_boundary += 1;
+                if (run.candidate_status == .intended_first_wave) counts.first_wave_passed += 1;
+            },
             .failed_due_to_parser_only_gap => counts.failed_due_to_parser_only_gap += 1,
             .out_of_scope_for_scanner_boundary => counts.out_of_scope_for_scanner_boundary += 1,
             .infrastructure_failure => counts.infrastructure_failure += 1,
@@ -74,7 +90,10 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
             .infrastructure_failure => counts.mismatch_categories.infrastructure_failure += 1,
         }
         if (run.emission) |emission| {
-            if (emission.blocked) counts.blocked_targets += 1;
+            if (emission.blocked) {
+                counts.blocked_targets += 1;
+                if (run.candidate_status == .deferred_later_wave) counts.blocked_control_targets += 1;
+            }
         }
     }
 

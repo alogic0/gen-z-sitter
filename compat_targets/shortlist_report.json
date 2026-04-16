@@ -2,11 +2,15 @@
   "schema_version": 1,
   "aggregate": {
     "total_targets": 7,
+    "first_wave_targets": 5,
+    "first_wave_passed": 5,
+    "deferred_control_targets": 1,
     "passed_within_current_boundary": 6,
     "failed_due_to_parser_only_gap": 0,
     "out_of_scope_for_scanner_boundary": 1,
     "infrastructure_failure": 0,
     "blocked_targets": 2,
+    "blocked_control_targets": 1,
     "mismatch_categories": {
       "grammar_input_load_mismatch": 0,
       "preparation_lowering_mismatch": 0,
