@@ -1057,6 +1057,11 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  },
             \\};
             \\
+            \\static const TSActionEntry ts_empty_actions[] = {
+            \\};
+            \\static const TSGotoEntry ts_empty_gotos[] = {
+            \\};
+            \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
             \\  { 3, 1, 3 },
@@ -1067,23 +1072,15 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\};
             \\
             \\/* state 1 */
-            \\static const TSActionEntry ts_state_1_actions[] = {
-            \\};
-            \\static const TSGotoEntry ts_state_1_gotos[] = {
-            \\};
             \\
             \\/* state 2 */
             \\static const TSActionEntry ts_state_2_actions[] = {
             \\  { 2, 1, 4 },
             \\};
-            \\static const TSGotoEntry ts_state_2_gotos[] = {
-            \\};
             \\
             \\/* state 3 */
             \\static const TSActionEntry ts_state_3_actions[] = {
             \\  { 2, 2, 2 },
-            \\};
-            \\static const TSGotoEntry ts_state_3_gotos[] = {
             \\};
             \\
             \\/* state 4 */
@@ -1095,16 +1092,8 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\};
             \\
             \\/* state 5 */
-            \\static const TSActionEntry ts_state_5_actions[] = {
-            \\};
-            \\static const TSGotoEntry ts_state_5_gotos[] = {
-            \\};
             \\
             \\/* state 6 */
-            \\static const TSActionEntry ts_state_6_actions[] = {
-            \\};
-            \\static const TSGotoEntry ts_state_6_gotos[] = {
-            \\};
             \\static const TSStateTable ts_states[TS_STATE_COUNT] = {
             \\  {
             \\    .actions = ts_state_0_actions,
@@ -1115,9 +1104,9 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\    .unresolved_count = 0,
             \\  },
             \\  {
-            \\    .actions = ts_state_1_actions,
+            \\    .actions = ts_empty_actions,
             \\    .action_count = 0,
-            \\    .gotos = ts_state_1_gotos,
+            \\    .gotos = ts_empty_gotos,
             \\    .goto_count = 0,
             \\    .unresolved = 0,
             \\    .unresolved_count = 0,
@@ -1125,7 +1114,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  {
             \\    .actions = ts_state_2_actions,
             \\    .action_count = 1,
-            \\    .gotos = ts_state_2_gotos,
+            \\    .gotos = ts_empty_gotos,
             \\    .goto_count = 0,
             \\    .unresolved = 0,
             \\    .unresolved_count = 0,
@@ -1133,7 +1122,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  {
             \\    .actions = ts_state_3_actions,
             \\    .action_count = 1,
-            \\    .gotos = ts_state_3_gotos,
+            \\    .gotos = ts_empty_gotos,
             \\    .goto_count = 0,
             \\    .unresolved = 0,
             \\    .unresolved_count = 0,
@@ -1147,17 +1136,17 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\    .unresolved_count = 0,
             \\  },
             \\  {
-            \\    .actions = ts_state_5_actions,
+            \\    .actions = ts_empty_actions,
             \\    .action_count = 0,
-            \\    .gotos = ts_state_5_gotos,
+            \\    .gotos = ts_empty_gotos,
             \\    .goto_count = 0,
             \\    .unresolved = 0,
             \\    .unresolved_count = 0,
             \\  },
             \\  {
-            \\    .actions = ts_state_6_actions,
+            \\    .actions = ts_empty_actions,
             \\    .action_count = 0,
-            \\    .gotos = ts_state_6_gotos,
+            \\    .gotos = ts_empty_gotos,
             \\    .goto_count = 0,
             \\    .unresolved = 0,
             \\    .unresolved_count = 0,
@@ -1650,6 +1639,11 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  },
             \\};
             \\
+            \\static const TSActionEntry ts_empty_actions[] = {
+            \\};
+            \\static const TSGotoEntry ts_empty_gotos[] = {
+            \\};
+            \\
             \\/* state 0 */
             \\static const TSActionEntry ts_state_0_actions[] = {
             \\  { 3, 1, 3 },
@@ -1660,38 +1654,23 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\};
             \\
             \\/* state 1 */
-            \\static const TSActionEntry ts_state_1_actions[] = {
-            \\};
-            \\static const TSGotoEntry ts_state_1_gotos[] = {
-            \\};
             \\
             \\/* state 2 */
             \\static const TSActionEntry ts_state_2_actions[] = {
             \\  { 2, 1, 4 },
-            \\};
-            \\static const TSGotoEntry ts_state_2_gotos[] = {
             \\};
             \\
             \\/* state 3 */
             \\static const TSActionEntry ts_state_3_actions[] = {
             \\  { 2, 2, 3 },
             \\};
-            \\static const TSGotoEntry ts_state_3_gotos[] = {
-            \\};
             \\
             \\/* state 4 */
-            \\static const TSActionEntry ts_state_4_actions[] = {
-            \\  { 3, 1, 3 },
-            \\};
             \\static const TSGotoEntry ts_state_4_gotos[] = {
             \\  { 1, 5 },
             \\};
             \\
             \\/* state 5 */
-            \\static const TSActionEntry ts_state_5_actions[] = {
-            \\};
-            \\static const TSGotoEntry ts_state_5_gotos[] = {
-            \\};
             \\static const TSUnresolvedEntry ts_state_5_unresolved[] = {
             \\  { 2, 1, 2 },
             \\};
@@ -1705,9 +1684,9 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\    .unresolved_count = 0,
             \\  },
             \\  {
-            \\    .actions = ts_state_1_actions,
+            \\    .actions = ts_empty_actions,
             \\    .action_count = 0,
-            \\    .gotos = ts_state_1_gotos,
+            \\    .gotos = ts_empty_gotos,
             \\    .goto_count = 0,
             \\    .unresolved = 0,
             \\    .unresolved_count = 0,
@@ -1715,7 +1694,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  {
             \\    .actions = ts_state_2_actions,
             \\    .action_count = 1,
-            \\    .gotos = ts_state_2_gotos,
+            \\    .gotos = ts_empty_gotos,
             \\    .goto_count = 0,
             \\    .unresolved = 0,
             \\    .unresolved_count = 0,
@@ -1723,13 +1702,13 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  {
             \\    .actions = ts_state_3_actions,
             \\    .action_count = 1,
-            \\    .gotos = ts_state_3_gotos,
+            \\    .gotos = ts_empty_gotos,
             \\    .goto_count = 0,
             \\    .unresolved = 0,
             \\    .unresolved_count = 0,
             \\  },
             \\  {
-            \\    .actions = ts_state_4_actions,
+            \\    .actions = ts_state_0_actions,
             \\    .action_count = 1,
             \\    .gotos = ts_state_4_gotos,
             \\    .goto_count = 1,
@@ -1737,9 +1716,9 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\    .unresolved_count = 0,
             \\  },
             \\  {
-            \\    .actions = ts_state_5_actions,
+            \\    .actions = ts_empty_actions,
             \\    .action_count = 0,
-            \\    .gotos = ts_state_5_gotos,
+            \\    .gotos = ts_empty_gotos,
             \\    .goto_count = 0,
             \\    .unresolved = ts_state_5_unresolved,
             \\    .unresolved_count = 1,
