@@ -40,13 +40,13 @@ Out of scope:
 
 ## Exit Criteria
 
-- [ ] the checked-in compatibility artifacts clearly distinguish:
+- [x] the checked-in compatibility artifacts clearly distinguish:
   - proven parser-only targets
   - intentional deferred control fixtures
   - out-of-scope scanner targets
-- [ ] milestone/docs no longer imply another parser-only onboarding wave is the default next step
-- [ ] at least one targeted compatibility-polish improvement lands beyond milestone wording alone
-- [ ] the repo ends with a clear recommendation for the next promoted milestone after M24
+- [x] milestone/docs no longer imply another parser-only onboarding wave is the default next step
+- [x] at least one targeted compatibility-polish improvement lands beyond milestone wording alone
+- [x] the repo ends with a clear recommendation for the next promoted milestone after M24
 
 ## PR-Sized Slices
 
@@ -92,24 +92,32 @@ Goal:
 
 Checklist:
 
-- [ ] choose one narrowly scoped improvement:
+- [x] choose one narrowly scoped improvement:
   - add a carefully selected non-scanner target
   - strengthen compatibility reporting for proven targets
   - tighten a remaining compatibility-matrix or README ambiguity
-- [ ] implement the change
-- [ ] regenerate checked-in artifacts if needed
-- [ ] keep `zig build test` passing
+- [x] implement the change
+- [x] regenerate checked-in artifacts if needed
+- [x] keep `zig build test` passing
 
 Acceptance:
 
-- [ ] the milestone ends with a stronger compatibility claim than it started with
+- [x] the milestone ends with a stronger compatibility claim than it started with
 
 ## Progress Checklist
 
 - [x] PR 1 completed
 - [x] PR 2 completed
-- [ ] PR 3 completed
-- [ ] M24 ready for closeout
+- [x] PR 3 completed
+- [x] M24 ready for closeout
+
+## Closeout Recommendation
+
+Recommended next promoted milestone after M24:
+
+- scanner and external-scanner compatibility onboarding
+- keep the current parser-only boundary as the stable baseline
+- treat scanner work as a separate milestone rather than letting it leak back into parser-only compatibility polish
 
 ## Non-Goals
 

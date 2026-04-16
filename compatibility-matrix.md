@@ -96,10 +96,9 @@ What the repo can credibly claim today:
   - `compat_targets/shortlist_inventory.json`
   - `compat_targets/shortlist_report.json`
 - `compat_targets/README.md` explains the relationship between shortlist policy, aggregate boundary, mismatch inventory, and coverage decision artifacts
-- the current parser-only shortlist boundary is narrower than real external-repo proof:
-  - 3 intended first-wave parser-only targets currently pass within the staged boundary
-  - 2 real external parser-only snapshots are now tracked as deferred later-wave targets
-  - 1 additional staged deferred target remains tracked for mismatch expansion
+- the current parser-only shortlist boundary is now explicit and broader than the original staged wave:
+  - 5 intended first-wave parser-only targets currently pass within the staged boundary
+  - 1 staged deferred target remains intentionally frozen as an ambiguity/control fixture
   - 1 external-scanner target is tracked explicitly as out of scope
 - scanner/external-scanner repo proof remains explicitly deferred beyond the current parser-only boundary
 - compatibility-sensitive behavioral proof currently covers:
@@ -107,6 +106,8 @@ What the repo can credibly claim today:
   - `hidden_external_fields`
 - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but now rejects on the staged blocked path as `missing_action`
 - the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
+- the current post-M23 direction is broader compatibility polish, not another parser-only onboarding wave by default
+- the recommended next promoted milestone after that polish work is scanner and external-scanner compatibility onboarding
 
 ## Milestone Compatibility Targets
 

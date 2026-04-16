@@ -40,10 +40,10 @@ What is still not a first-class top-level product surface:
 
 The immediate next goals are:
 
-- promote the newly onboarded real external parser-only snapshots by shrinking their current parser-only gaps
-- continue expanding beyond curated local fixtures into parser-only compatibility coverage against additional real grammars/repos
+- keep the now-proven parser-only boundary explicit and defensible in checked-in compatibility artifacts
+- treat `parse_table_conflict_json` as an intentional frozen control fixture rather than a live promotion gap
+- broaden compatibility reporting and confidence incrementally without reopening scanner/runtime scope
 - keep parser-output optimization measurable while deeper parse-table compression/minimization remains future work
-- continue tightening the staged compatibility boundary before claiming broader runtime parity
 
 ## Quick Start
 
@@ -106,19 +106,22 @@ Current staged compatibility boundary:
   - `compat_targets/shortlist_inventory.json`
   - `compat_targets/shortlist_report.json`
 - `compat_targets/README.md` describes how the shortlist, inventory, mismatch, and coverage-decision artifacts relate to the current staged boundary
-- the currently proven first-wave parser-only boundary is still the staged 3-target set:
+- the currently proven first-wave parser-only boundary is now a 5-target set:
   - `parse_table_tiny_json`
   - `behavioral_config_json`
   - `repeat_choice_seq_js`
-- the shortlist now also includes two real external parser-only snapshots as deferred later-wave targets:
   - `tree_sitter_ziggy_json`
   - `tree_sitter_ziggy_schema_json`
+- the shortlist now carries one intentionally deferred parser-only control fixture:
+  - `parse_table_conflict_json`
+  - it remains blocked on purpose as a known ambiguity boundary without precedence annotations
 - the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
   - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it now rejects on the staged blocked path as `missing_action` rather than advancing into a promoted parser-only pass
 - scanner/external-scanner repo proof is still explicitly deferred beyond the current parser-only boundary
-- broader real-grammar coverage is the next planned step, beginning with promotion of the deferred external parser-only snapshots before broader scanner/runtime parity work
+- the current milestone focus is broader compatibility polish around the proven parser-only boundary, not another parser-only onboarding wave by default
+- the next promoted milestone after that should be scanner and external-scanner compatibility onboarding
 
 ## Repository Layout
 
@@ -184,7 +187,7 @@ Focused supporting notes:
 2. [zig-generator-architecture.md](./zig-generator-architecture.md)
 3. [compatibility-matrix.md](./compatibility-matrix.md)
 4. [test-strategy.md](./test-strategy.md)
-5. [MILESTONES_20.md](./MILESTONES_20.md) for the current staged compatibility boundary
-6. [MILESTONES_21.md](./MILESTONES_21.md) for current optimization/parity follow-on work
-7. [MILESTONES_22.md](./MILESTONES_22.md) for the next parser-only real-repo compatibility goal
+5. [MILESTONES_23.md](./MILESTONES_23.md) for the expanded parser-only proven boundary
+6. [MILESTONES_24.md](./MILESTONES_24.md) for the current broader compatibility polish work
+7. [MILESTONES_21.md](./MILESTONES_21.md) for current optimization/parity follow-on work
 8. the milestone checklist for the subsystem you care about
