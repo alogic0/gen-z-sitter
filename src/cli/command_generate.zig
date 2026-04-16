@@ -11,6 +11,7 @@ const parse_grammar = @import("../grammar/parse_grammar.zig");
 const node_type_pipeline = @import("../node_types/pipeline.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
+const emit_optimize = @import("../parser_emit/optimize.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
 pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !void {
@@ -124,6 +125,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
             pipeline_arena.allocator(),
             loaded.json.grammar,
             prepared,
+            .{ .compact_duplicate_states = opts.optimize_merge_states },
         );
         if (!builtin.is_test) {
             try std.fs.File.stdout().writeAll(summary);
@@ -172,9 +174,10 @@ fn generateJsonSummaryAlloc(
     allocator: std.mem.Allocator,
     grammar: anytype,
     prepared: grammar_ir.PreparedGrammar,
+    options: emit_optimize.Options,
 ) ![]const u8 {
     const serialized = try parse_table_pipeline.serializeTableFromPrepared(allocator, prepared, .diagnostic);
-    const parser_stats = try parser_c_emit.collectEmissionStats(allocator, serialized);
+    const parser_stats = try parser_c_emit.collectEmissionStatsWithOptions(allocator, serialized, options);
 
     var out = std.array_list.Managed(u8).init(allocator);
     errdefer out.deinit();
@@ -255,7 +258,7 @@ test "generateJsonSummaryAlloc reports parser row-sharing stats" {
 
     const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
-    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared);
+    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{});
 
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"blocked\": true"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 6"));
@@ -265,6 +268,33 @@ test "generateJsonSummaryAlloc reports parser row-sharing stats" {
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_rows\": { \"total_rows\": 6, \"empty_rows\": 2, \"unique_non_empty_rows\": 3, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 4 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"goto_rows\": { \"total_rows\": 6, \"empty_rows\": 4, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"unresolved_rows\": { \"total_rows\": 6, \"empty_rows\": 5, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 1 }"));
+}
+
+test "generateJsonSummaryAlloc can disable duplicate-state compaction stats" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var summary_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer summary_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableMetadataGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{
+        .compact_duplicate_states = false,
+    });
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 7"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_rows\": { \"total_rows\": 7, \"empty_rows\": 3, \"unique_non_empty_rows\": 4, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 5 }"));
 }
 
 test "runGenerate supports debug prepared output mode" {

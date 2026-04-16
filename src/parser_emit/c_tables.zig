@@ -9,11 +9,19 @@ pub fn emitCTableSkeletonAlloc(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
 ) EmitError![]const u8 {
+    return try emitCTableSkeletonAllocWithOptions(allocator, serialized, .{});
+}
+
+pub fn emitCTableSkeletonAllocWithOptions(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+    options: optimize.Options,
+) EmitError![]const u8 {
     var out = std.array_list.Managed(u8).init(allocator);
     defer out.deinit();
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    const compacted = try optimize.compactSerializedTableAlloc(arena.allocator(), serialized);
+    const compacted = try optimize.prepareSerializedTableAlloc(arena.allocator(), serialized, options);
     try writeCTableSkeleton(out.writer(), compacted);
     return try out.toOwnedSlice();
 }

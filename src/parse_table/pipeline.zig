@@ -17,6 +17,7 @@ const fixtures = @import("../tests/fixtures.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const json_loader = @import("../grammar/json_loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
+const emit_optimize = @import("../parser_emit/optimize.zig");
 
 pub const PipelineError =
     extract_tokens.ExtractTokensError ||
@@ -96,9 +97,18 @@ pub fn generateParserTableEmitterDumpFromPrepared(
     prepared: grammar_ir.PreparedGrammar,
     mode: serialize.SerializeMode,
 ) PipelineError![]const u8 {
+    return try generateParserTableEmitterDumpFromPreparedWithOptions(allocator, prepared, mode, .{});
+}
+
+pub fn generateParserTableEmitterDumpFromPreparedWithOptions(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    mode: serialize.SerializeMode,
+    options: emit_optimize.Options,
+) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
     const serialized = try serialize.serializeBuildResult(allocator, result, mode);
-    return try parser_tables_emit.emitSerializedTableAlloc(allocator, serialized);
+    return try parser_tables_emit.emitSerializedTableAllocWithOptions(allocator, serialized, options);
 }
 
 pub fn generateCTableEmitterDumpFromPrepared(
@@ -106,9 +116,18 @@ pub fn generateCTableEmitterDumpFromPrepared(
     prepared: grammar_ir.PreparedGrammar,
     mode: serialize.SerializeMode,
 ) PipelineError![]const u8 {
+    return try generateCTableEmitterDumpFromPreparedWithOptions(allocator, prepared, mode, .{});
+}
+
+pub fn generateCTableEmitterDumpFromPreparedWithOptions(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    mode: serialize.SerializeMode,
+    options: emit_optimize.Options,
+) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
     const serialized = try serialize.serializeBuildResult(allocator, result, mode);
-    return try c_tables_emit.emitCTableSkeletonAlloc(allocator, serialized);
+    return try c_tables_emit.emitCTableSkeletonAllocWithOptions(allocator, serialized, options);
 }
 
 pub fn generateParserCEmitterDumpFromPrepared(
@@ -116,9 +135,18 @@ pub fn generateParserCEmitterDumpFromPrepared(
     prepared: grammar_ir.PreparedGrammar,
     mode: serialize.SerializeMode,
 ) PipelineError![]const u8 {
+    return try generateParserCEmitterDumpFromPreparedWithOptions(allocator, prepared, mode, .{});
+}
+
+pub fn generateParserCEmitterDumpFromPreparedWithOptions(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    mode: serialize.SerializeMode,
+    options: emit_optimize.Options,
+) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
     const serialized = try serialize.serializeBuildResult(allocator, result, mode);
-    return try parser_c_emit.emitParserCAlloc(allocator, serialized);
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, options);
 }
 
 pub fn serializeTableFromPrepared(

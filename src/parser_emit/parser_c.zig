@@ -32,9 +32,17 @@ pub fn emitParserCAlloc(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
 ) EmitError![]const u8 {
+    return try emitParserCAllocWithOptions(allocator, serialized, .{});
+}
+
+pub fn emitParserCAllocWithOptions(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+    options: optimize.Options,
+) EmitError![]const u8 {
     var out = std.array_list.Managed(u8).init(allocator);
     defer out.deinit();
-    try writeParserC(out.writer(), allocator, serialized);
+    try writeParserCWithOptions(out.writer(), allocator, serialized, options);
     return try out.toOwnedSlice();
 }
 
@@ -42,10 +50,18 @@ pub fn collectEmissionStats(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
 ) std.mem.Allocator.Error!EmissionStats {
+    return try collectEmissionStatsWithOptions(allocator, serialized, .{});
+}
+
+pub fn collectEmissionStatsWithOptions(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+    options: optimize.Options,
+) std.mem.Allocator.Error!EmissionStats {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const compacted = try optimize.compactSerializedTableAlloc(arena.allocator(), serialized);
+    const compacted = try optimize.prepareSerializedTableAlloc(arena.allocator(), serialized, options);
     const action_owners = try collectStateArrayOwners(allocator, serialize.SerializedActionEntry, compacted.states, stateActions);
     defer allocator.free(action_owners);
     const goto_owners = try collectStateArrayOwners(allocator, serialize.SerializedGotoEntry, compacted.states, stateGotos);
@@ -80,10 +96,19 @@ pub fn writeParserC(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
 ) !void {
+    return try writeParserCWithOptions(writer, allocator, serialized, .{});
+}
+
+pub fn writeParserCWithOptions(
+    writer: anytype,
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+    options: optimize.Options,
+) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const compacted = try optimize.compactSerializedTableAlloc(arena.allocator(), serialized);
+    const compacted = try optimize.prepareSerializedTableAlloc(arena.allocator(), serialized, options);
     const compatibility = compat.currentRuntimeCompatibility();
     const emitted_symbols = try collectEmittedSymbols(allocator, compacted);
     defer deinitEmittedSymbols(allocator, emitted_symbols);
@@ -1303,4 +1328,62 @@ test "collectEmissionStats reports shared empty and canonical non-empty rows" {
         .shared_non_empty_rows = 0,
         .emitted_array_definitions = 1,
     }, stats.unresolved_rows);
+}
+
+test "collectEmissionStatsWithOptions preserves duplicate states when compaction is disabled" {
+    const allocator = std.testing.allocator;
+    const duplicate_unresolved = [_]@import("../parse_table/actions.zig").ParseAction{
+        .{ .shift = 7 },
+        .{ .reduce = 8 },
+    };
+    const serialized = serialize.SerializedTable{
+        .blocked = true,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]serialize.SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                },
+                .gotos = &[_]serialize.SerializedGotoEntry{
+                    .{ .symbol = .{ .non_terminal = 0 }, .state = 1 },
+                },
+                .unresolved = &[_]serialize.SerializedUnresolvedEntry{
+                    .{
+                        .symbol = .{ .terminal = 1 },
+                        .reason = .shift_reduce,
+                        .candidate_actions = &duplicate_unresolved,
+                    },
+                },
+            },
+            .{
+                .id = 1,
+                .actions = &[_]serialize.SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                },
+                .gotos = &[_]serialize.SerializedGotoEntry{
+                    .{ .symbol = .{ .non_terminal = 0 }, .state = 1 },
+                },
+                .unresolved = &[_]serialize.SerializedUnresolvedEntry{
+                    .{
+                        .symbol = .{ .terminal = 1 },
+                        .reason = .shift_reduce,
+                        .candidate_actions = &duplicate_unresolved,
+                    },
+                },
+            },
+        },
+    };
+
+    const stats = try collectEmissionStatsWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+    });
+
+    try std.testing.expectEqual(@as(usize, 2), stats.state_count);
+    try std.testing.expectEqual(@as(usize, 0), stats.merged_state_count);
+    try std.testing.expectEqual(@as(usize, 2), stats.action_entry_count);
+    try std.testing.expectEqual(@as(usize, 2), stats.goto_entry_count);
+    try std.testing.expectEqual(@as(usize, 2), stats.unresolved_entry_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.action_rows.shared_non_empty_rows);
+    try std.testing.expectEqual(@as(usize, 1), stats.goto_rows.shared_non_empty_rows);
+    try std.testing.expectEqual(@as(usize, 1), stats.unresolved_rows.shared_non_empty_rows);
 }

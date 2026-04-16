@@ -3,7 +3,19 @@ const parse_actions = @import("../parse_table/actions.zig");
 const parse_state = @import("../parse_table/state.zig");
 const serialize = @import("../parse_table/serialize.zig");
 const syntax_grammar = @import("../ir/syntax_grammar.zig");
-const resolution = @import("../parse_table/resolution.zig");
+
+pub const Options = struct {
+    compact_duplicate_states: bool = true,
+};
+
+pub fn prepareSerializedTableAlloc(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+    options: Options,
+) std.mem.Allocator.Error!serialize.SerializedTable {
+    if (!options.compact_duplicate_states) return serialized;
+    return try compactSerializedTableAlloc(allocator, serialized);
+}
 
 pub fn compactSerializedTableAlloc(
     allocator: std.mem.Allocator,
