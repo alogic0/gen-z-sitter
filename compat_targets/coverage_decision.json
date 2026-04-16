@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "first_wave_target_count": 3,
+  "first_wave_passed_count": 3,
+  "first_wave_non_passing_count": 0,
+  "parser_only_boundary_proven": true,
+  "proven_boundary": [
+    "3 intended first-wave parser-only targets are currently in the run set",
+    "3 intended first-wave targets currently pass within the staged parser-only boundary",
+    "2 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
+  ],
+  "deferred_parser_only_targets": [
+    {
+      "id": "parse_table_conflict_json",
+      "display_name": "Parse Table Conflict (JSON)",
+      "grammar_path": "compat_targets/parse_table_conflict/grammar.json",
+      "notes": "parser-only ambiguity case deferred until mismatch classification is richer"
+    }
+  ],
+  "out_of_scope_targets": [
+    {
+      "id": "hidden_external_fields_json",
+      "display_name": "Hidden External Fields (JSON)",
+      "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
+      "notes": "requires external scanner handling outside the current parser-only boundary"
+    }
+  ],
+  "recommended_next_milestone": "second_wave_parser_only_repo_coverage",
+  "recommendation_rationale": [
+    "the first-wave parser-only shortlist currently passes within the staged boundary",
+    "the next evidence gap is broader real parser-only grammar coverage, not another refactor of the harness shape",
+    "external-scanner cases remain explicitly out of scope for this milestone and should not drive the next parser-only promotion"
+  ]
+}

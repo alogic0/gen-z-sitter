@@ -22,7 +22,7 @@ It does not assume broader lexer/scanner repo parity. It explicitly stays inside
 - [ ] add a repeatable harness that runs the current generator against real parser-only grammars/repos
 - [x] record generation, compile-smoke, and structural compatibility results in one place
 - [x] make known parser-only repo mismatches explicit instead of anecdotal
-- [ ] establish concrete exit criteria for “parser-only compatibility coverage exists”
+- [x] establish concrete exit criteria for “parser-only compatibility coverage exists”
 
 ## Progress Update
 
@@ -66,6 +66,17 @@ The fifth implementation slice is now landed as well:
   - 1 deferred later-wave target
   - 1 out-of-scope external-scanner target
 - tests now lock the mismatch-inventory artifact to the current rendered classification output
+
+The sixth implementation slice is now landed as well:
+
+- a checked-in closeout decision artifact now captures the current parser-only boundary and recommended next milestone:
+  - `compat_targets/coverage_decision.json`
+- tests now lock that decision artifact to the current rendered closeout summary
+- the milestone can now answer in one place:
+  - what parser-only coverage is currently proven
+  - what parser-only targets remain deferred
+  - what remains explicitly out of scope because it belongs to scanner/external-scanner coverage
+  - what the next promoted milestone should be
 
 ## PR-Sized Slices
 
@@ -455,7 +466,7 @@ Current result:
 
 ### 9. Tighten docs to the new parser-only real-repo boundary
 
-- [ ] update milestone docs after the harness result boundary is real
+- [x] update milestone docs after the harness result boundary is real
 - [ ] update compatibility-facing docs to distinguish:
   - curated fixture proof
   - parser-only real-repo proof
@@ -473,9 +484,8 @@ Current partial progress for this stage:
   - curated fixture and harness proof
   - the narrower parser-only shortlist boundary
   - explicitly deferred scanner/external-scanner coverage
-- broader milestone-plan follow-up docs are still pending
-- `README.md`
-- `compatibility-matrix.md`
+- `MASTER_PLAN_2.md` and `MILESTONES_21.md` now also record the explicit shortlist boundary and checked-in parser-only artifacts
+- broader compatibility-facing follow-up is still pending if and when real external parser-only repo coverage lands
 
 Important rule for this stage:
 
@@ -483,10 +493,10 @@ Important rule for this stage:
 
 ### 10. Close out the milestone with a parser-only coverage decision
 
-- [ ] mark the first-wave repo coverage boundary complete
-- [ ] list the remaining parser-only targets deferred to later work
-- [ ] list scanner/external-scanner repo coverage explicitly as later work
-- [ ] decide whether the next promoted milestone should be:
+- [x] mark the first-wave repo coverage boundary complete
+- [x] list the remaining parser-only targets deferred to later work
+- [x] list scanner/external-scanner repo coverage explicitly as later work
+- [x] decide whether the next promoted milestone should be:
   - a second-wave parser-only repo coverage milestone
   - a broader compatibility polish milestone
   - a return to deeper parse-table minimization work
@@ -497,6 +507,17 @@ Closeout decision must answer:
 - what parser-only gaps remain
 - what is intentionally deferred because it belongs to scanner/external-scanner coverage
 
+Current closeout decision:
+
+- the current first-wave parser-only boundary is complete for the staged shortlist:
+  - 3 intended first-wave targets pass
+- remaining parser-only target explicitly deferred:
+  - `parse_table_conflict_json`
+- scanner/external-scanner coverage explicitly deferred beyond this milestone:
+  - `hidden_external_fields_json`
+- current recommended next promoted milestone:
+  - a second-wave parser-only repo coverage milestone
+
 ## Deliverables
 
 - [ ] `MILESTONES_22.md` completed with concrete repo shortlist and classifications
@@ -504,6 +525,7 @@ Closeout decision must answer:
 - [ ] deterministic per-target result reporting
 - [ ] deterministic aggregate compatibility report
 - [ ] documented parser-only mismatch inventory
+- [x] checked-in parser-only coverage decision artifact
 
 ## Non-Goals
 

@@ -48,6 +48,7 @@ test {
     _ = @import("compat/targets.zig");
     _ = @import("compat/result.zig");
     _ = @import("compat/compile_smoke.zig");
+    _ = @import("compat/coverage_decision.zig");
     _ = @import("compat/harness.zig");
     _ = @import("compat/inventory.zig");
     _ = @import("compat/mismatch_inventory.zig");
