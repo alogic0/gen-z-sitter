@@ -33,9 +33,9 @@ What is already true before this milestone starts:
   - `tree_sitter_ziggy_schema_json`
 - those external targets are currently deferred later-wave targets with concrete parser-only gaps:
   - `tree_sitter_ziggy_json`
-    - blocked parser-emission boundary
+    - blocked parser-emission boundary driven by unresolved `shift_reduce` decisions
   - `tree_sitter_ziggy_schema_json`
-    - blocked parser-emission boundary after the word-token lowering fix
+    - blocked parser-emission boundary after the word-token lowering fix, also driven by unresolved `shift_reduce` decisions
 
 ## Scope Rules
 
@@ -60,13 +60,13 @@ Primary targets for this milestone:
 
 - `tree_sitter_ziggy_json`
   - current status: deferred later-wave target
-  - current gap: blocked parser-emission boundary
-  - desired outcome: emit within the current parser-only boundary, or classify the remaining blocker more narrowly than "blocked"
+  - current gap: blocked parser-emission boundary driven by unresolved `shift_reduce` decisions
+  - desired outcome: emit within the current parser-only boundary, or classify the remaining blocker more narrowly than a generic `shift_reduce` boundary
 
 - `tree_sitter_ziggy_schema_json`
   - current status: deferred later-wave target
-  - current gap: blocked parser-emission boundary after advancing past the earlier `InvalidWordToken` failure
-  - desired outcome: emit within the current parser-only boundary, or classify the remaining blocker more narrowly than a generic blocked parser surface
+  - current gap: blocked parser-emission boundary after advancing past the earlier `InvalidWordToken` failure, also driven by unresolved `shift_reduce` decisions
+  - desired outcome: emit within the current parser-only boundary, or classify the remaining blocker more narrowly than a generic `shift_reduce` boundary
 
 Secondary target:
 
@@ -120,8 +120,8 @@ Scope:
 
 - inspect why the emitted parser surface remains blocked for this grammar
 - determine whether the blocker is:
-  - conflict-related
-  - unresolved-decision-related
+  - specifically reducible `shift_reduce` cases
+  - grammar-precedence-related unresolved decisions
   - emitter-shape-related
 - shrink the blocker or split it into a more precise deferred class
 

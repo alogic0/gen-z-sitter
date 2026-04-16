@@ -127,6 +127,7 @@ fn includeParserOnlyIncompatibility(run: result_model.TargetRunResult) bool {
     return switch (run.mismatch_category) {
         .preparation_lowering_mismatch,
         .parse_table_construction_gap,
+        .shift_reduce_boundary,
         .emitted_surface_structural_gap,
         => true,
         else => false,

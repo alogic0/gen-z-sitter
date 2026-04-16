@@ -10,7 +10,8 @@
     "mismatch_categories": {
       "grammar_input_load_mismatch": 0,
       "preparation_lowering_mismatch": 0,
-      "parse_table_construction_gap": 2,
+      "parse_table_construction_gap": 0,
+      "shift_reduce_boundary": 2,
       "emitted_surface_structural_gap": 0,
       "compile_smoke_failure": 0,
       "out_of_scope_scanner_boundary": 1,
@@ -224,7 +225,7 @@
       "success_criteria": "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set",
       "first_failed_stage": "emit_parser_c",
       "final_classification": "failed_due_to_parser_only_gap",
-      "mismatch_category": "parse_table_construction_gap",
+      "mismatch_category": "shift_reduce_boundary",
       "load": {
         "status": "passed",
         "detail": null
@@ -287,7 +288,7 @@
       "success_criteria": "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set",
       "first_failed_stage": "emit_parser_c",
       "final_classification": "failed_due_to_parser_only_gap",
-      "mismatch_category": "parse_table_construction_gap",
+      "mismatch_category": "shift_reduce_boundary",
       "load": {
         "status": "passed",
         "detail": null

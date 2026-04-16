@@ -16,7 +16,7 @@
       "grammar_path": "compat_targets/tree_sitter_ziggy/grammar.json",
       "candidate_status": "deferred_later_wave",
       "final_classification": "failed_due_to_parser_only_gap",
-      "mismatch_category": "parse_table_construction_gap",
+      "mismatch_category": "shift_reduce_boundary",
       "first_failed_stage": "emit_parser_c",
       "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=100, entries=177, reasons={shift_reduce:177, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, samples=[state 15 terminal shift_reduce candidates=2; state 18 terminal shift_reduce candidates=2; state 27 terminal shift_reduce candidates=2; state 27 terminal shift_reduce candidates=2]",
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, deferred until its blocked parser-emission gap is classified for promotion"
@@ -27,7 +27,7 @@
       "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
       "candidate_status": "deferred_later_wave",
       "final_classification": "failed_due_to_parser_only_gap",
-      "mismatch_category": "parse_table_construction_gap",
+      "mismatch_category": "shift_reduce_boundary",
       "first_failed_stage": "emit_parser_c",
       "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=21, entries=36, reasons={shift_reduce:36, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, samples=[state 4 terminal shift_reduce candidates=2; state 4 terminal shift_reduce candidates=2; state 22 terminal shift_reduce candidates=2; state 38 terminal shift_reduce candidates=2]",
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its blocked parser-emission gap is classified for promotion after the word-token lowering fix"
@@ -53,7 +53,7 @@
       "grammar_path": "compat_targets/tree_sitter_ziggy/grammar.json",
       "candidate_status": "deferred_later_wave",
       "final_classification": "failed_due_to_parser_only_gap",
-      "mismatch_category": "parse_table_construction_gap",
+      "mismatch_category": "shift_reduce_boundary",
       "first_failed_stage": "emit_parser_c",
       "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=100, entries=177, reasons={shift_reduce:177, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, samples=[state 15 terminal shift_reduce candidates=2; state 18 terminal shift_reduce candidates=2; state 27 terminal shift_reduce candidates=2; state 27 terminal shift_reduce candidates=2]",
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, deferred until its blocked parser-emission gap is classified for promotion"
@@ -64,7 +64,7 @@
       "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
       "candidate_status": "deferred_later_wave",
       "final_classification": "failed_due_to_parser_only_gap",
-      "mismatch_category": "parse_table_construction_gap",
+      "mismatch_category": "shift_reduce_boundary",
       "first_failed_stage": "emit_parser_c",
       "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=21, entries=36, reasons={shift_reduce:36, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, samples=[state 4 terminal shift_reduce candidates=2; state 4 terminal shift_reduce candidates=2; state 22 terminal shift_reduce candidates=2; state 38 terminal shift_reduce candidates=2]",
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its blocked parser-emission gap is classified for promotion after the word-token lowering fix"

@@ -151,11 +151,12 @@ pub fn runTarget(
     if (emission_stats.blocked != target.expected_blocked) {
         const blocked_summary = try summarizeBlockedBoundaryAlloc(allocator, serialized);
         defer allocator.free(blocked_summary);
+        const blocked_category = classifyBlockedBoundary(serialized);
         return failRun(
             &run,
             .emit_parser_c,
             .failed_due_to_parser_only_gap,
-            .parse_table_construction_gap,
+            blocked_category,
             try std.fmt.allocPrint(
                 allocator,
                 "unexpected blocked status: expected {}, got {}; {s}",
@@ -315,6 +316,21 @@ fn summarizeBlockedBoundaryAlloc(
     );
 }
 
+fn classifyBlockedBoundary(
+    serialized: @import("../parse_table/serialize.zig").SerializedTable,
+) result_model.MismatchCategory {
+    var saw_unresolved = false;
+    for (serialized.states) |state_value| {
+        for (state_value.unresolved) |entry| {
+            saw_unresolved = true;
+            if (entry.reason != .shift_reduce) return .parse_table_construction_gap;
+        }
+    }
+
+    if (saw_unresolved) return .shift_reduce_boundary;
+    return .parse_table_construction_gap;
+}
+
 fn symbolRefLabel(symbol: @import("../ir/syntax_grammar.zig").SymbolRef) []const u8 {
     return switch (symbol) {
         .terminal => "terminal",
@@ -426,6 +442,8 @@ test "runShortlistTargetsAlloc records blocked-boundary summaries for deferred Z
     const runs = try runShortlistTargetsAlloc(allocator, .{});
     defer result_model.deinitRunResults(allocator, runs);
 
+    try std.testing.expectEqual(result_model.MismatchCategory.shift_reduce_boundary, runs[3].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.shift_reduce_boundary, runs[4].mismatch_category);
     try std.testing.expect(runs[3].emit_parser_c.detail != null);
     try std.testing.expect(runs[4].emit_parser_c.detail != null);
     try std.testing.expect(std.mem.indexOf(u8, runs[3].emit_parser_c.detail.?, "blocked boundary summary:") != null);
