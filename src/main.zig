@@ -45,6 +45,11 @@ pub fn main() !void {
 }
 
 test {
+    _ = @import("compat/targets.zig");
+    _ = @import("compat/result.zig");
+    _ = @import("compat/compile_smoke.zig");
+    _ = @import("compat/harness.zig");
+    _ = @import("compat/report_json.zig");
     _ = @import("behavioral/harness.zig");
     _ = @import("cli/args.zig");
     _ = @import("cli/command_generate.zig");

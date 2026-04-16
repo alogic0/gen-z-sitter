@@ -1,0 +1,13 @@
+{
+  "name": "parse_table_tiny",
+  "rules": {
+    "source_file": {
+      "type": "SYMBOL",
+      "name": "expr"
+    },
+    "expr": {
+      "type": "STRING",
+      "value": "x"
+    }
+  }
+}

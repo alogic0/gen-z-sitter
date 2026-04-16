@@ -15,14 +15,32 @@ What is implemented in the current code:
 - parse-table construction, resolution, serialization, and emitter layers
 - `node-types.json` generation
 - ABI/compatibility-oriented parser emission modules
+- emitted-surface optimization and JSON summary reporting for parser tables and parser output
 - unit and golden-test coverage across the pipeline
 
 What this means in practice:
 
 - the repository builds and tests as a Zig project
-- the CLI can load grammars and expose debug views
-- the top-level generate path is currently most concrete for validation and `node-types.json`
-- the parser-emission work exists in the codebase, but this repo is still positioned as an in-progress rewrite rather than a drop-in replacement for upstream Tree-sitter
+- the CLI can load grammars, expose debug views, write `node-types.json`, and report parser-emission summary stats
+- the top-level `generate` path is currently most concrete for validation, debug dumps, `node-types.json`, and `--json-summary`
+- the parser-emission and compatibility layers are exercised mainly through lower-level tests, compile-smoke checks, structural compatibility checks, and the behavioral harness
+- the repo is still an in-progress rewrite rather than a drop-in replacement for upstream Tree-sitter
+
+What is still not a first-class top-level product surface:
+
+- emitted `parser.c`
+- emitted `grammar.json`
+- compatibility reports and real-repo compatibility runs
+- full runtime/ABI parity claims against upstream Tree-sitter
+
+## Next Goals
+
+The immediate next goals are:
+
+- expand beyond curated local fixtures into parser-only compatibility coverage against a small shortlist of real grammars/repos
+- add a repeatable harness that records generation, emission, compile-smoke, and structural-compatibility results for those targets
+- keep parser-output optimization measurable while deeper parse-table compression/minimization remains future work
+- continue tightening the staged compatibility boundary before claiming broader runtime parity
 
 ## Quick Start
 
@@ -41,6 +59,7 @@ zig build run -- generate path/to/grammar.json
 zig build run -- generate --debug-prepared path/to/grammar.json
 zig build run -- generate --debug-node-types path/to/grammar.json
 zig build run -- generate --output out path/to/grammar.json
+zig build run -- generate --json-summary path/to/grammar.json
 ```
 
 Expected current behavior:
@@ -49,6 +68,7 @@ Expected current behavior:
 - `generate --debug-prepared` prints the prepared grammar IR
 - `generate --debug-node-types` prints generated `node-types.json`
 - `generate --output <dir>` writes `node-types.json` into the target directory
+- `generate --json-summary` prints emitted-surface and optimization statistics for the current parser-emission pipeline
 
 ## CLI
 
@@ -73,7 +93,7 @@ Supported generate options:
 - `--js-runtime <runtime>`
 - `--no-optimize-merge-states`
 
-Not every flag currently maps to a fully surfaced end-user feature. The parser and compatibility layers are present in the codebase, but the most directly exercised user-facing paths today are grammar loading, preparation, debug dumps, and `node-types.json` output.
+Not every flag currently maps to a fully surfaced end-user feature. The most directly exercised user-facing paths today are grammar loading, preparation, debug dumps, `node-types.json` output, and `--json-summary`. Some options exist to preserve the eventual generator contract or to drive lower-level emitter and compatibility paths that are more heavily exercised in tests than in the top-level CLI.
 
 Current staged compatibility boundary:
 
@@ -82,6 +102,7 @@ Current staged compatibility boundary:
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
   - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it remains on the staged `unresolved_decision` boundary for its valid path
+- broader real-grammar coverage is the next planned step, beginning with parser-only repo cases before broader scanner/runtime parity work
 
 ## Repository Layout
 
@@ -136,6 +157,7 @@ Focused supporting notes:
 - [MILESTONES_19.md](./MILESTONES_19.md)
 - [MILESTONES_20.md](./MILESTONES_20.md)
 - [MILESTONES_21.md](./MILESTONES_21.md)
+- [MILESTONES_22.md](./MILESTONES_22.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)
 - [parse-table-algorithm-plan.md](./parse-table-algorithm-plan.md)
 - [milestone-0-task-list.md](./milestone-0-task-list.md)
@@ -146,4 +168,7 @@ Focused supporting notes:
 2. [zig-generator-architecture.md](./zig-generator-architecture.md)
 3. [compatibility-matrix.md](./compatibility-matrix.md)
 4. [test-strategy.md](./test-strategy.md)
-5. the milestone checklist for the subsystem you care about
+5. [MILESTONES_20.md](./MILESTONES_20.md) for the current staged compatibility boundary
+6. [MILESTONES_21.md](./MILESTONES_21.md) for current optimization/parity follow-on work
+7. [MILESTONES_22.md](./MILESTONES_22.md) for the next parser-only real-repo compatibility goal
+8. the milestone checklist for the subsystem you care about
