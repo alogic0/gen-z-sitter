@@ -111,11 +111,11 @@ What the repo can credibly claim today:
   - `compat_targets/external_scanner_repo_inventory.json`
 - that dedicated external scanner artifact now records:
   - `tree_sitter_haskell_json` as a passing sampled real external scanner snapshot
-  - `tree_sitter_bash_json` as a deferred real external scanner snapshot
+  - `tree_sitter_bash_json` as a passing sampled real external scanner snapshot
 - the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos do not change that state for this milestone because both available `src/grammar.json` snapshots declare `externals: []` and neither repo includes a scanner implementation file
 - the current real external scanner boundary is explicit:
   - `tree_sitter_haskell_json` passes within a sampled external-sequence proof layer after structural first-boundary extraction
-  - `tree_sitter_bash_json` currently defers at scanner-boundary token extraction with `InvalidSupertypeStructure`
+  - `tree_sitter_bash_json` passes within a narrower sampled expansion path built around `_bare_dollar` and `variable_name`
   - both remain narrower than full runtime scanner support
 - `compat_targets/README.md` explains the relationship between shortlist policy, aggregate boundary, mismatch inventory, and coverage decision artifacts
 - the checked-in shortlist inventory and full report now expose family-level coverage alongside aggregate target totals
@@ -137,14 +137,14 @@ What the repo can credibly claim today:
     - `mixed_semantics`
     - `haskell`
     - `bash`
-- scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the staged first-boundary checks, one sampled real external scanner sequence proof, and one deferred real external scanner snapshot
+- scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the staged first-boundary checks plus two sampled real external scanner proofs with different scope
 - `mixed_semantics` widens that scanner proof by showing that a grammar can still carry extras elsewhere while remaining compatible on a narrower first-boundary sample path
 - compatibility-sensitive behavioral proof currently covers:
   - `behavioral_config`
   - `hidden_external_fields`
 - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but now rejects on the staged blocked path as `missing_action`
 - the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
-- the current checked-in coverage decision now points back toward scanner and external-scanner compatibility onboarding because Bash remains deferred
+- the current checked-in coverage decision now recommends broader compatibility polish from this stronger mixed parser-only and sampled-scanner boundary
 
 ## Milestone Compatibility Targets
 

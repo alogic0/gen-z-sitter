@@ -43,7 +43,7 @@ Out of scope:
 
 - [x] at least one new real external target is added with provenance and explicit rationale
 - [x] checked-in artifacts record any new real blocker shape precisely instead of folding it into a generic bucket
-- [ ] at least one newly added real external target is either promoted or explicitly frozen with a named rationale
+- [x] at least one newly added real external target is either promoted or explicitly frozen with a named rationale
 - [ ] the milestone ends with a clearer real external evidence boundary than M30
 - [ ] the next-step recommendation is updated from actual checked-in evidence rather than milestone intent
 
@@ -63,9 +63,9 @@ Out of scope:
 
 ### PR 3: Narrow One Real External Gap
 
-- [ ] choose one newly onboarded target for a narrow compatibility improvement
-- [ ] either promote that target or freeze it explicitly with a dedicated rationale
-- [ ] keep the already-proven real external boundary stable while narrowing the new gap
+- [x] choose one newly onboarded target for a narrow compatibility improvement
+- [x] either promote that target or freeze it explicitly with a dedicated rationale
+- [x] keep the already-proven real external boundary stable while narrowing the new gap
 
 ### PR 4: Closeout
 
@@ -77,7 +77,7 @@ Out of scope:
 
 - [x] PR 1 completed
 - [x] PR 2 completed
-- [ ] PR 3 completed
+- [x] PR 3 completed
 - [ ] PR 4 completed
 - [ ] M31 ready for closeout
 
@@ -106,9 +106,10 @@ Out of scope:
 - its current boundary is explicit:
   - `load` passes
   - `prepare` passes
-  - the first failure is at `serialize`
-  - the concrete blocker is `InvalidSupertypeStructure` during scanner-boundary token extraction
-- this adds a second real external scanner family with a different blocker shape than `tree_sitter_haskell_json`, but it remains deferred until that extraction boundary is narrowed or frozen explicitly
+  - structural first external-boundary extraction passes
+  - a narrow sampled Bash expansion path now also passes
+  - the promoted sampled claim is intentionally narrow: `_bare_dollar` plus `variable_name` on a simple expansion path
+- this adds a second passing real external scanner family to the evidence set without claiming broader heredoc handling or full scanner runtime parity
 
 ## Closeout Target
 

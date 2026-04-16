@@ -649,6 +649,13 @@ fn matchSupportedExternalPrefix(
     if (std.mem.eql(u8, name, "indent")) {
         return if (std.mem.startsWith(u8, input, "  ")) .{ .len = 2 } else null;
     }
+    if (std.mem.eql(u8, name, "_bare_dollar")) {
+        return if (std.mem.startsWith(u8, input, "$")) .{ .len = 1 } else null;
+    }
+    if (std.mem.eql(u8, name, "variable_name")) {
+        const len = matchSampledBashVariableName(input) orelse return null;
+        return .{ .len = len };
+    }
     if (isSampledLayoutStartToken(name)) {
         const newline_indent = scanIndentedNewline(input) orelse return null;
         if (newline_indent.indent == 0) return null;
@@ -686,6 +693,19 @@ fn matchSupportedExternalAtEof(
         };
     }
     return null;
+}
+
+fn matchSampledBashVariableName(input: []const u8) ?usize {
+    if (input.len == 0) return null;
+    const first = input[0];
+    if (!(std.ascii.isAlphabetic(first) or first == '_')) return null;
+
+    var index: usize = 1;
+    while (index < input.len) : (index += 1) {
+        const ch = input[index];
+        if (!(std.ascii.isAlphanumeric(ch) or ch == '_')) break;
+    }
+    return index;
 }
 
 const NewlineIndent = struct {
@@ -1275,6 +1295,50 @@ test "sampleExtractedExternalBoundaryOnly samples the Haskell real external scan
     try std.testing.expect(valid.external_matches > 0);
     try std.testing.expect(valid.consumed_bytes > invalid.consumed_bytes);
     try std.testing.expect(valid.lexical_matches > 0);
+}
+
+test "sampleExtractedExternalBoundaryOnly samples the Bash expansion path" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const grammar = try std.fs.cwd().readFileAlloc(
+        arena.allocator(),
+        "compat_targets/tree_sitter_bash/grammar.json",
+        1024 * 1024,
+    );
+    const valid_input = try std.fs.cwd().readFileAlloc(
+        arena.allocator(),
+        "compat_targets/tree_sitter_bash/valid.txt",
+        64 * 1024,
+    );
+    const invalid_input = try std.fs.cwd().readFileAlloc(
+        arena.allocator(),
+        "compat_targets/tree_sitter_bash/invalid.txt",
+        64 * 1024,
+    );
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), grammar);
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const serialized = try scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax);
+
+    const valid = try sampleExtractedExternalBoundaryOnly(
+        arena.allocator(),
+        prepared,
+        extracted.lexical,
+        serialized,
+        valid_input,
+    );
+    const invalid = try sampleExtractedExternalBoundaryOnly(
+        arena.allocator(),
+        prepared,
+        extracted.lexical,
+        serialized,
+        invalid_input,
+    );
+
+    try std.testing.expect(valid.external_matches >= 2);
+    try std.testing.expect(valid.consumed_bytes > invalid.consumed_bytes);
+    try std.testing.expect(valid.consumed_bytes > 0);
 }
 
 test "supported compatibility boundary avoids internal contract failures on valid config and external-token inputs" {

@@ -310,7 +310,7 @@ test "buildExternalRepoInventoryAlloc summarizes the current external evidence" 
     defer report.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 4), report.total_external_repo_targets);
-    try std.testing.expectEqual(@as(usize, 3), report.passed_external_repo_targets);
+    try std.testing.expectEqual(@as(usize, 4), report.passed_external_repo_targets);
     try std.testing.expectEqual(@as(usize, 4), report.family_coverage.len);
     try std.testing.expectEqual(@as(usize, 2), report.boundary_coverage.len);
     try std.testing.expectEqual(targets.BoundaryKind.parser_only, report.boundary_coverage[0].boundary_kind);

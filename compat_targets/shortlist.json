@@ -107,16 +107,16 @@
       "id": "tree_sitter_bash_json",
       "family": "bash",
       "boundary_kind": "scanner_external_scanner",
-      "scanner_boundary_check_mode": "structural_only",
-      "status": "deferred_scanner_wave",
+      "scanner_boundary_check_mode": "sampled_external_only",
+      "status": "intended_scanner_wave",
       "source_kind": "grammar_json",
       "origin_kind": "external_repo_snapshot",
       "grammar_path": "compat_targets/tree_sitter_bash/grammar.json",
       "upstream_repository": "tree-sitter-bash",
       "upstream_revision": "a06c2e4415e9bc0346c6b86d401879ffb44058f7",
       "upstream_grammar_path": "src/grammar.json",
-      "why": "real external scanner grammar snapshot from the local tree-sitter-bash repo, with scanner-heavy heredoc and expansion externals; onboarded in M31 as a high-value scanner-family evidence target before any sampled or parser-integrated claim",
-      "success_means": "load the snapshotted upstream grammar.json, prepare it, and either pass structural first external-boundary extraction or land with a precise machine-readable first blocker"
+      "why": "real external scanner grammar snapshot from the local tree-sitter-bash repo, promoted in M31 through a narrow sampled expansion path that exercises _bare_dollar and variable_name without claiming broader heredoc or full scanner.c runtime support",
+      "success_means": "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove a sampled Bash expansion path makes stronger progress on the valid input than on the invalid input"
     },
     {
       "id": "parse_table_conflict_json",

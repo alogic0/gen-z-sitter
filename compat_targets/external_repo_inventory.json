@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "total_external_repo_targets": 4,
-  "passed_external_repo_targets": 3,
+  "passed_external_repo_targets": 4,
   "family_coverage": [
     {
       "family": "ziggy",
@@ -25,7 +25,7 @@
       "family": "bash",
       "boundary_kind": "scanner_external_scanner",
       "target_count": 1,
-      "passed_count": 0
+      "passed_count": 1
     }
   ],
   "boundary_coverage": [
@@ -37,7 +37,7 @@
     {
       "boundary_kind": "scanner_external_scanner",
       "target_count": 2,
-      "passed_count": 1
+      "passed_count": 2
     }
   ],
   "current_limitations": [
@@ -98,9 +98,9 @@
       "upstream_repository": "tree-sitter-bash",
       "upstream_revision": "a06c2e4415e9bc0346c6b86d401879ffb44058f7",
       "upstream_grammar_path": "src/grammar.json",
-      "final_classification": "deferred_for_scanner_boundary",
-      "mismatch_category": "scanner_external_scanner_boundary_gap",
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-bash repo, with scanner-heavy heredoc and expansion externals; onboarded in M31 as a high-value scanner-family evidence target before any sampled or parser-integrated claim"
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-bash repo, promoted in M31 through a narrow sampled expansion path that exercises _bare_dollar and variable_name without claiming broader heredoc or full scanner.c runtime support"
     }
   ]
 }

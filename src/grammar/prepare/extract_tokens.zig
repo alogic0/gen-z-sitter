@@ -316,20 +316,11 @@ const Extractor = struct {
         variables: []const syntax_ir.SyntaxVariable,
     ) ExtractTokensError!void {
         _ = self;
+        _ = variables;
         for (supertype_symbols) |symbol| {
-            const index = switch (symbol) {
-                .non_terminal => |i| i,
+            switch (symbol) {
+                .non_terminal => {},
                 else => return error.InvalidSupertypeSymbol,
-            };
-
-            const variable = variables[index];
-            for (variable.productions) |production| {
-                for (production.steps) |step| {
-                    switch (step.symbol) {
-                        .external => return error.InvalidSupertypeStructure,
-                        .non_terminal, .terminal => {},
-                    }
-                }
             }
         }
     }
@@ -914,7 +905,7 @@ test "extractTokens rejects external supertype symbols" {
     try std.testing.expectError(error.InvalidSupertypeSymbol, extractTokens(arena.allocator(), prepared));
 }
 
-test "extractTokens rejects supertypes that lower to external steps" {
+test "extractTokens allows supertypes that lower to external steps" {
     const prepared = prepared_ir.PreparedGrammar{
         .grammar_name = "bad-supertype-structure",
         .variables = &.{
@@ -972,7 +963,11 @@ test "extractTokens rejects supertypes that lower to external steps" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    try std.testing.expectError(error.InvalidSupertypeStructure, extractTokens(arena.allocator(), prepared));
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.supertype_symbols.len);
+    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.supertype_symbols[0].non_terminal);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables[1].productions.len);
+    try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables[1].productions[0].steps[0].symbol.external);
 }
 
 test "extractTokens rejects word tokens that do not lower to lexical terminals" {
