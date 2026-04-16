@@ -31,6 +31,7 @@ pub const MismatchCategory = enum {
     preparation_lowering_mismatch,
     parse_table_construction_gap,
     shift_reduce_boundary,
+    intentional_control_fixture,
     emitted_surface_structural_gap,
     compile_smoke_failure,
     out_of_scope_scanner_boundary,

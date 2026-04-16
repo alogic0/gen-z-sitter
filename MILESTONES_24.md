@@ -75,14 +75,14 @@ Goal:
 
 Checklist:
 
-- [ ] review whether `parse_table_conflict_json` should have a more explicit control-fixture/report bucket
-- [ ] add or refine tests that lock the intended frozen-control behavior in place
-- [ ] update reports/artifacts if a clearer classification surface is added
-- [ ] keep `zig build test` passing
+- [x] review whether `parse_table_conflict_json` should have a more explicit control-fixture/report bucket
+- [x] add or refine tests that lock the intended frozen-control behavior in place
+- [x] update reports/artifacts if a clearer classification surface is added
+- [x] keep `zig build test` passing
 
 Acceptance:
 
-- [ ] the frozen control case is represented as a deliberate boundary, not a vague deferred failure
+- [x] the frozen control case is represented as a deliberate boundary, not a vague deferred failure
 
 ### PR 3
 
@@ -107,7 +107,7 @@ Acceptance:
 ## Progress Checklist
 
 - [x] PR 1 completed
-- [ ] PR 2 completed
+- [x] PR 2 completed
 - [ ] PR 3 completed
 - [ ] M24 ready for closeout
 

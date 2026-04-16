@@ -151,7 +151,7 @@ fn includeOutOfScope(run: result_model.TargetRunResult) bool {
 }
 
 fn includeDeferredControl(run: result_model.TargetRunResult) bool {
-    return run.candidate_status == .deferred_later_wave;
+    return run.mismatch_category == .intentional_control_fixture;
 }
 
 test "buildMismatchInventoryAlloc classifies the current shortlist" {

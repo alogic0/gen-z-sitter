@@ -188,6 +188,10 @@ pub fn runTarget(
         );
     }
 
+    if (target.candidate_status == .deferred_later_wave and emission_stats.blocked) {
+        run.mismatch_category = .intentional_control_fixture;
+    }
+
     compat_checks.validateParserCCompatibilitySurface(parser_c) catch |err| {
         return failRun(
             &run,
@@ -645,7 +649,7 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets and keeps onl
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
     try std.testing.expect(runs[5].blocked_boundary != null);
-    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[5].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[5].mismatch_category);
     try std.testing.expectEqual(@as(usize, 1), runs[5].blocked_boundary.?.reasons.shift_reduce);
 }
 
@@ -658,6 +662,7 @@ test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked
     try std.testing.expectEqualStrings("parse_table_conflict_json", runs[5].id);
     try std.testing.expectEqual(targets.CandidateStatus.deferred_later_wave, runs[5].candidate_status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
+    try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[5].mismatch_category);
     try std.testing.expectEqual(true, runs[5].expected_blocked);
     try std.testing.expect(runs[5].blocked_boundary != null);
     try std.testing.expectEqual(@as(usize, 1), runs[5].blocked_boundary.?.unresolved_entry_count);
