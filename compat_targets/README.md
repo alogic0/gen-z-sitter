@@ -31,7 +31,7 @@ Versioned artifacts:
 - `shortlist.json`
   - target selection policy, family, boundary kind, candidate classification, and success criteria
 - `external_repo_inventory.json`
-  - dedicated machine-readable inventory of the currently represented real external snapshots, including upstream provenance, represented families, and pass counts
+  - dedicated machine-readable inventory of the currently represented real external snapshots, including upstream provenance, represented families, boundary coverage, current real-evidence limitations, and the recommended next real-evidence step
   - this keeps real external evidence separate from the broader staged shortlist, which still includes staged fixtures and frozen controls
 - `shortlist_inventory.json`
   - aggregate boundary summary plus family-level coverage and explicit proven first-wave, deferred-control, deferred-scanner, and out-of-scope target sections

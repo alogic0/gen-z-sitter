@@ -105,6 +105,7 @@ What the repo can credibly claim today:
   - `compat_targets/shortlist_report.json`
 - real external snapshot proof currently comes from:
   - `compat_targets/external_repo_inventory.json`
+- that dedicated external artifact now also states the current limitation directly: the checked-in real external evidence is still limited to locally available parser-only Ziggy snapshots and does not yet include real external scanner families
 - `compat_targets/README.md` explains the relationship between shortlist policy, aggregate boundary, mismatch inventory, and coverage decision artifacts
 - the checked-in shortlist inventory and full report now expose family-level coverage alongside aggregate target totals
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:

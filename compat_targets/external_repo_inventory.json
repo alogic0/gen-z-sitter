@@ -16,6 +16,19 @@
       "passed_count": 1
     }
   ],
+  "boundary_coverage": [
+    {
+      "boundary_kind": "parser_only",
+      "target_count": 2,
+      "passed_count": 2
+    }
+  ],
+  "current_limitations": [
+    "the current checked-in real external evidence is limited to 2 parser-only snapshots that were already available locally",
+    "the current local workspace does not contain additional checked-out real grammar repos beyond the already snapshotted Ziggy sources",
+    "no real external scanner or external-scanner snapshots are represented yet in the dedicated external-repo evidence artifact"
+  ],
+  "recommended_next_step": "onboard_additional_local_external_snapshots_when_available",
   "targets": [
     {
       "id": "tree_sitter_ziggy_json",

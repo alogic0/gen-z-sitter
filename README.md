@@ -112,6 +112,7 @@ Current staged compatibility boundary:
 - real external snapshot proof is also exposed separately under `compat_targets/`:
   - `compat_targets/external_repo_inventory.json`
   - this keeps the promoted real external parser-only evidence visible without mixing it into staged fixture-only summaries
+  - it now also records the current real-evidence limitation explicitly: the checked-in external proof is still parser-only and still limited to the locally available Ziggy snapshots
 - parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`

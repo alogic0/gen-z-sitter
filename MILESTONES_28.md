@@ -44,7 +44,7 @@ Out of scope:
 - [x] the checked-in artifacts expose current external-repo evidence separately from staged fixtures
 - [x] at least one additional real external target is onboarded or explicitly deferred with rationale
 - [x] real external evidence is described distinctly from staged fixture proof in the repo docs
-- [ ] the milestone ends with a clearer real-evidence story than it started with
+- [x] the milestone ends with a clearer real-evidence story than it started with
 
 ## PR-Sized Slices
 
@@ -91,25 +91,25 @@ Goal:
 
 Checklist:
 
-- [ ] choose one concrete real-target improvement
+- [x] choose one concrete real-target improvement
   - promote one new real target
   - narrow one newly exposed blocker
   - freeze one real target with explicit rationale if promotion is not justified
-- [ ] implement or document the narrower outcome
-- [ ] regenerate checked-in artifacts if needed
-- [ ] update milestone/docs to match
-- [ ] keep `zig build test` passing
+- [x] implement or document the narrower outcome
+- [x] regenerate checked-in artifacts if needed
+- [x] update milestone/docs to match
+- [x] keep `zig build test` passing
 
 Acceptance:
 
-- [ ] the milestone ends with a stronger and more explicit real-repo evidence claim than it started with
+- [x] the milestone ends with a stronger and more explicit real-repo evidence claim than it started with
 
 ## Progress Checklist
 
 - [x] PR 1 completed
 - [x] PR 2 completed
-- [ ] PR 3 completed
-- [ ] M28 ready for closeout
+- [x] PR 3 completed
+- [x] M28 ready for closeout
 
 ## Non-Goals
 
@@ -125,3 +125,15 @@ Acceptance:
   - `tree_sitter_ziggy_schema_json`
 - a local filesystem sweep did not find additional checked-out real grammar repos beyond those already snapshotted into `compat_targets/`
 - PR 2 therefore records the present local-source limitation explicitly instead of pretending a larger real-target wave is available right now
+
+## PR 3 Outcome
+
+- `compat_targets/external_repo_inventory.json` now records:
+  - explicit boundary coverage for the current real external evidence
+  - current machine-readable limitations for that evidence
+  - the recommended next real-evidence step
+- the resulting real-evidence claim is now narrower and clearer:
+  - the repo has 2 passing real external parser-only snapshots
+  - that proof is still parser-only
+  - no real external scanner-family evidence is represented yet
+  - the current blocker is local source availability, not hidden artifact ambiguity
