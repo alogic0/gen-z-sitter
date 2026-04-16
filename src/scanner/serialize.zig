@@ -33,11 +33,6 @@ pub const UnsupportedExternalScannerFeature = union(enum) {
     multiple_external_tokens: usize,
     extra_symbols: usize,
     non_leading_external_step: UseLocation,
-    multiple_external_steps_in_production: struct {
-        variable_name: []const u8,
-        production_index: usize,
-        count: usize,
-    },
 };
 
 pub const SerializedExternalScannerBoundary = struct {
@@ -77,14 +72,12 @@ pub fn serializeExternalScannerBoundary(
 
     for (syntax.variables) |variable| {
         for (variable.productions, 0..) |production, production_index| {
-            var external_steps_in_production: usize = 0;
             for (production.steps, 0..) |step, step_index| {
                 const external_index = switch (step.symbol) {
                     .external => |index| index,
                     else => continue,
                 };
 
-                external_steps_in_production += 1;
                 try uses.append(.{
                     .external_index = external_index,
                     .variable_name = variable.name,
@@ -101,16 +94,6 @@ pub fn serializeExternalScannerBoundary(
                 if (step_index != 0) {
                     try unsupported.append(.{ .non_leading_external_step = location });
                 }
-            }
-
-            if (external_steps_in_production > 1) {
-                try unsupported.append(.{
-                    .multiple_external_steps_in_production = .{
-                        .variable_name = variable.name,
-                        .production_index = production_index,
-                        .count = external_steps_in_production,
-                    },
-                });
             }
         }
     }

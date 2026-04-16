@@ -485,11 +485,6 @@ fn formatUnsupportedExternalFeaturesAlloc(
                 "non_leading_external_step:{s}:{d}:{d}",
                 .{ location.variable_name, location.production_index, location.step_index },
             ),
-            .multiple_external_steps_in_production => |info| try std.fmt.allocPrint(
-                allocator,
-                "multiple_external_steps_in_production:{s}:{d}:{d}",
-                .{ info.variable_name, info.production_index, info.count },
-            ),
         };
         try parts.append(part);
     }
