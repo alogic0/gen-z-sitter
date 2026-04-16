@@ -60,6 +60,18 @@ Initial parser-only repo coverage target shape:
 - emphasis on fixture-driven compile, emit, and structural comparisons before deeper behavioral claims
 - promote this into its own milestone file once a concrete repo shortlist and harness boundary are written down
 
+Current state after `MILESTONES_22` bootstrap slices:
+- the versioned shortlist and checked-in parser-only report artifacts now live under `compat_targets/`
+- the current checked-in parser-only report surface includes:
+  - `shortlist.json`
+  - `shortlist_inventory.json`
+  - `shortlist_report.json`
+  - `shortlist_mismatch_inventory.json`
+- this is still narrower than real external-repo proof:
+  - 3 intended first-wave targets currently pass within the staged parser-only boundary
+  - 1 deferred later-wave target is held aside for future mismatch expansion
+  - 1 external-scanner target is classified explicitly as out of scope
+
 Promoted milestones:
 - [x] [MILESTONES_18.md](./MILESTONES_18.md)
 - [x] [MILESTONES_19.md](./MILESTONES_19.md)

@@ -21,7 +21,7 @@ It does not assume broader lexer/scanner repo parity. It explicitly stays inside
 - [x] define the parser-only repo shortlist and acceptance rules
 - [ ] add a repeatable harness that runs the current generator against real parser-only grammars/repos
 - [x] record generation, compile-smoke, and structural compatibility results in one place
-- [ ] make known parser-only repo mismatches explicit instead of anecdotal
+- [x] make known parser-only repo mismatches explicit instead of anecdotal
 - [ ] establish concrete exit criteria for “parser-only compatibility coverage exists”
 
 ## Progress Update
@@ -56,6 +56,16 @@ The fourth implementation slice is now landed as well:
   - `compat_targets/shortlist_report.json`
 - tests now lock both the boundary summary artifact and the full shortlist run report artifact to the current rendered harness output
 - generation, compile-smoke, structural-compatibility, and classification results now live in one versioned machine-readable artifact instead of only in test-only memory
+
+The fifth implementation slice is now landed as well:
+
+- a dedicated classified mismatch inventory is now also checked in as:
+  - `compat_targets/shortlist_mismatch_inventory.json`
+- the current shortlist outcome is now explicit in one place:
+  - 0 non-passing first-wave parser-only targets
+  - 1 deferred later-wave target
+  - 1 out-of-scope external-scanner target
+- tests now lock the mismatch-inventory artifact to the current rendered classification output
 
 ## PR-Sized Slices
 
@@ -363,9 +373,9 @@ Intended output for this stage:
 
 ### 7. Classify and document discovered parser-only gaps
 
-- [ ] collect all non-passing results from the initial wave
-- [ ] group them by cause
-- [ ] record whether each gap is:
+- [x] collect all non-passing results from the initial wave
+- [x] group them by cause
+- [x] record whether each gap is:
   - a true parser-only incompatibility
   - a grammar-loading/input-shape issue
   - a compile-surface issue
@@ -401,7 +411,9 @@ Current partial progress for this stage:
   - `compat_targets/shortlist_inventory.json`
 - the full generated shortlist run report is now also checked in as:
   - `compat_targets/shortlist_report.json`
-- a fuller mismatch inventory for real later-wave failures is still pending
+- the classified mismatch inventory is now also checked in as:
+  - `compat_targets/shortlist_mismatch_inventory.json`
+- a fuller mismatch inventory for real later-wave non-passing targets is still pending
 
 Current boundary summary from the generated inventory surface:
 

@@ -73,6 +73,19 @@ Current staged boundary being hardened in this milestone:
 - [ ] document the intended optimization boundary before changing table layout materially
 - detail: [MILESTONES_21.md](./MILESTONES_21.md)
 
+Current parser-only shortlist boundary before broader real-repo onboarding:
+
+- the staged parser-only shortlist and checked-in report artifacts now live under `compat_targets/`
+- current checked-in artifacts include:
+  - `shortlist.json`
+  - `shortlist_inventory.json`
+  - `shortlist_report.json`
+  - `shortlist_mismatch_inventory.json`
+- current first-wave parser-only run set:
+  - 3 intended first-wave targets pass within the staged boundary
+  - 1 deferred later-wave target is tracked separately
+  - 1 external-scanner target is tracked explicitly as out of scope
+
 ## Immediate Recommended Next Target
 
 - [x] promote `fuller parser output closer to upstream parser.c` into a dedicated milestone with concrete exit criteria
