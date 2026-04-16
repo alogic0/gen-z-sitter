@@ -29,9 +29,6 @@ pub fn main() !void {
         },
         .generate => |opts| {
             command_generate.runGenerate(allocator, opts) catch |err| switch (err) {
-                error.NotImplemented => {
-                    std.process.exit(3);
-                },
                 error.InvalidArguments => {
                     std.process.exit(2);
                 },
