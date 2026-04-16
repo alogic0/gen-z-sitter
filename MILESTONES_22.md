@@ -93,7 +93,7 @@ The seventh implementation slice is now landed as well:
   - `compat_targets/coverage_decision.json`
 - the current real external parser-only gaps are now explicit:
   - `tree_sitter_ziggy_json` currently hits a blocked parser-emission boundary
-  - `tree_sitter_ziggy_schema_json` currently fails parse-table serialization with `InvalidWordToken`
+  - `tree_sitter_ziggy_schema_json` now also reaches the blocked parser-emission boundary after the word-token lowering fix
 
 ## PR-Sized Slices
 

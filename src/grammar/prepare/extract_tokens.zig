@@ -108,7 +108,7 @@ const Extractor = struct {
         switch (word.kind) {
             .non_terminal => {
                 const variable = self.prepared.variables[word.index];
-                if (self.findLexicalVariable(variable.rule)) |terminal_index| {
+                if (self.tryEnsureLexicalVariable(variable.name, variable.rule)) |terminal_index| {
                     return .{ .terminal = terminal_index };
                 }
                 return error.InvalidWordToken;
@@ -534,8 +534,29 @@ const Extractor = struct {
     fn isLexicalRule(self: *Extractor, rule_id: ir_rules.RuleId) bool {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
             .string, .pattern => true,
-            .metadata => |metadata| (metadata.data.token or metadata.data.immediate_token) and self.isLexicalRule(metadata.inner),
+            .metadata => |metadata| (metadata.data.token or metadata.data.immediate_token) and self.isTokenContentRule(metadata.inner),
             else => false,
+        };
+    }
+
+    fn isTokenContentRule(self: *Extractor, rule_id: ir_rules.RuleId) bool {
+        return switch (self.prepared.rules[@intCast(rule_id)]) {
+            .string, .pattern => true,
+            .choice => |members| blk: {
+                for (members) |member| {
+                    if (!self.isTokenContentRule(member)) break :blk false;
+                }
+                break :blk true;
+            },
+            .seq => |members| blk: {
+                for (members) |member| {
+                    if (!self.isTokenContentRule(member)) break :blk false;
+                }
+                break :blk true;
+            },
+            .repeat, .repeat1 => |inner| self.isTokenContentRule(inner),
+            .metadata => |metadata| self.isTokenContentRule(metadata.inner),
+            .blank, .symbol => false,
         };
     }
 
@@ -1049,6 +1070,72 @@ test "extractTokens rejects external word tokens" {
     defer arena.deinit();
 
     try std.testing.expectError(error.InvalidWordToken, extractTokens(arena.allocator(), prepared));
+}
+
+test "extractTokens accepts word tokens backed by tokenized composite lexical rules" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "tokenized-composite-word-token",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+            .{
+                .name = "identifier",
+                .symbol = ir_symbols.SymbolId.nonTerminal(1),
+                .kind = .named,
+                .rule = 6,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{
+            .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) },
+            .{ .pattern = .{ .value = "[a-zA-Z_]", .flags = null } },
+            .{ .pattern = .{ .value = "[0-9]", .flags = null } },
+            .{ .choice = &.{ 1, 2 } },
+            .{ .repeat = 3 },
+            .{ .seq = &.{ 1, 4 } },
+            .{ .metadata = .{
+                .inner = 5,
+                .data = .{
+                    .token = true,
+                },
+            } },
+        },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(1),
+                .name = "identifier",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = ir_symbols.SymbolId.nonTerminal(1),
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expect(extracted.syntax.word_token != null);
+    try std.testing.expectEqual(@as(u32, 0), extracted.syntax.word_token.?.terminal);
+    try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
+    try std.testing.expectEqualStrings("identifier", extracted.lexical.variables[0].name);
+    try std.testing.expectEqual(@as(u32, 6), extracted.lexical.variables[0].rule);
 }
 
 test "extractTokens promotes hidden top-level repeats in place and removes them from inline symbols" {

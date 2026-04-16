@@ -6,7 +6,7 @@
     "failed_due_to_parser_only_gap": 2,
     "out_of_scope_for_scanner_boundary": 1,
     "infrastructure_failure": 0,
-    "blocked_targets": 3,
+    "blocked_targets": 4,
     "mismatch_categories": {
       "grammar_input_load_mismatch": 0,
       "preparation_lowering_mismatch": 0,
@@ -259,15 +259,15 @@
       },
       "emission": {
         "blocked": true,
-        "serialized_state_count": 1124,
-        "emitted_state_count": 1078,
+        "serialized_state_count": 1077,
+        "emitted_state_count": 1031,
         "merged_state_count": 46,
-        "action_entry_count": 3673,
-        "goto_entry_count": 681,
-        "unresolved_entry_count": 179,
-        "parser_tables_bytes": 157889,
-        "c_tables_bytes": 312147,
-        "parser_c_bytes": 493812
+        "action_entry_count": 3616,
+        "goto_entry_count": 680,
+        "unresolved_entry_count": 177,
+        "parser_tables_bytes": 154592,
+        "c_tables_bytes": 303291,
+        "parser_c_bytes": 475207
       }
     },
     {
@@ -283,9 +283,9 @@
       },
       "candidate_status": "deferred_later_wave",
       "expected_blocked": false,
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its InvalidWordToken parse-table gap is classified for promotion",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its blocked parser-emission gap is classified for promotion after the word-token lowering fix",
       "success_criteria": "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set",
-      "first_failed_stage": "serialize",
+      "first_failed_stage": "emit_parser_c",
       "final_classification": "failed_due_to_parser_only_gap",
       "mismatch_category": "parse_table_construction_gap",
       "load": {
@@ -297,20 +297,20 @@
         "detail": null
       },
       "serialize": {
-        "status": "failed",
-        "detail": "serialize failed: InvalidWordToken"
+        "status": "passed",
+        "detail": null
       },
       "emit_parser_tables": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "emit_c_tables": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "emit_parser_c": {
-        "status": "not_run",
-        "detail": null
+        "status": "failed",
+        "detail": "unexpected blocked status: expected false, got true"
       },
       "compat_check": {
         "status": "not_run",
@@ -320,7 +320,18 @@
         "status": "not_run",
         "detail": null
       },
-      "emission": null
+      "emission": {
+        "blocked": true,
+        "serialized_state_count": 198,
+        "emitted_state_count": 196,
+        "merged_state_count": 2,
+        "action_entry_count": 653,
+        "goto_entry_count": 223,
+        "unresolved_entry_count": 36,
+        "parser_tables_bytes": 30483,
+        "c_tables_bytes": 59361,
+        "parser_c_bytes": 102765
+      }
     },
     {
       "id": "parse_table_conflict_json",

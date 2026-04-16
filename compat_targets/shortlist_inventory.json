@@ -7,7 +7,7 @@
     "first_wave_non_passing": 0,
     "deferred_targets": 3,
     "excluded_targets": 1,
-    "blocked_targets": 3
+    "blocked_targets": 4
   },
   "in_scope_failures": [
     {
@@ -28,9 +28,9 @@
       "candidate_status": "deferred_later_wave",
       "final_classification": "failed_due_to_parser_only_gap",
       "mismatch_category": "parse_table_construction_gap",
-      "first_failed_stage": "serialize",
-      "detail": "serialize failed: InvalidWordToken",
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its InvalidWordToken parse-table gap is classified for promotion"
+      "first_failed_stage": "emit_parser_c",
+      "detail": "unexpected blocked status: expected false, got true",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its blocked parser-emission gap is classified for promotion after the word-token lowering fix"
     }
   ],
   "out_of_scope_targets": [
@@ -65,9 +65,9 @@
       "candidate_status": "deferred_later_wave",
       "final_classification": "failed_due_to_parser_only_gap",
       "mismatch_category": "parse_table_construction_gap",
-      "first_failed_stage": "serialize",
-      "detail": "serialize failed: InvalidWordToken",
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its InvalidWordToken parse-table gap is classified for promotion"
+      "first_failed_stage": "emit_parser_c",
+      "detail": "unexpected blocked status: expected false, got true",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its blocked parser-emission gap is classified for promotion after the word-token lowering fix"
     },
     {
       "id": "parse_table_conflict_json",

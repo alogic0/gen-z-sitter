@@ -98,7 +98,7 @@ pub const shortlist_targets = [_]Target{
         },
         .candidate_status = .deferred_later_wave,
         .expected_blocked = false,
-        .notes = "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its InvalidWordToken parse-table gap is classified for promotion",
+        .notes = "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its blocked parser-emission gap is classified for promotion after the word-token lowering fix",
         .success_criteria = "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set",
     },
     .{
