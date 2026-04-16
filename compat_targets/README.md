@@ -74,7 +74,8 @@ Current staged boundary summary:
 - 1 real external scanner snapshot is now onboarded but still deferred:
   - `tree_sitter_haskell_json`
   - it is the first real external scanner-family target in the shortlist
-  - it currently fails during external-boundary serialization because the scanner surface still uses unsupported features such as multiple external tokens and non-leading external steps
+  - it now passes structural first-boundary extraction
+  - it still defers the sampled scanner-boundary check because broader stateful multi-token external-scanner modeling is outside the current staged harness
 
 Recommended next step after this staged boundary:
 

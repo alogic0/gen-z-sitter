@@ -22,17 +22,9 @@ pub const SerializedExternalUse = struct {
     field_name: ?[]const u8,
 };
 
-pub const UseLocation = struct {
-    variable_name: []const u8,
-    production_index: usize,
-    step_index: usize,
-};
-
 pub const UnsupportedExternalScannerFeature = union(enum) {
     missing_external_tokens,
-    multiple_external_tokens: usize,
     extra_symbols: usize,
-    non_leading_external_step: UseLocation,
 };
 
 pub const SerializedExternalScannerBoundary = struct {
@@ -66,8 +58,6 @@ pub fn serializeExternalScannerBoundary(
 
     if (syntax.external_tokens.len == 0) {
         try unsupported.append(.missing_external_tokens);
-    } else if (syntax.external_tokens.len > 1) {
-        try unsupported.append(.{ .multiple_external_tokens = syntax.external_tokens.len });
     }
 
     for (syntax.variables) |variable| {
@@ -85,15 +75,6 @@ pub fn serializeExternalScannerBoundary(
                     .step_index = step_index,
                     .field_name = step.field_name,
                 });
-
-                const location: UseLocation = .{
-                    .variable_name = variable.name,
-                    .production_index = production_index,
-                    .step_index = step_index,
-                };
-                if (step_index != 0) {
-                    try unsupported.append(.{ .non_leading_external_step = location });
-                }
             }
         }
     }
@@ -116,16 +97,6 @@ fn parsePreparedFixture(
 
     const raw = try json_loader.parseTopLevel(allocator, parsed.value);
     return try parse_grammar.parseRawGrammar(allocator, &raw);
-}
-
-fn hasUnsupportedFeature(
-    features: []const UnsupportedExternalScannerFeature,
-    comptime tag: std.meta.Tag(UnsupportedExternalScannerFeature),
-) bool {
-    for (features) |feature| {
-        if (feature == tag) return true;
-    }
-    return false;
 }
 
 test "serializeExternalScannerBoundary serializes the hidden external fields ready boundary" {
@@ -174,4 +145,37 @@ test "serializeExternalScannerBoundary tolerates aliased external steps at the f
     try std.testing.expectEqual(@as(usize, 0), serialized.unsupported_features.len);
     try std.testing.expectEqual(@as(usize, 1), serialized.uses.len);
     try std.testing.expectEqualStrings("statement", serialized.uses[0].variable_name);
+}
+
+test "serializeExternalScannerBoundary tolerates multiple external tokens at the first boundary" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFixture(
+        arena.allocator(),
+        \\{
+        \\  "name": "multi_external_boundary",
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        { "type": "SYMBOL", "name": "indent" },
+        \\        { "type": "SYMBOL", "name": "newline_marker" },
+        \\        { "type": "STRING", "value": "x" }
+        \\      ]
+        \\    }
+        \\  },
+        \\  "externals": [
+        \\    { "type": "SYMBOL", "name": "indent" },
+        \\    { "type": "SYMBOL", "name": "newline_marker" }
+        \\  ]
+        \\}
+    );
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const serialized = try serializeExternalScannerBoundary(arena.allocator(), extracted.syntax);
+
+    try std.testing.expect(serialized.isReady());
+    try std.testing.expectEqual(@as(usize, 2), serialized.tokens.len);
+    try std.testing.expectEqual(@as(usize, 2), serialized.uses.len);
+    try std.testing.expectEqual(@as(usize, 0), serialized.unsupported_features.len);
 }

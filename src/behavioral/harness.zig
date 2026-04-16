@@ -74,6 +74,24 @@ pub fn simulatePreparedWithFirstExternalBoundary(
     );
 }
 
+pub fn simulateBuiltWithSerializedExternalBoundary(
+    allocator: std.mem.Allocator,
+    result: build.BuildResult,
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
+    input: []const u8,
+) BehavioralError!SimulationResult {
+    return simulateBuiltWithFirstExternalBoundary(
+        allocator,
+        result,
+        prepared,
+        lexical,
+        external_boundary,
+        input,
+    );
+}
+
 fn simulateBuiltScannerFree(
     allocator: std.mem.Allocator,
     result: build.BuildResult,

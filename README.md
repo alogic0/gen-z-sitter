@@ -117,7 +117,7 @@ Current staged compatibility boundary:
 - real external scanner proof is now exposed separately under `compat_targets/`:
   - `compat_targets/external_scanner_repo_inventory.json`
   - it now records the first onboarded real external scanner target: `tree_sitter_haskell_json`
-  - that target is currently deferred at external-boundary serialization because the scanner surface still uses unsupported features such as multiple external tokens and non-leading external steps
+  - that target is currently deferred after structural first-boundary extraction, because the next honest check still requires broader stateful multi-token external-scanner modeling than the current sampled harness provides
   - the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos still do not change that scanner story, because their available snapshots have `externals: []` and no scanner implementation files
 - parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
   - `compat_targets/shortlist.json`
@@ -161,6 +161,9 @@ Current staged compatibility boundary:
   - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it now rejects on the staged blocked path as `missing_action` rather than advancing into a promoted parser-only pass
 - scanner/external-scanner proof is staged as a narrow promoted multi-family wave rather than left entirely out of the shortlist
 - real external scanner evidence is now no longer empty, but it is still deferred behind the first onboarded Haskell scanner boundary
+- that real external Haskell boundary is now explicit:
+  - structural first-boundary extraction passes
+  - sampled behavioral scanner proof is still deferred for that target
 - the current checked-in coverage decision now points back to scanner and external-scanner compatibility onboarding because `tree_sitter_haskell_json` is a real deferred external scanner target
 
 ## Repository Layout

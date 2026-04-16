@@ -33,12 +33,7 @@ pub fn writeSerializedExternalScanner(
     for (serialized.unsupported_features, 0..) |feature, index| {
         switch (feature) {
             .missing_external_tokens => try writer.print("feature {d} missing_external_tokens\n", .{index}),
-            .multiple_external_tokens => |count| try writer.print("feature {d} multiple_external_tokens {d}\n", .{ index, count }),
             .extra_symbols => |count| try writer.print("feature {d} extra_symbols {d}\n", .{ index, count }),
-            .non_leading_external_step => |location| try writer.print(
-                "feature {d} non_leading_external_step {s} production {d} step {d}\n",
-                .{ index, location.variable_name, location.production_index, location.step_index },
-            ),
         }
     }
 }

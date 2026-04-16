@@ -20,7 +20,7 @@
       "upstream_grammar_path": "src/grammar.json",
       "final_classification": "deferred_for_scanner_boundary",
       "mismatch_category": "scanner_external_scanner_boundary_gap",
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c"
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; current M29 support stops at the structural first-boundary surface rather than a full sampled behavioral check"
     }
   ]
 }

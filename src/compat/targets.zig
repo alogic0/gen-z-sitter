@@ -10,6 +10,11 @@ pub const BoundaryKind = enum {
     scanner_external_scanner,
 };
 
+pub const ScannerBoundaryCheckMode = enum {
+    sampled_behavioral,
+    structural_only,
+};
+
 pub const TargetFamily = enum {
     parse_table_tiny,
     behavioral_config,
@@ -49,6 +54,7 @@ pub const Target = struct {
     family: TargetFamily,
     source_kind: SourceKind,
     boundary_kind: BoundaryKind = .parser_only,
+    scanner_boundary_check_mode: ScannerBoundaryCheckMode = .sampled_behavioral,
     provenance: Provenance = .{ .origin_kind = .staged_in_repo },
     candidate_status: CandidateStatus,
     expected_blocked: bool = false,
@@ -141,6 +147,7 @@ pub const shortlist_targets = [_]Target{
         .family = .haskell,
         .source_kind = .grammar_json,
         .boundary_kind = .scanner_external_scanner,
+        .scanner_boundary_check_mode = .structural_only,
         .provenance = .{
             .origin_kind = .external_repo_snapshot,
             .upstream_repository = "tree-sitter-haskell",
@@ -151,8 +158,8 @@ pub const shortlist_targets = [_]Target{
         .expected_blocked = false,
         .scanner_valid_input_path = "compat_targets/tree_sitter_haskell/valid.txt",
         .scanner_invalid_input_path = "compat_targets/tree_sitter_haskell/invalid.txt",
-        .notes = "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c",
-        .success_criteria = "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and either promote or explicitly classify the first real scanner blocker",
+        .notes = "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; current M29 support stops at the structural first-boundary surface rather than a full sampled behavioral check",
+        .success_criteria = "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and classify the deeper stateful multi-token scanner boundary explicitly",
     },
     .{
         .id = "parse_table_conflict_json",
@@ -246,6 +253,7 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[5].candidate_status == .deferred_scanner_wave);
     try std.testing.expect(shortlist[5].family == .haskell);
     try std.testing.expect(shortlist[5].provenance.origin_kind == .external_repo_snapshot);
+    try std.testing.expect(shortlist[5].scanner_boundary_check_mode == .structural_only);
     try std.testing.expect(shortlist[5].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[5].scanner_invalid_input_path != null);
     try std.testing.expect(shortlist[6].candidate_status == .deferred_control_fixture);

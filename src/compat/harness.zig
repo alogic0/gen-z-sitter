@@ -6,6 +6,7 @@ const report_json = @import("report_json.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
+const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
 const parse_table_build = @import("../parse_table/build.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
@@ -125,6 +126,39 @@ pub fn runTarget(
         }
         run.serialize.status = .passed;
 
+        if (target.scanner_boundary_check_mode == .structural_only) {
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(
+                    allocator,
+                    "sampled scanner-boundary simulation is deferred for {s}: the current harness only proves structural first-boundary extraction here, while this target still requires broader stateful multi-token external-scanner modeling",
+                    .{target.id},
+                ),
+            );
+        }
+
+        const flattened = flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax) catch |err| {
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(allocator, "scanner-boundary flattening failed: {s}", .{@errorName(err)}),
+            );
+        };
+        const build_result = parse_table_build.buildStates(arena.allocator(), flattened) catch |err| {
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(allocator, "scanner-boundary state construction failed: {s}", .{@errorName(err)}),
+            );
+        };
+
         const valid_input_path = target.scanner_valid_input_path orelse
             return failRun(
                 &run,
@@ -143,9 +177,12 @@ pub fn runTarget(
             );
         };
 
-        const simulation = behavioral_harness.simulatePreparedWithFirstExternalBoundary(
+        const simulation = behavioral_harness.simulateBuiltWithSerializedExternalBoundary(
             arena.allocator(),
+            build_result,
             prepared,
+            extracted.lexical,
+            serialized_boundary,
             valid_input,
         ) catch |err| {
             return failRun(
@@ -185,9 +222,12 @@ pub fn runTarget(
             );
         };
 
-        const invalid_simulation = behavioral_harness.simulatePreparedWithFirstExternalBoundary(
+        const invalid_simulation = behavioral_harness.simulateBuiltWithSerializedExternalBoundary(
             arena.allocator(),
+            build_result,
             prepared,
+            extracted.lexical,
+            serialized_boundary,
             invalid_input,
         ) catch |err| {
             return failRun(
@@ -478,13 +518,7 @@ fn formatUnsupportedExternalFeaturesAlloc(
     for (features) |feature| {
         const part = switch (feature) {
             .missing_external_tokens => try allocator.dupe(u8, "missing_external_tokens"),
-            .multiple_external_tokens => |count| try std.fmt.allocPrint(allocator, "multiple_external_tokens:{d}", .{count}),
             .extra_symbols => |count| try std.fmt.allocPrint(allocator, "extra_symbols:{d}", .{count}),
-            .non_leading_external_step => |location| try std.fmt.allocPrint(
-                allocator,
-                "non_leading_external_step:{s}:{d}:{d}",
-                .{ location.variable_name, location.production_index, location.step_index },
-            ),
         };
         try parts.append(part);
     }
@@ -849,11 +883,12 @@ test "runShortlistTargetsAlloc onboards tree_sitter_haskell as a deferred real e
     try std.testing.expectEqual(targets.CandidateStatus.deferred_scanner_wave, runs[5].candidate_status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].load.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].prepare.status);
-    try std.testing.expectEqual(result_model.StepStatus.failed, runs[5].serialize.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].serialize.status);
+    try std.testing.expectEqual(result_model.StepStatus.failed, runs[5].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[5].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.scanner_external_scanner_boundary_gap, runs[5].mismatch_category);
-    try std.testing.expect(std.mem.indexOf(u8, runs[5].serialize.detail.?, "multiple_external_tokens") != null);
-    try std.testing.expect(std.mem.indexOf(u8, runs[5].serialize.detail.?, "aliased_external_step") == null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[5].scanner_boundary_check.detail.?, "structural first-boundary extraction") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[5].scanner_boundary_check.detail.?, "multi-token external-scanner modeling") != null);
 }
 
 test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked control case" {

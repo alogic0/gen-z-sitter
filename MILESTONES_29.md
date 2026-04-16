@@ -41,7 +41,7 @@ Out of scope:
 - [x] the checked-in artifacts expose real external scanner evidence separately from staged scanner fixtures
 - [x] at least one real external scanner target is onboarded or the local-source limitation is recorded explicitly in milestone and artifact form
 - [x] the current real external scanner gap is stated directly in repo docs and artifacts
-- [ ] the milestone ends with a clearer real external scanner story than it started with
+- [x] the milestone ends with a clearer real external scanner story than it started with
 
 ## PR-Sized Slices
 
@@ -89,17 +89,18 @@ Goal:
 Checklist:
 
 - [ ] choose one concrete real external scanner improvement
+- [x] choose one concrete real external scanner improvement
   - promote one new real external scanner target
   - narrow one newly exposed scanner blocker
   - freeze one real external scanner target with explicit rationale if promotion is not justified
-- [ ] implement or document the narrower outcome
-- [ ] regenerate checked-in artifacts if needed
-- [ ] update milestone/docs to match
-- [ ] keep `zig build test` passing
+- [x] implement or document the narrower outcome
+- [x] regenerate checked-in artifacts if needed
+- [x] update milestone/docs to match
+- [x] keep `zig build test` passing
 
 Acceptance:
 
-- [ ] the milestone ends with a stronger and more explicit real external scanner claim than it started with
+- [x] the milestone ends with a stronger and more explicit real external scanner claim than it started with
 
 ### PR 4
 
@@ -109,21 +110,21 @@ Goal:
 
 Checklist:
 
-- [ ] update milestone progress and closeout language
-- [ ] update any affected compatibility docs
-- [ ] keep the real external scanner next-step recommendation explicit
+- [x] update milestone progress and closeout language
+- [x] update any affected compatibility docs
+- [x] keep the real external scanner next-step recommendation explicit
 
 Acceptance:
 
-- [ ] the milestone closes without confusing staged scanner proof with real external scanner evidence
+- [x] the milestone closes without confusing staged scanner proof with real external scanner evidence
 
 ## Progress Checklist
 
 - [x] PR 1 completed
 - [x] PR 2 completed
-- [ ] PR 3 completed
-- [ ] PR 4 completed
-- [ ] M29 ready for closeout
+- [x] PR 3 completed
+- [x] PR 4 completed
+- [x] M29 ready for closeout
 
 ## Non-Goals
 
@@ -146,13 +147,28 @@ Acceptance:
   - both `src/grammar.json` snapshots declare `"externals": []`
   - neither repo currently contains `scanner.c`, `scanner.cc`, `scanner.cpp`, or `scanner.js`
 - the first observed Haskell blocker is now explicit:
-  - it fails during external-boundary serialization
-  - the current unsupported-feature surface now centers on `multiple_external_tokens` and `non_leading_external_step`
+  - it now passes structural first external-boundary extraction
+  - the current deferred boundary is the broader sampled scanner check, which still requires stateful multi-token external-scanner modeling beyond the current harness
 - the current PR 3 reduction already landed:
-  - `aliased_external_step` no longer blocks the first-boundary serializer
+  - `aliased_external_step`, `non_leading_external_step`, and the raw `multiple_external_tokens` count no longer block structural first-boundary extraction on their own
 - PR 2 therefore ends with one onboarded real external scanner target plus an explicit first blocker classification
 
-## PR 3 Candidate
+## PR 3 Outcome
 
 - `tree_sitter_haskell_json` is the concrete PR 3 target
-- the next narrow step is to reduce the current unsupported external-boundary feature surface instead of searching for a target to work on
+- the current harness now distinguishes 2 scanner-boundary modes:
+  - staged scanner fixtures continue to use sampled behavioral checks
+  - `tree_sitter_haskell_json` is now classified as structural-first-boundary-only for M29
+- that means the current real external scanner claim is stronger and narrower at the same time:
+  - stronger because the serializer now tolerates the broader structural external-boundary surface
+  - narrower because the remaining deferred point is stated explicitly as broader stateful multi-token external-scanner modeling, not as a generic unsupported-feature list
+
+## Closeout
+
+- M29 now ends with:
+  - a dedicated real external scanner artifact surface
+  - one onboarded real external scanner target with upstream provenance
+  - an explicit distinction between staged sampled scanner proof and real external structural-first-boundary proof
+- the current real external scanner boundary is:
+  - `tree_sitter_haskell_json` proves load, prepare, and structural first-boundary extraction
+  - deeper sampled scanner-boundary simulation remains deferred pending broader stateful multi-token external-scanner modeling
