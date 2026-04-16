@@ -768,7 +768,7 @@ pub fn parseTableMetadataEmitterDump() Fixture {
         .name = "parse_table_metadata_emitter_dump",
         .contents =
             \\parser_tables blocked=false
-            \\state_count=7
+            \\state_count=5
             \\state 0 {
             \\  action terminal:1 shift 3
             \\  goto non_terminal:0 1
@@ -787,14 +787,8 @@ pub fn parseTableMetadataEmitterDump() Fixture {
             \\}
             \\
             \\state 4 {
-            \\  action terminal:1 shift 6
-            \\  goto non_terminal:1 5
-            \\}
-            \\
-            \\state 5 {
-            \\}
-            \\
-            \\state 6 {
+            \\  action terminal:1 shift 1
+            \\  goto non_terminal:1 1
             \\}
         ,
     };
@@ -841,7 +835,7 @@ pub fn parseTableMetadataCTablesDump() Fixture {
         .contents =
             \\/* generated parser table skeleton */
             \\#define TS_SERIALIZED_TABLE_BLOCKED false
-            \\#define TS_STATE_COUNT 7
+            \\#define TS_STATE_COUNT 5
             \\
             \\/* state 0 */
             \\static const unsigned TS_STATE_0_ACTION_COUNT = 1;
@@ -866,17 +860,9 @@ pub fn parseTableMetadataCTablesDump() Fixture {
             \\
             \\/* state 4 */
             \\static const unsigned TS_STATE_4_ACTION_COUNT = 1;
-            \\/* action[0] terminal:1 shift 6 */
+            \\/* action[0] terminal:1 shift 1 */
             \\static const unsigned TS_STATE_4_GOTO_COUNT = 1;
-            \\/* goto[0] non_terminal:1 -> 5 */
-            \\
-            \\/* state 5 */
-            \\static const unsigned TS_STATE_5_ACTION_COUNT = 0;
-            \\static const unsigned TS_STATE_5_GOTO_COUNT = 0;
-            \\
-            \\/* state 6 */
-            \\static const unsigned TS_STATE_6_ACTION_COUNT = 0;
-            \\static const unsigned TS_STATE_6_GOTO_COUNT = 0;
+            \\/* goto[0] non_terminal:1 -> 1 */
             \\
         ,
     };
