@@ -42,7 +42,7 @@ The immediate next goals are:
 
 - keep the now-proven parser-only boundary explicit and defensible in checked-in compatibility artifacts
 - treat `parse_table_conflict_json` as an intentional frozen control fixture rather than a live promotion gap
-- onboard the first staged scanner and external-scanner targets without overstating runtime parity
+- broaden scanner and external-scanner evidence beyond the first staged boundary without overstating runtime parity
 - keep parser-output optimization measurable while deeper parse-table compression/minimization remains future work
 
 ## Quick Start
@@ -115,15 +115,15 @@ Current staged compatibility boundary:
 - the shortlist now carries one intentionally deferred parser-only control fixture:
   - `parse_table_conflict_json`
   - it remains blocked on purpose as a known ambiguity boundary without precedence annotations
-- the shortlist now also carries an initial deferred scanner wave:
+- the shortlist now also carries an initial promoted scanner wave:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`
-  - both currently prove load, prepare, and first external-boundary extraction only
+  - both currently prove load, prepare, first external-boundary extraction, and compatibility-safe valid-path behavior through the staged scanner boundary
 - the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
   - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it now rejects on the staged blocked path as `missing_action` rather than advancing into a promoted parser-only pass
-- scanner/external-scanner proof is now staged as a deferred onboarding wave rather than left entirely out of the shortlist
+- scanner/external-scanner proof is now staged as a narrow promoted wave rather than left entirely out of the shortlist
 - the current promoted milestone is scanner and external-scanner compatibility onboarding
 
 ## Repository Layout

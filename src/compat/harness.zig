@@ -14,6 +14,7 @@ const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const compat_checks = @import("../parser_emit/compat_checks.zig");
 const emit_optimize = @import("../parser_emit/optimize.zig");
 const scanner_serialize = @import("../scanner/serialize.zig");
+const behavioral_harness = @import("../behavioral/harness.zig");
 
 pub const RunOptions = struct {
     optimize: emit_optimize.Options = .{},
@@ -112,18 +113,52 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "external-scanner boundary extraction failed: {s}", .{@errorName(err)}),
             );
         };
+        run.serialize.status = .passed;
 
-        return failRun(
-            &run,
-            .serialize,
-            .deferred_for_scanner_boundary,
-            .scanner_external_scanner_boundary_gap,
-            try std.fmt.allocPrint(
-                allocator,
-                "scanner target reached the staged external-scanner boundary after load and prepare: {s}",
-                .{target.notes},
-            ),
-        );
+        const valid_input_path = target.scanner_valid_input_path orelse
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(allocator, "scanner target is missing a valid input path: {s}", .{target.id}),
+            );
+        const valid_input = std.fs.cwd().readFileAlloc(arena.allocator(), valid_input_path, 64 * 1024) catch |err| {
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .infrastructure_failure,
+                .infrastructure_failure,
+                try std.fmt.allocPrint(allocator, "failed to read scanner valid input {s}: {s}", .{ valid_input_path, @errorName(err) }),
+            );
+        };
+
+        const simulation = behavioral_harness.simulatePreparedWithFirstExternalBoundary(
+            arena.allocator(),
+            prepared,
+            valid_input,
+        ) catch |err| {
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(allocator, "scanner valid-path simulation failed: {s}", .{@errorName(err)}),
+            );
+        };
+
+        if (!isCompatibilitySafeValidResult(simulation)) {
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(allocator, "scanner valid-path simulation was not compatibility-safe for {s}", .{target.id}),
+            );
+        }
+
+        run.scanner_boundary_check.status = .passed;
+        return run;
     }
 
     const serialized = parse_table_pipeline.serializeTableFromPrepared(arena.allocator(), prepared, .diagnostic) catch |err| {
@@ -287,11 +322,19 @@ fn stepForName(run: *result_model.TargetRunResult, stage: result_model.StepName)
         .load => &run.load,
         .prepare => &run.prepare,
         .serialize => &run.serialize,
+        .scanner_boundary_check => &run.scanner_boundary_check,
         .emit_parser_tables => &run.emit_parser_tables,
         .emit_c_tables => &run.emit_c_tables,
         .emit_parser_c => &run.emit_parser_c,
         .compat_check => &run.compat_check,
         .compile_smoke => &run.compile_smoke,
+    };
+}
+
+fn isCompatibilitySafeValidResult(result: behavioral_harness.SimulationResult) bool {
+    return switch (result) {
+        .accepted => |accepted| accepted.consumed_bytes > 0 and accepted.shifted_tokens > 0,
+        .rejected => |rejected| rejected.consumed_bytes > 0 and rejected.shifted_tokens > 0 and rejected.reason != .unresolved_decision and rejected.reason != .missing_goto,
     };
 }
 
@@ -656,6 +699,7 @@ test "runStagedTargetsAlloc can be rendered to a deterministic JSON report" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"tree_sitter_ziggy_json\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"tree_sitter_ziggy_schema_json\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"hidden_external_fields_json\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"hidden_external_fields_js\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"blocked_targets\"") != null);
 }
 
@@ -668,8 +712,8 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     try std.testing.expectEqual(@as(usize, 8), runs.len);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[6].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[7].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[6].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
 }
 
 test "runShortlistTargetsAlloc promotes the external Ziggy targets and keeps only staged blocked controls" {
@@ -687,8 +731,8 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets and keeps onl
     try std.testing.expect(runs[5].blocked_boundary != null);
     try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[5].mismatch_category);
     try std.testing.expectEqual(@as(usize, 1), runs[5].blocked_boundary.?.reasons.shift_reduce);
-    try std.testing.expectEqual(result_model.MismatchCategory.scanner_external_scanner_boundary_gap, runs[6].mismatch_category);
-    try std.testing.expectEqual(result_model.MismatchCategory.scanner_external_scanner_boundary_gap, runs[7].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[6].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[7].mismatch_category);
 }
 
 test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked control case" {
@@ -709,23 +753,25 @@ test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked
     try std.testing.expect(std.mem.indexOf(u8, runs[5].notes, "intentionally ambiguous") != null);
 }
 
-test "runShortlistTargetsAlloc onboards scanner-wave targets through load and prepare" {
+test "runShortlistTargetsAlloc promotes scanner-wave targets through the staged scanner boundary" {
     const allocator = std.testing.allocator;
 
     const runs = try runShortlistTargetsAlloc(allocator, .{});
     defer result_model.deinitRunResults(allocator, runs);
 
     try std.testing.expectEqualStrings("hidden_external_fields_json", runs[6].id);
-    try std.testing.expectEqual(targets.CandidateStatus.deferred_scanner_wave, runs[6].candidate_status);
+    try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[6].candidate_status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[6].load.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[6].prepare.status);
-    try std.testing.expectEqual(result_model.StepStatus.failed, runs[6].serialize.status);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[6].final_classification);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[6].serialize.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[6].scanner_boundary_check.status);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[6].final_classification);
 
     try std.testing.expectEqualStrings("hidden_external_fields_js", runs[7].id);
-    try std.testing.expectEqual(targets.CandidateStatus.deferred_scanner_wave, runs[7].candidate_status);
+    try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[7].candidate_status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].load.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].prepare.status);
-    try std.testing.expectEqual(result_model.StepStatus.failed, runs[7].serialize.status);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_scanner_boundary, runs[7].final_classification);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].serialize.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].scanner_boundary_check.status);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
 }

@@ -17,6 +17,7 @@ pub const OriginKind = enum {
 
 pub const CandidateStatus = enum {
     intended_first_wave,
+    intended_scanner_wave,
     deferred_control_fixture,
     deferred_scanner_wave,
     excluded_out_of_scope,
@@ -38,6 +39,7 @@ pub const Target = struct {
     provenance: Provenance = .{ .origin_kind = .staged_in_repo },
     candidate_status: CandidateStatus,
     expected_blocked: bool = false,
+    scanner_valid_input_path: ?[]const u8 = null,
     notes: []const u8,
     success_criteria: []const u8,
 };
@@ -132,10 +134,11 @@ pub const shortlist_targets = [_]Target{
         .source_kind = .grammar_json,
         .boundary_kind = .scanner_external_scanner,
         .provenance = .{ .origin_kind = .staged_in_repo },
-        .candidate_status = .deferred_scanner_wave,
+        .candidate_status = .intended_scanner_wave,
         .expected_blocked = false,
-        .notes = "staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only",
-        .success_criteria = "load, prepare, and reach the staged external-scanner boundary while scanner-specific reporting remains explicit",
+        .scanner_valid_input_path = "compat_targets/hidden_external_fields/valid.txt",
+        .notes = "staged external-scanner JSON target promoted into the first scanner wave when the valid path stays compatibility-safe through the first external boundary",
+        .success_criteria = "load, prepare, extract the first external-scanner boundary, and keep the valid-path simulation compatibility-safe",
     },
     .{
         .id = "hidden_external_fields_js",
@@ -144,10 +147,11 @@ pub const shortlist_targets = [_]Target{
         .source_kind = .grammar_js,
         .boundary_kind = .scanner_external_scanner,
         .provenance = .{ .origin_kind = .staged_in_repo },
-        .candidate_status = .deferred_scanner_wave,
+        .candidate_status = .intended_scanner_wave,
         .expected_blocked = false,
-        .notes = "staged external-scanner JS target that mirrors the JSON fixture through the node loader path",
-        .success_criteria = "load through node, prepare, and reach the staged external-scanner boundary while scanner-specific reporting remains explicit",
+        .scanner_valid_input_path = "compat_targets/hidden_external_fields/valid.txt",
+        .notes = "staged external-scanner JS target promoted into the first scanner wave when the valid path stays compatibility-safe through the node loader and first external boundary",
+        .success_criteria = "load through node, prepare, extract the first external-scanner boundary, and keep the valid-path simulation compatibility-safe",
     },
 };
 
@@ -166,8 +170,9 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[5].candidate_status == .deferred_control_fixture);
-    try std.testing.expect(shortlist[6].candidate_status == .deferred_scanner_wave);
+    try std.testing.expect(shortlist[6].candidate_status == .intended_scanner_wave);
     try std.testing.expect(shortlist[7].boundary_kind == .scanner_external_scanner);
+    try std.testing.expect(shortlist[7].scanner_valid_input_path != null);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {

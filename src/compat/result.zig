@@ -5,6 +5,7 @@ pub const StepName = enum {
     load,
     prepare,
     serialize,
+    scanner_boundary_check,
     emit_parser_tables,
     emit_c_tables,
     emit_parser_c,
@@ -200,6 +201,7 @@ pub const TargetRunResult = struct {
     emit_parser_tables: StepResult = .{},
     emit_c_tables: StepResult = .{},
     emit_parser_c: StepResult = .{},
+    scanner_boundary_check: StepResult = .{},
     compat_check: StepResult = .{},
     compile_smoke: StepResult = .{},
     emission: ?EmissionSnapshot = null,
@@ -227,6 +229,7 @@ pub const TargetRunResult = struct {
         self.emit_parser_tables.deinit(allocator);
         self.emit_c_tables.deinit(allocator);
         self.emit_parser_c.deinit(allocator);
+        self.scanner_boundary_check.deinit(allocator);
         self.compat_check.deinit(allocator);
         self.compile_smoke.deinit(allocator);
         if (self.blocked_boundary) |*blocked_boundary| blocked_boundary.deinit(allocator);

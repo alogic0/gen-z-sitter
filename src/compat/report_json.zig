@@ -6,6 +6,8 @@ pub const AggregateCounts = struct {
     total_targets: usize,
     first_wave_targets: usize,
     first_wave_passed: usize,
+    scanner_wave_targets: usize,
+    scanner_wave_passed: usize,
     deferred_control_targets: usize,
     deferred_scanner_targets: usize,
     passed_within_current_boundary: usize,
@@ -48,6 +50,8 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
         .total_targets = results.len,
         .first_wave_targets = 0,
         .first_wave_passed = 0,
+        .scanner_wave_targets = 0,
+        .scanner_wave_passed = 0,
         .deferred_control_targets = 0,
         .deferred_scanner_targets = 0,
         .passed_within_current_boundary = 0,
@@ -74,6 +78,7 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
     for (results) |run| {
         switch (run.candidate_status) {
             .intended_first_wave => counts.first_wave_targets += 1,
+            .intended_scanner_wave => counts.scanner_wave_targets += 1,
             .deferred_control_fixture => counts.deferred_control_targets += 1,
             .deferred_scanner_wave => counts.deferred_scanner_targets += 1,
             .excluded_out_of_scope => {},
@@ -82,6 +87,7 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
             .passed_within_current_boundary => {
                 counts.passed_within_current_boundary += 1;
                 if (run.candidate_status == .intended_first_wave) counts.first_wave_passed += 1;
+                if (run.candidate_status == .intended_scanner_wave) counts.scanner_wave_passed += 1;
             },
             .deferred_for_scanner_boundary => counts.deferred_for_scanner_boundary += 1,
             .failed_due_to_parser_only_gap => counts.failed_due_to_parser_only_gap += 1,

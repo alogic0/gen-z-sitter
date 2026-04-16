@@ -7,6 +7,7 @@
   "proven_boundary": [
     "5 intended first-wave parser-only targets are currently in the run set",
     "5 intended first-wave targets currently pass within the staged parser-only boundary",
+    "2 intended scanner-wave targets currently pass within the staged scanner boundary",
     "2 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
   ],
   "deferred_parser_only_targets": [
@@ -17,24 +18,11 @@
       "notes": "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations"
     }
   ],
-  "deferred_scanner_targets": [
-    {
-      "id": "hidden_external_fields_json",
-      "display_name": "Hidden External Fields (JSON)",
-      "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
-      "notes": "staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only"
-    },
-    {
-      "id": "hidden_external_fields_js",
-      "display_name": "Hidden External Fields (JS)",
-      "grammar_path": "compat_targets/hidden_external_fields/grammar.js",
-      "notes": "staged external-scanner JS target that mirrors the JSON fixture through the node loader path"
-    }
-  ],
+  "deferred_scanner_targets": [],
   "recommended_next_milestone": "scanner_and_external_scanner_compatibility_onboarding",
   "recommendation_rationale": [
     "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
     "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
-    "scanner and external-scanner targets are now onboarded as a deferred wave, so the current promoted milestone should focus on classifying and shrinking those scanner-specific gaps"
+    "the initial staged scanner wave now has compatibility-safe promoted targets, so the current promoted milestone should focus on broadening scanner evidence rather than re-establishing the first boundary"
   ]
 }

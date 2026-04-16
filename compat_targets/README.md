@@ -11,7 +11,7 @@ Current proof layers:
 - parser-only shortlist proof
   - the current staged shortlist executed by the compatibility harness
 - scanner/external-scanner onboarding proof
-  - tracked explicitly as a deferred wave, but not yet promoted into a proven scanner boundary
+  - tracked explicitly as a narrow promoted wave at the first staged external-scanner boundary
 
 Versioned artifacts:
 
@@ -39,11 +39,11 @@ Current staged boundary summary:
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`
   - this is now treated explicitly as an intentional ambiguity/control fixture, not as an unresolved external parser-only promotion gap
-- 2 staged scanner/external-scanner targets are now onboarded as a deferred wave:
+- 2 staged scanner/external-scanner targets now pass within the first scanner wave:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`
-  - both currently prove load, prepare, and first external-boundary extraction only
+  - both currently prove load, prepare, first external-boundary extraction, and compatibility-safe valid-path behavior
 
 Recommended next step after this staged boundary:
 
-- keep the parser-only boundary stable while classifying and shrinking scanner-specific gaps in the deferred scanner wave
+- keep the parser-only boundary stable while broadening scanner evidence beyond the first staged external-scanner boundary

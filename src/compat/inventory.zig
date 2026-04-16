@@ -8,6 +8,9 @@ pub const BoundarySummary = struct {
     first_wave_targets: usize,
     first_wave_passed: usize,
     first_wave_non_passing: usize,
+    scanner_wave_targets: usize,
+    scanner_wave_passed: usize,
+    scanner_wave_non_passing: usize,
     deferred_control_targets: usize,
     deferred_scanner_targets: usize,
     excluded_targets: usize,
@@ -34,6 +37,7 @@ pub const InventoryReport = struct {
     schema_version: u32,
     boundary: BoundarySummary,
     proven_first_wave_targets: []InventoryEntry,
+    proven_scanner_wave_targets: []InventoryEntry,
     deferred_control_targets: []InventoryEntry,
     deferred_scanner_targets: []InventoryEntry,
     in_scope_failures: []InventoryEntry,
@@ -41,6 +45,7 @@ pub const InventoryReport = struct {
 
     pub fn deinit(self: *InventoryReport, allocator: std.mem.Allocator) void {
         deinitInventoryEntries(allocator, self.proven_first_wave_targets);
+        deinitInventoryEntries(allocator, self.proven_scanner_wave_targets);
         deinitInventoryEntries(allocator, self.deferred_control_targets);
         deinitInventoryEntries(allocator, self.deferred_scanner_targets);
         deinitInventoryEntries(allocator, self.in_scope_failures);
@@ -57,6 +62,7 @@ pub fn buildInventoryReportAlloc(
         .schema_version = 1,
         .boundary = collectBoundarySummary(runs),
         .proven_first_wave_targets = try collectEntriesAlloc(allocator, runs, includeProvenFirstWaveTarget),
+        .proven_scanner_wave_targets = try collectEntriesAlloc(allocator, runs, includeProvenScannerWaveTarget),
         .deferred_control_targets = try collectEntriesAlloc(allocator, runs, includeDeferredControl),
         .deferred_scanner_targets = try collectEntriesAlloc(allocator, runs, includeDeferredScannerTarget),
         .in_scope_failures = try collectEntriesAlloc(allocator, runs, includeInScopeFailure),
@@ -79,6 +85,9 @@ pub fn collectBoundarySummary(runs: []const result_model.TargetRunResult) Bounda
         .first_wave_targets = 0,
         .first_wave_passed = 0,
         .first_wave_non_passing = 0,
+        .scanner_wave_targets = 0,
+        .scanner_wave_passed = 0,
+        .scanner_wave_non_passing = 0,
         .deferred_control_targets = 0,
         .deferred_scanner_targets = 0,
         .excluded_targets = 0,
@@ -94,6 +103,14 @@ pub fn collectBoundarySummary(runs: []const result_model.TargetRunResult) Bounda
                     summary.first_wave_passed += 1;
                 } else {
                     summary.first_wave_non_passing += 1;
+                }
+            },
+            .intended_scanner_wave => {
+                summary.scanner_wave_targets += 1;
+                if (run.final_classification == .passed_within_current_boundary) {
+                    summary.scanner_wave_passed += 1;
+                } else {
+                    summary.scanner_wave_non_passing += 1;
                 }
             },
             .deferred_control_fixture => summary.deferred_control_targets += 1,
@@ -164,6 +181,7 @@ fn firstFailureDetail(run: result_model.TargetRunResult) ?[]const u8 {
             .load => run.load.detail,
             .prepare => run.prepare.detail,
             .serialize => run.serialize.detail,
+            .scanner_boundary_check => run.scanner_boundary_check.detail,
             .emit_parser_tables => run.emit_parser_tables.detail,
             .emit_c_tables => run.emit_c_tables.detail,
             .emit_parser_c => run.emit_parser_c.detail,
@@ -184,6 +202,10 @@ fn includeProvenFirstWaveTarget(run: result_model.TargetRunResult) bool {
 
 fn includeDeferredControl(run: result_model.TargetRunResult) bool {
     return run.candidate_status == .deferred_control_fixture;
+}
+
+fn includeProvenScannerWaveTarget(run: result_model.TargetRunResult) bool {
+    return run.candidate_status == .intended_scanner_wave and run.final_classification == .passed_within_current_boundary;
 }
 
 fn includeDeferredScannerTarget(run: result_model.TargetRunResult) bool {
@@ -207,13 +229,16 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     try std.testing.expectEqual(@as(usize, 8), report.boundary.total_shortlist_targets);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_targets);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_passed);
+    try std.testing.expectEqual(@as(usize, 2), report.boundary.scanner_wave_targets);
+    try std.testing.expectEqual(@as(usize, 2), report.boundary.scanner_wave_passed);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_control_targets);
-    try std.testing.expectEqual(@as(usize, 2), report.boundary.deferred_scanner_targets);
+    try std.testing.expectEqual(@as(usize, 0), report.boundary.deferred_scanner_targets);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.excluded_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.blocked_control_targets);
     try std.testing.expectEqual(@as(usize, 5), report.proven_first_wave_targets.len);
+    try std.testing.expectEqual(@as(usize, 2), report.proven_scanner_wave_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
-    try std.testing.expectEqual(@as(usize, 2), report.deferred_scanner_targets.len);
+    try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
 }
 
 test "renderInventoryReportAlloc emits deterministic boundary JSON" {
@@ -228,6 +253,7 @@ test "renderInventoryReportAlloc emits deterministic boundary JSON" {
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"boundary\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"proven_first_wave_targets\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"proven_scanner_wave_targets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"deferred_control_targets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"deferred_scanner_targets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"in_scope_failures\"") != null);

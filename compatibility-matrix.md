@@ -99,8 +99,8 @@ What the repo can credibly claim today:
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:
   - 5 intended first-wave parser-only targets currently pass within the staged boundary
   - 1 staged deferred target remains intentionally frozen as an ambiguity/control fixture
-  - 2 staged scanner/external-scanner targets are now tracked as a deferred onboarding wave
-- scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the first staged boundary extraction surface
+  - 2 staged scanner/external-scanner targets now pass within the first staged scanner boundary
+- scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the first staged boundary plus compatibility-safe valid-path behavior
 - compatibility-sensitive behavioral proof currently covers:
   - `behavioral_config`
   - `hidden_external_fields`

@@ -5,8 +5,11 @@
     "first_wave_targets": 5,
     "first_wave_passed": 5,
     "first_wave_non_passing": 0,
+    "scanner_wave_targets": 2,
+    "scanner_wave_passed": 2,
+    "scanner_wave_non_passing": 0,
     "deferred_control_targets": 1,
-    "deferred_scanner_targets": 2,
+    "deferred_scanner_targets": 0,
     "excluded_targets": 0,
     "blocked_targets": 2,
     "blocked_control_targets": 1
@@ -83,6 +86,36 @@
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after the word-token lowering and repeat-auxiliary fixes"
     }
   ],
+  "proven_scanner_wave_targets": [
+    {
+      "id": "hidden_external_fields_json",
+      "display_name": "Hidden External Fields (JSON)",
+      "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
+      "boundary_kind": "scanner_external_scanner",
+      "candidate_status": "intended_scanner_wave",
+      "expected_blocked": false,
+      "emission_blocked": false,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "first_failed_stage": null,
+      "detail": null,
+      "notes": "staged external-scanner JSON target promoted into the first scanner wave when the valid path stays compatibility-safe through the first external boundary"
+    },
+    {
+      "id": "hidden_external_fields_js",
+      "display_name": "Hidden External Fields (JS)",
+      "grammar_path": "compat_targets/hidden_external_fields/grammar.js",
+      "boundary_kind": "scanner_external_scanner",
+      "candidate_status": "intended_scanner_wave",
+      "expected_blocked": false,
+      "emission_blocked": false,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "first_failed_stage": null,
+      "detail": null,
+      "notes": "staged external-scanner JS target promoted into the first scanner wave when the valid path stays compatibility-safe through the node loader and first external boundary"
+    }
+  ],
   "deferred_control_targets": [
     {
       "id": "parse_table_conflict_json",
@@ -99,36 +132,7 @@
       "notes": "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations"
     }
   ],
-  "deferred_scanner_targets": [
-    {
-      "id": "hidden_external_fields_json",
-      "display_name": "Hidden External Fields (JSON)",
-      "grammar_path": "compat_targets/hidden_external_fields/grammar.json",
-      "boundary_kind": "scanner_external_scanner",
-      "candidate_status": "deferred_scanner_wave",
-      "expected_blocked": false,
-      "emission_blocked": false,
-      "final_classification": "deferred_for_scanner_boundary",
-      "mismatch_category": "scanner_external_scanner_boundary_gap",
-      "first_failed_stage": "serialize",
-      "detail": "scanner target reached the staged external-scanner boundary after load and prepare: staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only",
-      "notes": "staged external-scanner JSON target that currently proves load, prepare, and first external-boundary extraction only"
-    },
-    {
-      "id": "hidden_external_fields_js",
-      "display_name": "Hidden External Fields (JS)",
-      "grammar_path": "compat_targets/hidden_external_fields/grammar.js",
-      "boundary_kind": "scanner_external_scanner",
-      "candidate_status": "deferred_scanner_wave",
-      "expected_blocked": false,
-      "emission_blocked": false,
-      "final_classification": "deferred_for_scanner_boundary",
-      "mismatch_category": "scanner_external_scanner_boundary_gap",
-      "first_failed_stage": "serialize",
-      "detail": "scanner target reached the staged external-scanner boundary after load and prepare: staged external-scanner JS target that mirrors the JSON fixture through the node loader path",
-      "notes": "staged external-scanner JS target that mirrors the JSON fixture through the node loader path"
-    }
-  ],
+  "deferred_scanner_targets": [],
   "in_scope_failures": [],
   "out_of_scope_targets": []
 }

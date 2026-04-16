@@ -41,10 +41,10 @@ Out of scope:
 
 ## Exit Criteria
 
-- [ ] at least one scanner or external-scanner target is onboarded into the checked-in shortlist
-- [ ] scanner-specific blockers are reported explicitly rather than folded into generic deferred buckets
-- [ ] the repo can state a narrow staged scanner compatibility boundary without overstating runtime parity
-- [ ] the checked-in compatibility artifacts and docs agree on what scanner coverage exists and what remains deferred
+- [x] at least one scanner or external-scanner target is onboarded into the checked-in shortlist
+- [x] scanner-specific blockers are reported explicitly rather than folded into generic deferred buckets
+- [x] the repo can state a narrow staged scanner compatibility boundary without overstating runtime parity
+- [x] the checked-in compatibility artifacts and docs agree on what scanner coverage exists and what remains deferred
 
 ## PR-Sized Slices
 
@@ -92,25 +92,34 @@ Goal:
 
 Checklist:
 
-- [ ] choose one narrowly scoped scanner-compatibility improvement
+- [x] choose one narrowly scoped scanner-compatibility improvement
   - promote one onboarded scanner target
   - narrow one concrete scanner blocker
   - improve one scanner-boundary artifact/report enough to sharpen the milestone claim
-- [ ] implement the change
-- [ ] regenerate checked-in artifacts if needed
-- [ ] update milestone/docs to match the new scanner boundary
-- [ ] keep `zig build test` passing
+- [x] implement the change
+- [x] regenerate checked-in artifacts if needed
+- [x] update milestone/docs to match the new scanner boundary
+- [x] keep `zig build test` passing
 
 Acceptance:
 
-- [ ] the milestone ends with a stronger staged scanner compatibility claim than it started with
+- [x] the milestone ends with a stronger staged scanner compatibility claim than it started with
 
 ## Progress Checklist
 
 - [x] PR 1 completed
 - [x] PR 2 completed
-- [ ] PR 3 completed
-- [ ] M25 ready for closeout
+- [x] PR 3 completed
+- [x] M25 ready for closeout
+
+## Closeout State
+
+- 5 intended first-wave parser-only targets still pass within the proven parser-only boundary
+- 2 intended scanner-wave targets now pass within the staged first external-scanner boundary:
+  - `hidden_external_fields_json`
+  - `hidden_external_fields_js`
+- `parse_table_conflict_json` remains the only deferred control fixture
+- this milestone still does not claim full scanner/runtime parity; it only proves the first staged external-scanner boundary with compatibility-safe valid-path behavior
 
 ## Non-Goals
 

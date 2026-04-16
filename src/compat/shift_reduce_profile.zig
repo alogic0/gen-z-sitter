@@ -95,6 +95,7 @@ fn firstFailureDetail(run: result_model.TargetRunResult) ?[]const u8 {
             .load => run.load.detail,
             .prepare => run.prepare.detail,
             .serialize => run.serialize.detail,
+            .scanner_boundary_check => run.scanner_boundary_check.detail,
             .emit_parser_tables => run.emit_parser_tables.detail,
             .emit_c_tables => run.emit_c_tables.detail,
             .emit_parser_c => run.emit_parser_c.detail,

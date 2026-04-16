@@ -59,7 +59,7 @@ pub fn buildCoverageDecisionAlloc(
         .recommendation_rationale = try duplicateStringSliceAlloc(allocator, &.{
             "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
             "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
-            "scanner and external-scanner targets are now onboarded as a deferred wave, so the current promoted milestone should focus on classifying and shrinking those scanner-specific gaps",
+            "the initial staged scanner wave now has compatibility-safe promoted targets, so the current promoted milestone should focus on broadening scanner evidence rather than re-establishing the first boundary",
         }),
     };
 }
@@ -90,16 +90,27 @@ fn countFirstWavePassed(runs: []const result_model.TargetRunResult) usize {
     return count;
 }
 
+fn countScannerWavePassed(runs: []const result_model.TargetRunResult) usize {
+    var count: usize = 0;
+    for (runs) |run| {
+        if (run.candidate_status != .intended_scanner_wave) continue;
+        if (run.final_classification == .passed_within_current_boundary) count += 1;
+    }
+    return count;
+}
+
 fn collectProvenBoundaryAlloc(
     allocator: std.mem.Allocator,
     runs: []const result_model.TargetRunResult,
 ) ![]const []const u8 {
     const first_wave_target_count = countByStatus(runs, .intended_first_wave);
     const first_wave_passed_count = countFirstWavePassed(runs);
+    const scanner_wave_passed_count = countScannerWavePassed(runs);
     const blocked_count = countBlocked(runs);
     return try allocator.dupe([]const u8, &.{
         try std.fmt.allocPrint(allocator, "{d} intended first-wave parser-only targets are currently in the run set", .{first_wave_target_count}),
         try std.fmt.allocPrint(allocator, "{d} intended first-wave targets currently pass within the staged parser-only boundary", .{first_wave_passed_count}),
+        try std.fmt.allocPrint(allocator, "{d} intended scanner-wave targets currently pass within the staged scanner boundary", .{scanner_wave_passed_count}),
         try std.fmt.allocPrint(allocator, "{d} shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures", .{blocked_count}),
     });
 }
@@ -180,7 +191,7 @@ test "buildCoverageDecisionAlloc summarizes the current next-step decision" {
     try std.testing.expect(report.parser_only_boundary_proven);
     try std.testing.expectEqual(NextMilestone.scanner_and_external_scanner_compatibility_onboarding, report.recommended_next_milestone);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_only_targets.len);
-    try std.testing.expectEqual(@as(usize, 2), report.deferred_scanner_targets.len);
+    try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
 }
 
 test "renderCoverageDecisionAlloc matches the checked-in coverage decision artifact" {
