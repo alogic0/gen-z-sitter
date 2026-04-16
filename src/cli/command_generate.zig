@@ -177,6 +177,9 @@ fn generateJsonSummaryAlloc(
     options: emit_optimize.Options,
 ) ![]const u8 {
     const serialized = try parse_table_pipeline.serializeTableFromPrepared(allocator, prepared, .diagnostic);
+    const baseline_stats = try parser_c_emit.collectEmissionStatsWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+    });
     const parser_stats = try parser_c_emit.collectEmissionStatsWithOptions(allocator, serialized, options);
     const serialized_state_count = serialized.states.len;
 
@@ -200,13 +203,22 @@ fn generateJsonSummaryAlloc(
     try writer.writeAll("  \"optimization\": { ");
     try writer.print("\"compact_duplicate_states\": {s}", .{if (options.compact_duplicate_states) "true" else "false"});
     try writer.writeAll(" },\n");
-    try writer.writeAll("  \"action_rows\": ");
+    try writer.writeAll("  \"baseline_action_rows\": ");
+    try writeRowSharingStats(writer, baseline_stats.action_rows);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"emitted_action_rows\": ");
     try writeRowSharingStats(writer, parser_stats.action_rows);
     try writer.writeAll(",\n");
-    try writer.writeAll("  \"goto_rows\": ");
+    try writer.writeAll("  \"baseline_goto_rows\": ");
+    try writeRowSharingStats(writer, baseline_stats.goto_rows);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"emitted_goto_rows\": ");
     try writeRowSharingStats(writer, parser_stats.goto_rows);
     try writer.writeAll(",\n");
-    try writer.writeAll("  \"unresolved_rows\": ");
+    try writer.writeAll("  \"baseline_unresolved_rows\": ");
+    try writeRowSharingStats(writer, baseline_stats.unresolved_rows);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"emitted_unresolved_rows\": ");
     try writeRowSharingStats(writer, parser_stats.unresolved_rows);
     try writer.writeAll("\n}\n");
 
@@ -274,9 +286,12 @@ test "generateJsonSummaryAlloc reports parser row-sharing stats" {
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_entry_count\": 4"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"unresolved_entry_count\": 1"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_rows\": { \"total_rows\": 6, \"empty_rows\": 2, \"unique_non_empty_rows\": 3, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 4 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"goto_rows\": { \"total_rows\": 6, \"empty_rows\": 4, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"unresolved_rows\": { \"total_rows\": 6, \"empty_rows\": 5, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 1 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 6, \"empty_rows\": 2, \"unique_non_empty_rows\": 3, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 4 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 6, \"empty_rows\": 2, \"unique_non_empty_rows\": 3, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 4 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_goto_rows\": { \"total_rows\": 6, \"empty_rows\": 4, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_goto_rows\": { \"total_rows\": 6, \"empty_rows\": 4, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_unresolved_rows\": { \"total_rows\": 6, \"empty_rows\": 5, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 1 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_unresolved_rows\": { \"total_rows\": 6, \"empty_rows\": 5, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 1 }"));
 }
 
 test "generateJsonSummaryAlloc can disable duplicate-state compaction stats" {
@@ -306,7 +321,8 @@ test "generateJsonSummaryAlloc can disable duplicate-state compaction stats" {
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 7"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": false }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_rows\": { \"total_rows\": 7, \"empty_rows\": 3, \"unique_non_empty_rows\": 4, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 5 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 7, \"empty_rows\": 3, \"unique_non_empty_rows\": 4, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 5 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 7, \"empty_rows\": 3, \"unique_non_empty_rows\": 4, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 5 }"));
 }
 
 test "generateJsonSummaryAlloc reports serialized versus emitted state counts when compaction applies" {
@@ -333,6 +349,10 @@ test "generateJsonSummaryAlloc reports serialized versus emitted state counts wh
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 5"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 2"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 7, \"empty_rows\": 3, \"unique_non_empty_rows\": 4, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 5 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 5, \"empty_rows\": 1, \"unique_non_empty_rows\": 4, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 5 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_goto_rows\": { \"total_rows\": 7, \"empty_rows\": 5, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_goto_rows\": { \"total_rows\": 5, \"empty_rows\": 3, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
 }
 
 test "runGenerate supports debug prepared output mode" {
