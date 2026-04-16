@@ -44,6 +44,46 @@ pub const SimulationResult = union(enum) {
     },
 };
 
+const SampledExternalEffect = union(enum) {
+    none,
+    push_layout: usize,
+    pop_layout,
+};
+
+const SampledExternalMatch = struct {
+    len: usize,
+    effect: SampledExternalEffect = .none,
+};
+
+const SampledExternalState = struct {
+    layout_indents: std.array_list.Managed(usize),
+
+    fn init(allocator: std.mem.Allocator) SampledExternalState {
+        return .{
+            .layout_indents = std.array_list.Managed(usize).init(allocator),
+        };
+    }
+
+    fn deinit(self: *SampledExternalState) void {
+        self.layout_indents.deinit();
+    }
+
+    fn topLayoutIndent(self: SampledExternalState) ?usize {
+        if (self.layout_indents.items.len == 0) return null;
+        return self.layout_indents.items[self.layout_indents.items.len - 1];
+    }
+
+    fn applyEffect(self: *SampledExternalState, effect: SampledExternalEffect) !void {
+        switch (effect) {
+            .none => {},
+            .push_layout => |indent| try self.layout_indents.append(indent),
+            .pop_layout => if (self.layout_indents.items.len > 0) {
+                _ = self.layout_indents.pop();
+            },
+        }
+    }
+};
+
 pub fn simulatePreparedScannerFree(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
@@ -243,6 +283,8 @@ fn simulateBuiltWithFirstExternalBoundary(
     var stack = std.array_list.Managed(u32).init(allocator);
     defer stack.deinit();
     try stack.append(0);
+    var external_state = SampledExternalState.init(allocator);
+    defer external_state.deinit();
 
     var cursor: usize = 0;
     var shifted_tokens: usize = 0;
@@ -252,6 +294,50 @@ fn simulateBuiltWithFirstExternalBoundary(
     while (steps < max_steps) : (steps += 1) {
         const state_id = stack.items[stack.items.len - 1];
         if (cursor >= input.len) {
+            if (selectMatchingExternalAtBoundaryEof(result, state_id, external_boundary, &external_state)) |matched| {
+                const decision = result.resolved_actions.decisionFor(state_id, matched.symbol) orelse
+                    return .{ .rejected = .{
+                        .consumed_bytes = cursor,
+                        .shifted_tokens = shifted_tokens,
+                        .reason = .missing_action,
+                    } };
+
+                switch (decision) {
+                    .unresolved => return .{ .rejected = .{
+                        .consumed_bytes = cursor,
+                        .shifted_tokens = shifted_tokens,
+                        .reason = .unresolved_decision,
+                    } },
+                    .chosen => |action| switch (action) {
+                        .shift => |target| {
+                            try stack.append(target);
+                            shifted_tokens += 1;
+                            try external_state.applyEffect(matched.external_effect);
+                            continue;
+                        },
+                        .reduce => |production_id| {
+                            const production = result.productions[production_id];
+                            if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
+                                .consumed_bytes = cursor,
+                                .shifted_tokens = shifted_tokens,
+                                .reason = .missing_goto,
+                            } };
+                            for (0..production.steps.len) |_| {
+                                _ = stack.pop();
+                            }
+                            const goto_state = findGotoState(result, stack.items[stack.items.len - 1], production.lhs) orelse
+                                return .{ .rejected = .{
+                                    .consumed_bytes = cursor,
+                                    .shifted_tokens = shifted_tokens,
+                                    .reason = .missing_goto,
+                                } };
+                            try stack.append(goto_state);
+                            continue;
+                        },
+                        .accept => return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } },
+                    },
+                }
+            }
             if (stateHasCompletedAugmentedProduction(result, state_id)) {
                 return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } };
             }
@@ -295,6 +381,7 @@ fn simulateBuiltWithFirstExternalBoundary(
             prepared,
             lexical,
             external_boundary,
+            &external_state,
             input[cursor..],
         ) orelse {
             if (selectFallbackAction(result, state_id)) |action| switch (action) {
@@ -348,6 +435,7 @@ fn simulateBuiltWithFirstExternalBoundary(
                     try stack.append(target);
                     cursor += matched.len;
                     shifted_tokens += 1;
+                    try external_state.applyEffect(matched.external_effect);
                 },
                 .reduce => |production_id| {
                     const production = result.productions[production_id];
@@ -378,6 +466,7 @@ fn simulateBuiltWithFirstExternalBoundary(
 const MatchedTerminal = struct {
     symbol: syntax_ir.SymbolRef,
     len: usize,
+    external_effect: SampledExternalEffect = .none,
 };
 
 fn selectMatchingTerminal(
@@ -409,16 +498,21 @@ fn selectMatchingSymbolWithExternalBoundary(
     prepared: grammar_ir.PreparedGrammar,
     lexical: lexical_ir.LexicalGrammar,
     external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
+    external_state: *const SampledExternalState,
     remaining: []const u8,
 ) ?MatchedTerminal {
     var best: ?MatchedTerminal = null;
 
     for (external_boundary.tokens) |token| {
-        const match_len = matchSupportedExternalPrefix(token.name, remaining) orelse continue;
+        const external_match = matchSupportedExternalPrefix(token.name, external_state.*, remaining) orelse continue;
         const symbol: syntax_ir.SymbolRef = .{ .external = token.index };
         if (result.resolved_actions.decisionFor(state_id, symbol) == null) continue;
-        if (best == null or match_len > best.?.len) {
-            best = .{ .symbol = symbol, .len = match_len };
+        if (best == null or external_match.len > best.?.len) {
+            best = .{
+                .symbol = symbol,
+                .len = external_match.len,
+                .external_effect = external_match.effect,
+            };
         }
     }
 
@@ -436,11 +530,92 @@ fn selectMatchingSymbolWithExternalBoundary(
     return best;
 }
 
-fn matchSupportedExternalPrefix(name: []const u8, input: []const u8) ?usize {
-    if (std.mem.eql(u8, name, "indent")) {
-        return if (std.mem.startsWith(u8, input, "  ")) 2 else null;
+fn selectMatchingExternalAtBoundaryEof(
+    result: build.BuildResult,
+    state_id: u32,
+    external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
+    external_state: *const SampledExternalState,
+) ?MatchedTerminal {
+    for (external_boundary.tokens) |token| {
+        const external_match = matchSupportedExternalAtEof(token.name, external_state.*) orelse continue;
+        const symbol: syntax_ir.SymbolRef = .{ .external = token.index };
+        if (result.resolved_actions.decisionFor(state_id, symbol) == null) continue;
+        return .{
+            .symbol = symbol,
+            .len = external_match.len,
+            .external_effect = external_match.effect,
+        };
     }
     return null;
+}
+
+fn matchSupportedExternalPrefix(
+    name: []const u8,
+    external_state: SampledExternalState,
+    input: []const u8,
+) ?SampledExternalMatch {
+    if (std.mem.eql(u8, name, "indent")) {
+        return if (std.mem.startsWith(u8, input, "  ")) .{ .len = 2 } else null;
+    }
+    if (isSampledLayoutStartToken(name)) {
+        const newline_indent = scanIndentedNewline(input) orelse return null;
+        if (newline_indent.indent == 0) return null;
+        return .{
+            .len = newline_indent.consumed_len,
+            .effect = .{ .push_layout = newline_indent.indent },
+        };
+    }
+    if (std.mem.eql(u8, name, "_cond_layout_semicolon")) {
+        const top_indent = external_state.topLayoutIndent() orelse return null;
+        const newline_indent = scanIndentedNewline(input) orelse return null;
+        if (newline_indent.indent != top_indent) return null;
+        return .{ .len = newline_indent.consumed_len };
+    }
+    if (std.mem.eql(u8, name, "_cond_layout_end")) {
+        const top_indent = external_state.topLayoutIndent() orelse return null;
+        const newline_indent = scanIndentedNewline(input) orelse return null;
+        if (newline_indent.indent >= top_indent) return null;
+        return .{
+            .len = newline_indent.consumed_len,
+            .effect = .pop_layout,
+        };
+    }
+    return null;
+}
+
+fn matchSupportedExternalAtEof(
+    name: []const u8,
+    external_state: SampledExternalState,
+) ?SampledExternalMatch {
+    if (std.mem.eql(u8, name, "_cond_layout_end") and external_state.topLayoutIndent() != null) {
+        return .{
+            .len = 0,
+            .effect = .pop_layout,
+        };
+    }
+    return null;
+}
+
+const NewlineIndent = struct {
+    consumed_len: usize,
+    indent: usize,
+};
+
+fn scanIndentedNewline(input: []const u8) ?NewlineIndent {
+    if (input.len == 0 or input[0] != '\n') return null;
+
+    var index: usize = 1;
+    while (index < input.len and input[index] == ' ') : (index += 1) {}
+    if (index < input.len and input[index] == '\n') return null;
+
+    return .{
+        .consumed_len = index,
+        .indent = index - 1,
+    };
+}
+
+fn isSampledLayoutStartToken(name: []const u8) bool {
+    return std.mem.startsWith(u8, name, "_cmd_layout_start");
 }
 
 fn ruleLiteralText(all_rules: []const rules.Rule, rule_id: rules.RuleId) ?[]const u8 {
@@ -861,6 +1036,66 @@ test "simulatePreparedWithFirstExternalBoundary preserves mixed semantics outcom
 
     try expectSameSimulationResult(json_valid, valid);
     try expectSameSimulationResult(json_invalid, invalid);
+}
+
+test "simulatePreparedWithFirstExternalBoundary supports sampled layout token families" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(
+        arena.allocator(),
+        \\{
+        \\  "name": "sampled_layout_block",
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        { "type": "STRING", "value": "do" },
+        \\        { "type": "SYMBOL", "name": "_statements" }
+        \\      ]
+        \\    },
+        \\    "_statements": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        { "type": "SYMBOL", "name": "_cmd_layout_start_do" },
+        \\        { "type": "FIELD", "name": "statement", "content": { "type": "SYMBOL", "name": "statement" } },
+        \\        {
+        \\          "type": "REPEAT",
+        \\          "content": {
+        \\            "type": "SEQ",
+        \\            "members": [
+        \\              { "type": "SYMBOL", "name": "_cond_layout_semicolon" },
+        \\              { "type": "FIELD", "name": "statement", "content": { "type": "SYMBOL", "name": "statement" } }
+        \\            ]
+        \\          }
+        \\        },
+        \\        { "type": "SYMBOL", "name": "_cond_layout_end" }
+        \\      ]
+        \\    },
+        \\    "statement": {
+        \\      "type": "TOKEN",
+        \\      "content": { "type": "PATTERN", "value": "[a-z]+" }
+        \\    }
+        \\  },
+        \\  "externals": [
+        \\    { "type": "SYMBOL", "name": "_cmd_layout_start_do" },
+        \\    { "type": "SYMBOL", "name": "_cond_layout_semicolon" },
+        \\    { "type": "SYMBOL", "name": "_cond_layout_end" }
+        \\  ]
+        \\}
+    );
+    const valid = try simulatePreparedWithFirstExternalBoundary(
+        arena.allocator(),
+        prepared,
+        "do\n  a\n  b",
+    );
+    const invalid = try simulatePreparedWithFirstExternalBoundary(
+        arena.allocator(),
+        prepared,
+        "do\na\n  b",
+    );
+
+    try std.testing.expect(progressOf(valid) > progressOf(invalid));
 }
 
 test "supported compatibility boundary avoids internal contract failures on valid config and external-token inputs" {
