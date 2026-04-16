@@ -16,10 +16,10 @@ It does not start from zero. It hardens the staged compatibility layer that alre
 
 ## Goal
 
-- [ ] document the remaining runtime-surface mismatches against expected Tree-sitter contracts
-- [ ] shrink the emitted compatibility gaps that still block credible runtime use
-- [ ] make ABI and compatibility-layer boundaries explicit and testable
-- [ ] add compatibility-oriented checks for the richer emitted parser surface
+- [x] document the remaining runtime-surface mismatches against expected Tree-sitter contracts
+- [x] shrink the emitted compatibility gaps that still block credible runtime use
+- [x] make ABI and compatibility-layer boundaries explicit and testable
+- [x] add compatibility-oriented checks for the richer emitted parser surface
 
 ## Current Starting Boundary
 
@@ -282,13 +282,13 @@ Current result for this stage:
 
 ### 6. Record deferrals and closeout boundary
 
-- [ ] document what remains deferred beyond this milestone
-- [ ] separate remaining deferred work into:
+- [x] document what remains deferred beyond this milestone
+- [x] separate remaining deferred work into:
   - deeper runtime ABI parity
   - broader ecosystem behavioral equivalence
   - CLI/output-surface completion
   - optimization/minimization work
-- [ ] connect only the optimization-specific leftovers to `MILESTONES 21 (Optimization Later)`
+- [x] connect only the optimization-specific leftovers to `MILESTONES 21 (Optimization Later)`
 
 Closeout decision for this milestone should only be made when:
 
@@ -298,15 +298,48 @@ Closeout decision for this milestone should only be made when:
 - compatibility-sensitive behavioral proof exists for the current supported subset
 - deferred gaps are documented as deliberate, not accidental
 
+Current result for this stage:
+
+- remaining deferred work beyond `MILESTONES 20` is now explicit and separated by category
+- deeper runtime ABI parity still remains deferred:
+  - direct upstream Tree-sitter C runtime ABI parity
+  - fuller scanner/runtime lifecycle parity
+  - compile-and-run equivalence against upstream generated parsers
+- broader ecosystem behavioral equivalence still remains deferred:
+  - broader repo-wide and ecosystem-wide corpus equivalence
+  - closing the `repeat_choice_seq` staged `unresolved_decision` boundary
+  - broader grammar/repo compatibility coverage beyond the current curated subset
+- CLI/output-surface completion still remains deferred:
+  - exposing emitted `parser.c` as a first-class top-level `generate` output
+  - exposing emitted `grammar.json` as a first-class top-level `generate` output
+  - exposing compatibility/reporting surfaces through the top-level CLI instead of mostly through lower-level tests and emitters
+- only the optimization-specific leftovers belong directly to `MILESTONES 21 (Optimization Later)`:
+  - parse-table compression/minimization
+  - any table-layout changes that should happen only after the staged compatibility contract is already stable
+
+Milestone 20 closeout decision:
+
+- this milestone is complete as the first explicit compatibility-hardening boundary
+- it now provides:
+  - a centralized staged compatibility contract in `src/parser_emit/compat.zig`
+  - stronger structural compatibility checks in `src/parser_emit/compat_checks.zig`
+  - compatibility-sensitive behavioral proof in `src/behavioral/harness.zig`
+  - repo-level docs that distinguish the current staged boundary from the eventual target contract
+- it intentionally still does not claim:
+  - full upstream runtime ABI parity
+  - full upstream `parser.c` parity
+  - full ecosystem-wide corpus equivalence
+  - full top-level CLI/output parity
+
 ## Exit Criteria
 
-- [ ] the remaining compatibility mismatch set is documented in this file in one place
-- [ ] `src/parser_emit/compat.zig` is the clear source of truth for staged compatibility metadata and policy
-- [ ] `src/parser_emit/compat_checks.zig` enforces the intended emitted compatibility surface for both ready and blocked parser outputs
-- [ ] `src/parse_table/pipeline.zig` applies the compatibility checks to the emitted parser-output path
-- [ ] `src/behavioral/harness.zig` contains at least one focused compatibility-sensitive proof for the current supported subset
-- [ ] repo-level docs describe the same compatibility boundary that the code and tests enforce
-- [ ] deferred gaps are documented rather than implicit
+- [x] the remaining compatibility mismatch set is documented in this file in one place
+- [x] `src/parser_emit/compat.zig` is the clear source of truth for staged compatibility metadata and policy
+- [x] `src/parser_emit/compat_checks.zig` enforces the intended emitted compatibility surface for both ready and blocked parser outputs
+- [x] `src/parse_table/pipeline.zig` applies the compatibility checks to the emitted parser-output path
+- [x] `src/behavioral/harness.zig` contains at least one focused compatibility-sensitive proof for the current supported subset
+- [x] repo-level docs describe the same compatibility boundary that the code and tests enforce
+- [x] deferred gaps are documented rather than implicit
 
 ## Explicit Non-Goals For This Milestone
 
