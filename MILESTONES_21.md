@@ -21,6 +21,7 @@ Current first optimization slice:
 - emitted `parser.c` now compacts exact duplicate serialized states and remaps in-table shift/goto targets to the canonical surviving state before row sharing runs
 - the same exact-duplicate serialized-state compaction now also applies to the parser-table and C-table emitter surfaces, not just `parser.c`
 - the existing `--no-optimize-merge-states` flag now disables that emitted-surface duplicate-state compaction path in the JSON summary/emitter option flow
+- `generate --json-summary` now reports both serialized-state counts and emitted-state counts, plus the active compaction toggle, so optimization wins are explicit in one summary
 - this is intentionally a low-risk compression step:
   - it reduces repeated emitted boilerplate
   - it only shares rows when the serialized action/value/target contents are exactly equal
@@ -28,6 +29,7 @@ Current first optimization slice:
   - it makes the current sharing wins visible and reports how many emitted parser.c states were collapsed
   - it renumbers only the emitted surface state ids after compaction and remaps in-table targets accordingly
   - it is now explicitly switchable for comparison/debugging through the existing optimization toggle path
+  - it now exposes both the pre-optimization and post-optimization emitted state counts in the summary path
   - it does not change the staged compatibility contract
   - it preserves existing parser behavior and test coverage
 

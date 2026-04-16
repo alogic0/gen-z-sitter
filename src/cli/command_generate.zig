@@ -178,6 +178,7 @@ fn generateJsonSummaryAlloc(
 ) ![]const u8 {
     const serialized = try parse_table_pipeline.serializeTableFromPrepared(allocator, prepared, .diagnostic);
     const parser_stats = try parser_c_emit.collectEmissionStatsWithOptions(allocator, serialized, options);
+    const serialized_state_count = serialized.states.len;
 
     var out = std.array_list.Managed(u8).init(allocator);
     errdefer out.deinit();
@@ -189,11 +190,16 @@ fn generateJsonSummaryAlloc(
     try writer.print("  \"external_count\": {d},\n", .{grammar.externals.len});
     try writer.print("  \"extra_count\": {d},\n", .{grammar.extras.len});
     try writer.print("  \"symbol_count\": {d},\n", .{prepared.symbols.len});
+    try writer.print("  \"serialized_state_count\": {d},\n", .{serialized_state_count});
+    try writer.print("  \"emitted_state_count\": {d},\n", .{parser_stats.state_count});
     try writer.print("  \"state_count\": {d},\n", .{parser_stats.state_count});
     try writer.print("  \"merged_state_count\": {d},\n", .{parser_stats.merged_state_count});
     try writer.print("  \"action_entry_count\": {d},\n", .{parser_stats.action_entry_count});
     try writer.print("  \"goto_entry_count\": {d},\n", .{parser_stats.goto_entry_count});
     try writer.print("  \"unresolved_entry_count\": {d},\n", .{parser_stats.unresolved_entry_count});
+    try writer.writeAll("  \"optimization\": { ");
+    try writer.print("\"compact_duplicate_states\": {s}", .{if (options.compact_duplicate_states) "true" else "false"});
+    try writer.writeAll(" },\n");
     try writer.writeAll("  \"action_rows\": ");
     try writeRowSharingStats(writer, parser_stats.action_rows);
     try writer.writeAll(",\n");
@@ -261,8 +267,11 @@ test "generateJsonSummaryAlloc reports parser row-sharing stats" {
     const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{});
 
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"blocked\": true"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 6"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 6"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 6"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_entry_count\": 4"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"unresolved_entry_count\": 1"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_rows\": { \"total_rows\": 6, \"empty_rows\": 2, \"unique_non_empty_rows\": 3, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 4 }"));
@@ -292,9 +301,38 @@ test "generateJsonSummaryAlloc can disable duplicate-state compaction stats" {
         .compact_duplicate_states = false,
     });
 
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 7"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 7"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 7"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": false }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_rows\": { \"total_rows\": 7, \"empty_rows\": 3, \"unique_non_empty_rows\": 4, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 5 }"));
+}
+
+test "generateJsonSummaryAlloc reports serialized versus emitted state counts when compaction applies" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var summary_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer summary_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableMetadataGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{});
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 7"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 5"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 2"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true }"));
 }
 
 test "runGenerate supports debug prepared output mode" {
