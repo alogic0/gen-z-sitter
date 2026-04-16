@@ -51,27 +51,27 @@
     },
     {
       "id": "tree_sitter_ziggy_json",
-      "status": "deferred_later_wave",
+      "status": "intended_first_wave",
       "source_kind": "grammar_json",
       "origin_kind": "external_repo_snapshot",
       "grammar_path": "compat_targets/tree_sitter_ziggy/grammar.json",
       "upstream_repository": "tree-sitter-ziggy",
       "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
       "upstream_grammar_path": "src/grammar.json",
-      "why": "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, deferred until its blocked parser-emission gap is classified for promotion",
-      "success_means": "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set"
+      "why": "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, now promoted after the repeat-auxiliary shift/reduce fix",
+      "success_means": "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c"
     },
     {
       "id": "tree_sitter_ziggy_schema_json",
-      "status": "deferred_later_wave",
+      "status": "intended_first_wave",
       "source_kind": "grammar_json",
       "origin_kind": "external_repo_snapshot",
       "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
       "upstream_repository": "tree-sitter-ziggy-schema",
       "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
       "upstream_grammar_path": "src/grammar.json",
-      "why": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its blocked parser-emission gap is classified for promotion after the word-token lowering fix",
-      "success_means": "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set"
+      "why": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after the word-token lowering and repeat-auxiliary fixes",
+      "success_means": "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c"
     },
     {
       "id": "parse_table_conflict_json",

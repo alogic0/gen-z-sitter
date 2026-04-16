@@ -1,27 +1,15 @@
 {
   "schema_version": 1,
-  "first_wave_target_count": 3,
-  "first_wave_passed_count": 3,
+  "first_wave_target_count": 5,
+  "first_wave_passed_count": 5,
   "first_wave_non_passing_count": 0,
   "parser_only_boundary_proven": true,
   "proven_boundary": [
-    "3 intended first-wave parser-only targets are currently in the run set",
-    "3 intended first-wave targets currently pass within the staged parser-only boundary",
-    "4 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
+    "5 intended first-wave parser-only targets are currently in the run set",
+    "5 intended first-wave targets currently pass within the staged parser-only boundary",
+    "2 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
   ],
   "deferred_parser_only_targets": [
-    {
-      "id": "tree_sitter_ziggy_json",
-      "display_name": "tree-sitter-ziggy (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_ziggy/grammar.json",
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, deferred until its blocked parser-emission gap is classified for promotion"
-    },
-    {
-      "id": "tree_sitter_ziggy_schema_json",
-      "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its blocked parser-emission gap is classified for promotion after the word-token lowering fix"
-    },
     {
       "id": "parse_table_conflict_json",
       "display_name": "Parse Table Conflict (JSON)",

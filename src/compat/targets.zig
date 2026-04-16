@@ -80,10 +80,10 @@ pub const shortlist_targets = [_]Target{
             .upstream_revision = "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
             .upstream_grammar_path = "src/grammar.json",
         },
-        .candidate_status = .deferred_later_wave,
+        .candidate_status = .intended_first_wave,
         .expected_blocked = false,
-        .notes = "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, deferred until its blocked parser-emission gap is classified for promotion",
-        .success_criteria = "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set",
+        .notes = "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, now promoted after the repeat-auxiliary shift/reduce fix",
+        .success_criteria = "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
     },
     .{
         .id = "tree_sitter_ziggy_schema_json",
@@ -96,10 +96,10 @@ pub const shortlist_targets = [_]Target{
             .upstream_revision = "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
             .upstream_grammar_path = "src/grammar.json",
         },
-        .candidate_status = .deferred_later_wave,
+        .candidate_status = .intended_first_wave,
         .expected_blocked = false,
-        .notes = "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its blocked parser-emission gap is classified for promotion after the word-token lowering fix",
-        .success_criteria = "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set",
+        .notes = "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after the word-token lowering and repeat-auxiliary fixes",
+        .success_criteria = "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
     },
     .{
         .id = "parse_table_conflict_json",
@@ -130,7 +130,7 @@ pub fn shortlistTargets() []const Target {
 }
 
 pub fn firstWaveTargets() []const Target {
-    return shortlist_targets[0..3];
+    return shortlist_targets[0..5];
 }
 
 test "stagedTargets exposes a small versioned shortlist" {
@@ -138,16 +138,18 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expectEqual(@as(usize, 7), shortlist.len);
     try std.testing.expect(shortlist[0].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
-    try std.testing.expect(shortlist[3].candidate_status == .deferred_later_wave);
+    try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[5].candidate_status == .deferred_later_wave);
     try std.testing.expect(shortlist[6].candidate_status == .excluded_out_of_scope);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {
     const shortlist = firstWaveTargets();
-    try std.testing.expectEqual(@as(usize, 3), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 5), shortlist.len);
     try std.testing.expect(shortlist[0].source_kind == .grammar_json);
     try std.testing.expect(shortlist[2].source_kind == .grammar_js);
+    try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
+    try std.testing.expect(shortlist[4].provenance.origin_kind == .external_repo_snapshot);
     for (shortlist) |target| {
         try std.testing.expect(target.candidate_status == .intended_first_wave);
     }

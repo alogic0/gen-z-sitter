@@ -105,7 +105,7 @@ What the repo can credibly claim today:
 - compatibility-sensitive behavioral proof currently covers:
   - `behavioral_config`
   - `hidden_external_fields`
-- `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but remains on the staged `unresolved_decision` boundary for its valid path
+- `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but now rejects on the staged blocked path as `missing_action`
 - the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 
 ## Milestone Compatibility Targets

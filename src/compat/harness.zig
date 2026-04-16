@@ -6,6 +6,7 @@ const report_json = @import("report_json.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
+const parse_table_build = @import("../parse_table/build.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
 const c_tables_emit = @import("../parser_emit/c_tables.zig");
@@ -158,7 +159,16 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "blocked-boundary replay extraction failed: {s}", .{@errorName(err)}),
             );
         };
-        run.blocked_boundary = try buildBlockedBoundarySnapshotAlloc(allocator, serialized, extracted);
+        const build_result = parse_table_pipeline.buildStatesFromPrepared(arena.allocator(), prepared) catch |err| {
+            return failRun(
+                &run,
+                .emit_parser_c,
+                .infrastructure_failure,
+                .infrastructure_failure,
+                try std.fmt.allocPrint(allocator, "blocked-boundary replay build failed: {s}", .{@errorName(err)}),
+            );
+        };
+        run.blocked_boundary = try buildBlockedBoundarySnapshotAlloc(allocator, serialized, extracted, build_result);
     }
 
     if (emission_stats.blocked != target.expected_blocked) {
@@ -332,6 +342,7 @@ fn buildBlockedBoundarySnapshotAlloc(
     allocator: std.mem.Allocator,
     serialized: @import("../parse_table/serialize.zig").SerializedTable,
     extracted: extract_tokens.ExtractedGrammars,
+    build_result: parse_table_build.BuildResult,
 ) !result_model.BlockedBoundarySnapshot {
     var unresolved_state_count: usize = 0;
     var unresolved_entry_count: usize = 0;
@@ -362,7 +373,7 @@ fn buildBlockedBoundarySnapshotAlloc(
             }
 
             const symbol_name = symbolNameFor(extracted, entry.symbol);
-            const candidate_actions_summary = try formatCandidateActionsAlloc(allocator, entry.candidate_actions);
+            const candidate_actions_summary = try formatCandidateActionsAlloc(allocator, extracted, build_result, entry.candidate_actions);
             defer allocator.free(candidate_actions_summary);
             try recordDominantSignature(allocator, &signature_counts, symbol_name, @tagName(entry.reason), candidate_actions_summary);
 
@@ -421,6 +432,8 @@ fn symbolNameFor(extracted: extract_tokens.ExtractedGrammars, symbol: @import(".
 
 fn formatCandidateActionsAlloc(
     allocator: std.mem.Allocator,
+    extracted: extract_tokens.ExtractedGrammars,
+    build_result: parse_table_build.BuildResult,
     candidate_actions: []const @import("../parse_table/actions.zig").ParseAction,
 ) ![]const u8 {
     var out = std.array_list.Managed(u8).init(allocator);
@@ -431,12 +444,27 @@ fn formatCandidateActionsAlloc(
         if (index > 0) try writer.writeAll(", ");
         switch (action) {
             .shift => |state_id| try writer.print("shift:{d}", .{state_id}),
-            .reduce => |production_id| try writer.print("reduce:{d}", .{production_id}),
+            .reduce => |production_id| {
+                const label = productionLabelFor(extracted, build_result, production_id);
+                try writer.print("reduce:{d}({s})", .{ production_id, label });
+            },
             .accept => try writer.writeAll("accept"),
         }
     }
 
     return try out.toOwnedSlice();
+}
+
+fn productionLabelFor(
+    extracted: extract_tokens.ExtractedGrammars,
+    build_result: parse_table_build.BuildResult,
+    production_id: u32,
+) []const u8 {
+    if (production_id >= build_result.productions.len) return "<unknown-production>";
+    const production = build_result.productions[production_id];
+    if (production.augmented) return "<augmented>";
+    if (production.lhs >= extracted.syntax.variables.len) return "<unknown-lhs>";
+    return extracted.syntax.variables[production.lhs].name;
 }
 
 fn recordDominantSignature(
@@ -511,7 +539,7 @@ test "runStagedTargetsAlloc executes the staged parser-only shortlist" {
     const runs = try runStagedTargetsAlloc(allocator, .{});
     defer result_model.deinitRunResults(allocator, runs);
 
-    try std.testing.expectEqual(@as(usize, 3), runs.len);
+    try std.testing.expectEqual(@as(usize, 5), runs.len);
 
     for (runs) |run| {
         try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, run.final_classification);
@@ -529,6 +557,8 @@ test "runStagedTargetsAlloc executes the staged parser-only shortlist" {
     try std.testing.expectEqual(false, runs[0].emission.?.blocked);
     try std.testing.expectEqual(false, runs[1].emission.?.blocked);
     try std.testing.expectEqual(true, runs[2].emission.?.blocked);
+    try std.testing.expectEqual(false, runs[3].emission.?.blocked);
+    try std.testing.expectEqual(false, runs[4].emission.?.blocked);
 }
 
 test "runTarget reports infrastructure failures for missing files" {
@@ -597,32 +627,24 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     defer result_model.deinitRunResults(allocator, runs);
 
     try std.testing.expectEqual(@as(usize, 7), runs.len);
-    try std.testing.expectEqual(result_model.FinalClassification.failed_due_to_parser_only_gap, runs[3].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.failed_due_to_parser_only_gap, runs[4].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.out_of_scope_for_scanner_boundary, runs[6].final_classification);
 }
 
-test "runShortlistTargetsAlloc records blocked-boundary summaries for deferred Ziggy targets" {
+test "runShortlistTargetsAlloc promotes the external Ziggy targets and keeps only staged blocked controls" {
     const allocator = std.testing.allocator;
 
     const runs = try runShortlistTargetsAlloc(allocator, .{});
     defer result_model.deinitRunResults(allocator, runs);
 
-    try std.testing.expectEqual(result_model.MismatchCategory.shift_reduce_boundary, runs[3].mismatch_category);
-    try std.testing.expectEqual(result_model.MismatchCategory.shift_reduce_boundary, runs[4].mismatch_category);
-    try std.testing.expect(runs[3].blocked_boundary != null);
-    try std.testing.expect(runs[4].blocked_boundary != null);
-    try std.testing.expect(runs[3].emit_parser_c.detail != null);
-    try std.testing.expect(runs[4].emit_parser_c.detail != null);
-    try std.testing.expect(std.mem.indexOf(u8, runs[3].emit_parser_c.detail.?, "blocked boundary summary:") != null);
-    try std.testing.expect(std.mem.indexOf(u8, runs[4].emit_parser_c.detail.?, "blocked boundary summary:") != null);
-    try std.testing.expect(std.mem.indexOf(u8, runs[3].emit_parser_c.detail.?, "dominant_signatures=[") != null);
-    try std.testing.expect(std.mem.indexOf(u8, runs[3].emit_parser_c.detail.?, "shift_reduce") != null);
-    try std.testing.expect(std.mem.indexOf(u8, runs[4].emit_parser_c.detail.?, "shift_reduce") != null);
-    try std.testing.expectEqual(@as(usize, 177), runs[3].blocked_boundary.?.reasons.shift_reduce);
-    try std.testing.expectEqual(@as(usize, 36), runs[4].blocked_boundary.?.reasons.shift_reduce);
-    try std.testing.expect(runs[3].blocked_boundary.?.samples[0].symbol_name.len > 0);
-    try std.testing.expect(runs[4].blocked_boundary.?.samples[0].candidate_actions_summary.len > 0);
-    try std.testing.expect(runs[3].blocked_boundary.?.dominant_signatures.len > 0);
-    try std.testing.expect(runs[4].blocked_boundary.?.dominant_signatures[0].count > 0);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[3].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[4].mismatch_category);
+    try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[3].blocked_boundary);
+    try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[4].blocked_boundary);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
+    try std.testing.expect(runs[5].blocked_boundary != null);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[5].mismatch_category);
+    try std.testing.expectEqual(@as(usize, 1), runs[5].blocked_boundary.?.reasons.shift_reduce);
 }

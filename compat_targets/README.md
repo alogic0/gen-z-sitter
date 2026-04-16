@@ -32,15 +32,14 @@ Versioned artifacts:
 
 Current staged boundary summary:
 
-- 3 intended first-wave parser-only targets pass within the staged boundary
-- 2 real external parser-only snapshots are now onboarded as deferred later-wave targets:
+- 5 intended first-wave parser-only targets now pass within the staged boundary
+- 2 real external parser-only snapshots have been promoted into that first-wave proven set:
   - `tree_sitter_ziggy_json`
   - `tree_sitter_ziggy_schema_json`
-  - both now have a dedicated checked-in `shift_reduce` blocker profile instead of only a free-form summary string
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`
 - 1 external-scanner target is tracked explicitly as out of scope
 
 Recommended next step after this staged boundary:
 
-- promote the deferred external parser-only snapshots by shrinking their current parser-only gaps before broadening the shortlist further
+- decide whether the remaining staged deferred conflict target justifies another parser-only wave, or whether the next promoted direction should move on from Milestone 23

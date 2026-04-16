@@ -831,7 +831,7 @@ test "supported compatibility boundary preserves compatibility-safe valid config
     try expectCompatibilitySafeValidResult(external_valid);
 }
 
-test "repeat choice seq valid path remains parity-safe but still reaches the staged unresolved boundary" {
+test "repeat choice seq valid path remains parity-safe but still rejects on the staged blocked boundary" {
     var json_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer json_arena.deinit();
     const prepared_from_json = try parsePreparedFromJsonFixture(json_arena.allocator(), fixtures.repeatChoiceSeqGrammarJson().contents);
@@ -849,7 +849,7 @@ test "repeat choice seq valid path remains parity-safe but still reaches the sta
         .rejected => |rejected| {
             try std.testing.expect(rejected.consumed_bytes > 0);
             try std.testing.expect(rejected.shifted_tokens > 0);
-            try std.testing.expectEqual(RejectReason.unresolved_decision, rejected.reason);
+            try std.testing.expectEqual(RejectReason.missing_action, rejected.reason);
         },
     }
 

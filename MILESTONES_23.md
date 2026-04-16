@@ -31,11 +31,10 @@ What is already true before this milestone starts:
 - the shortlist now includes 2 real external parser-only snapshots:
   - `tree_sitter_ziggy_json`
   - `tree_sitter_ziggy_schema_json`
-- those external targets are currently deferred later-wave targets with concrete parser-only gaps:
-  - `tree_sitter_ziggy_json`
-    - blocked parser-emission boundary driven by unresolved `shift_reduce` decisions
-  - `tree_sitter_ziggy_schema_json`
-    - blocked parser-emission boundary after the word-token lowering fix, also driven by unresolved `shift_reduce` decisions
+- those external targets now pass within the parser-only boundary after the word-token lowering and repeat-auxiliary shift/reduce fixes
+- the remaining deferred parser-only target is the staged control case:
+  - `parse_table_conflict_json`
+    - still carries an explicit blocked parser surface for a non-repeat shift/reduce ambiguity
 
 ## Scope Rules
 
@@ -59,20 +58,18 @@ Out of scope:
 Primary targets for this milestone:
 
 - `tree_sitter_ziggy_json`
-  - current status: deferred later-wave target
-  - current gap: blocked parser-emission boundary driven by unresolved `shift_reduce` decisions
-  - desired outcome: emit within the current parser-only boundary, or classify the remaining blocker more narrowly than a generic `shift_reduce` boundary
+  - current status: promoted into the proven boundary
+  - outcome: emits within the current parser-only boundary after the repeat-auxiliary shift preference fix
 
 - `tree_sitter_ziggy_schema_json`
-  - current status: deferred later-wave target
-  - current gap: blocked parser-emission boundary after advancing past the earlier `InvalidWordToken` failure, also driven by unresolved `shift_reduce` decisions
-  - desired outcome: emit within the current parser-only boundary, or classify the remaining blocker more narrowly than a generic `shift_reduce` boundary
+  - current status: promoted into the proven boundary
+  - outcome: emits within the current parser-only boundary after the word-token lowering and repeat-auxiliary fixes
 
 Secondary target:
 
 - `parse_table_conflict_json`
   - current status: deferred staged target
-  - role in this milestone: useful control case if mismatch classification needs a clearer conflict-focused bucket
+  - role in this milestone: remaining parser-only control case after the external Ziggy promotions landed
 
 ## Exit Criteria
 
@@ -131,10 +128,9 @@ Acceptance:
 
 Current progress:
 
-- the deferred external targets now carry structured blocked-boundary snapshots instead of only free-form detail text
-- a checked-in `shortlist_shift_reduce_profile.json` artifact is the focused source of truth for the shared unresolved `shift_reduce` blocker
-- the blocker profile now includes readable symbol names, candidate-action summaries, and dominant repeated signatures instead of only terminal indexes
-- the remaining work in this slice is to use those ranked signatures to reduce or eliminate the dominant unresolved decision pattern
+- the deferred external targets were narrowed to repeat-auxiliary shift/reduce signatures and are now promoted into the proven boundary
+- the checked-in `shortlist_shift_reduce_profile.json` artifact now correctly collapses to an empty deferred blocker set for the external Ziggy snapshots
+- the remaining work in this slice is no longer external Ziggy promotion; it is deciding whether the staged `parse_table_conflict_json` control case should remain deferred or define the next parser-only follow-on
 
 ### PR 3
 
@@ -156,6 +152,12 @@ Scope:
 Acceptance:
 
 - the proven boundary and deferred queue are both explicit and internally consistent
+
+Current progress:
+
+- `tree_sitter_ziggy_json` and `tree_sitter_ziggy_schema_json` are now promoted into the intended first-wave parser-only run set
+- the checked-in shortlist, report, inventory, mismatch, and coverage-decision artifacts now reflect that expanded proven boundary
+- the remaining deferred parser-only queue is down to the staged `parse_table_conflict_json` control case
 
 ## Non-Goals
 

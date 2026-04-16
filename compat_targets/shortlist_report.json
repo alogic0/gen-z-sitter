@@ -2,16 +2,16 @@
   "schema_version": 1,
   "aggregate": {
     "total_targets": 7,
-    "passed_within_current_boundary": 4,
-    "failed_due_to_parser_only_gap": 2,
+    "passed_within_current_boundary": 6,
+    "failed_due_to_parser_only_gap": 0,
     "out_of_scope_for_scanner_boundary": 1,
     "infrastructure_failure": 0,
-    "blocked_targets": 4,
+    "blocked_targets": 2,
     "mismatch_categories": {
       "grammar_input_load_mismatch": 0,
       "preparation_lowering_mismatch": 0,
       "parse_table_construction_gap": 0,
-      "shift_reduce_boundary": 2,
+      "shift_reduce_boundary": 0,
       "emitted_surface_structural_gap": 0,
       "compile_smoke_failure": 0,
       "out_of_scope_scanner_boundary": 1,
@@ -202,32 +202,23 @@
         "serialized_state_count": 16,
         "emitted_state_count": 16,
         "merged_state_count": 0,
-        "action_entry_count": 25,
+        "action_entry_count": 26,
         "goto_entry_count": 14,
-        "unresolved_entry_count": 3,
-        "parser_tables_bytes": 1471,
-        "c_tables_bytes": 3682,
-        "parser_c_bytes": 20344
+        "unresolved_entry_count": 2,
+        "parser_tables_bytes": 1450,
+        "c_tables_bytes": 3606,
+        "parser_c_bytes": 20264
       },
       "blocked_boundary": {
-        "unresolved_state_count": 3,
-        "unresolved_entry_count": 3,
+        "unresolved_state_count": 2,
+        "unresolved_entry_count": 2,
         "reasons": {
-          "shift_reduce": 3,
+          "shift_reduce": 2,
           "reduce_reduce_deferred": 0,
           "multiple_candidates": 0,
           "unsupported_action_mix": 0
         },
         "samples": [
-          {
-            "state_id": 3,
-            "symbol_kind": "terminal",
-            "symbol_index": 1,
-            "symbol_name": "number_literal",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:10, reduce:8"
-          },
           {
             "state_id": 9,
             "symbol_kind": "terminal",
@@ -235,7 +226,7 @@
             "symbol_name": "number_literal",
             "reason": "shift_reduce",
             "candidate_count": 2,
-            "candidate_actions_summary": "shift:10, reduce:2"
+            "candidate_actions_summary": "shift:10, reduce:2(_entry)"
           },
           {
             "state_id": 12,
@@ -244,26 +235,20 @@
             "symbol_name": "identifier",
             "reason": "shift_reduce",
             "candidate_count": 2,
-            "candidate_actions_summary": "shift:5, reduce:3"
+            "candidate_actions_summary": "shift:5, reduce:3(_entry)"
           }
         ],
         "dominant_signatures": [
           {
             "symbol_name": "identifier",
             "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:5, reduce:3",
+            "candidate_actions_summary": "shift:5, reduce:3(_entry)",
             "count": 1
           },
           {
             "symbol_name": "number_literal",
             "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:10, reduce:2",
-            "count": 1
-          },
-          {
-            "symbol_name": "number_literal",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:10, reduce:8",
+            "candidate_actions_summary": "shift:10, reduce:2(_entry)",
             "count": 1
           }
         ]
@@ -280,13 +265,13 @@
         "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
         "upstream_grammar_path": "src/grammar.json"
       },
-      "candidate_status": "deferred_later_wave",
+      "candidate_status": "intended_first_wave",
       "expected_blocked": false,
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, deferred until its blocked parser-emission gap is classified for promotion",
-      "success_criteria": "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set",
-      "first_failed_stage": "emit_parser_c",
-      "final_classification": "failed_due_to_parser_only_gap",
-      "mismatch_category": "shift_reduce_boundary",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy repo, now promoted after the repeat-auxiliary shift/reduce fix",
+      "success_criteria": "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
       "load": {
         "status": "passed",
         "detail": null
@@ -308,145 +293,30 @@
         "detail": null
       },
       "emit_parser_c": {
-        "status": "failed",
-        "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=100, entries=177, reasons={shift_reduce:177, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[struct shift_reduce actions=[shift:136, reduce:80] count=10; escape_sequence shift_reduce actions=[shift:113, reduce:97] count=7; quoted_string shift_reduce actions=[shift:114, reduce:97] count=7; array shift_reduce actions=[shift:164, reduce:89] count=5; float shift_reduce actions=[shift:191, reduce:117] count=5; float shift_reduce actions=[shift:192, reduce:117] count=5; float shift_reduce actions=[shift:195, reduce:142] count=5; float shift_reduce actions=[shift:196, reduce:142] count=5], samples=[state 15 terminal:0 (top_level_struct) shift_reduce candidates=2 actions=[shift:47, reduce:77]; state 18 terminal:7 (struct_name) shift_reduce candidates=2 actions=[shift:56, reduce:83]; state 27 terminal:27 (quoted_string) shift_reduce candidates=2 actions=[shift:114, reduce:97]; state 27 terminal:29 (escape_sequence) shift_reduce candidates=2 actions=[shift:113, reduce:97]; state 49 terminal:3 (struct) shift_reduce candidates=2 actions=[shift:136, reduce:80]; state 60 terminal:11 (map) shift_reduce candidates=2 actions=[shift:145, reduce:86]]"
+        "status": "passed",
+        "detail": null
       },
       "compat_check": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "compile_smoke": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "emission": {
-        "blocked": true,
+        "blocked": false,
         "serialized_state_count": 1077,
         "emitted_state_count": 1031,
         "merged_state_count": 46,
-        "action_entry_count": 3616,
+        "action_entry_count": 3793,
         "goto_entry_count": 680,
-        "unresolved_entry_count": 177,
-        "parser_tables_bytes": 154592,
-        "c_tables_bytes": 303291,
-        "parser_c_bytes": 475207
+        "unresolved_entry_count": 0,
+        "parser_tables_bytes": 151041,
+        "c_tables_bytes": 294053,
+        "parser_c_bytes": 469980
       },
-      "blocked_boundary": {
-        "unresolved_state_count": 100,
-        "unresolved_entry_count": 177,
-        "reasons": {
-          "shift_reduce": 177,
-          "reduce_reduce_deferred": 0,
-          "multiple_candidates": 0,
-          "unsupported_action_mix": 0
-        },
-        "samples": [
-          {
-            "state_id": 15,
-            "symbol_kind": "terminal",
-            "symbol_index": 0,
-            "symbol_name": "top_level_struct",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:47, reduce:77"
-          },
-          {
-            "state_id": 18,
-            "symbol_kind": "terminal",
-            "symbol_index": 7,
-            "symbol_name": "struct_name",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:56, reduce:83"
-          },
-          {
-            "state_id": 27,
-            "symbol_kind": "terminal",
-            "symbol_index": 27,
-            "symbol_name": "quoted_string",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:114, reduce:97"
-          },
-          {
-            "state_id": 27,
-            "symbol_kind": "terminal",
-            "symbol_index": 29,
-            "symbol_name": "escape_sequence",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:113, reduce:97"
-          },
-          {
-            "state_id": 49,
-            "symbol_kind": "terminal",
-            "symbol_index": 3,
-            "symbol_name": "struct",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:136, reduce:80"
-          },
-          {
-            "state_id": 60,
-            "symbol_kind": "terminal",
-            "symbol_index": 11,
-            "symbol_name": "map",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:145, reduce:86"
-          }
-        ],
-        "dominant_signatures": [
-          {
-            "symbol_name": "struct",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:136, reduce:80",
-            "count": 10
-          },
-          {
-            "symbol_name": "escape_sequence",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:113, reduce:97",
-            "count": 7
-          },
-          {
-            "symbol_name": "quoted_string",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:114, reduce:97",
-            "count": 7
-          },
-          {
-            "symbol_name": "array",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:164, reduce:89",
-            "count": 5
-          },
-          {
-            "symbol_name": "float",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:191, reduce:117",
-            "count": 5
-          },
-          {
-            "symbol_name": "float",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:192, reduce:117",
-            "count": 5
-          },
-          {
-            "symbol_name": "float",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:195, reduce:142",
-            "count": 5
-          },
-          {
-            "symbol_name": "float",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:196, reduce:142",
-            "count": 5
-          }
-        ]
-      }
+      "blocked_boundary": null
     },
     {
       "id": "tree_sitter_ziggy_schema_json",
@@ -459,13 +329,13 @@
         "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
         "upstream_grammar_path": "src/grammar.json"
       },
-      "candidate_status": "deferred_later_wave",
+      "candidate_status": "intended_first_wave",
       "expected_blocked": false,
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, deferred until its blocked parser-emission gap is classified for promotion after the word-token lowering fix",
-      "success_criteria": "load the snapshotted upstream grammar.json and classify its current parser-only gap before promoting it into the first-wave run set",
-      "first_failed_stage": "emit_parser_c",
-      "final_classification": "failed_due_to_parser_only_gap",
-      "mismatch_category": "shift_reduce_boundary",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after the word-token lowering and repeat-auxiliary fixes",
+      "success_criteria": "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
       "load": {
         "status": "passed",
         "detail": null
@@ -487,145 +357,30 @@
         "detail": null
       },
       "emit_parser_c": {
-        "status": "failed",
-        "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=21, entries=36, reasons={shift_reduce:36, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[struct shift_reduce actions=[shift:81, reduce:62] count=12; doc_comment shift_reduce actions=[shift:43, reduce:62] count=8; doc_comment shift_reduce actions=[shift:87, reduce:62] count=4; struct shift_reduce actions=[shift:96, reduce:59] count=4; struct shift_reduce actions=[shift:27, reduce:51] count=3; doc_comment shift_reduce actions=[shift:43, reduce:51] count=2; doc_comment shift_reduce actions=[shift:30, reduce:51] count=1; enum_definition shift_reduce actions=[shift:105, reduce:54] count=1], samples=[state 4 terminal:35 (struct) shift_reduce candidates=2 actions=[shift:27, reduce:51]; state 4 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:30, reduce:51]; state 22 terminal:2 (schema) shift_reduce candidates=2 actions=[shift:39, reduce:48]; state 38 terminal:35 (struct) shift_reduce candidates=2 actions=[shift:27, reduce:51]; state 38 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:43, reduce:51]; state 56 terminal:35 (struct) shift_reduce candidates=2 actions=[shift:27, reduce:51]]"
+        "status": "passed",
+        "detail": null
       },
       "compat_check": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "compile_smoke": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "emission": {
-        "blocked": true,
+        "blocked": false,
         "serialized_state_count": 198,
         "emitted_state_count": 196,
         "merged_state_count": 2,
-        "action_entry_count": 653,
+        "action_entry_count": 689,
         "goto_entry_count": 223,
-        "unresolved_entry_count": 36,
-        "parser_tables_bytes": 30483,
-        "c_tables_bytes": 59361,
-        "parser_c_bytes": 102765
+        "unresolved_entry_count": 0,
+        "parser_tables_bytes": 29729,
+        "c_tables_bytes": 57421,
+        "parser_c_bytes": 102135
       },
-      "blocked_boundary": {
-        "unresolved_state_count": 21,
-        "unresolved_entry_count": 36,
-        "reasons": {
-          "shift_reduce": 36,
-          "reduce_reduce_deferred": 0,
-          "multiple_candidates": 0,
-          "unsupported_action_mix": 0
-        },
-        "samples": [
-          {
-            "state_id": 4,
-            "symbol_kind": "terminal",
-            "symbol_index": 35,
-            "symbol_name": "struct",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:27, reduce:51"
-          },
-          {
-            "state_id": 4,
-            "symbol_kind": "terminal",
-            "symbol_index": 42,
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:30, reduce:51"
-          },
-          {
-            "state_id": 22,
-            "symbol_kind": "terminal",
-            "symbol_index": 2,
-            "symbol_name": "schema",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:39, reduce:48"
-          },
-          {
-            "state_id": 38,
-            "symbol_kind": "terminal",
-            "symbol_index": 35,
-            "symbol_name": "struct",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:27, reduce:51"
-          },
-          {
-            "state_id": 38,
-            "symbol_kind": "terminal",
-            "symbol_index": 42,
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:43, reduce:51"
-          },
-          {
-            "state_id": 56,
-            "symbol_kind": "terminal",
-            "symbol_index": 35,
-            "symbol_name": "struct",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:27, reduce:51"
-          }
-        ],
-        "dominant_signatures": [
-          {
-            "symbol_name": "struct",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:81, reduce:62",
-            "count": 12
-          },
-          {
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:43, reduce:62",
-            "count": 8
-          },
-          {
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:87, reduce:62",
-            "count": 4
-          },
-          {
-            "symbol_name": "struct",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:96, reduce:59",
-            "count": 4
-          },
-          {
-            "symbol_name": "struct",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:27, reduce:51",
-            "count": 3
-          },
-          {
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:43, reduce:51",
-            "count": 2
-          },
-          {
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:30, reduce:51",
-            "count": 1
-          },
-          {
-            "symbol_name": "enum_definition",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:105, reduce:54",
-            "count": 1
-          }
-        ]
-      }
+      "blocked_boundary": null
     },
     {
       "id": "parse_table_conflict_json",
@@ -706,14 +461,14 @@
             "symbol_name": "expr",
             "reason": "shift_reduce",
             "candidate_count": 2,
-            "candidate_actions_summary": "shift:4, reduce:2"
+            "candidate_actions_summary": "shift:4, reduce:2(expr)"
           }
         ],
         "dominant_signatures": [
           {
             "symbol_name": "expr",
             "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:4, reduce:2",
+            "candidate_actions_summary": "shift:4, reduce:2(expr)",
             "count": 1
           }
         ]

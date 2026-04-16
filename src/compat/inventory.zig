@@ -177,12 +177,12 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     defer report.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 7), report.boundary.total_shortlist_targets);
-    try std.testing.expectEqual(@as(usize, 3), report.boundary.first_wave_targets);
-    try std.testing.expectEqual(@as(usize, 3), report.boundary.first_wave_passed);
-    try std.testing.expectEqual(@as(usize, 3), report.boundary.deferred_targets);
+    try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_targets);
+    try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_passed);
+    try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.excluded_targets);
     try std.testing.expectEqual(@as(usize, 1), report.out_of_scope_targets.len);
-    try std.testing.expectEqual(@as(usize, 3), report.deferred_targets.len);
+    try std.testing.expectEqual(@as(usize, 1), report.deferred_targets.len);
 }
 
 test "renderInventoryReportAlloc emits deterministic boundary JSON" {

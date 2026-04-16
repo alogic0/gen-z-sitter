@@ -400,7 +400,14 @@ fn resolveShiftReduce(
         }
     }
 
+    if (productionIsRepeatAuxiliary(production)) return shift_action;
+
     return null;
+}
+
+fn productionIsRepeatAuxiliary(production: anytype) bool {
+    if (!@hasField(@TypeOf(production), "lhs_is_repeat_auxiliary")) return false;
+    return production.lhs_is_repeat_auxiliary;
 }
 
 fn extractResolutionMetadata(production: anytype) ProductionResolutionMetadata {
@@ -1604,6 +1611,80 @@ test "resolveActionTable uses production-level shift precedence from the current
         .{
             .production_id = 2,
             .step_index = 1,
+            .lookahead = null,
+        },
+    };
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 6,
+            .items = parse_items[0..],
+            .transitions = &.{},
+            .conflicts = &.{},
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 6,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, parse_states[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
+}
+
+test "resolveActionTable prefers shift over reducing repeat auxiliaries" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        lhs_is_repeat_auxiliary: bool = false,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const reduce_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    const shift_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = reduce_steps[0..], .lhs_is_repeat_auxiliary = true },
+        .{ .lhs = 2, .steps = shift_steps[0..] },
+    };
+
+    const parse_items = [_]item.ParseItem{
+        .{
+            .production_id = 1,
+            .step_index = 1,
+            .lookahead = .{ .terminal = 0 },
+        },
+        .{
+            .production_id = 2,
+            .step_index = 0,
             .lookahead = null,
         },
     };

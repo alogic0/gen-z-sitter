@@ -116,7 +116,7 @@ Current staged compatibility boundary:
 - the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
-  - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it remains on the staged `unresolved_decision` boundary for its valid path
+  - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it now rejects on the staged blocked path as `missing_action` rather than advancing into a promoted parser-only pass
 - scanner/external-scanner repo proof is still explicitly deferred beyond the current parser-only boundary
 - broader real-grammar coverage is the next planned step, beginning with promotion of the deferred external parser-only snapshots before broader scanner/runtime parity work
 
