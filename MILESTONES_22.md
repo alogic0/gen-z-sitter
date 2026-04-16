@@ -40,6 +40,16 @@ The second implementation slice is now landed as well:
 - the harness can now run the full versioned shortlist and report excluded scanner-boundary candidates explicitly instead of leaving them implicit
 - the JSON report now aggregates concrete mismatch categories instead of only broad pass/fail buckets
 
+The third implementation slice is now landed as well:
+
+- `src/compat/inventory.zig` now derives an explicit parser-only boundary summary from actual shortlist runs
+- the repo now has one generated inventory/report surface that separates:
+  - first-wave boundary counts
+  - in-scope non-passing targets
+  - deferred later-wave targets
+  - out-of-scope scanner-boundary targets
+- the current parser-only compatibility boundary can now be stated from harness results instead of being inferred from scattered tests
+
 ## PR-Sized Slices
 
 This section tracks the practical landing order for the milestone. Unlike the contract sections above, these slices are allowed to change as implementation sequencing changes.
@@ -197,7 +207,7 @@ Out of scope:
   - parser.c compile-smoke
   - structural compatibility checks where applicable
 - [ ] known parser-only failures are classified and documented
-- [ ] the repo can state a concrete current parser-only compatibility boundary based on harness results, not only fixture tests
+- [x] the repo can state a concrete current parser-only compatibility boundary based on harness results, not only fixture tests
 
 ## Implementation Sequence
 
@@ -381,6 +391,13 @@ Current partial progress for this stage:
   - infrastructure failure
 - excluded shortlist candidates are now reported explicitly as out-of-scope instead of being silently omitted
 - a fuller mismatch inventory for real later-wave failures is still pending
+
+Current boundary summary from the generated inventory surface:
+
+- the first-wave parser-only run set contains 3 targets
+- all 3 current first-wave targets pass within the staged boundary
+- 1 deferred later-wave target is tracked separately for future mismatch expansion
+- 1 excluded out-of-scope target is tracked separately for the external-scanner boundary
 
 ### 8. Add one stable compatibility report artifact
 
