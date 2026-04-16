@@ -104,7 +104,7 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "scanner-boundary token extraction failed: {s}", .{@errorName(err)}),
             );
         };
-        _ = scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax) catch |err| {
+        const serialized_boundary = scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax) catch |err| {
             return failRun(
                 &run,
                 .serialize,
@@ -113,6 +113,16 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "external-scanner boundary extraction failed: {s}", .{@errorName(err)}),
             );
         };
+
+        if (!serialized_boundary.isReady()) {
+            return failRun(
+                &run,
+                .serialize,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try formatUnsupportedExternalFeaturesAlloc(allocator, serialized_boundary.unsupported_features),
+            );
+        }
         run.serialize.status = .passed;
 
         const valid_input_path = target.scanner_valid_input_path orelse
@@ -454,6 +464,51 @@ fn summarizeBlockedBoundaryAlloc(
     );
 }
 
+fn formatUnsupportedExternalFeaturesAlloc(
+    allocator: std.mem.Allocator,
+    features: []const scanner_serialize.UnsupportedExternalScannerFeature,
+) ![]const u8 {
+    var parts = std.array_list.Managed([]const u8).init(allocator);
+    defer {
+        for (parts.items) |part| allocator.free(part);
+        parts.deinit();
+    }
+
+    for (features) |feature| {
+        const part = switch (feature) {
+            .missing_external_tokens => try allocator.dupe(u8, "missing_external_tokens"),
+            .multiple_external_tokens => |count| try std.fmt.allocPrint(allocator, "multiple_external_tokens:{d}", .{count}),
+            .extra_symbols => |count| try std.fmt.allocPrint(allocator, "extra_symbols:{d}", .{count}),
+            .non_leading_external_step => |location| try std.fmt.allocPrint(
+                allocator,
+                "non_leading_external_step:{s}:{d}:{d}",
+                .{ location.variable_name, location.production_index, location.step_index },
+            ),
+            .aliased_external_step => |location| try std.fmt.allocPrint(
+                allocator,
+                "aliased_external_step:{s}:{d}:{d}",
+                .{ location.variable_name, location.production_index, location.step_index },
+            ),
+            .multiple_external_steps_in_production => |info| try std.fmt.allocPrint(
+                allocator,
+                "multiple_external_steps_in_production:{s}:{d}:{d}",
+                .{ info.variable_name, info.production_index, info.count },
+            ),
+        };
+        try parts.append(part);
+    }
+
+    var text = std.array_list.Managed(u8).init(allocator);
+    defer text.deinit();
+    const writer = text.writer();
+    try writer.writeAll("external-scanner boundary remains blocked by unsupported features: ");
+    for (parts.items, 0..) |part, index| {
+        if (index > 0) try writer.writeAll(", ");
+        try writer.writeAll(part);
+    }
+    return try text.toOwnedSlice();
+}
+
 fn classifyBlockedBoundary(
     snapshot: result_model.BlockedBoundarySnapshot,
 ) result_model.MismatchCategory {
@@ -758,11 +813,13 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     const runs = try runShortlistTargetsAlloc(allocator, .{});
     defer result_model.deinitRunResults(allocator, runs);
 
-    try std.testing.expectEqual(@as(usize, 8), runs.len);
+    try std.testing.expectEqual(@as(usize, 10), runs.len);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[6].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[8].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[9].final_classification);
 }
 
 test "runShortlistTargetsAlloc promotes the external Ziggy targets and keeps only staged blocked controls" {
@@ -782,6 +839,8 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets and keeps onl
     try std.testing.expectEqual(@as(usize, 1), runs[5].blocked_boundary.?.reasons.shift_reduce);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[6].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[7].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[8].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[9].mismatch_category);
 }
 
 test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked control case" {
@@ -825,4 +884,22 @@ test "runShortlistTargetsAlloc promotes scanner-wave targets through the staged 
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
     try std.testing.expect(std.mem.indexOf(u8, runs[7].success_criteria, "invalid path makes less progress") != null);
+
+    try std.testing.expectEqualStrings("mixed_semantics_json", runs[8].id);
+    try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[8].candidate_status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[8].load.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[8].prepare.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[8].serialize.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[8].scanner_boundary_check.status);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[8].final_classification);
+    try std.testing.expect(std.mem.indexOf(u8, runs[8].notes, "extras present elsewhere in the grammar") != null);
+
+    try std.testing.expectEqualStrings("mixed_semantics_js", runs[9].id);
+    try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[9].candidate_status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[9].load.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[9].prepare.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[9].serialize.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[9].scanner_boundary_check.status);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[9].final_classification);
+    try std.testing.expect(std.mem.indexOf(u8, runs[9].success_criteria, "without depending on extras") != null);
 }

@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "boundary": {
-    "total_shortlist_targets": 8,
+    "total_shortlist_targets": 10,
     "first_wave_targets": 5,
     "first_wave_passed": 5,
     "first_wave_non_passing": 0,
-    "scanner_wave_targets": 2,
-    "scanner_wave_passed": 2,
+    "scanner_wave_targets": 4,
+    "scanner_wave_passed": 4,
     "scanner_wave_non_passing": 0,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
@@ -114,6 +114,34 @@
       "first_failed_stage": null,
       "detail": null,
       "notes": "staged external-scanner JS target promoted into the first scanner wave when the valid path stays compatibility-safe and the invalid path makes less progress through the node loader and first external boundary"
+    },
+    {
+      "id": "mixed_semantics_json",
+      "display_name": "Mixed Semantics (JSON)",
+      "grammar_path": "compat_targets/mixed_semantics/grammar.json",
+      "boundary_kind": "scanner_external_scanner",
+      "candidate_status": "intended_scanner_wave",
+      "expected_blocked": false,
+      "emission_blocked": false,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "first_failed_stage": null,
+      "detail": null,
+      "notes": "staged external-scanner JSON target promoted in the second scanner wave when the first external boundary remains compatibility-safe even with extras present elsewhere in the grammar"
+    },
+    {
+      "id": "mixed_semantics_js",
+      "display_name": "Mixed Semantics (JS)",
+      "grammar_path": "compat_targets/mixed_semantics/grammar.js",
+      "boundary_kind": "scanner_external_scanner",
+      "candidate_status": "intended_scanner_wave",
+      "expected_blocked": false,
+      "emission_blocked": false,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "first_failed_stage": null,
+      "detail": null,
+      "notes": "staged external-scanner JS target mirroring mixed_semantics, promoted in the second scanner wave when the node loader preserves the same first-boundary behavior"
     }
   ],
   "deferred_control_targets": [

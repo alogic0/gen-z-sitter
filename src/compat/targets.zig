@@ -156,6 +156,34 @@ pub const shortlist_targets = [_]Target{
         .notes = "staged external-scanner JS target promoted into the first scanner wave when the valid path stays compatibility-safe and the invalid path makes less progress through the node loader and first external boundary",
         .success_criteria = "load through node, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress",
     },
+    .{
+        .id = "mixed_semantics_json",
+        .display_name = "Mixed Semantics (JSON)",
+        .grammar_path = "compat_targets/mixed_semantics/grammar.json",
+        .source_kind = .grammar_json,
+        .boundary_kind = .scanner_external_scanner,
+        .provenance = .{ .origin_kind = .staged_in_repo },
+        .candidate_status = .intended_scanner_wave,
+        .expected_blocked = false,
+        .scanner_valid_input_path = "compat_targets/mixed_semantics/valid.txt",
+        .scanner_invalid_input_path = "compat_targets/mixed_semantics/invalid.txt",
+        .notes = "staged external-scanner JSON target promoted in the second scanner wave when the first external boundary remains compatibility-safe even with extras present elsewhere in the grammar",
+        .success_criteria = "load, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress without depending on extras",
+    },
+    .{
+        .id = "mixed_semantics_js",
+        .display_name = "Mixed Semantics (JS)",
+        .grammar_path = "compat_targets/mixed_semantics/grammar.js",
+        .source_kind = .grammar_js,
+        .boundary_kind = .scanner_external_scanner,
+        .provenance = .{ .origin_kind = .staged_in_repo },
+        .candidate_status = .intended_scanner_wave,
+        .expected_blocked = false,
+        .scanner_valid_input_path = "compat_targets/mixed_semantics/valid.txt",
+        .scanner_invalid_input_path = "compat_targets/mixed_semantics/invalid.txt",
+        .notes = "staged external-scanner JS target mirroring mixed_semantics, promoted in the second scanner wave when the node loader preserves the same first-boundary behavior",
+        .success_criteria = "load through node, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress without depending on extras",
+    },
 };
 
 pub fn shortlistTargets() []const Target {
@@ -168,7 +196,7 @@ pub fn firstWaveTargets() []const Target {
 
 test "stagedTargets exposes a small versioned shortlist" {
     const shortlist = shortlistTargets();
-    try std.testing.expectEqual(@as(usize, 8), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 10), shortlist.len);
     try std.testing.expect(shortlist[0].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
@@ -177,6 +205,9 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[7].boundary_kind == .scanner_external_scanner);
     try std.testing.expect(shortlist[7].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[7].scanner_invalid_input_path != null);
+    try std.testing.expect(shortlist[8].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[8].scanner_valid_input_path != null);
+    try std.testing.expect(shortlist[9].source_kind == .grammar_js);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {

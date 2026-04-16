@@ -116,6 +116,32 @@
       "upstream_grammar_path": null,
       "why": "staged external-scanner JS target promoted into the first scanner wave when the valid path stays compatibility-safe and the invalid path makes less progress through the node loader and first external boundary",
       "success_means": "load through node, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress"
+    },
+    {
+      "id": "mixed_semantics_json",
+      "boundary_kind": "scanner_external_scanner",
+      "status": "intended_scanner_wave",
+      "source_kind": "grammar_json",
+      "origin_kind": "staged_in_repo",
+      "grammar_path": "compat_targets/mixed_semantics/grammar.json",
+      "upstream_repository": null,
+      "upstream_revision": null,
+      "upstream_grammar_path": null,
+      "why": "staged external-scanner JSON target promoted in the second scanner wave when the first external boundary remains compatibility-safe even with extras present elsewhere in the grammar",
+      "success_means": "load, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress without depending on extras"
+    },
+    {
+      "id": "mixed_semantics_js",
+      "boundary_kind": "scanner_external_scanner",
+      "status": "intended_scanner_wave",
+      "source_kind": "grammar_js",
+      "origin_kind": "staged_in_repo",
+      "grammar_path": "compat_targets/mixed_semantics/grammar.js",
+      "upstream_repository": null,
+      "upstream_revision": null,
+      "upstream_grammar_path": null,
+      "why": "staged external-scanner JS target mirroring mixed_semantics, promoted in the second scanner wave when the node loader preserves the same first-boundary behavior",
+      "success_means": "load through node, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress without depending on extras"
     }
   ]
 }

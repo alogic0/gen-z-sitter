@@ -226,17 +226,17 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     var report = try buildInventoryReportAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 8), report.boundary.total_shortlist_targets);
+    try std.testing.expectEqual(@as(usize, 10), report.boundary.total_shortlist_targets);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_targets);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_passed);
-    try std.testing.expectEqual(@as(usize, 2), report.boundary.scanner_wave_targets);
-    try std.testing.expectEqual(@as(usize, 2), report.boundary.scanner_wave_passed);
+    try std.testing.expectEqual(@as(usize, 4), report.boundary.scanner_wave_targets);
+    try std.testing.expectEqual(@as(usize, 4), report.boundary.scanner_wave_passed);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_control_targets);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.deferred_scanner_targets);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.excluded_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.blocked_control_targets);
     try std.testing.expectEqual(@as(usize, 5), report.proven_first_wave_targets.len);
-    try std.testing.expectEqual(@as(usize, 2), report.proven_scanner_wave_targets.len);
+    try std.testing.expectEqual(@as(usize, 4), report.proven_scanner_wave_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
 }

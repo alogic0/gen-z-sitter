@@ -76,10 +76,6 @@ pub fn serializeExternalScannerBoundary(
         try unsupported.append(.{ .multiple_external_tokens = syntax.external_tokens.len });
     }
 
-    if (syntax.extra_symbols.len != 0) {
-        try unsupported.append(.{ .extra_symbols = syntax.extra_symbols.len });
-    }
-
     for (syntax.variables) |variable| {
         for (variable.productions, 0..) |production, production_index| {
             var external_steps_in_production: usize = 0;
@@ -173,7 +169,7 @@ test "serializeExternalScannerBoundary serializes the hidden external fields rea
     try std.testing.expectEqual(@as(usize, 0), serialized.unsupported_features.len);
 }
 
-test "serializeExternalScannerBoundary keeps extras coupled to external-token handling blocked" {
+test "serializeExternalScannerBoundary tolerates extras at the first external boundary" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -181,8 +177,10 @@ test "serializeExternalScannerBoundary keeps extras coupled to external-token ha
     const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
     const serialized = try serializeExternalScannerBoundary(arena.allocator(), extracted.syntax);
 
-    try std.testing.expect(!serialized.isReady());
-    try std.testing.expect(hasUnsupportedFeature(serialized.unsupported_features, .extra_symbols));
+    try std.testing.expect(serialized.isReady());
+    try std.testing.expectEqual(@as(usize, 1), serialized.tokens.len);
+    try std.testing.expectEqual(@as(usize, 1), serialized.uses.len);
+    try std.testing.expectEqual(@as(usize, 0), serialized.unsupported_features.len);
 }
 
 test "serializeExternalScannerBoundary keeps aliased external steps blocked" {

@@ -7,7 +7,7 @@
   "proven_boundary": [
     "5 intended first-wave parser-only targets are currently in the run set",
     "5 intended first-wave targets currently pass within the staged parser-only boundary",
-    "2 intended scanner-wave targets currently pass within the staged scanner boundary",
+    "4 intended scanner-wave targets currently pass within the staged scanner boundary",
     "2 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
   ],
   "deferred_parser_only_targets": [
@@ -19,10 +19,10 @@
     }
   ],
   "deferred_scanner_targets": [],
-  "recommended_next_milestone": "scanner_and_external_scanner_compatibility_onboarding",
+  "recommended_next_milestone": "broader_compatibility_polish",
   "recommendation_rationale": [
     "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
     "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
-    "the initial staged scanner wave now has compatibility-safe promoted targets, so the current promoted milestone should focus on broadening scanner evidence rather than re-establishing the first boundary"
+    "a second scanner grammar family now passes within the staged first-boundary checks, so the next promoted milestone can shift from scanner onboarding toward broader compatibility polish"
   ]
 }

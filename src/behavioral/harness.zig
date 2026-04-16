@@ -775,6 +775,76 @@ test "simulatePreparedWithFirstExternalBoundary preserves hidden external fields
     try expectSameSimulationResult(json_invalid, invalid);
 }
 
+test "simulatePreparedWithFirstExternalBoundary tolerates staged extras on mixed semantics" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), fixtures.mixedSemanticsGrammarJson().contents);
+    const valid = try simulatePreparedWithFirstExternalBoundary(
+        arena.allocator(),
+        prepared,
+        fixtures.mixedSemanticsValidInput().contents,
+    );
+    const invalid = try simulatePreparedWithFirstExternalBoundary(
+        arena.allocator(),
+        prepared,
+        fixtures.mixedSemanticsInvalidInput().contents,
+    );
+
+    try expectCompatibilitySafeValidResult(valid);
+    try std.testing.expect(progressOf(valid) > progressOf(invalid));
+}
+
+test "simulatePreparedWithFirstExternalBoundary preserves mixed semantics outcomes through grammar.js" {
+    var json_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer json_arena.deinit();
+    const prepared_from_json = try parsePreparedFromJsonFixture(json_arena.allocator(), fixtures.mixedSemanticsGrammarJson().contents);
+    const json_valid = try simulatePreparedWithFirstExternalBoundary(
+        json_arena.allocator(),
+        prepared_from_json,
+        fixtures.mixedSemanticsValidInput().contents,
+    );
+    const json_invalid = try simulatePreparedWithFirstExternalBoundary(
+        json_arena.allocator(),
+        prepared_from_json,
+        fixtures.mixedSemanticsInvalidInput().contents,
+    );
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{fixtures.mixedSemanticsGrammarJson().contents});
+    defer std.testing.allocator.free(js);
+    try tmp.dir.writeFile(.{
+        .sub_path = "grammar.js",
+        .data = js,
+    });
+
+    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    defer std.testing.allocator.free(grammar_path);
+
+    var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+    const valid = try simulatePreparedWithFirstExternalBoundary(
+        arena.allocator(),
+        prepared,
+        fixtures.mixedSemanticsValidInput().contents,
+    );
+    const invalid = try simulatePreparedWithFirstExternalBoundary(
+        arena.allocator(),
+        prepared,
+        fixtures.mixedSemanticsInvalidInput().contents,
+    );
+
+    try expectSameSimulationResult(json_valid, valid);
+    try expectSameSimulationResult(json_invalid, invalid);
+}
+
 test "supported compatibility boundary avoids internal contract failures on valid config and external-token inputs" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

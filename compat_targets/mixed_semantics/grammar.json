@@ -1,0 +1,51 @@
+{
+  "name": "mixed_semantics",
+  "rules": {
+    "source_file": {
+      "type": "SYMBOL",
+      "name": "_wrapped_expression"
+    },
+    "_wrapped_expression": {
+      "type": "SEQ",
+      "members": [
+        { "type": "SYMBOL", "name": "indent" },
+        {
+          "type": "FIELD",
+          "name": "body",
+          "content": {
+            "type": "ALIAS",
+            "named": true,
+            "value": "statement",
+            "content": { "type": "SYMBOL", "name": "expression" }
+          }
+        }
+      ]
+    },
+    "expression": {
+      "type": "CHOICE",
+      "members": [
+        { "type": "SYMBOL", "name": "identifier" },
+        { "type": "SYMBOL", "name": "number_literal" }
+      ]
+    },
+    "identifier": {
+      "type": "TOKEN",
+      "content": { "type": "PATTERN", "value": "[a-z]+" }
+    },
+    "number_literal": {
+      "type": "STRING",
+      "value": "42"
+    },
+    "space": {
+      "type": "STRING",
+      "value": " "
+    }
+  },
+  "externals": [
+    { "type": "SYMBOL", "name": "indent" }
+  ],
+  "extras": [
+    { "type": "SYMBOL", "name": "space" }
+  ],
+  "supertypes": ["expression"]
+}

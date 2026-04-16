@@ -3648,15 +3648,28 @@ pub fn mixedSemanticsExternalScannerDump() Fixture {
     return .{
         .name = "mixed_semantics_external_scanner_dump",
         .contents =
-            \\blocked true
+            \\blocked false
             \\tokens 1
             \\token 0 index 0 indent named
             \\uses 1
             \\use 0 external 0 variable _wrapped_expression production 0 step 0 field null
-            \\unsupported_features 1
-            \\feature 0 extra_symbols 1
+            \\unsupported_features 0
             \\
         ,
+    };
+}
+
+pub fn mixedSemanticsValidInput() Fixture {
+    return .{
+        .name = "mixed_semantics_valid_input",
+        .contents = "  foo",
+    };
+}
+
+pub fn mixedSemanticsInvalidInput() Fixture {
+    return .{
+        .name = "mixed_semantics_invalid_input",
+        .contents = "foo",
     };
 }
 

@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "aggregate": {
-    "total_targets": 8,
+    "total_targets": 10,
     "first_wave_targets": 5,
     "first_wave_passed": 5,
-    "scanner_wave_targets": 2,
-    "scanner_wave_passed": 2,
+    "scanner_wave_targets": 4,
+    "scanner_wave_passed": 4,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
-    "passed_within_current_boundary": 8,
+    "passed_within_current_boundary": 10,
     "deferred_for_scanner_boundary": 0,
     "failed_due_to_parser_only_gap": 0,
     "out_of_scope_for_scanner_boundary": 0,
@@ -588,6 +588,122 @@
       "expected_blocked": false,
       "notes": "staged external-scanner JS target promoted into the first scanner wave when the valid path stays compatibility-safe and the invalid path makes less progress through the node loader and first external boundary",
       "success_criteria": "load through node, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "load": {
+        "status": "passed",
+        "detail": null
+      },
+      "prepare": {
+        "status": "passed",
+        "detail": null
+      },
+      "serialize": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_tables": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emit_c_tables": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "not_run",
+        "detail": null
+      },
+      "scanner_boundary_check": {
+        "status": "passed",
+        "detail": null
+      },
+      "compat_check": {
+        "status": "not_run",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emission": null,
+      "blocked_boundary": null
+    },
+    {
+      "id": "mixed_semantics_json",
+      "display_name": "Mixed Semantics (JSON)",
+      "grammar_path": "compat_targets/mixed_semantics/grammar.json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "scanner_external_scanner",
+      "provenance": {
+        "origin_kind": "staged_in_repo",
+        "upstream_repository": null,
+        "upstream_revision": null,
+        "upstream_grammar_path": null
+      },
+      "candidate_status": "intended_scanner_wave",
+      "expected_blocked": false,
+      "notes": "staged external-scanner JSON target promoted in the second scanner wave when the first external boundary remains compatibility-safe even with extras present elsewhere in the grammar",
+      "success_criteria": "load, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress without depending on extras",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "load": {
+        "status": "passed",
+        "detail": null
+      },
+      "prepare": {
+        "status": "passed",
+        "detail": null
+      },
+      "serialize": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_tables": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emit_c_tables": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "not_run",
+        "detail": null
+      },
+      "scanner_boundary_check": {
+        "status": "passed",
+        "detail": null
+      },
+      "compat_check": {
+        "status": "not_run",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emission": null,
+      "blocked_boundary": null
+    },
+    {
+      "id": "mixed_semantics_js",
+      "display_name": "Mixed Semantics (JS)",
+      "grammar_path": "compat_targets/mixed_semantics/grammar.js",
+      "source_kind": "grammar_js",
+      "boundary_kind": "scanner_external_scanner",
+      "provenance": {
+        "origin_kind": "staged_in_repo",
+        "upstream_repository": null,
+        "upstream_revision": null,
+        "upstream_grammar_path": null
+      },
+      "candidate_status": "intended_scanner_wave",
+      "expected_blocked": false,
+      "notes": "staged external-scanner JS target mirroring mixed_semantics, promoted in the second scanner wave when the node loader preserves the same first-boundary behavior",
+      "success_criteria": "load through node, prepare, extract the first external-scanner boundary, keep the valid path compatibility-safe, and ensure the invalid path makes less progress without depending on extras",
       "first_failed_stage": null,
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",

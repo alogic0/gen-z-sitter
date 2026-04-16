@@ -46,6 +46,24 @@ pub fn buildCoverageDecisionAlloc(
     const first_wave_passed_count = countFirstWavePassed(runs);
     const first_wave_non_passing_count = first_wave_target_count - first_wave_passed_count;
 
+    const deferred_scanner_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_scanner_wave);
+    const recommended_next_milestone: NextMilestone = if (deferred_scanner_targets.len == 0)
+        .broader_compatibility_polish
+    else
+        .scanner_and_external_scanner_compatibility_onboarding;
+    const recommendation_rationale = if (deferred_scanner_targets.len == 0)
+        try duplicateStringSliceAlloc(allocator, &.{
+            "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
+            "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
+            "a second scanner grammar family now passes within the staged first-boundary checks, so the next promoted milestone can shift from scanner onboarding toward broader compatibility polish",
+        })
+    else
+        try duplicateStringSliceAlloc(allocator, &.{
+            "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
+            "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
+            "the initial staged scanner wave now has compatibility-safe promoted targets, but second-wave scanner targets remain deferred, so the current promoted milestone should focus on broadening scanner evidence across additional grammar families",
+        });
+
     return .{
         .schema_version = 1,
         .first_wave_target_count = first_wave_target_count,
@@ -54,13 +72,9 @@ pub fn buildCoverageDecisionAlloc(
         .parser_only_boundary_proven = first_wave_non_passing_count == 0,
         .proven_boundary = try collectProvenBoundaryAlloc(allocator, runs),
         .deferred_parser_only_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_control_fixture),
-        .deferred_scanner_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_scanner_wave),
-        .recommended_next_milestone = .scanner_and_external_scanner_compatibility_onboarding,
-        .recommendation_rationale = try duplicateStringSliceAlloc(allocator, &.{
-            "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-            "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
-            "the initial staged scanner wave now has compatibility-safe promoted targets, so the current promoted milestone should focus on broadening scanner evidence rather than re-establishing the first boundary",
-        }),
+        .deferred_scanner_targets = deferred_scanner_targets,
+        .recommended_next_milestone = recommended_next_milestone,
+        .recommendation_rationale = recommendation_rationale,
     };
 }
 
@@ -189,7 +203,7 @@ test "buildCoverageDecisionAlloc summarizes the current next-step decision" {
     try std.testing.expectEqual(@as(usize, 5), report.first_wave_passed_count);
     try std.testing.expectEqual(@as(usize, 0), report.first_wave_non_passing_count);
     try std.testing.expect(report.parser_only_boundary_proven);
-    try std.testing.expectEqual(NextMilestone.scanner_and_external_scanner_compatibility_onboarding, report.recommended_next_milestone);
+    try std.testing.expectEqual(NextMilestone.broader_compatibility_polish, report.recommended_next_milestone);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_only_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
 }

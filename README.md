@@ -40,9 +40,9 @@ What is still not a first-class top-level product surface:
 
 The immediate next goals are:
 
-- keep the now-proven parser-only boundary explicit and defensible in checked-in compatibility artifacts
+- keep the now-proven parser-only and multi-family staged scanner boundaries explicit and defensible in checked-in compatibility artifacts
 - treat `parse_table_conflict_json` as an intentional frozen control fixture rather than a live promotion gap
-- broaden scanner and external-scanner evidence beyond the first staged boundary without overstating runtime parity
+- broaden compatibility evidence without overstating runtime parity now that a second scanner family is promoted
 - keep parser-output optimization measurable while deeper parse-table compression/minimization remains future work
 
 ## Quick Start
@@ -115,17 +115,20 @@ Current staged compatibility boundary:
 - the shortlist now carries one intentionally deferred parser-only control fixture:
   - `parse_table_conflict_json`
   - it remains blocked on purpose as a known ambiguity boundary without precedence annotations
-- the shortlist now also carries an initial promoted scanner wave:
+- the shortlist now also carries a promoted multi-family scanner wave:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`
-  - both currently prove load, prepare, first external-boundary extraction, compatibility-safe valid-path behavior, and weaker invalid-path progress through the staged scanner boundary
+  - `mixed_semantics_json`
+  - `mixed_semantics_js`
+  - together they currently prove load, prepare, first external-boundary extraction, compatibility-safe valid-path behavior, and weaker invalid-path progress through the staged scanner boundary
+  - `mixed_semantics` specifically keeps extras elsewhere in the grammar while proving a narrower first-boundary path that does not depend on them
 - the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
   - `hidden_external_fields` also proves that the invalid path makes less progress than the valid path through the first staged scanner boundary
   - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it now rejects on the staged blocked path as `missing_action` rather than advancing into a promoted parser-only pass
-- scanner/external-scanner proof is now staged as a narrow promoted wave rather than left entirely out of the shortlist
-- the current promoted milestone is scanner and external-scanner compatibility onboarding
+- scanner/external-scanner proof is now staged as a narrow promoted multi-family wave rather than left entirely out of the shortlist
+- the current checked-in coverage decision now points to broader compatibility polish rather than another scanner-onboarding-only milestone
 
 ## Repository Layout
 
@@ -192,6 +195,7 @@ Focused supporting notes:
 3. [compatibility-matrix.md](./compatibility-matrix.md)
 4. [test-strategy.md](./test-strategy.md)
 5. [MILESTONES_23.md](./MILESTONES_23.md) for the expanded parser-only proven boundary
-6. [MILESTONES_24.md](./MILESTONES_24.md) for the current broader compatibility polish work
-7. [MILESTONES_21.md](./MILESTONES_21.md) for current optimization/parity follow-on work
-8. the milestone checklist for the subsystem you care about
+6. [MILESTONES_26.md](./MILESTONES_26.md) for the current second-wave scanner boundary and closeout state
+7. [MILESTONES_24.md](./MILESTONES_24.md) for broader compatibility polish background
+8. [MILESTONES_21.md](./MILESTONES_21.md) for current optimization/parity follow-on work
+9. the milestone checklist for the subsystem you care about

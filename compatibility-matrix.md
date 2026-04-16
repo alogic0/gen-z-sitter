@@ -99,14 +99,15 @@ What the repo can credibly claim today:
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:
   - 5 intended first-wave parser-only targets currently pass within the staged boundary
   - 1 staged deferred target remains intentionally frozen as an ambiguity/control fixture
-  - 2 staged scanner/external-scanner targets now pass within the first staged scanner boundary
+  - 4 staged scanner/external-scanner targets now pass within the staged scanner boundary across 2 grammar families
 - scanner/external-scanner repo proof remains narrower than full runtime parity and is currently limited to the first staged boundary plus compatibility-safe valid-path behavior and weaker invalid-path progress
+- `mixed_semantics` widens that scanner proof by showing that a grammar can still carry extras elsewhere while remaining compatible on a narrower first-boundary sample path
 - compatibility-sensitive behavioral proof currently covers:
   - `behavioral_config`
   - `hidden_external_fields`
 - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but now rejects on the staged blocked path as `missing_action`
 - the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
-- the current promoted milestone is scanner and external-scanner compatibility onboarding
+- the current checked-in coverage decision recommends broader compatibility polish as the next promoted milestone
 
 ## Milestone Compatibility Targets
 
