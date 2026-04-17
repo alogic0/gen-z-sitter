@@ -117,6 +117,7 @@ Current staged compatibility boundary:
 - real external scanner proof is now exposed separately under `compat_targets/`:
   - `compat_targets/external_scanner_repo_inventory.json`
   - it now records two passing real external scanner targets: `tree_sitter_haskell_json` and `tree_sitter_bash_json`
+  - it now also records machine-readable `proof_scope` values so the narrower sampled scanner claims are visible without relying only on prose notes
   - the Haskell target currently passes within a sampled external-sequence boundary, not full scanner.c runtime equivalence
   - the Bash target now passes a narrow sampled expansion path built around `_bare_dollar` and `variable_name`, not broader heredoc handling or full scanner.c runtime equivalence
   - the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos still do not change that scanner story, because their available snapshots have `externals: []` and no scanner implementation files
@@ -173,6 +174,9 @@ Current staged compatibility boundary:
   - sampled expansion-path proof now passes for `tree_sitter_bash_json`
   - the Bash proof is intentionally narrower than Haskell’s and does not yet claim sampled heredoc behavior
   - full runtime scanner equivalence is still out of scope
+- the key distinction is:
+  - staged scanner proof lives in the shortlist artifacts and covers promoted in-repo scanner families
+  - real external scanner proof lives in `external_scanner_repo_inventory.json` and covers the promoted Haskell and Bash snapshots
 - the current checked-in coverage decision now points back to broader compatibility polish from this stronger mixed real-external boundary
 
 ## Repository Layout

@@ -10,8 +10,12 @@ Current proof layers:
   - lowering, emitter, behavioral, and compatibility checks exercised by the main test suite
 - parser-only shortlist proof
   - the current staged shortlist executed by the compatibility harness
-- scanner/external-scanner onboarding proof
-  - tracked explicitly as a narrow promoted multi-family wave at the first staged external-scanner boundary
+- staged scanner-boundary proof
+  - the promoted staged scanner-wave entries in the checked-in shortlist artifacts
+- real external proof
+  - the promoted real external snapshots in `external_repo_inventory.json`
+- real external scanner proof
+  - the promoted sampled real external scanner snapshots in `external_scanner_repo_inventory.json`
 
 Current represented families:
 
@@ -26,6 +30,7 @@ Current represented families:
   - `hidden_external_fields`
   - `mixed_semantics`
   - `haskell`
+  - `bash`
 
 Versioned artifacts:
 
@@ -34,9 +39,14 @@ Versioned artifacts:
 - `external_repo_inventory.json`
   - dedicated machine-readable inventory of the currently represented real external snapshots, including upstream provenance, represented families, boundary coverage, current real-evidence limitations, and the recommended next real-evidence step
   - this keeps real external evidence separate from the broader staged shortlist, which still includes staged fixtures and frozen controls
+  - scanner-family external entries now also carry a machine-readable `proof_scope` field so narrower sampled proofs are not left implicit in prose notes alone
 - `external_scanner_repo_inventory.json`
   - dedicated machine-readable inventory of real external scanner or external-scanner evidence
   - now records two passing real external scanner snapshots, their current limitations, and the recommended next scanner-evidence step
+  - now also records aggregate `proof_scope_coverage` so the top-level JSON distinguishes the represented sampled scanner proof shapes before reading individual target entries
+  - each entry now carries `proof_scope` so the checked-in JSON distinguishes:
+    - `sampled_external_sequence`
+    - `sampled_expansion_path`
 - `shortlist_inventory.json`
   - aggregate boundary summary plus family-level coverage and explicit proven first-wave, deferred-control, deferred-scanner, and out-of-scope target sections
 - `shortlist_report.json`
@@ -76,11 +86,13 @@ Current staged boundary summary:
   - it is the first real external scanner-family target in the shortlist
   - it now passes structural first-boundary extraction
   - it also now passes a sampled external-sequence scanner proof layer
+  - its machine-readable `proof_scope` is `sampled_external_sequence`
   - this is still narrower than full scanner.c runtime equivalence
 - 1 additional real external scanner snapshot now also passes within the current sampled real scanner boundary:
   - `tree_sitter_bash_json`
   - it adds a second real external scanner family to the evidence set
   - it now passes a narrow sampled expansion path built around `_bare_dollar` and `variable_name`
+  - its machine-readable `proof_scope` is `sampled_expansion_path`
   - it still does not claim sampled heredoc handling or full scanner.c runtime equivalence
 
 Recommended next step after this staged boundary:

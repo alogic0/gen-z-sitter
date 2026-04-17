@@ -129,6 +129,7 @@
       "family": "parse_table_tiny",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
+      "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -199,6 +200,7 @@
       "family": "behavioral_config",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
+      "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -269,6 +271,7 @@
       "family": "repeat_choice_seq",
       "source_kind": "grammar_js",
       "boundary_kind": "parser_only",
+      "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -382,6 +385,7 @@
       "family": "ziggy",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
+      "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
         "upstream_repository": "tree-sitter-ziggy",
@@ -452,6 +456,7 @@
       "family": "ziggy_schema",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
+      "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
         "upstream_repository": "tree-sitter-ziggy-schema",
@@ -522,6 +527,7 @@
       "family": "haskell",
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
+      "real_external_scanner_proof_scope": "sampled_external_sequence",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
         "upstream_repository": "tree-sitter-haskell",
@@ -581,6 +587,7 @@
       "family": "bash",
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
+      "real_external_scanner_proof_scope": "sampled_expansion_path",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
         "upstream_repository": "tree-sitter-bash",
@@ -640,6 +647,7 @@
       "family": "parse_table_conflict",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
+      "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -738,6 +746,7 @@
       "family": "hidden_external_fields",
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
+      "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -797,6 +806,7 @@
       "family": "hidden_external_fields",
       "source_kind": "grammar_js",
       "boundary_kind": "scanner_external_scanner",
+      "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -856,6 +866,7 @@
       "family": "mixed_semantics",
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
+      "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -915,6 +926,7 @@
       "family": "mixed_semantics",
       "source_kind": "grammar_js",
       "boundary_kind": "scanner_external_scanner",
+      "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,

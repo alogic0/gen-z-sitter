@@ -112,11 +112,15 @@ What the repo can credibly claim today:
 - that dedicated external scanner artifact now records:
   - `tree_sitter_haskell_json` as a passing sampled real external scanner snapshot
   - `tree_sitter_bash_json` as a passing sampled real external scanner snapshot
+  - machine-readable `proof_scope` values so those two sampled proofs are distinguished in JSON rather than only in notes
 - the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos do not change that state for this milestone because both available `src/grammar.json` snapshots declare `externals: []` and neither repo includes a scanner implementation file
 - the current real external scanner boundary is explicit:
   - `tree_sitter_haskell_json` passes within a sampled external-sequence proof layer after structural first-boundary extraction
   - `tree_sitter_bash_json` passes within a narrower sampled expansion path built around `_bare_dollar` and `variable_name`
   - both remain narrower than full runtime scanner support
+- the staged scanner-boundary claim and the real external scanner claim remain separate:
+  - staged scanner proof covers promoted in-repo scanner families inside the shortlist artifacts
+  - real external scanner proof covers the promoted Haskell and Bash snapshots inside `external_scanner_repo_inventory.json`
 - `compat_targets/README.md` explains the relationship between shortlist policy, aggregate boundary, mismatch inventory, and coverage decision artifacts
 - the checked-in shortlist inventory and full report now expose family-level coverage alongside aggregate target totals
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:

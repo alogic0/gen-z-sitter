@@ -2,6 +2,18 @@
   "schema_version": 1,
   "total_external_scanner_targets": 2,
   "passed_external_scanner_targets": 2,
+  "proof_scope_coverage": [
+    {
+      "proof_scope": "sampled_external_sequence",
+      "target_count": 1,
+      "passed_count": 1
+    },
+    {
+      "proof_scope": "sampled_expansion_path",
+      "target_count": 1,
+      "passed_count": 1
+    }
+  ],
   "current_limitations": [
     "real external scanner evidence is now represented by at least one passing external scanner snapshot",
     "the current real external scanner proof is still narrower than runtime scanner parity because it rests on a sampled external-sequence boundary rather than full scanner.c execution",
@@ -15,6 +27,7 @@
       "display_name": "tree-sitter-haskell (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_haskell/grammar.json",
       "source_kind": "grammar_json",
+      "proof_scope": "sampled_external_sequence",
       "upstream_repository": "tree-sitter-haskell",
       "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
       "upstream_grammar_path": "src/grammar.json",
@@ -28,6 +41,7 @@
       "display_name": "tree-sitter-bash (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_bash/grammar.json",
       "source_kind": "grammar_json",
+      "proof_scope": "sampled_expansion_path",
       "upstream_repository": "tree-sitter-bash",
       "upstream_revision": "a06c2e4415e9bc0346c6b86d401879ffb44058f7",
       "upstream_grammar_path": "src/grammar.json",

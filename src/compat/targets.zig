@@ -16,6 +16,12 @@ pub const ScannerBoundaryCheckMode = enum {
     structural_only,
 };
 
+pub const RealExternalScannerProofScope = enum {
+    none,
+    sampled_external_sequence,
+    sampled_expansion_path,
+};
+
 pub const TargetFamily = enum {
     parse_table_tiny,
     behavioral_config,
@@ -57,6 +63,7 @@ pub const Target = struct {
     source_kind: SourceKind,
     boundary_kind: BoundaryKind = .parser_only,
     scanner_boundary_check_mode: ScannerBoundaryCheckMode = .sampled_behavioral,
+    real_external_scanner_proof_scope: RealExternalScannerProofScope = .none,
     provenance: Provenance = .{ .origin_kind = .staged_in_repo },
     candidate_status: CandidateStatus,
     expected_blocked: bool = false,
@@ -150,6 +157,7 @@ pub const shortlist_targets = [_]Target{
         .source_kind = .grammar_json,
         .boundary_kind = .scanner_external_scanner,
         .scanner_boundary_check_mode = .sampled_external_only,
+        .real_external_scanner_proof_scope = .sampled_external_sequence,
         .provenance = .{
             .origin_kind = .external_repo_snapshot,
             .upstream_repository = "tree-sitter-haskell",
@@ -171,6 +179,7 @@ pub const shortlist_targets = [_]Target{
         .source_kind = .grammar_json,
         .boundary_kind = .scanner_external_scanner,
         .scanner_boundary_check_mode = .sampled_external_only,
+        .real_external_scanner_proof_scope = .sampled_expansion_path,
         .provenance = .{
             .origin_kind = .external_repo_snapshot,
             .upstream_repository = "tree-sitter-bash",
@@ -277,12 +286,14 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[5].family == .haskell);
     try std.testing.expect(shortlist[5].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[5].scanner_boundary_check_mode == .sampled_external_only);
+    try std.testing.expect(shortlist[5].real_external_scanner_proof_scope == .sampled_external_sequence);
     try std.testing.expect(shortlist[5].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[5].scanner_invalid_input_path != null);
     try std.testing.expect(shortlist[6].family == .bash);
     try std.testing.expect(shortlist[6].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[6].candidate_status == .intended_scanner_wave);
     try std.testing.expect(shortlist[6].scanner_boundary_check_mode == .sampled_external_only);
+    try std.testing.expect(shortlist[6].real_external_scanner_proof_scope == .sampled_expansion_path);
     try std.testing.expect(shortlist[6].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[6].scanner_invalid_input_path != null);
     try std.testing.expect(shortlist[7].candidate_status == .deferred_control_fixture);

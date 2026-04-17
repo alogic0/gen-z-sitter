@@ -9,12 +9,19 @@ pub const ExternalScannerRepoEntry = struct {
     display_name: []const u8,
     grammar_path: []const u8,
     source_kind: targets.SourceKind,
+    proof_scope: targets.RealExternalScannerProofScope,
     upstream_repository: ?[]const u8,
     upstream_revision: ?[]const u8,
     upstream_grammar_path: ?[]const u8,
     final_classification: result_model.FinalClassification,
     mismatch_category: result_model.MismatchCategory,
     notes: []const u8,
+};
+
+pub const ExternalScannerProofScopeEntry = struct {
+    proof_scope: targets.RealExternalScannerProofScope,
+    target_count: usize,
+    passed_count: usize,
 };
 
 pub const ExternalScannerEvidenceNextStep = enum {
@@ -27,11 +34,13 @@ pub const ExternalScannerRepoInventoryReport = struct {
     schema_version: u32,
     total_external_scanner_targets: usize,
     passed_external_scanner_targets: usize,
+    proof_scope_coverage: []ExternalScannerProofScopeEntry,
     current_limitations: []const []const u8,
     recommended_next_step: ExternalScannerEvidenceNextStep,
     targets: []ExternalScannerRepoEntry,
 
     pub fn deinit(self: *ExternalScannerRepoInventoryReport, allocator: std.mem.Allocator) void {
+        allocator.free(self.proof_scope_coverage);
         deinitStringSlice(allocator, self.current_limitations);
         deinitEntries(allocator, self.targets);
         self.* = undefined;
@@ -48,6 +57,7 @@ pub fn buildExternalScannerRepoInventoryAlloc(
         .schema_version = 1,
         .total_external_scanner_targets = total_external_scanner_targets,
         .passed_external_scanner_targets = passed_external_scanner_targets,
+        .proof_scope_coverage = try collectProofScopeCoverageAlloc(allocator, runs),
         .current_limitations = try collectCurrentLimitationsAlloc(
             allocator,
             total_external_scanner_targets,
@@ -94,6 +104,43 @@ fn isExternalScannerTarget(run: result_model.TargetRunResult) bool {
         run.boundary_kind == .scanner_external_scanner;
 }
 
+fn collectProofScopeCoverageAlloc(
+    allocator: std.mem.Allocator,
+    runs: []const result_model.TargetRunResult,
+) ![]ExternalScannerProofScopeEntry {
+    var items = std.array_list.Managed(ExternalScannerProofScopeEntry).init(allocator);
+    defer items.deinit();
+
+    for (runs) |run| {
+        if (!isExternalScannerTarget(run)) continue;
+        const index = findProofScopeIndex(items.items, run.real_external_scanner_proof_scope) orelse blk: {
+            try items.append(.{
+                .proof_scope = run.real_external_scanner_proof_scope,
+                .target_count = 0,
+                .passed_count = 0,
+            });
+            break :blk items.items.len - 1;
+        };
+
+        items.items[index].target_count += 1;
+        if (run.final_classification == .passed_within_current_boundary) {
+            items.items[index].passed_count += 1;
+        }
+    }
+
+    return try items.toOwnedSlice();
+}
+
+fn findProofScopeIndex(
+    items: []const ExternalScannerProofScopeEntry,
+    proof_scope: targets.RealExternalScannerProofScope,
+) ?usize {
+    for (items, 0..) |item, index| {
+        if (item.proof_scope == proof_scope) return index;
+    }
+    return null;
+}
+
 fn collectEntriesAlloc(
     allocator: std.mem.Allocator,
     runs: []const result_model.TargetRunResult,
@@ -109,6 +156,7 @@ fn collectEntriesAlloc(
             .display_name = try allocator.dupe(u8, run.display_name),
             .grammar_path = try allocator.dupe(u8, run.grammar_path),
             .source_kind = run.source_kind,
+            .proof_scope = run.real_external_scanner_proof_scope,
             .upstream_repository = if (run.provenance.upstream_repository) |value| try allocator.dupe(u8, value) else null,
             .upstream_revision = if (run.provenance.upstream_revision) |value| try allocator.dupe(u8, value) else null,
             .upstream_grammar_path = if (run.provenance.upstream_grammar_path) |value| try allocator.dupe(u8, value) else null,
@@ -194,6 +242,9 @@ test "buildExternalScannerRepoInventoryAlloc summarizes the current real externa
 
     try std.testing.expectEqual(@as(usize, 2), report.total_external_scanner_targets);
     try std.testing.expectEqual(@as(usize, 2), report.passed_external_scanner_targets);
+    try std.testing.expectEqual(@as(usize, 2), report.proof_scope_coverage.len);
+    try std.testing.expectEqual(targets.RealExternalScannerProofScope.sampled_external_sequence, report.proof_scope_coverage[0].proof_scope);
+    try std.testing.expectEqual(targets.RealExternalScannerProofScope.sampled_expansion_path, report.proof_scope_coverage[1].proof_scope);
     try std.testing.expectEqual(@as(usize, 3), report.current_limitations.len);
     try std.testing.expectEqual(ExternalScannerEvidenceNextStep.broader_compatibility_polish, report.recommended_next_step);
     try std.testing.expectEqual(@as(usize, 2), report.targets.len);
