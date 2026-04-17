@@ -511,7 +511,7 @@ test "dumpGroupedActionTableAlloc groups actions by symbol deterministically" {
         \\  conflicts:
         \\    shift_reduce on terminal:0
         \\      #1@1
-        \\      #2@1 ?terminal:0
+        \\      #2@1
         \\
     , dump);
 }

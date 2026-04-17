@@ -397,10 +397,8 @@ pub fn parseTableConflictDump() Fixture {
             \\  items:
             \\    #0@0
             \\    #1@0
-            \\    #2@0
-            \\    #2@0 ?terminal:0
-            \\    #3@0
-            \\    #3@0 ?terminal:0
+            \\    #2@0 [terminal:0]
+            \\    #3@0 [terminal:0]
             \\  transitions:
             \\    non_terminal:0 -> 1
             \\    non_terminal:1 -> 2
@@ -414,35 +412,28 @@ pub fn parseTableConflictDump() Fixture {
             \\state 2
             \\  items:
             \\    #1@1
-            \\    #2@1
-            \\    #2@1 ?terminal:0
+            \\    #2@1 [terminal:0]
             \\  transitions:
             \\    terminal:0 -> 4
             \\
             \\state 3
             \\  items:
-            \\    #3@1
-            \\    #3@1 ?terminal:0
+            \\    #3@1 [terminal:0]
             \\  transitions:
             \\
             \\state 4
             \\  items:
-            \\    #2@0
-            \\    #2@0 ?terminal:0
-            \\    #2@2
-            \\    #2@2 ?terminal:0
-            \\    #3@0
-            \\    #3@0 ?terminal:0
+            \\    #2@0 [terminal:0]
+            \\    #2@2 [terminal:0]
+            \\    #3@0 [terminal:0]
             \\  transitions:
             \\    non_terminal:1 -> 5
             \\    terminal:1 -> 3
             \\
             \\state 5
             \\  items:
-            \\    #2@1
-            \\    #2@1 ?terminal:0
-            \\    #2@3
-            \\    #2@3 ?terminal:0
+            \\    #2@1 [terminal:0]
+            \\    #2@3 [terminal:0]
             \\  transitions:
             \\    terminal:0 -> 4
             \\  conflicts:
@@ -462,10 +453,8 @@ pub fn parseTableConflictActionDump() Fixture {
             \\  items:
             \\    #0@0
             \\    #1@0
-            \\    #2@0
-            \\    #2@0 ?terminal:0
-            \\    #3@0
-            \\    #3@0 ?terminal:0
+            \\    #2@0 [terminal:0]
+            \\    #3@0 [terminal:0]
             \\  transitions:
             \\    non_terminal:0 -> 1
             \\    non_terminal:1 -> 2
@@ -482,8 +471,7 @@ pub fn parseTableConflictActionDump() Fixture {
             \\state 2
             \\  items:
             \\    #1@1
-            \\    #2@1
-            \\    #2@1 ?terminal:0
+            \\    #2@1 [terminal:0]
             \\  transitions:
             \\    terminal:0 -> 4
             \\  actions:
@@ -491,20 +479,16 @@ pub fn parseTableConflictActionDump() Fixture {
             \\
             \\state 3
             \\  items:
-            \\    #3@1
-            \\    #3@1 ?terminal:0
+            \\    #3@1 [terminal:0]
             \\  transitions:
             \\  actions:
             \\    terminal:0 => reduce 3
             \\
             \\state 4
             \\  items:
-            \\    #2@0
-            \\    #2@0 ?terminal:0
-            \\    #2@2
-            \\    #2@2 ?terminal:0
-            \\    #3@0
-            \\    #3@0 ?terminal:0
+            \\    #2@0 [terminal:0]
+            \\    #2@2 [terminal:0]
+            \\    #3@0 [terminal:0]
             \\  transitions:
             \\    non_terminal:1 -> 5
             \\    terminal:1 -> 3
@@ -513,10 +497,8 @@ pub fn parseTableConflictActionDump() Fixture {
             \\
             \\state 5
             \\  items:
-            \\    #2@1
-            \\    #2@1 ?terminal:0
-            \\    #2@3
-            \\    #2@3 ?terminal:0
+            \\    #2@1 [terminal:0]
+            \\    #2@3 [terminal:0]
             \\  transitions:
             \\    terminal:0 -> 4
             \\  actions:
@@ -539,11 +521,11 @@ pub fn parseTableReduceReduceActionDump() Fixture {
             \\  items:
             \\    #0@0
             \\    #1@0
-            \\    #2@0 ?terminal:0
-            \\    #3@0 ?terminal:0
-            \\    #4@0 ?terminal:0
-            \\    #5@0 ?terminal:0
-            \\    #6@0 ?terminal:0
+            \\    #2@0 [terminal:0]
+            \\    #3@0 [terminal:0]
+            \\    #4@0 [terminal:0]
+            \\    #5@0 [terminal:0]
+            \\    #6@0 [terminal:0]
             \\  transitions:
             \\    non_terminal:0 -> 1
             \\    non_terminal:1 -> 2
@@ -570,34 +552,34 @@ pub fn parseTableReduceReduceActionDump() Fixture {
             \\
             \\state 3
             \\  items:
-            \\    #2@1 ?terminal:0
+            \\    #2@1 [terminal:0]
             \\  transitions:
             \\  actions:
             \\    terminal:0 => reduce 2
             \\
             \\state 4
             \\  items:
-            \\    #3@1 ?terminal:0
+            \\    #3@1 [terminal:0]
             \\  transitions:
             \\  actions:
             \\    terminal:0 => reduce 3
             \\
             \\state 5
             \\  items:
-            \\    #4@1 ?terminal:0
-            \\    #5@1 ?terminal:0
+            \\    #4@1 [terminal:0]
+            \\    #5@1 [terminal:0]
             \\  transitions:
             \\  actions:
             \\    terminal:0 => reduce 4
             \\    terminal:0 => reduce 5
             \\  conflicts:
             \\    reduce_reduce on terminal:0
-            \\      #4@1 ?terminal:0
-            \\      #5@1 ?terminal:0
+            \\      #4@1
+            \\      #5@1
             \\
             \\state 6
             \\  items:
-            \\    #6@1 ?terminal:0
+            \\    #6@1 [terminal:0]
             \\  transitions:
             \\  actions:
             \\    terminal:0 => reduce 6
@@ -620,7 +602,7 @@ pub fn parseTableMetadataActionDump() Fixture {
             \\  items:
             \\    #0@0
             \\    #1@0
-            \\    #2@0 ?terminal:0
+            \\    #2@0 [terminal:0]
             \\  transitions:
             \\    non_terminal:0 -> 1
             \\    non_terminal:1 -> 2
@@ -644,7 +626,7 @@ pub fn parseTableMetadataActionDump() Fixture {
             \\
             \\state 3
             \\  items:
-            \\    #2@1 ?terminal:0
+            \\    #2@1 [terminal:0]
             \\  transitions:
             \\  actions:
             \\    terminal:0 => reduce 2
@@ -2162,8 +2144,8 @@ pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
             \\      reduce 5
             \\  conflicts:
             \\    reduce_reduce on terminal:0
-            \\      #4@1 ?terminal:0
-            \\      #5@1 ?terminal:0
+            \\      #4@1
+            \\      #5@1
             \\
             \\state 6
             \\  actions:
@@ -2206,8 +2188,8 @@ pub fn parseTableReduceReduceActionTableDump() Fixture {
             \\    terminal:0 => reduce 5
             \\  conflicts:
             \\    reduce_reduce on terminal:0
-            \\      #4@1 ?terminal:0
-            \\      #5@1 ?terminal:0
+            \\      #4@1
+            \\      #5@1
             \\
             \\state 6
             \\  actions:
@@ -2724,7 +2706,7 @@ pub fn parseTableNamedPrecedenceResolvedActionDump() Fixture {
             \\
             \\state 5
             \\  resolved_actions:
-            \\    terminal:0: reduce 4
+            \\    terminal:1: reduce 4
             \\
             \\state 6
             \\  resolved_actions:
@@ -2759,7 +2741,7 @@ pub fn parseTableNamedPrecedenceShiftResolvedActionDump() Fixture {
             \\
             \\state 5
             \\  resolved_actions:
-            \\    terminal:0: reduce 4
+            \\    terminal:1: reduce 4
             \\
             \\state 6
             \\  resolved_actions:
@@ -2856,7 +2838,7 @@ pub fn parseTableDynamicBeatsNamedPrecedenceResolvedActionDump() Fixture {
             \\
             \\state 5
             \\  resolved_actions:
-            \\    terminal:0: reduce 4
+            \\    terminal:1: reduce 4
             \\
             \\state 6
             \\  resolved_actions:

@@ -1061,6 +1061,31 @@ pub fn runTarget(
         );
     }
 
+    if (target.candidate_status == .deferred_parser_wave and emission_stats.blocked) {
+        const blocked_boundary = run.blocked_boundary orelse {
+            return failRun(
+                &run,
+                .emit_parser_c,
+                .deferred_for_parser_boundary,
+                .emitted_surface_structural_gap,
+                try allocator.dupe(u8, "expected deferred parser boundary, but blocked boundary snapshot was unavailable"),
+            );
+        };
+        const blocked_summary = try summarizeBlockedBoundaryAlloc(allocator, blocked_boundary);
+        defer allocator.free(blocked_summary);
+        return failRun(
+            &run,
+            .emit_parser_c,
+            .deferred_for_parser_boundary,
+            classifyBlockedBoundary(blocked_boundary),
+            try std.fmt.allocPrint(
+                allocator,
+                "parser-wave target remains deferred at emit_parser_c: {s}",
+                .{blocked_summary},
+            ),
+        );
+    }
+
     if (target.candidate_status == .deferred_control_fixture and emission_stats.blocked) {
         run.final_classification = .frozen_control_fixture;
         run.mismatch_category = .intentional_control_fixture;
@@ -1461,7 +1486,7 @@ test "runStagedTargetsAlloc executes the staged parser-only shortlist" {
     const runs = try runStagedTargetsAlloc(allocator, .{});
     defer result_model.deinitRunResults(allocator, runs);
 
-    try std.testing.expectEqual(@as(usize, 5), runs.len);
+    try std.testing.expectEqual(@as(usize, 4), runs.len);
 
     for (runs) |run| {
         try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, run.final_classification);
@@ -1478,9 +1503,8 @@ test "runStagedTargetsAlloc executes the staged parser-only shortlist" {
 
     try std.testing.expectEqual(false, runs[0].emission.?.blocked);
     try std.testing.expectEqual(false, runs[1].emission.?.blocked);
-    try std.testing.expectEqual(true, runs[2].emission.?.blocked);
+    try std.testing.expectEqual(false, runs[2].emission.?.blocked);
     try std.testing.expectEqual(false, runs[3].emission.?.blocked);
-    try std.testing.expectEqual(false, runs[4].emission.?.blocked);
 }
 
 test "runTarget reports infrastructure failures for missing files" {
@@ -1549,8 +1573,9 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqual(@as(usize, 13), runs.len);
+    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[2].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[4].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[6].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
@@ -1564,12 +1589,15 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
 test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_c, and keeps only staged blocked controls" {
     const runs = try cachedShortlistTargetsForTests();
 
+    try std.testing.expect(runs[2].mismatch_category != .none);
+    try std.testing.expect(runs[2].blocked_boundary != null);
+    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[2].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[3].mismatch_category);
-    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[4].mismatch_category);
+    try std.testing.expect(runs[4].mismatch_category != .none);
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[3].blocked_boundary);
-    try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[4].blocked_boundary);
+    try std.testing.expect(runs[4].blocked_boundary != null);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[4].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[5].mismatch_category);
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[5].blocked_boundary);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
