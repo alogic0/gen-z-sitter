@@ -459,15 +459,15 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 1808,
-        "emitted_state_count": 1753,
+        "serialized_state_count": 1802,
+        "emitted_state_count": 1747,
         "merged_state_count": 55,
-        "action_entry_count": 4933,
+        "action_entry_count": 4917,
         "goto_entry_count": 1533,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 221069,
-        "c_tables_bytes": 459255,
-        "parser_c_bytes": 758511
+        "parser_tables_bytes": 220457,
+        "c_tables_bytes": 457883,
+        "parser_c_bytes": 756024
       },
       "blocked_boundary": null
     },
@@ -516,7 +516,7 @@
       },
       "emit_parser_c": {
         "status": "failed",
-        "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=5, entries=5, reasons={shift_reduce:5, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[doc_comment shift_reduce actions=[shift:147, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:52, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:71, reduce:47(doc_comment)] count=1; struct_union shift_reduce actions=[shift:34, reduce:12(expr)] count=1; struct_union shift_reduce actions=[shift:53, reduce:32(struct_union)] count=1], samples=[state 28 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:52, reduce:47(doc_comment)]; state 61 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:71, reduce:47(doc_comment)]; state 104 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:147, reduce:47(doc_comment)]; state 109 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:34, reduce:12(expr)]; state 149 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:53, reduce:32(struct_union)]]"
+        "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=5, entries=5, reasons={shift_reduce:5, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[doc_comment shift_reduce actions=[shift:144, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:52, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:71, reduce:47(doc_comment)] count=1; struct_union shift_reduce actions=[shift:34, reduce:12(expr)] count=1; struct_union shift_reduce actions=[shift:53, reduce:32(struct_union)] count=1], samples=[state 28 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:52, reduce:47(doc_comment)]; state 61 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:71, reduce:47(doc_comment)]; state 103 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:144, reduce:47(doc_comment)]; state 108 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:34, reduce:12(expr)]; state 146 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:53, reduce:32(struct_union)]]"
       },
       "scanner_boundary_check": {
         "status": "not_run",
@@ -532,15 +532,15 @@
       },
       "emission": {
         "blocked": true,
-        "serialized_state_count": 376,
-        "emitted_state_count": 338,
+        "serialized_state_count": 374,
+        "emitted_state_count": 336,
         "merged_state_count": 38,
-        "action_entry_count": 786,
-        "goto_entry_count": 389,
+        "action_entry_count": 778,
+        "goto_entry_count": 388,
         "unresolved_entry_count": 5,
-        "parser_tables_bytes": 39063,
-        "c_tables_bytes": 84490,
-        "parser_c_bytes": 154640
+        "parser_tables_bytes": 38755,
+        "c_tables_bytes": 83904,
+        "parser_c_bytes": 153807
       },
       "blocked_boundary": {
         "unresolved_state_count": 5,
@@ -571,16 +571,16 @@
             "candidate_actions_summary": "shift:71, reduce:47(doc_comment)"
           },
           {
-            "state_id": 104,
+            "state_id": 103,
             "symbol_kind": "terminal",
             "symbol_index": 42,
             "symbol_name": "doc_comment",
             "reason": "shift_reduce",
             "candidate_count": 2,
-            "candidate_actions_summary": "shift:147, reduce:47(doc_comment)"
+            "candidate_actions_summary": "shift:144, reduce:47(doc_comment)"
           },
           {
-            "state_id": 109,
+            "state_id": 108,
             "symbol_kind": "terminal",
             "symbol_index": 27,
             "symbol_name": "struct_union",
@@ -589,7 +589,7 @@
             "candidate_actions_summary": "shift:34, reduce:12(expr)"
           },
           {
-            "state_id": 149,
+            "state_id": 146,
             "symbol_kind": "terminal",
             "symbol_index": 27,
             "symbol_name": "struct_union",
@@ -602,7 +602,7 @@
           {
             "symbol_name": "doc_comment",
             "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:147, reduce:47(doc_comment)",
+            "candidate_actions_summary": "shift:144, reduce:47(doc_comment)",
             "count": 1
           },
           {

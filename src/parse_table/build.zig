@@ -900,26 +900,23 @@ fn buildClosureExpansionItemsAlloc(
     item_set_builder: ParseItemSetBuilder,
     non_terminal: u32,
     inherited_lookahead: ?syntax_ir.SymbolRef,
+    context_follow: first.SymbolSet,
     options: BuildOptions,
 ) ![]const item.ParseItemSetEntry {
+    _ = context_follow;
     var generated = std.array_list.Managed(item.ParseItemSetEntry).init(allocator);
     defer generated.deinit();
     var item_indexes = ClosureItemIndexMap.init(allocator);
     defer item_indexes.deinit();
 
     for (item_set_builder.additionsForNonTerminal(non_terminal)) |addition| {
-        var effective_suffix_follow = try cloneSymbolSet(allocator, addition.info.direct_suffix_follow);
-        defer freeSymbolSet(allocator, effective_suffix_follow);
-        _ = mergeSymbolSetLookaheads(
-            &effective_suffix_follow,
-            addition.info.nullable_ancestor_suffix_follow,
-        );
         try appendGeneratedItems(
             allocator,
             &generated,
             &item_indexes,
             addition.production_id,
-            effective_suffix_follow,
+            addition.info.direct_suffix_follow,
+            addition.info.nullable_ancestor_suffix_follow,
             addition.info.propagates_inherited_context,
             inherited_lookahead,
             item_set_builder.first_sets,
@@ -935,16 +932,21 @@ fn appendGeneratedItems(
     generated: *std.array_list.Managed(item.ParseItemSetEntry),
     item_indexes: *ClosureItemIndexMap,
     production_id: item.ProductionId,
-    suffix_follow: first.SymbolSet,
+    direct_suffix_follow: first.SymbolSet,
+    nullable_ancestor_suffix_follow: first.SymbolSet,
     propagates_inherited_context: bool,
     inherited_lookahead: ?syntax_ir.SymbolRef,
     first_sets: first.FirstSets,
     options: BuildOptions,
 ) !void {
+    var effective_suffix_follow = try cloneSymbolSet(allocator, direct_suffix_follow);
+    defer freeSymbolSet(allocator, effective_suffix_follow);
+    _ = mergeSymbolSetLookaheads(&effective_suffix_follow, nullable_ancestor_suffix_follow);
+
     if (options.closure_lookahead_mode == .none) {
         const has_any_signal = propagates_inherited_context or
-            countPresent(suffix_follow.terminals) > 0 or
-            countPresent(suffix_follow.externals) > 0;
+            countPresent(effective_suffix_follow.terminals) > 0 or
+            countPresent(effective_suffix_follow.externals) > 0;
         if (has_any_signal) {
             try appendOrMergeClosureEntry(
                 allocator,
@@ -970,13 +972,13 @@ fn appendGeneratedItems(
     );
     var has_any_signal = propagates_inherited_context;
 
-    for (suffix_follow.terminals, 0..) |present, index| {
+    for (effective_suffix_follow.terminals, 0..) |present, index| {
         if (!present) continue;
         item.addLookahead(&generated_entry.lookaheads, .{ .terminal = @intCast(index) });
         has_any_signal = true;
     }
 
-    for (suffix_follow.externals, 0..) |present, index| {
+    for (effective_suffix_follow.externals, 0..) |present, index| {
         if (!present) continue;
         item.addLookahead(&generated_entry.lookaheads, .{ .external = @intCast(index) });
         has_any_signal = true;
@@ -984,7 +986,7 @@ fn appendGeneratedItems(
 
     if (propagates_inherited_context) {
         if (inherited_lookahead) |lookahead| {
-            item.addLookahead(&generated_entry.lookaheads, lookahead);
+            if (!item.containsLookahead(generated_entry.lookaheads, lookahead)) item.addLookahead(&generated_entry.lookaheads, lookahead);
         }
     }
 
@@ -2078,6 +2080,7 @@ const ClosureRun = struct {
             self.item_set_builder,
             non_terminal,
             inherited_lookahead,
+            context_follow,
             .{
                 .closure_lookahead_mode = self.effective_closure_lookahead_mode,
             },
@@ -2489,6 +2492,12 @@ test "buildClosureExpansionItemsAlloc preserves inherited and propagated follow 
         item_set_builder,
         1,
         .{ .terminal = 0 },
+        blk: {
+            var context_follow = try initEmptySymbolSet(arena.allocator(), first_sets.terminals_len, first_sets.externals_len);
+            context_follow.includes_epsilon = true;
+            context_follow.terminals[0] = true;
+            break :blk context_follow;
+        },
         .{},
     );
 
