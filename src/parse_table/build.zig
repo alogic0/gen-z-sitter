@@ -434,25 +434,21 @@ const ClosureResultCache = struct {
     }
 };
 
-const InheritedContextFlow = struct {
-    through_production_end: bool = false,
-    through_nullable_suffix: bool = false,
-
-    fn propagates(self: @This()) bool {
-        return self.through_production_end or self.through_nullable_suffix;
-    }
-};
-
 const ClosureFollowInfo = struct {
     direct_suffix_follow: first.SymbolSet,
     nullable_ancestor_suffix_follow: first.SymbolSet,
 
-    // Track inherited-context propagation separately from concrete suffix follow so
-    // generation can later distinguish why inherited context reached this addition.
-    inherited_context_flow: InheritedContextFlow,
+    fn needsProductionEndFollow(self: @This()) bool {
+        return self.nullable_ancestor_suffix_follow.includes_epsilon;
+    }
+
+    fn hasNullableAncestorContextFollow(self: @This()) bool {
+        return countPresent(self.nullable_ancestor_suffix_follow.terminals) > 0 or
+            countPresent(self.nullable_ancestor_suffix_follow.externals) > 0;
+    }
 
     fn propagatesInheritedContext(self: @This()) bool {
-        return self.inherited_context_flow.propagates();
+        return self.needsProductionEndFollow() or self.hasNullableAncestorContextFollow();
     }
 };
 
@@ -653,18 +649,6 @@ fn closureContextFollowSet(
     return result;
 }
 
-fn closureContextPropagatedFollowSet(
-    allocator: std.mem.Allocator,
-    suffix_first: first.SymbolSet,
-    inherited_lookahead: ?syntax_ir.SymbolRef,
-) !first.SymbolSet {
-    var result = try initEmptySymbolSet(allocator, suffix_first.terminals.len, suffix_first.externals.len);
-    if (suffix_first.includes_epsilon) {
-        if (inherited_lookahead) |lookahead| addSymbolToSet(&result, lookahead);
-    }
-    return result;
-}
-
 fn closureContextProductionEndFollowSet(
     allocator: std.mem.Allocator,
     suffix_first: first.SymbolSet,
@@ -677,7 +661,6 @@ fn closureContextProductionEndFollowSet(
 
 const ClosureContext = struct {
     following_tokens: first.SymbolSet,
-    propagated_follow: first.SymbolSet,
     production_end_follow: first.SymbolSet,
 
     fn init(
@@ -687,14 +670,16 @@ const ClosureContext = struct {
     ) !@This() {
         return .{
             .following_tokens = try closureContextFollowSet(allocator, suffix_first, inherited_lookahead),
-            .propagated_follow = try closureContextPropagatedFollowSet(allocator, suffix_first, inherited_lookahead),
             .production_end_follow = try closureContextProductionEndFollowSet(allocator, suffix_first, inherited_lookahead),
         };
     }
 
+    fn nullableSuffixNeedsContextFollow(self: @This()) bool {
+        return self.following_tokens.includes_epsilon;
+    }
+
     fn deinit(self: @This(), allocator: std.mem.Allocator) void {
         freeSymbolSet(allocator, self.following_tokens);
-        freeSymbolSet(allocator, self.propagated_follow);
         freeSymbolSet(allocator, self.production_end_follow);
     }
 };
@@ -814,7 +799,6 @@ const FollowWorkEntry = struct {
     non_terminal: u32,
     direct_suffix_follow: first.SymbolSet,
     nullable_ancestor_suffix_follow: first.SymbolSet,
-    inherited_context_flow: InheritedContextFlow,
 };
 
 fn findFollowInfoIndex(items: []const ?ClosureFollowInfo, non_terminal: u32) ?usize {
@@ -831,7 +815,6 @@ fn mergeFollowInfo(
         target.* = .{
             .direct_suffix_follow = try cloneSymbolSet(allocator, incoming.direct_suffix_follow),
             .nullable_ancestor_suffix_follow = try cloneSymbolSet(allocator, incoming.nullable_ancestor_suffix_follow),
-            .inherited_context_flow = incoming.inherited_context_flow,
         };
         return true;
     }
@@ -839,12 +822,8 @@ fn mergeFollowInfo(
     var changed = false;
     changed = mergeSymbolSetLookaheads(&target.*.?.direct_suffix_follow, incoming.direct_suffix_follow) or changed;
     changed = mergeSymbolSetLookaheads(&target.*.?.nullable_ancestor_suffix_follow, incoming.nullable_ancestor_suffix_follow) or changed;
-    if (incoming.inherited_context_flow.through_production_end and !target.*.?.inherited_context_flow.through_production_end) {
-        target.*.?.inherited_context_flow.through_production_end = true;
-        changed = true;
-    }
-    if (incoming.inherited_context_flow.through_nullable_suffix and !target.*.?.inherited_context_flow.through_nullable_suffix) {
-        target.*.?.inherited_context_flow.through_nullable_suffix = true;
+    if (incoming.nullable_ancestor_suffix_follow.includes_epsilon and !target.*.?.nullable_ancestor_suffix_follow.includes_epsilon) {
+        target.*.?.nullable_ancestor_suffix_follow.includes_epsilon = true;
         changed = true;
     }
     return changed;
@@ -881,8 +860,11 @@ fn computeTransitiveClosureAdditionsAlloc(
     try stack.append(.{
         .non_terminal = root_non_terminal,
         .direct_suffix_follow = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len),
-        .nullable_ancestor_suffix_follow = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len),
-        .inherited_context_flow = .{ .through_production_end = true },
+        .nullable_ancestor_suffix_follow = blk: {
+            var set = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len);
+            set.includes_epsilon = true;
+            break :blk set;
+        },
     });
 
     while (stack.items.len > 0) {
@@ -908,14 +890,13 @@ fn computeTransitiveClosureAdditionsAlloc(
                         cloneSymbolSet(allocator, infos[entry.non_terminal].?.direct_suffix_follow)
                     else
                         initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len);
-                    var inherited_context_flow = InheritedContextFlow{};
                     if (remainder.len == 0) {
                         _ = mergeSymbolSetLookaheads(
                             &nullable_ancestor_suffix_follow,
                             infos[entry.non_terminal].?.nullable_ancestor_suffix_follow,
                         );
                         if (infos[entry.non_terminal].?.propagatesInheritedContext()) {
-                            inherited_context_flow.through_production_end = true;
+                            nullable_ancestor_suffix_follow.includes_epsilon = true;
                         }
                     } else if (direct_suffix_follow.includes_epsilon) {
                         direct_suffix_follow.includes_epsilon = false;
@@ -927,15 +908,11 @@ fn computeTransitiveClosureAdditionsAlloc(
                             &nullable_ancestor_suffix_follow,
                             infos[entry.non_terminal].?.nullable_ancestor_suffix_follow,
                         );
-                        if (infos[entry.non_terminal].?.propagatesInheritedContext()) {
-                            inherited_context_flow.through_nullable_suffix = true;
-                        }
                     }
                     try stack.append(.{
                         .non_terminal = next_non_terminal,
                         .direct_suffix_follow = direct_suffix_follow,
                         .nullable_ancestor_suffix_follow = nullable_ancestor_suffix_follow,
-                        .inherited_context_flow = inherited_context_flow,
                     });
                 },
                 else => {},
@@ -956,7 +933,6 @@ fn computeTransitiveClosureAdditionsAlloc(
                 .info = .{
                     .direct_suffix_follow = try cloneSymbolSet(allocator, info.direct_suffix_follow),
                     .nullable_ancestor_suffix_follow = try cloneSymbolSet(allocator, info.nullable_ancestor_suffix_follow),
-                    .inherited_context_flow = info.inherited_context_flow,
                 },
             });
         }
@@ -985,7 +961,6 @@ fn buildClosureExpansionItemsAlloc(
             addition.production_id,
             addition.info.direct_suffix_follow,
             addition.info.nullable_ancestor_suffix_follow,
-            addition.info.inherited_context_flow,
             context,
             item_set_builder.first_sets,
             options,
@@ -1002,7 +977,6 @@ fn appendGeneratedItems(
     production_id: item.ProductionId,
     direct_suffix_follow: first.SymbolSet,
     nullable_ancestor_suffix_follow: first.SymbolSet,
-    inherited_context_flow: InheritedContextFlow,
     context: ClosureContext,
     first_sets: first.FirstSets,
     options: BuildOptions,
@@ -1012,7 +986,7 @@ fn appendGeneratedItems(
     _ = mergeSymbolSetLookaheads(&effective_suffix_follow, nullable_ancestor_suffix_follow);
 
     if (options.closure_lookahead_mode == .none) {
-        const has_any_signal = inherited_context_flow.propagates() or
+        const has_any_signal = nullable_ancestor_suffix_follow.includes_epsilon or
             countPresent(effective_suffix_follow.terminals) > 0 or
             countPresent(effective_suffix_follow.externals) > 0;
         if (has_any_signal) {
@@ -1038,7 +1012,7 @@ fn appendGeneratedItems(
         first_sets.externals_len,
         item.ParseItem.init(production_id, 0),
     );
-    var has_any_signal = inherited_context_flow.propagates();
+    var has_any_signal = nullable_ancestor_suffix_follow.includes_epsilon;
 
     for (effective_suffix_follow.terminals, 0..) |present, index| {
         if (!present) continue;
@@ -1052,7 +1026,7 @@ fn appendGeneratedItems(
         has_any_signal = true;
     }
 
-    if (inherited_context_flow.through_production_end) {
+    if (nullable_ancestor_suffix_follow.includes_epsilon) {
         for (context.production_end_follow.terminals, 0..) |present, index| {
             if (!present) continue;
             const lookahead: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
@@ -2330,24 +2304,21 @@ test "ParseItemSetBuilder precomputes transitive closure additions with propagat
             2 => {
                 saw_a_to_b_c = true;
                 try std.testing.expect(addition.info.propagatesInheritedContext());
-                try std.testing.expect(addition.info.inherited_context_flow.through_production_end);
-                try std.testing.expect(!addition.info.inherited_context_flow.through_nullable_suffix);
+                try std.testing.expect(addition.info.needsProductionEndFollow());
                 try std.testing.expect(!addition.info.direct_suffix_follow.containsTerminal(2));
                 try std.testing.expect(!addition.info.nullable_ancestor_suffix_follow.containsTerminal(2));
             },
             3 => {
                 saw_a_to_d = true;
                 try std.testing.expect(addition.info.propagatesInheritedContext());
-                try std.testing.expect(addition.info.inherited_context_flow.through_production_end);
-                try std.testing.expect(!addition.info.inherited_context_flow.through_nullable_suffix);
+                try std.testing.expect(addition.info.needsProductionEndFollow());
                 try std.testing.expect(!addition.info.direct_suffix_follow.containsTerminal(2));
                 try std.testing.expect(!addition.info.nullable_ancestor_suffix_follow.containsTerminal(2));
             },
             4 => {
                 saw_b_to_e = true;
                 try std.testing.expect(!addition.info.propagatesInheritedContext());
-                try std.testing.expect(!addition.info.inherited_context_flow.through_production_end);
-                try std.testing.expect(!addition.info.inherited_context_flow.through_nullable_suffix);
+                try std.testing.expect(!addition.info.needsProductionEndFollow());
                 try std.testing.expect(addition.info.direct_suffix_follow.containsTerminal(2));
                 try std.testing.expect(!addition.info.nullable_ancestor_suffix_follow.containsTerminal(2));
             },
@@ -2422,16 +2393,14 @@ test "ParseItemSetBuilder distinguishes direct suffix follow from nullable ances
                 try std.testing.expect(addition.info.direct_suffix_follow.containsTerminal(2));
                 try std.testing.expect(!addition.info.nullable_ancestor_suffix_follow.containsTerminal(2));
                 try std.testing.expect(addition.info.propagatesInheritedContext());
-                try std.testing.expect(!addition.info.inherited_context_flow.through_production_end);
-                try std.testing.expect(addition.info.inherited_context_flow.through_nullable_suffix);
+                try std.testing.expect(addition.info.needsProductionEndFollow());
             },
             6 => {
                 saw_d_production = true;
                 try std.testing.expect(!addition.info.direct_suffix_follow.containsTerminal(2));
                 try std.testing.expect(addition.info.nullable_ancestor_suffix_follow.containsTerminal(2));
                 try std.testing.expect(addition.info.propagatesInheritedContext());
-                try std.testing.expect(addition.info.inherited_context_flow.through_production_end);
-                try std.testing.expect(!addition.info.inherited_context_flow.through_nullable_suffix);
+                try std.testing.expect(addition.info.needsProductionEndFollow());
             },
             else => {},
         }
@@ -2566,11 +2535,6 @@ test "buildClosureExpansionItemsAlloc preserves inherited and propagated follow 
         context_follow.terminals[0] = true;
         break :blk ClosureContext{
             .following_tokens = context_follow,
-            .propagated_follow = propagated: {
-                var propagated_follow = try initEmptySymbolSet(arena.allocator(), first_sets.terminals_len, first_sets.externals_len);
-                propagated_follow.terminals[0] = true;
-                break :propagated propagated_follow;
-            },
             .production_end_follow = production_end: {
                 var production_end_follow = try initEmptySymbolSet(arena.allocator(), first_sets.terminals_len, first_sets.externals_len);
                 production_end_follow.terminals[0] = true;
@@ -2585,7 +2549,7 @@ test "buildClosureExpansionItemsAlloc preserves inherited and propagated follow 
     try std.testing.expect(findParseItem(generated, item.ParseItem.init(4, 0), .{ .terminal = 0 }) == null);
 }
 
-test "closure preserves named-precedence plus lookahead through recursive context when propagated_follow is empty at the immediate boundary" {
+test "closure preserves named-precedence plus lookahead through recursive context when nullable-suffix projection is empty at the immediate boundary" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -2689,7 +2653,7 @@ test "closureContextFollowSet merges inherited lookahead only through nullable s
     try std.testing.expect(!unchanged.includes_epsilon);
 }
 
-test "ClosureContext separates merged follow from propagated follow" {
+test "ClosureContext projects nullable-suffix follow from merged follow and production-end follow" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -2702,8 +2666,7 @@ test "ClosureContext separates merged follow from propagated follow" {
 
     try std.testing.expect(context.following_tokens.terminals[1]);
     try std.testing.expect(context.following_tokens.terminals[2]);
-    try std.testing.expect(context.propagated_follow.terminals[2]);
-    try std.testing.expect(!context.propagated_follow.terminals[1]);
+    try std.testing.expect(context.nullableSuffixNeedsContextFollow());
     try std.testing.expect(context.production_end_follow.terminals[2]);
     try std.testing.expect(!context.production_end_follow.terminals[1]);
 
@@ -2714,7 +2677,7 @@ test "ClosureContext separates merged follow from propagated follow" {
 
     try std.testing.expect(non_nullable_context.following_tokens.terminals[1]);
     try std.testing.expect(!non_nullable_context.following_tokens.terminals[2]);
-    try std.testing.expect(!non_nullable_context.propagated_follow.terminals[2]);
+    try std.testing.expect(!non_nullable_context.nullableSuffixNeedsContextFollow());
     try std.testing.expect(non_nullable_context.production_end_follow.terminals[2]);
 }
 
