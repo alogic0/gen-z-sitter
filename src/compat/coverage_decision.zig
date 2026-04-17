@@ -46,12 +46,22 @@ pub fn buildCoverageDecisionAlloc(
     const first_wave_passed_count = countFirstWavePassed(runs);
     const first_wave_non_passing_count = first_wave_target_count - first_wave_passed_count;
 
+    const deferred_parser_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_parser_wave);
+    defer deinitTargetSummaries(allocator, deferred_parser_targets);
     const deferred_scanner_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_scanner_wave);
-    const recommended_next_milestone: NextMilestone = if (deferred_scanner_targets.len == 0)
+    const recommended_next_milestone: NextMilestone = if (deferred_parser_targets.len != 0)
+        .second_wave_parser_only_repo_coverage
+    else if (deferred_scanner_targets.len == 0)
         .broader_compatibility_polish
     else
         .scanner_and_external_scanner_compatibility_onboarding;
-    const recommendation_rationale = if (deferred_scanner_targets.len == 0)
+    const recommendation_rationale = if (deferred_parser_targets.len != 0)
+        try duplicateStringSliceAlloc(allocator, &.{
+            "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
+            "the only remaining deferred parser-only control fixture is still intentional, but a newly onboarded larger real external parser-only snapshot is now held at an explicit deferred parser boundary",
+            "the next promoted milestone should narrow or promote that larger real external parser-only target before claiming a broader parser-only external boundary",
+        })
+    else if (deferred_scanner_targets.len == 0)
         try duplicateStringSliceAlloc(allocator, &.{
             "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
             "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
@@ -71,7 +81,7 @@ pub fn buildCoverageDecisionAlloc(
         .first_wave_non_passing_count = first_wave_non_passing_count,
         .parser_only_boundary_proven = first_wave_non_passing_count == 0,
         .proven_boundary = try collectProvenBoundaryAlloc(allocator, runs),
-        .deferred_parser_only_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_control_fixture),
+        .deferred_parser_only_targets = try collectTargetSummariesAllocForStatuses(allocator, runs, &.{ .deferred_control_fixture, .deferred_parser_wave }),
         .deferred_scanner_targets = deferred_scanner_targets,
         .recommended_next_milestone = recommended_next_milestone,
         .recommendation_rationale = recommendation_rationale,
@@ -144,11 +154,26 @@ fn collectTargetSummariesAlloc(
     runs: []const result_model.TargetRunResult,
     status: targets.CandidateStatus,
 ) ![]TargetSummary {
+    return collectTargetSummariesAllocForStatuses(allocator, runs, &.{status});
+}
+
+fn collectTargetSummariesAllocForStatuses(
+    allocator: std.mem.Allocator,
+    runs: []const result_model.TargetRunResult,
+    statuses: []const targets.CandidateStatus,
+) ![]TargetSummary {
     var items = std.array_list.Managed(TargetSummary).init(allocator);
     defer items.deinit();
 
     for (runs) |run| {
-        if (run.candidate_status != status) continue;
+        var matched = false;
+        for (statuses) |status| {
+            if (run.candidate_status == status) {
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) continue;
         try items.append(.{
             .id = try allocator.dupe(u8, run.id),
             .display_name = try allocator.dupe(u8, run.display_name),
@@ -203,8 +228,8 @@ test "buildCoverageDecisionAlloc summarizes the current next-step decision" {
     try std.testing.expectEqual(@as(usize, 5), report.first_wave_passed_count);
     try std.testing.expectEqual(@as(usize, 0), report.first_wave_non_passing_count);
     try std.testing.expect(report.parser_only_boundary_proven);
-    try std.testing.expectEqual(NextMilestone.broader_compatibility_polish, report.recommended_next_milestone);
-    try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_only_targets.len);
+    try std.testing.expectEqual(NextMilestone.second_wave_parser_only_repo_coverage, report.recommended_next_milestone);
+    try std.testing.expectEqual(@as(usize, 2), report.deferred_parser_only_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
 }
 

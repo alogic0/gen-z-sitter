@@ -21,6 +21,7 @@ pub const MismatchInventoryReport = struct {
     grammar_input_shape_issues: []MismatchEntry,
     compile_surface_issues: []MismatchEntry,
     harness_limitations: []MismatchEntry,
+    deferred_parser_targets: []MismatchEntry,
     deferred_control_targets: []MismatchEntry,
     deferred_scanner_targets: []MismatchEntry,
     out_of_scope_targets: []MismatchEntry,
@@ -31,6 +32,7 @@ pub const MismatchInventoryReport = struct {
         deinitEntries(allocator, self.grammar_input_shape_issues);
         deinitEntries(allocator, self.compile_surface_issues);
         deinitEntries(allocator, self.harness_limitations);
+        deinitEntries(allocator, self.deferred_parser_targets);
         deinitEntries(allocator, self.deferred_control_targets);
         deinitEntries(allocator, self.deferred_scanner_targets);
         deinitEntries(allocator, self.out_of_scope_targets);
@@ -50,6 +52,7 @@ pub fn buildMismatchInventoryAlloc(
         .grammar_input_shape_issues = try collectEntriesAlloc(allocator, runs, includeGrammarInputShapeIssue),
         .compile_surface_issues = try collectEntriesAlloc(allocator, runs, includeCompileSurfaceIssue),
         .harness_limitations = try collectEntriesAlloc(allocator, runs, includeHarnessLimitation),
+        .deferred_parser_targets = try collectEntriesAlloc(allocator, runs, includeDeferredParserTarget),
         .deferred_control_targets = try collectEntriesAlloc(allocator, runs, includeDeferredControl),
         .deferred_scanner_targets = try collectEntriesAlloc(allocator, runs, includeDeferredScannerTarget),
         .out_of_scope_targets = try collectEntriesAlloc(allocator, runs, includeOutOfScope),
@@ -165,6 +168,10 @@ fn includeDeferredControl(run: result_model.TargetRunResult) bool {
     return run.mismatch_category == .intentional_control_fixture;
 }
 
+fn includeDeferredParserTarget(run: result_model.TargetRunResult) bool {
+    return run.mismatch_category == .parser_external_boundary_gap;
+}
+
 fn includeDeferredScannerTarget(run: result_model.TargetRunResult) bool {
     return run.mismatch_category == .scanner_external_scanner_boundary_gap;
 }
@@ -185,6 +192,7 @@ test "buildMismatchInventoryAlloc classifies the current shortlist" {
     try std.testing.expectEqual(@as(usize, 0), report.grammar_input_shape_issues.len);
     try std.testing.expectEqual(@as(usize, 0), report.compile_surface_issues.len);
     try std.testing.expectEqual(@as(usize, 0), report.harness_limitations.len);
+    try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.out_of_scope_targets.len);

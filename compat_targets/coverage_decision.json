@@ -12,6 +12,12 @@
   ],
   "deferred_parser_only_targets": [
     {
+      "id": "tree_sitter_c_json",
+      "display_name": "tree-sitter-c (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, added in M33 as a deferred parser-boundary target because the current stable shortlist does not yet prove the full emitted and compiled surface for grammars of this size"
+    },
+    {
       "id": "parse_table_conflict_json",
       "display_name": "Parse Table Conflict (JSON)",
       "grammar_path": "compat_targets/parse_table_conflict/grammar.json",
@@ -19,10 +25,10 @@
     }
   ],
   "deferred_scanner_targets": [],
-  "recommended_next_milestone": "broader_compatibility_polish",
+  "recommended_next_milestone": "second_wave_parser_only_repo_coverage",
   "recommendation_rationale": [
     "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-    "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
-    "a second scanner grammar family now passes within the staged first-boundary checks, so the next promoted milestone can shift from scanner onboarding toward broader compatibility polish"
+    "the only remaining deferred parser-only control fixture is still intentional, but a newly onboarded larger real external parser-only snapshot is now held at an explicit deferred parser boundary",
+    "the next promoted milestone should narrow or promote that larger real external parser-only target before claiming a broader parser-only external boundary"
   ]
 }

@@ -1,15 +1,17 @@
 {
   "schema_version": 1,
   "aggregate": {
-    "total_targets": 12,
+    "total_targets": 13,
     "first_wave_targets": 5,
     "first_wave_passed": 5,
     "scanner_wave_targets": 6,
     "scanner_wave_passed": 6,
+    "deferred_parser_targets": 1,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
     "passed_within_current_boundary": 11,
     "frozen_control_fixture": 1,
+    "deferred_for_parser_boundary": 1,
     "deferred_for_scanner_boundary": 0,
     "failed_due_to_parser_only_gap": 0,
     "out_of_scope_for_scanner_boundary": 0,
@@ -19,6 +21,7 @@
     "mismatch_categories": {
       "grammar_input_load_mismatch": 0,
       "preparation_lowering_mismatch": 0,
+      "parser_external_boundary_gap": 1,
       "scanner_external_scanner_boundary_gap": 0,
       "parse_table_construction_gap": 0,
       "shift_reduce_boundary": 0,
@@ -76,6 +79,15 @@
       "blocked_count": 0
     },
     {
+      "family": "c",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 0,
+      "control_count": 0,
+      "deferred_count": 1,
+      "blocked_count": 0
+    },
+    {
       "family": "haskell",
       "boundary_kind": "scanner_external_scanner",
       "target_count": 1,
@@ -129,6 +141,7 @@
       "family": "parse_table_tiny",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
@@ -200,6 +213,7 @@
       "family": "behavioral_config",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
@@ -271,6 +285,7 @@
       "family": "repeat_choice_seq",
       "source_kind": "grammar_js",
       "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
@@ -385,6 +400,7 @@
       "family": "ziggy",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
@@ -456,6 +472,7 @@
       "family": "ziggy_schema",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
@@ -521,12 +538,74 @@
       "blocked_boundary": null
     },
     {
+      "id": "tree_sitter_c_json",
+      "display_name": "tree-sitter-c (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
+      "family": "c",
+      "source_kind": "grammar_json",
+      "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "prepare_only",
+      "real_external_scanner_proof_scope": "none",
+      "provenance": {
+        "origin_kind": "external_repo_snapshot",
+        "upstream_repository": "tree-sitter-c",
+        "upstream_revision": "ae19b676b13bdcc13b7665397e6d9b14975473dd",
+        "upstream_grammar_path": "src/grammar.json"
+      },
+      "candidate_status": "deferred_parser_wave",
+      "expected_blocked": false,
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, added in M33 as a deferred parser-boundary target because the current stable shortlist does not yet prove the full emitted and compiled surface for grammars of this size",
+      "success_criteria": "load and prepare the snapshotted upstream grammar.json cleanly, and keep the deferred parser-boundary rationale explicit until a later milestone proves a broader emitted surface",
+      "first_failed_stage": "serialize",
+      "final_classification": "deferred_for_parser_boundary",
+      "mismatch_category": "parser_external_boundary_gap",
+      "load": {
+        "status": "passed",
+        "detail": null
+      },
+      "prepare": {
+        "status": "passed",
+        "detail": null
+      },
+      "serialize": {
+        "status": "failed",
+        "detail": "full parser-surface emission is deferred for tree_sitter_c_json: the current stable shortlist only proves load and prepare for this larger external parser-only target"
+      },
+      "emit_parser_tables": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emit_c_tables": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "not_run",
+        "detail": null
+      },
+      "scanner_boundary_check": {
+        "status": "not_run",
+        "detail": null
+      },
+      "compat_check": {
+        "status": "not_run",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "not_run",
+        "detail": null
+      },
+      "emission": null,
+      "blocked_boundary": null
+    },
+    {
       "id": "tree_sitter_haskell_json",
       "display_name": "tree-sitter-haskell (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_haskell/grammar.json",
       "family": "haskell",
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "sampled_external_sequence",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
@@ -587,6 +666,7 @@
       "family": "bash",
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "sampled_expansion_path",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
@@ -647,6 +727,7 @@
       "family": "parse_table_conflict",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
@@ -746,6 +827,7 @@
       "family": "hidden_external_fields",
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
@@ -806,6 +888,7 @@
       "family": "hidden_external_fields",
       "source_kind": "grammar_js",
       "boundary_kind": "scanner_external_scanner",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
@@ -866,6 +949,7 @@
       "family": "mixed_semantics",
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
@@ -926,6 +1010,7 @@
       "family": "mixed_semantics",
       "source_kind": "grammar_js",
       "boundary_kind": "scanner_external_scanner",
+      "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",

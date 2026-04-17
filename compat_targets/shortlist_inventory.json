@@ -1,13 +1,14 @@
 {
   "schema_version": 1,
   "boundary": {
-    "total_shortlist_targets": 12,
+    "total_shortlist_targets": 13,
     "first_wave_targets": 5,
     "first_wave_passed": 5,
     "first_wave_non_passing": 0,
     "scanner_wave_targets": 6,
     "scanner_wave_passed": 6,
     "scanner_wave_non_passing": 0,
+    "deferred_parser_targets": 1,
     "deferred_control_targets": 1,
     "frozen_control_fixtures": 1,
     "deferred_scanner_targets": 0,
@@ -59,6 +60,15 @@
       "passed_count": 1,
       "control_count": 0,
       "deferred_count": 0,
+      "blocked_count": 0
+    },
+    {
+      "family": "c",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 0,
+      "control_count": 0,
+      "deferred_count": 1,
       "blocked_count": 0
     },
     {
@@ -274,6 +284,23 @@
       "first_failed_stage": null,
       "detail": null,
       "notes": "staged external-scanner JS target mirroring mixed_semantics, promoted in the second scanner wave when the node loader preserves the same first-boundary behavior"
+    }
+  ],
+  "deferred_parser_targets": [
+    {
+      "id": "tree_sitter_c_json",
+      "display_name": "tree-sitter-c (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
+      "family": "c",
+      "boundary_kind": "parser_only",
+      "candidate_status": "deferred_parser_wave",
+      "expected_blocked": false,
+      "emission_blocked": false,
+      "final_classification": "deferred_for_parser_boundary",
+      "mismatch_category": "parser_external_boundary_gap",
+      "first_failed_stage": "serialize",
+      "detail": "full parser-surface emission is deferred for tree_sitter_c_json: the current stable shortlist only proves load and prepare for this larger external parser-only target",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, added in M33 as a deferred parser-boundary target because the current stable shortlist does not yet prove the full emitted and compiled surface for grammars of this size"
     }
   ],
   "deferred_control_targets": [

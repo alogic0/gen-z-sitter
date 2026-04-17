@@ -11,6 +11,7 @@ pub const BoundarySummary = struct {
     scanner_wave_targets: usize,
     scanner_wave_passed: usize,
     scanner_wave_non_passing: usize,
+    deferred_parser_targets: usize,
     deferred_control_targets: usize,
     frozen_control_fixtures: usize,
     deferred_scanner_targets: usize,
@@ -51,6 +52,7 @@ pub const InventoryReport = struct {
     family_coverage: []FamilyCoverageEntry,
     proven_first_wave_targets: []InventoryEntry,
     proven_scanner_wave_targets: []InventoryEntry,
+    deferred_parser_targets: []InventoryEntry,
     deferred_control_targets: []InventoryEntry,
     deferred_scanner_targets: []InventoryEntry,
     in_scope_failures: []InventoryEntry,
@@ -60,6 +62,7 @@ pub const InventoryReport = struct {
         allocator.free(self.family_coverage);
         deinitInventoryEntries(allocator, self.proven_first_wave_targets);
         deinitInventoryEntries(allocator, self.proven_scanner_wave_targets);
+        deinitInventoryEntries(allocator, self.deferred_parser_targets);
         deinitInventoryEntries(allocator, self.deferred_control_targets);
         deinitInventoryEntries(allocator, self.deferred_scanner_targets);
         deinitInventoryEntries(allocator, self.in_scope_failures);
@@ -78,6 +81,7 @@ pub fn buildInventoryReportAlloc(
         .family_coverage = try collectFamilyCoverageAlloc(allocator, runs),
         .proven_first_wave_targets = try collectEntriesAlloc(allocator, runs, includeProvenFirstWaveTarget),
         .proven_scanner_wave_targets = try collectEntriesAlloc(allocator, runs, includeProvenScannerWaveTarget),
+        .deferred_parser_targets = try collectEntriesAlloc(allocator, runs, includeDeferredParserTarget),
         .deferred_control_targets = try collectEntriesAlloc(allocator, runs, includeDeferredControl),
         .deferred_scanner_targets = try collectEntriesAlloc(allocator, runs, includeDeferredScannerTarget),
         .in_scope_failures = try collectEntriesAlloc(allocator, runs, includeInScopeFailure),
@@ -103,6 +107,7 @@ pub fn collectBoundarySummary(runs: []const result_model.TargetRunResult) Bounda
         .scanner_wave_targets = 0,
         .scanner_wave_passed = 0,
         .scanner_wave_non_passing = 0,
+        .deferred_parser_targets = 0,
         .deferred_control_targets = 0,
         .frozen_control_fixtures = 0,
         .deferred_scanner_targets = 0,
@@ -129,6 +134,7 @@ pub fn collectBoundarySummary(runs: []const result_model.TargetRunResult) Bounda
                     summary.scanner_wave_non_passing += 1;
                 }
             },
+            .deferred_parser_wave => summary.deferred_parser_targets += 1,
             .deferred_control_fixture => {
                 summary.deferred_control_targets += 1;
                 if (run.final_classification == .frozen_control_fixture) {
@@ -222,6 +228,7 @@ fn collectFamilyCoverageAlloc(
         switch (run.final_classification) {
             .passed_within_current_boundary => items.items[index].passed_count += 1,
             .frozen_control_fixture => items.items[index].control_count += 1,
+            .deferred_for_parser_boundary => items.items[index].deferred_count += 1,
             .deferred_for_scanner_boundary => items.items[index].deferred_count += 1,
             .failed_due_to_parser_only_gap,
             .out_of_scope_for_scanner_boundary,
@@ -272,6 +279,10 @@ fn includeDeferredControl(run: result_model.TargetRunResult) bool {
     return run.candidate_status == .deferred_control_fixture;
 }
 
+fn includeDeferredParserTarget(run: result_model.TargetRunResult) bool {
+    return run.candidate_status == .deferred_parser_wave;
+}
+
 fn includeProvenScannerWaveTarget(run: result_model.TargetRunResult) bool {
     return run.candidate_status == .intended_scanner_wave and run.final_classification == .passed_within_current_boundary;
 }
@@ -294,30 +305,34 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     var report = try buildInventoryReportAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 12), report.boundary.total_shortlist_targets);
+    try std.testing.expectEqual(@as(usize, 13), report.boundary.total_shortlist_targets);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_targets);
     try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_passed);
     try std.testing.expectEqual(@as(usize, 6), report.boundary.scanner_wave_targets);
     try std.testing.expectEqual(@as(usize, 6), report.boundary.scanner_wave_passed);
+    try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_parser_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_control_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.frozen_control_fixtures);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.deferred_scanner_targets);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.excluded_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.blocked_control_targets);
-    try std.testing.expectEqual(@as(usize, 10), report.family_coverage.len);
-    try std.testing.expectEqual(targets.TargetFamily.haskell, report.family_coverage[5].family);
-    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[5].target_count);
-    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[5].passed_count);
-    try std.testing.expectEqual(targets.TargetFamily.bash, report.family_coverage[6].family);
+    try std.testing.expectEqual(@as(usize, 11), report.family_coverage.len);
+    try std.testing.expectEqual(targets.TargetFamily.c, report.family_coverage[5].family);
+    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[5].deferred_count);
+    try std.testing.expectEqual(targets.TargetFamily.haskell, report.family_coverage[6].family);
+    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[6].target_count);
     try std.testing.expectEqual(@as(usize, 1), report.family_coverage[6].passed_count);
-    try std.testing.expectEqual(@as(usize, 0), report.family_coverage[6].deferred_count);
-    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[7].control_count);
-    try std.testing.expectEqual(targets.TargetFamily.hidden_external_fields, report.family_coverage[8].family);
-    try std.testing.expectEqual(@as(usize, 2), report.family_coverage[8].passed_count);
-    try std.testing.expectEqual(targets.TargetFamily.mixed_semantics, report.family_coverage[9].family);
+    try std.testing.expectEqual(targets.TargetFamily.bash, report.family_coverage[7].family);
+    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[7].passed_count);
+    try std.testing.expectEqual(@as(usize, 0), report.family_coverage[7].deferred_count);
+    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[8].control_count);
+    try std.testing.expectEqual(targets.TargetFamily.hidden_external_fields, report.family_coverage[9].family);
     try std.testing.expectEqual(@as(usize, 2), report.family_coverage[9].passed_count);
+    try std.testing.expectEqual(targets.TargetFamily.mixed_semantics, report.family_coverage[10].family);
+    try std.testing.expectEqual(@as(usize, 2), report.family_coverage[10].passed_count);
     try std.testing.expectEqual(@as(usize, 5), report.proven_first_wave_targets.len);
     try std.testing.expectEqual(@as(usize, 6), report.proven_scanner_wave_targets.len);
+    try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
 }
@@ -336,6 +351,7 @@ test "renderInventoryReportAlloc emits deterministic boundary JSON" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"family_coverage\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"proven_first_wave_targets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"proven_scanner_wave_targets\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"deferred_parser_targets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"deferred_control_targets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"deferred_scanner_targets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"in_scope_failures\"") != null);

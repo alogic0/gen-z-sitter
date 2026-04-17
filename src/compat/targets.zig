@@ -10,6 +10,11 @@ pub const BoundaryKind = enum {
     scanner_external_scanner,
 };
 
+pub const ParserBoundaryCheckMode = enum {
+    full_pipeline,
+    prepare_only,
+};
+
 pub const ScannerBoundaryCheckMode = enum {
     sampled_behavioral,
     sampled_external_only,
@@ -28,6 +33,7 @@ pub const TargetFamily = enum {
     repeat_choice_seq,
     ziggy,
     ziggy_schema,
+    c,
     haskell,
     bash,
     parse_table_conflict,
@@ -43,6 +49,7 @@ pub const OriginKind = enum {
 pub const CandidateStatus = enum {
     intended_first_wave,
     intended_scanner_wave,
+    deferred_parser_wave,
     deferred_control_fixture,
     deferred_scanner_wave,
     excluded_out_of_scope,
@@ -62,6 +69,7 @@ pub const Target = struct {
     family: TargetFamily,
     source_kind: SourceKind,
     boundary_kind: BoundaryKind = .parser_only,
+    parser_boundary_check_mode: ParserBoundaryCheckMode = .full_pipeline,
     scanner_boundary_check_mode: ScannerBoundaryCheckMode = .sampled_behavioral,
     real_external_scanner_proof_scope: RealExternalScannerProofScope = .none,
     provenance: Provenance = .{ .origin_kind = .staged_in_repo },
@@ -148,6 +156,25 @@ pub const shortlist_targets = [_]Target{
         .expected_blocked = false,
         .notes = "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after the word-token lowering and repeat-auxiliary fixes",
         .success_criteria = "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
+    },
+    .{
+        .id = "tree_sitter_c_json",
+        .display_name = "tree-sitter-c (JSON snapshot)",
+        .grammar_path = "compat_targets/tree_sitter_c/grammar.json",
+        .family = .c,
+        .source_kind = .grammar_json,
+        .boundary_kind = .parser_only,
+        .parser_boundary_check_mode = .prepare_only,
+        .provenance = .{
+            .origin_kind = .external_repo_snapshot,
+            .upstream_repository = "tree-sitter-c",
+            .upstream_revision = "ae19b676b13bdcc13b7665397e6d9b14975473dd",
+            .upstream_grammar_path = "src/grammar.json",
+        },
+        .candidate_status = .deferred_parser_wave,
+        .expected_blocked = false,
+        .notes = "real external parser-only grammar snapshot from the local tree-sitter-c repo, added in M33 as a deferred parser-boundary target because the current stable shortlist does not yet prove the full emitted and compiled surface for grammars of this size",
+        .success_criteria = "load and prepare the snapshotted upstream grammar.json cleanly, and keep the deferred parser-boundary rationale explicit until a later milestone proves a broader emitted surface",
     },
     .{
         .id = "tree_sitter_haskell_json",
@@ -278,34 +305,38 @@ pub fn firstWaveTargets() []const Target {
 
 test "stagedTargets exposes a small versioned shortlist" {
     const shortlist = shortlistTargets();
-    try std.testing.expectEqual(@as(usize, 12), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 13), shortlist.len);
     try std.testing.expect(shortlist[0].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
-    try std.testing.expect(shortlist[5].candidate_status == .intended_scanner_wave);
-    try std.testing.expect(shortlist[5].family == .haskell);
+    try std.testing.expect(shortlist[5].candidate_status == .deferred_parser_wave);
+    try std.testing.expect(shortlist[5].family == .c);
     try std.testing.expect(shortlist[5].provenance.origin_kind == .external_repo_snapshot);
-    try std.testing.expect(shortlist[5].scanner_boundary_check_mode == .sampled_external_only);
-    try std.testing.expect(shortlist[5].real_external_scanner_proof_scope == .sampled_external_sequence);
-    try std.testing.expect(shortlist[5].scanner_valid_input_path != null);
-    try std.testing.expect(shortlist[5].scanner_invalid_input_path != null);
-    try std.testing.expect(shortlist[6].family == .bash);
-    try std.testing.expect(shortlist[6].provenance.origin_kind == .external_repo_snapshot);
+    try std.testing.expect(shortlist[5].parser_boundary_check_mode == .prepare_only);
     try std.testing.expect(shortlist[6].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[6].family == .haskell);
+    try std.testing.expect(shortlist[6].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[6].scanner_boundary_check_mode == .sampled_external_only);
-    try std.testing.expect(shortlist[6].real_external_scanner_proof_scope == .sampled_expansion_path);
+    try std.testing.expect(shortlist[6].real_external_scanner_proof_scope == .sampled_external_sequence);
     try std.testing.expect(shortlist[6].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[6].scanner_invalid_input_path != null);
-    try std.testing.expect(shortlist[7].candidate_status == .deferred_control_fixture);
-    try std.testing.expect(shortlist[8].candidate_status == .intended_scanner_wave);
-    try std.testing.expect(shortlist[9].boundary_kind == .scanner_external_scanner);
-    try std.testing.expect(shortlist[9].scanner_valid_input_path != null);
-    try std.testing.expect(shortlist[9].scanner_invalid_input_path != null);
-    try std.testing.expect(shortlist[10].candidate_status == .intended_scanner_wave);
-    try std.testing.expect(shortlist[10].family == .mixed_semantics);
+    try std.testing.expect(shortlist[7].family == .bash);
+    try std.testing.expect(shortlist[7].provenance.origin_kind == .external_repo_snapshot);
+    try std.testing.expect(shortlist[7].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[7].scanner_boundary_check_mode == .sampled_external_only);
+    try std.testing.expect(shortlist[7].real_external_scanner_proof_scope == .sampled_expansion_path);
+    try std.testing.expect(shortlist[7].scanner_valid_input_path != null);
+    try std.testing.expect(shortlist[7].scanner_invalid_input_path != null);
+    try std.testing.expect(shortlist[8].candidate_status == .deferred_control_fixture);
+    try std.testing.expect(shortlist[9].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[10].boundary_kind == .scanner_external_scanner);
     try std.testing.expect(shortlist[10].scanner_valid_input_path != null);
-    try std.testing.expect(shortlist[11].source_kind == .grammar_js);
+    try std.testing.expect(shortlist[10].scanner_invalid_input_path != null);
+    try std.testing.expect(shortlist[11].candidate_status == .intended_scanner_wave);
     try std.testing.expect(shortlist[11].family == .mixed_semantics);
+    try std.testing.expect(shortlist[11].scanner_valid_input_path != null);
+    try std.testing.expect(shortlist[12].source_kind == .grammar_js);
+    try std.testing.expect(shortlist[12].family == .mixed_semantics);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {

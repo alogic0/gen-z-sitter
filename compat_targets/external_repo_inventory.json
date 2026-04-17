@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "total_external_repo_targets": 4,
+  "total_external_repo_targets": 5,
   "passed_external_repo_targets": 4,
   "family_coverage": [
     {
@@ -14,6 +14,12 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1
+    },
+    {
+      "family": "c",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 0
     },
     {
       "family": "haskell",
@@ -31,7 +37,7 @@
   "boundary_coverage": [
     {
       "boundary_kind": "parser_only",
-      "target_count": 2,
+      "target_count": 3,
       "passed_count": 2
     },
     {
@@ -41,10 +47,11 @@
     }
   ],
   "current_limitations": [
-    "the checked-in real external evidence now includes at least one passing external scanner-family snapshot",
-    "the next step is to widen real external scanner-family coverage without collapsing parser-only and scanner evidence into a single flat claim"
+    "the checked-in real external evidence now includes a larger parser-only snapshot that is still held at an explicit deferred parser boundary",
+    "tree-sitter-c currently proves load and prepare cleanly, but the stable shortlist does not yet claim the full emitted and compiled parser surface for a grammar of that size",
+    "real external scanner evidence and the promoted Ziggy parser-only snapshots remain passing while this larger parser-only target stays explicitly deferred"
   ],
-  "recommended_next_step": "broader_compatibility_polish",
+  "recommended_next_step": "narrow_or_promote_onboarded_external_parser_targets",
   "targets": [
     {
       "id": "tree_sitter_ziggy_json",
@@ -75,6 +82,21 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after the word-token lowering and repeat-auxiliary fixes"
+    },
+    {
+      "id": "tree_sitter_c_json",
+      "family": "c",
+      "display_name": "tree-sitter-c (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "parser_only",
+      "proof_scope": "none",
+      "upstream_repository": "tree-sitter-c",
+      "upstream_revision": "ae19b676b13bdcc13b7665397e6d9b14975473dd",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "deferred_for_parser_boundary",
+      "mismatch_category": "parser_external_boundary_gap",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, added in M33 as a deferred parser-boundary target because the current stable shortlist does not yet prove the full emitted and compiled surface for grammars of this size"
     },
     {
       "id": "tree_sitter_haskell_json",

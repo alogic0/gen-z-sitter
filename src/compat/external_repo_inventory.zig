@@ -34,6 +34,7 @@ pub const ExternalRepoBoundaryEntry = struct {
 
 pub const ExternalEvidenceNextStep = enum {
     onboard_additional_local_external_snapshots_when_available,
+    narrow_or_promote_onboarded_external_parser_targets,
     narrow_or_promote_onboarded_external_scanner_targets,
     broader_compatibility_polish,
 };
@@ -63,6 +64,8 @@ pub fn buildExternalRepoInventoryAlloc(
 ) !ExternalRepoInventoryReport {
     const total_external_repo_targets = countExternalTargets(runs);
     const passed_external_repo_targets = countPassedExternalTargets(runs);
+    const total_external_parser_targets = countExternalTargetsByBoundary(runs, .parser_only);
+    const passed_external_parser_targets = countPassedExternalTargetsByBoundary(runs, .parser_only);
     const total_external_scanner_targets = countExternalTargetsByBoundary(runs, .scanner_external_scanner);
     const passed_external_scanner_targets = countPassedExternalTargetsByBoundary(runs, .scanner_external_scanner);
     return .{
@@ -75,10 +78,14 @@ pub fn buildExternalRepoInventoryAlloc(
             allocator,
             total_external_repo_targets,
             passed_external_repo_targets,
+            total_external_parser_targets,
+            passed_external_parser_targets,
             total_external_scanner_targets,
             passed_external_scanner_targets,
         ),
-        .recommended_next_step = if (total_external_scanner_targets != 0 and passed_external_scanner_targets == 0)
+        .recommended_next_step = if (total_external_parser_targets != 0 and passed_external_parser_targets < total_external_parser_targets)
+            .narrow_or_promote_onboarded_external_parser_targets
+        else if (total_external_scanner_targets != 0 and passed_external_scanner_targets == 0)
             .narrow_or_promote_onboarded_external_scanner_targets
         else if (total_external_scanner_targets != 0 and passed_external_scanner_targets > 0)
             .broader_compatibility_polish
@@ -241,11 +248,21 @@ fn collectCurrentLimitationsAlloc(
     allocator: std.mem.Allocator,
     total_external_repo_targets: usize,
     passed_external_repo_targets: usize,
+    total_external_parser_targets: usize,
+    passed_external_parser_targets: usize,
     total_external_scanner_targets: usize,
     passed_external_scanner_targets: usize,
 ) ![]const []const u8 {
     _ = total_external_repo_targets;
     _ = passed_external_repo_targets;
+
+    if (total_external_parser_targets != 0 and passed_external_parser_targets < total_external_parser_targets) {
+        return try duplicateStringSliceAlloc(allocator, &.{
+            "the checked-in real external evidence now includes a larger parser-only snapshot that is still held at an explicit deferred parser boundary",
+            "tree-sitter-c currently proves load and prepare cleanly, but the stable shortlist does not yet claim the full emitted and compiled parser surface for a grammar of that size",
+            "real external scanner evidence and the promoted Ziggy parser-only snapshots remain passing while this larger parser-only target stays explicitly deferred",
+        });
+    }
 
     if (total_external_scanner_targets == 0) {
         return try duplicateStringSliceAlloc(allocator, &.{
@@ -311,19 +328,20 @@ test "buildExternalRepoInventoryAlloc summarizes the current external evidence" 
     var report = try buildExternalRepoInventoryAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 4), report.total_external_repo_targets);
+    try std.testing.expectEqual(@as(usize, 5), report.total_external_repo_targets);
     try std.testing.expectEqual(@as(usize, 4), report.passed_external_repo_targets);
-    try std.testing.expectEqual(@as(usize, 4), report.family_coverage.len);
+    try std.testing.expectEqual(@as(usize, 5), report.family_coverage.len);
     try std.testing.expectEqual(@as(usize, 2), report.boundary_coverage.len);
     try std.testing.expectEqual(targets.BoundaryKind.parser_only, report.boundary_coverage[0].boundary_kind);
     try std.testing.expectEqual(targets.BoundaryKind.scanner_external_scanner, report.boundary_coverage[1].boundary_kind);
     try std.testing.expectEqual(targets.TargetFamily.ziggy, report.family_coverage[0].family);
     try std.testing.expectEqual(targets.TargetFamily.ziggy_schema, report.family_coverage[1].family);
-    try std.testing.expectEqual(targets.TargetFamily.haskell, report.family_coverage[2].family);
-    try std.testing.expectEqual(targets.TargetFamily.bash, report.family_coverage[3].family);
-    try std.testing.expectEqual(@as(usize, 2), report.current_limitations.len);
-    try std.testing.expectEqual(ExternalEvidenceNextStep.broader_compatibility_polish, report.recommended_next_step);
-    try std.testing.expectEqual(@as(usize, 4), report.targets.len);
+    try std.testing.expectEqual(targets.TargetFamily.c, report.family_coverage[2].family);
+    try std.testing.expectEqual(targets.TargetFamily.haskell, report.family_coverage[3].family);
+    try std.testing.expectEqual(targets.TargetFamily.bash, report.family_coverage[4].family);
+    try std.testing.expectEqual(@as(usize, 3), report.current_limitations.len);
+    try std.testing.expectEqual(ExternalEvidenceNextStep.narrow_or_promote_onboarded_external_parser_targets, report.recommended_next_step);
+    try std.testing.expectEqual(@as(usize, 5), report.targets.len);
 }
 
 test "renderExternalRepoInventoryAlloc matches the checked-in external repo inventory artifact" {
