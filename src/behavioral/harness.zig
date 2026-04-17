@@ -21,6 +21,7 @@ pub const BehavioralError =
     grammar_loader.LoaderError ||
     std.mem.Allocator.Error ||
     error{
+        UnsupportedLexicalGrammar,
         UnsupportedScannerFreeGrammar,
         UnsupportedExternalScannerGrammar,
         SimulationStepLimitExceeded,
@@ -193,7 +194,7 @@ pub fn sampleExtractedExternalBoundaryOnly(
 ) BehavioralError!ExternalBoundarySample {
     if (!external_boundary.isReady()) return error.UnsupportedExternalScannerGrammar;
     var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical);
-    defer deinitExpandedLexicalGrammar(allocator, &expanded_lexical);
+    defer expanded_lexical.deinit(allocator);
     const progress = shouldLogBehavioralProgress();
 
     var external_state = SampledExternalState.init(allocator);
@@ -242,7 +243,7 @@ pub fn sampleExtractedExternalBoundaryOnly(
             continue;
         }
 
-        if (try matchLexicalPrefix(allocator, lexical, prepared.rules, expandedLexicalPtr(&expanded_lexical), input[cursor..])) |len| {
+        if (try matchLexicalPrefix(allocator, expanded_lexical, input[cursor..])) |len| {
             cursor += len;
             lexical_matches += 1;
             continue;
@@ -276,7 +277,7 @@ fn simulateBuiltScannerFree(
 ) BehavioralError!SimulationResult {
     if (lexical.separators.len != 0) return error.UnsupportedScannerFreeGrammar;
     var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical);
-    defer deinitExpandedLexicalGrammar(allocator, &expanded_lexical);
+    defer expanded_lexical.deinit(allocator);
 
     var stack = std.array_list.Managed(u32).init(allocator);
     defer stack.deinit();
@@ -331,9 +332,7 @@ fn simulateBuiltScannerFree(
             allocator,
             result,
             state_id,
-            prepared,
-            lexical,
-            expandedLexicalPtr(&expanded_lexical),
+            expanded_lexical,
             input[cursor..],
         ) orelse {
             if (selectFallbackAction(result, state_id)) |action| switch (action) {
@@ -425,7 +424,7 @@ fn simulateBuiltWithFirstExternalBoundary(
     if (lexical.separators.len != 0) return error.UnsupportedExternalScannerGrammar;
     if (!external_boundary.isReady()) return error.UnsupportedExternalScannerGrammar;
     var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical);
-    defer deinitExpandedLexicalGrammar(allocator, &expanded_lexical);
+    defer expanded_lexical.deinit(allocator);
     const progress = shouldLogBehavioralProgress();
 
     var stack = std.array_list.Managed(u32).init(allocator);
@@ -569,9 +568,7 @@ fn simulateBuiltWithFirstExternalBoundary(
             allocator,
             result,
             state_id,
-            prepared,
-            lexical,
-            expandedLexicalPtr(&expanded_lexical),
+            expanded_lexical,
             external_boundary,
             &external_state,
             input[cursor..],
@@ -701,41 +698,25 @@ fn selectMatchingTerminal(
     allocator: std.mem.Allocator,
     result: build.BuildResult,
     state_id: u32,
-    prepared: grammar_ir.PreparedGrammar,
-    lexical: lexical_ir.LexicalGrammar,
-    expanded_lexical: ?*const lexer_model.ExpandedLexicalGrammar,
+    expanded_lexical: lexer_model.ExpandedLexicalGrammar,
     remaining: []const u8,
 ) std.mem.Allocator.Error!?MatchedTerminal {
-    var best: ?MatchedTerminal = null;
+    const matches = try lexer_model.collectTokenMatchesAlloc(allocator, expanded_lexical, remaining);
+    defer allocator.free(matches);
 
-    for (lexical.variables, 0..) |_, index| {
-        const match_len = try matchLexicalVariablePrefix(
-            allocator,
-            prepared.rules,
-            lexical,
-            expanded_lexical,
-            index,
-            remaining,
-        ) orelse continue;
-
-        const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
+    for (matches) |match| {
+        const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(match.variable_index) };
         if (result.resolved_actions.decisionFor(state_id, symbol) == null) continue;
-
-        if (best == null or lexicalMatchBetter(lexical, best.?.symbol.terminal, index, best.?.len, match_len)) {
-            best = .{ .symbol = symbol, .len = match_len };
-        }
+        return .{ .symbol = symbol, .len = match.len };
     }
-
-    return best;
+    return null;
 }
 
 fn selectMatchingSymbolWithExternalBoundary(
     allocator: std.mem.Allocator,
     result: build.BuildResult,
     state_id: u32,
-    prepared: grammar_ir.PreparedGrammar,
-    lexical: lexical_ir.LexicalGrammar,
-    expanded_lexical: ?*const lexer_model.ExpandedLexicalGrammar,
+    expanded_lexical: lexer_model.ExpandedLexicalGrammar,
     external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
     external_state: *const SampledExternalState,
     remaining: []const u8,
@@ -755,21 +736,15 @@ fn selectMatchingSymbolWithExternalBoundary(
         }
     }
 
-    for (lexical.variables, 0..) |_, index| {
-        const match_len = try matchLexicalVariablePrefix(
-            allocator,
-            prepared.rules,
-            lexical,
-            expanded_lexical,
-            index,
-            remaining,
-        ) orelse continue;
+    const matches = try lexer_model.collectTokenMatchesAlloc(allocator, expanded_lexical, remaining);
+    defer allocator.free(matches);
 
-        const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
+    for (matches) |match| {
+        const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(match.variable_index) };
         if (result.resolved_actions.decisionFor(state_id, symbol) == null) continue;
 
-        if (best == null or lexicalExternalMatchBetter(lexical, best.?, index, match_len)) {
-            best = .{ .symbol = symbol, .len = match_len };
+        if (best == null or lexicalExternalMatchBetter(best.?, match.len)) {
+            best = .{ .symbol = symbol, .len = match.len };
         }
     }
 
@@ -920,58 +895,18 @@ fn ruleLiteralText(all_rules: []const rules.Rule, rule_id: rules.RuleId) ?[]cons
 
 fn matchLexicalPrefix(
     allocator: std.mem.Allocator,
-    lexical: lexical_ir.LexicalGrammar,
-    all_rules: []const rules.Rule,
-    expanded_lexical: ?*const lexer_model.ExpandedLexicalGrammar,
+    expanded_lexical: lexer_model.ExpandedLexicalGrammar,
     input: []const u8,
 ) std.mem.Allocator.Error!?usize {
-    if (expanded_lexical) |expanded| {
-        if (try lexer_model.selectBestToken(allocator, expanded.*, input)) |match| return match.len;
-    }
-
-    var best: ?usize = null;
-    for (lexical.variables) |variable| {
-        const match_len = matchLexicalRulePrefix(all_rules, variable.rule, input) orelse continue;
-        if (best == null or match_len > best.?) best = match_len;
-    }
-    return best orelse matchSampledLexicalFallback(input);
+    if (try lexer_model.selectBestToken(allocator, expanded_lexical, input)) |match| return match.len;
+    return matchSampledLexicalFallback(input);
 }
 
-fn matchLexicalVariablePrefix(
-    allocator: std.mem.Allocator,
-    all_rules: []const rules.Rule,
-    lexical: lexical_ir.LexicalGrammar,
-    expanded_lexical: ?*const lexer_model.ExpandedLexicalGrammar,
-    variable_index: usize,
-    input: []const u8,
-) std.mem.Allocator.Error!?usize {
-    if (expanded_lexical) |expanded| {
-        return try lexer_model.matchVariable(allocator, expanded.*, variable_index, input);
-    }
-    return matchLexicalRulePrefix(all_rules, lexical.variables[variable_index].rule, input);
-}
-
-fn lexicalMatchBetter(
-    lexical: lexical_ir.LexicalGrammar,
-    current_index: usize,
-    candidate_index: usize,
-    current_len: usize,
-    candidate_len: usize,
-) bool {
-    if (candidate_len != current_len) return candidate_len > current_len;
-    return lexical.variables[candidate_index].kind == .named and lexical.variables[current_index].kind != .named;
-}
-
-fn lexicalExternalMatchBetter(
-    lexical: lexical_ir.LexicalGrammar,
-    current: MatchedTerminal,
-    candidate_index: usize,
-    candidate_len: usize,
-) bool {
+fn lexicalExternalMatchBetter(current: MatchedTerminal, candidate_len: usize) bool {
     if (candidate_len != current.len) return candidate_len > current.len;
     return switch (current.symbol) {
         .external => false,
-        .terminal => |current_index| lexicalMatchBetter(lexical, current_index, candidate_index, current.len, candidate_len),
+        .terminal => false,
         else => false,
     };
 }
@@ -980,65 +915,11 @@ fn prepareExpandedLexicalGrammar(
     allocator: std.mem.Allocator,
     all_rules: []const rules.Rule,
     lexical: lexical_ir.LexicalGrammar,
-) std.mem.Allocator.Error!?lexer_model.ExpandedLexicalGrammar {
+) BehavioralError!lexer_model.ExpandedLexicalGrammar {
     return lexer_model.expandExtractedLexicalGrammar(allocator, all_rules, lexical) catch |err| switch (err) {
-        error.UnsupportedRule, error.UnsupportedPattern => null,
+        error.UnsupportedRule, error.UnsupportedPattern => error.UnsupportedLexicalGrammar,
         else => |alloc_err| alloc_err,
     };
-}
-
-fn deinitExpandedLexicalGrammar(
-    allocator: std.mem.Allocator,
-    expanded_lexical: *?lexer_model.ExpandedLexicalGrammar,
-) void {
-    if (expanded_lexical.*) |*expanded| expanded.deinit(allocator);
-    expanded_lexical.* = null;
-}
-
-fn expandedLexicalPtr(
-    expanded_lexical: *const ?lexer_model.ExpandedLexicalGrammar,
-) ?*const lexer_model.ExpandedLexicalGrammar {
-    if (expanded_lexical.*) |*expanded| return expanded;
-    return null;
-}
-
-fn matchLexicalRulePrefix(
-    all_rules: []const rules.Rule,
-    rule_id: rules.RuleId,
-    input: []const u8,
-) ?usize {
-    return switch (all_rules[rule_id]) {
-        .string => |value| if (std.mem.startsWith(u8, input, value)) value.len else null,
-        .pattern => |pattern| matchSupportedPatternPrefix(pattern, input),
-        .metadata => |metadata| matchLexicalRulePrefix(all_rules, metadata.inner, input),
-        else => null,
-    };
-}
-
-fn matchSupportedPatternPrefix(pattern: rules.Pattern, input: []const u8) ?usize {
-    const value = pattern.value;
-    if (value.len < 5) return null;
-    if (value[0] != '[') return null;
-    if (value[value.len - 2] != ']' or value[value.len - 1] != '+') return null;
-
-    const body = value[1 .. value.len - 2];
-    if (body.len != 3 or body[1] != '-') return null;
-
-    const range_start = body[0];
-    const range_end = body[2];
-    const case_insensitive = if (pattern.flags) |flags|
-        std.mem.indexOfScalar(u8, flags, 'i') != null
-    else
-        false;
-
-    var len: usize = 0;
-    while (len < input.len) : (len += 1) {
-        var ch = input[len];
-        if (case_insensitive and ch >= 'A' and ch <= 'Z') ch = std.ascii.toLower(ch);
-        if (ch < range_start or ch > range_end) break;
-    }
-
-    return if (len > 0) len else null;
 }
 
 fn skipSupportedExtraPrefix(input: []const u8) ?usize {
@@ -1646,6 +1527,43 @@ test "supported compatibility boundary preserves compatibility-safe valid config
         true,
     );
     try expectCompatibilitySafeValidResult(external_valid);
+}
+
+test "expanded lexer model covers the current behavioral and compat grammar set" {
+    const cases = [_]struct {
+        name: []const u8,
+        from_file: bool,
+        source: []const u8,
+    }{
+        .{ .name = "behavioral_config_json", .from_file = false, .source = fixtures.behavioralConfigGrammarJson().contents },
+        .{ .name = "repeat_choice_seq_json", .from_file = false, .source = fixtures.repeatChoiceSeqGrammarJson().contents },
+        .{ .name = "hidden_external_fields_json", .from_file = false, .source = fixtures.hiddenExternalFieldsGrammarJson().contents },
+        .{ .name = "mixed_semantics_json", .from_file = false, .source = fixtures.mixedSemanticsGrammarJson().contents },
+        .{ .name = "tree_sitter_ziggy_json", .from_file = true, .source = "compat_targets/tree_sitter_ziggy/grammar.json" },
+        .{ .name = "tree_sitter_ziggy_schema_json", .from_file = true, .source = "compat_targets/tree_sitter_ziggy_schema/grammar.json" },
+        .{ .name = "tree_sitter_haskell_json", .from_file = true, .source = "compat_targets/tree_sitter_haskell/grammar.json" },
+        .{ .name = "tree_sitter_bash_json", .from_file = true, .source = "compat_targets/tree_sitter_bash/grammar.json" },
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    for (cases) |case| {
+        const json_contents = if (case.from_file)
+            try std.fs.cwd().readFileAlloc(arena.allocator(), case.source, 8 * 1024 * 1024)
+        else
+            case.source;
+
+        const prepared = try parsePreparedFromJsonFixture(arena.allocator(), json_contents);
+        const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+        _ = lexer_model.expandExtractedLexicalGrammar(arena.allocator(), prepared.rules, extracted.lexical) catch |err| {
+            std.debug.print(
+                "[behavioral_harness] expanded lexer unsupported target={s} err={s}\n",
+                .{ case.name, @errorName(err) },
+            );
+            return err;
+        };
+    }
 }
 
 test "repeat choice seq valid path remains parity-safe but still rejects on the staged blocked boundary" {

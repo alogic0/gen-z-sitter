@@ -76,6 +76,45 @@ pub const CharacterSet = struct {
         }
         return false;
     }
+
+    pub fn full(allocator: std.mem.Allocator) !CharacterSet {
+        var result: CharacterSet = .{};
+        try result.addCodepointRange(allocator, 0, 0x110000);
+        return result;
+    }
+
+    pub fn removeCodepointRange(self: *CharacterSet, allocator: std.mem.Allocator, start: u32, end: u32) !void {
+        if (start >= end) return;
+
+        var index: usize = 0;
+        while (index < self.ranges.items.len) {
+            const range = self.ranges.items[index];
+            if (range.end <= start) {
+                index += 1;
+                continue;
+            }
+            if (range.start >= end) break;
+
+            if (start <= range.start and end >= range.end) {
+                _ = self.ranges.orderedRemove(index);
+                continue;
+            }
+            if (start <= range.start) {
+                self.ranges.items[index].start = end;
+                break;
+            }
+            if (end >= range.end) {
+                self.ranges.items[index].end = start;
+                index += 1;
+                continue;
+            }
+
+            const tail = Range{ .start = end, .end = range.end };
+            self.ranges.items[index].end = start;
+            try self.ranges.insert(allocator, index + 1, tail);
+            break;
+        }
+    }
 };
 
 pub const NfaState = union(enum) {
@@ -120,6 +159,7 @@ pub const Nfa = struct {
 pub const ExpandedLexicalVariable = struct {
     name: []const u8,
     kind: lexical_ir.VariableKind,
+    completion_precedence: i32,
     implicit_precedence: i32,
     start_state: u32,
     source_rule: rules.RuleId,
@@ -139,7 +179,9 @@ pub const ExpandedLexicalGrammar = struct {
 pub const TokenMatch = struct {
     variable_index: usize,
     len: usize,
+    completion_precedence: i32,
     implicit_precedence: i32,
+    kind: lexical_ir.VariableKind,
 };
 
 const MatchCursor = struct {
@@ -150,6 +192,22 @@ const MatchCursor = struct {
 const VisitedState = struct {
     state_id: u32,
     offset: usize,
+};
+
+const PatternQuantifier = enum {
+    once,
+    zero_or_more,
+    one_or_more,
+};
+
+const PatternAtom = struct {
+    chars: CharacterSet,
+    quantifier: PatternQuantifier = .once,
+
+    fn deinit(self: *PatternAtom, allocator: std.mem.Allocator) void {
+        self.chars.deinit(allocator);
+        self.* = undefined;
+    }
 };
 
 const Builder = struct {
@@ -236,6 +294,7 @@ const Builder = struct {
         return .{
             .name = variable.name,
             .kind = variable.kind,
+            .completion_precedence = self.completionPrecedence(variable.rule),
             .implicit_precedence = self.implicitPrecedence(variable.rule),
             .start_state = self.nfa.lastStateId(),
             .source_rule = variable.rule,
@@ -371,99 +430,305 @@ const Builder = struct {
             try self.pushAdvance(chars, next_state_id);
             return true;
         }
+        return self.expandSequencePattern(pattern, next_state_id);
+    }
 
-        if (std.mem.eql(u8, value, "[_\\p{Ll}\\p{Lo}]")) {
-            var chars = CharacterSet.empty();
-            try chars.addRange(self.allocator, '_', '_');
-            try chars.addRange(self.allocator, 'a', 'z');
-            try chars.addCodepointRange(self.allocator, 0x80, 0x110000);
-            try self.pushAdvance(chars, next_state_id);
-            return true;
+    fn expandSequencePattern(self: *Builder, pattern: rules.Pattern, next_state_id: u32) ExpandError!bool {
+        var atoms = std.ArrayListUnmanaged(PatternAtom).empty;
+        defer {
+            for (atoms.items) |*atom| atom.deinit(self.allocator);
+            atoms.deinit(self.allocator);
         }
 
-        if (std.mem.eql(u8, value, "[\\p{Lu}\\p{Lt}]")) {
-            var chars = CharacterSet.empty();
-            try chars.addRange(self.allocator, 'A', 'Z');
-            try chars.addCodepointRange(self.allocator, 0x80, 0x110000);
-            try self.pushAdvance(chars, next_state_id);
-            return true;
+        try parsePatternAtoms(self.allocator, pattern, &atoms);
+        if (atoms.items.len == 0) return false;
+
+        var next = next_state_id;
+        var i = atoms.items.len;
+        while (i > 0) {
+            i -= 1;
+            next = try self.expandPatternAtom(atoms.items[i], next);
         }
+        return true;
+    }
 
-        if (std.mem.eql(u8, value, "[\\pL\\p{Mn}\\pN_']*")) {
-            var chars = CharacterSet.empty();
-            try chars.addRange(self.allocator, 'A', 'Z');
-            try chars.addRange(self.allocator, 'a', 'z');
-            try chars.addRange(self.allocator, '0', '9');
-            try chars.addRange(self.allocator, '_', '_');
-            try chars.addRange(self.allocator, '\'', '\'');
-            try chars.addCodepointRange(self.allocator, 0x80, 0x110000);
-            try self.nfa.states.append(self.allocator, .{
-                .split = .{ .left = next_state_id, .right = next_state_id },
-            });
-            const loop_split_state = self.nfa.lastStateId();
-            try self.pushAdvance(chars, loop_split_state);
-            const advance_state = self.nfa.lastStateId();
-            self.nfa.states.items[loop_split_state] = .{
-                .split = .{ .left = advance_state, .right = next_state_id },
-            };
-            try self.pushSplit(advance_state, next_state_id);
-            return true;
-        }
-
-        if (std.mem.eql(u8, value, "#*")) {
-            const chars = try CharacterSet.fromChar(self.allocator, '#');
-            try self.nfa.states.append(self.allocator, .{
-                .split = .{ .left = next_state_id, .right = next_state_id },
-            });
-            const loop_split_state = self.nfa.lastStateId();
-            try self.pushAdvance(chars, loop_split_state);
-            const advance_state = self.nfa.lastStateId();
-            self.nfa.states.items[loop_split_state] = .{
-                .split = .{ .left = advance_state, .right = next_state_id },
-            };
-            try self.pushSplit(advance_state, next_state_id);
-            return true;
-        }
-
-        if (value.len >= 5 and value[0] == '[' and value[value.len - 1] == '+') {
-            const body = value[1 .. value.len - 2];
-            if (body.len == 3 and body[1] == '-') {
-                var chars = CharacterSet.empty();
-                var start = body[0];
-                var end = body[2];
-                if (pattern.flags) |flags| {
-                    if (std.mem.indexOfScalar(u8, flags, 'i') != null) {
-                        if (std.ascii.isAlphabetic(start) and std.ascii.isAlphabetic(end)) {
-                            start = std.ascii.toLower(start);
-                            end = std.ascii.toLower(end);
-                            try chars.addRange(self.allocator, start, end);
-                            try chars.addRange(self.allocator, std.ascii.toUpper(start), std.ascii.toUpper(end));
-                        } else {
-                            try chars.addRange(self.allocator, start, end);
-                        }
-                    } else {
-                        try chars.addRange(self.allocator, start, end);
-                    }
-                } else {
-                    try chars.addRange(self.allocator, start, end);
-                }
-
+    fn expandPatternAtom(self: *Builder, atom: PatternAtom, next_state_id: u32) !u32 {
+        return switch (atom.quantifier) {
+            .once => blk: {
+                try self.pushAdvance(try cloneCharacterSet(self.allocator, atom.chars), next_state_id);
+                break :blk self.nfa.lastStateId();
+            },
+            .zero_or_more => blk: {
                 try self.nfa.states.append(self.allocator, .{
                     .split = .{ .left = next_state_id, .right = next_state_id },
                 });
-                const split_state = self.nfa.lastStateId();
-                try self.pushAdvance(chars, split_state);
+                const loop_split_state = self.nfa.lastStateId();
+                try self.pushAdvance(try cloneCharacterSet(self.allocator, atom.chars), loop_split_state);
                 const advance_state = self.nfa.lastStateId();
-                self.nfa.states.items[split_state] = .{
+                self.nfa.states.items[loop_split_state] = .{
                     .split = .{ .left = advance_state, .right = next_state_id },
                 };
-                return true;
-            }
-        }
-
-        return error.UnsupportedPattern;
+                try self.pushSplit(advance_state, next_state_id);
+                break :blk self.nfa.lastStateId();
+            },
+            .one_or_more => blk: {
+                try self.nfa.states.append(self.allocator, .{
+                    .split = .{ .left = next_state_id, .right = next_state_id },
+                });
+                const loop_split_state = self.nfa.lastStateId();
+                try self.pushAdvance(try cloneCharacterSet(self.allocator, atom.chars), loop_split_state);
+                const advance_state = self.nfa.lastStateId();
+                self.nfa.states.items[loop_split_state] = .{
+                    .split = .{ .left = advance_state, .right = next_state_id },
+                };
+                try self.pushSplit(advance_state, next_state_id);
+                break :blk advance_state;
+            },
+        };
     }
 };
+
+fn cloneCharacterSet(allocator: std.mem.Allocator, chars: CharacterSet) !CharacterSet {
+    var result = CharacterSet.empty();
+    try result.addSet(allocator, chars);
+    return result;
+}
+
+fn parsePatternAtoms(
+    allocator: std.mem.Allocator,
+    pattern: rules.Pattern,
+    atoms: *std.ArrayListUnmanaged(PatternAtom),
+) ExpandError!void {
+    var index: usize = 0;
+    const value = pattern.value;
+    while (index < value.len) {
+        var atom = try parsePatternAtom(allocator, value, &index, pattern.flags);
+        errdefer atom.deinit(allocator);
+        if (index < value.len) {
+            atom.quantifier = switch (value[index]) {
+                '*' => blk: {
+                    index += 1;
+                    break :blk PatternQuantifier.zero_or_more;
+                },
+                '+' => blk: {
+                    index += 1;
+                    break :blk PatternQuantifier.one_or_more;
+                },
+                else => .once,
+            };
+        }
+        try atoms.append(allocator, atom);
+    }
+}
+
+fn parsePatternAtom(
+    allocator: std.mem.Allocator,
+    value: []const u8,
+    index: *usize,
+    flags: ?[]const u8,
+) ExpandError!PatternAtom {
+    if (index.* >= value.len) return error.UnsupportedPattern;
+
+    return switch (value[index.*]) {
+        '[' => parseBracketClassAtom(allocator, value, index, flags),
+        '.' => blk: {
+            index.* += 1;
+            var chars = try CharacterSet.full(allocator);
+            try chars.removeCodepointRange(allocator, '\n', '\n' + 1);
+            break :blk .{ .chars = chars };
+        },
+        '\\' => parseEscapedAtom(allocator, value, index),
+        else => blk: {
+            const chars = try CharacterSet.fromChar(allocator, value[index.*]);
+            index.* += 1;
+            break :blk .{ .chars = chars };
+        },
+    };
+}
+
+fn parseBracketClassAtom(
+    allocator: std.mem.Allocator,
+    value: []const u8,
+    index: *usize,
+    flags: ?[]const u8,
+) ExpandError!PatternAtom {
+    std.debug.assert(value[index.*] == '[');
+    index.* += 1;
+    const negated = index.* < value.len and value[index.*] == '^';
+    if (negated) index.* += 1;
+
+    var chars = if (negated) try CharacterSet.full(allocator) else CharacterSet.empty();
+    errdefer chars.deinit(allocator);
+
+    while (index.* < value.len and value[index.*] != ']') {
+        var entry = try parseClassEntry(allocator, value, index, flags);
+        defer entry.deinit(allocator);
+        if (negated) {
+            for (entry.ranges.items) |range| {
+                try chars.removeCodepointRange(allocator, range.start, range.end);
+            }
+        } else {
+            try chars.addSet(allocator, entry);
+        }
+    }
+    if (index.* >= value.len or value[index.*] != ']') return error.UnsupportedPattern;
+    index.* += 1;
+
+    return .{ .chars = chars };
+}
+
+fn parseClassEntry(
+    allocator: std.mem.Allocator,
+    value: []const u8,
+    index: *usize,
+    flags: ?[]const u8,
+) ExpandError!CharacterSet {
+    var first = try parseClassUnit(allocator, value, index);
+    errdefer first.deinit(allocator);
+
+    if (index.* + 1 < value.len and value[index.*] == '-' and value[index.* + 1] != ']') {
+        if (first.ranges.items.len != 1) return error.UnsupportedPattern;
+        defer first.deinit(allocator);
+        index.* += 1;
+        var second = try parseClassUnit(allocator, value, index);
+        defer second.deinit(allocator);
+        if (second.ranges.items.len != 1) return error.UnsupportedPattern;
+
+        var chars = CharacterSet.empty();
+        const start_range = first.ranges.items[0];
+        const end_range = second.ranges.items[0];
+        if (start_range.end != start_range.start + 1 or end_range.end != end_range.start + 1) {
+            return error.UnsupportedPattern;
+        }
+        var start: u8 = @intCast(start_range.start);
+        var end: u8 = @intCast(end_range.start);
+        if (flags) |pattern_flags| {
+            if (std.mem.indexOfScalar(u8, pattern_flags, 'i') != null and
+                std.ascii.isAlphabetic(start) and std.ascii.isAlphabetic(end))
+            {
+                start = std.ascii.toLower(start);
+                end = std.ascii.toLower(end);
+                try chars.addRange(allocator, start, end);
+                try chars.addRange(allocator, std.ascii.toUpper(start), std.ascii.toUpper(end));
+                return chars;
+            }
+        }
+        try chars.addRange(allocator, start, end);
+        return chars;
+    }
+
+    return first;
+}
+
+fn parseClassUnit(
+    allocator: std.mem.Allocator,
+    value: []const u8,
+    index: *usize,
+) ExpandError!CharacterSet {
+    if (index.* >= value.len) return error.UnsupportedPattern;
+    if (value[index.*] == '\\') {
+        const atom = try parseEscapedAtom(allocator, value, index);
+        return atom.chars;
+    }
+
+    const chars = try CharacterSet.fromChar(allocator, value[index.*]);
+    index.* += 1;
+    return chars;
+}
+
+fn parseEscapedAtom(
+    allocator: std.mem.Allocator,
+    value: []const u8,
+    index: *usize,
+) ExpandError!PatternAtom {
+    std.debug.assert(value[index.*] == '\\');
+    index.* += 1;
+    if (index.* >= value.len) return error.UnsupportedPattern;
+
+    const chars = switch (value[index.*]) {
+        'n' => try CharacterSet.fromChar(allocator, '\n'),
+        'r' => try CharacterSet.fromChar(allocator, '\r'),
+        't' => try CharacterSet.fromChar(allocator, '\t'),
+        'd' => blk: {
+            var set = CharacterSet.empty();
+            try set.addRange(allocator, '0', '9');
+            break :blk set;
+        },
+        's' => blk: {
+            var set = CharacterSet.empty();
+            try set.addRange(allocator, ' ', ' ');
+            try set.addRange(allocator, '\t', '\t');
+            try set.addRange(allocator, '\n', '\n');
+            try set.addRange(allocator, '\r', '\r');
+            break :blk set;
+        },
+        'p' => try parseUnicodePropertySet(allocator, value, index),
+        else => try CharacterSet.fromChar(allocator, value[index.*]),
+    };
+    if (value[index.*] != 'p') index.* += 1;
+    return .{ .chars = chars };
+}
+
+fn parseUnicodePropertySet(
+    allocator: std.mem.Allocator,
+    value: []const u8,
+    index: *usize,
+) ExpandError!CharacterSet {
+    std.debug.assert(value[index.*] == 'p');
+    index.* += 1;
+    if (index.* >= value.len) return error.UnsupportedPattern;
+
+    var property_name: []const u8 = undefined;
+    if (value[index.*] == '{') {
+        index.* += 1;
+        const start = index.*;
+        while (index.* < value.len and value[index.*] != '}') : (index.* += 1) {}
+        if (index.* >= value.len) return error.UnsupportedPattern;
+        property_name = value[start..index.*];
+        index.* += 1;
+    } else {
+        const start = index.*;
+        while (index.* < value.len and std.ascii.isAlphabetic(value[index.*])) : (index.* += 1) {}
+        property_name = value[start..index.*];
+    }
+
+    var set = CharacterSet.empty();
+    if (std.mem.eql(u8, property_name, "Zs")) {
+        try set.addRange(allocator, ' ', ' ');
+        try set.addCodepointRange(allocator, 0xA0, 0xA1);
+        return set;
+    }
+    if (std.mem.eql(u8, property_name, "Ll")) {
+        try set.addRange(allocator, 'a', 'z');
+        try set.addCodepointRange(allocator, 0x80, 0x110000);
+        return set;
+    }
+    if (std.mem.eql(u8, property_name, "Lo")) {
+        try set.addCodepointRange(allocator, 0x80, 0x110000);
+        return set;
+    }
+    if (std.mem.eql(u8, property_name, "Lu") or std.mem.eql(u8, property_name, "Lt")) {
+        try set.addRange(allocator, 'A', 'Z');
+        try set.addCodepointRange(allocator, 0x80, 0x110000);
+        return set;
+    }
+    if (std.mem.eql(u8, property_name, "L")) {
+        try set.addRange(allocator, 'A', 'Z');
+        try set.addRange(allocator, 'a', 'z');
+        try set.addCodepointRange(allocator, 0x80, 0x110000);
+        return set;
+    }
+    if (std.mem.eql(u8, property_name, "Mn")) {
+        try set.addCodepointRange(allocator, 0x80, 0x110000);
+        return set;
+    }
+    if (std.mem.eql(u8, property_name, "N")) {
+        try set.addRange(allocator, '0', '9');
+        return set;
+    }
+
+    return error.UnsupportedPattern;
+}
 
 pub fn expandExtractedLexicalGrammar(
     allocator: std.mem.Allocator,
@@ -522,18 +787,52 @@ pub fn selectBestToken(
         const candidate: TokenMatch = .{
             .variable_index = index,
             .len = match_len,
+            .completion_precedence = variable.completion_precedence,
             .implicit_precedence = variable.implicit_precedence,
+            .kind = variable.kind,
         };
         if (best == null or tokenMatchLessThan(best.?, candidate)) best = candidate;
     }
     return best;
 }
 
+pub fn collectTokenMatchesAlloc(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    input: []const u8,
+) std.mem.Allocator.Error![]TokenMatch {
+    var matches = std.ArrayListUnmanaged(TokenMatch).empty;
+    errdefer matches.deinit(allocator);
+
+    for (grammar.variables, 0..) |variable, index| {
+        const match_len = try matchVariable(allocator, grammar, index, input) orelse continue;
+        try matches.append(allocator, .{
+            .variable_index = index,
+            .len = match_len,
+            .completion_precedence = variable.completion_precedence,
+            .implicit_precedence = variable.implicit_precedence,
+            .kind = variable.kind,
+        });
+    }
+
+    std.mem.sort(TokenMatch, matches.items, {}, struct {
+        fn lessThan(_: void, lhs: TokenMatch, rhs: TokenMatch) bool {
+            return tokenMatchLessThan(rhs, lhs);
+        }
+    }.lessThan);
+
+    return matches.toOwnedSlice(allocator);
+}
+
 fn tokenMatchLessThan(current: TokenMatch, candidate: TokenMatch) bool {
     if (candidate.len != current.len) return candidate.len > current.len;
+    if (candidate.completion_precedence != current.completion_precedence) {
+        return candidate.completion_precedence > current.completion_precedence;
+    }
     if (candidate.implicit_precedence != current.implicit_precedence) {
         return candidate.implicit_precedence > current.implicit_precedence;
     }
+    if (candidate.kind != current.kind) return candidate.kind == .named;
     return candidate.variable_index < current.variable_index;
 }
 
@@ -725,4 +1024,101 @@ test "matchVariable handles mixed pattern and string lexical variables" {
 
     try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 0, "abc42"));
     try std.testing.expectEqual(@as(?usize, 2), try matchVariable(std.testing.allocator, expanded, 1, "42"));
+}
+
+test "collectTokenMatchesAlloc sorts matches by lexer priority" {
+    const all_rules = [_]rules.Rule{
+        .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
+        .{ .string = "let" },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "identifier", .kind = .named, .rule = 0 },
+            .{ .name = "keyword", .kind = .named, .rule = 1 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    const matches = try collectTokenMatchesAlloc(std.testing.allocator, expanded, "let");
+    defer std.testing.allocator.free(matches);
+
+    try std.testing.expectEqual(@as(usize, 2), matches.len);
+    try std.testing.expectEqual(@as(usize, 1), matches[0].variable_index);
+    try std.testing.expectEqual(@as(usize, 0), matches[1].variable_index);
+}
+
+test "collectTokenMatchesAlloc prefers higher completion precedence before implicit precedence" {
+    const all_rules = [_]rules.Rule{
+        .{
+            .metadata = .{
+                .inner = 1,
+                .data = .{
+                    .precedence = .{ .integer = 5 },
+                },
+            },
+        },
+        .{ .string = "let" },
+        .{
+            .metadata = .{
+                .inner = 3,
+                .data = .{
+                    .token = true,
+                },
+            },
+        },
+        .{ .string = "let" },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "high_completion", .kind = .named, .rule = 0 },
+            .{ .name = "high_implicit", .kind = .named, .rule = 2 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    const matches = try collectTokenMatchesAlloc(std.testing.allocator, expanded, "let");
+    defer std.testing.allocator.free(matches);
+
+    try std.testing.expectEqual(@as(usize, 2), matches.len);
+    try std.testing.expectEqual(@as(usize, 0), matches[0].variable_index);
+    try std.testing.expectEqual(@as(i32, 5), matches[0].completion_precedence);
+    try std.testing.expectEqual(@as(i32, 3), matches[1].implicit_precedence);
+}
+
+test "expandExtractedLexicalGrammar supports ziggy-schema and bash regex forms" {
+    const all_rules = [_]rules.Rule{
+        .{ .pattern = .{ .value = "[^\"]*", .flags = null } },
+        .{ .pattern = .{ .value = "\\d+", .flags = null } },
+        .{ .pattern = .{ .value = "[a-zA-Z_][a-zA-Z0-9_]*", .flags = null } },
+        .{ .pattern = .{ .value = ".*", .flags = null } },
+        .{ .pattern = .{ .value = "\\(", .flags = null } },
+        .{ .pattern = .{ .value = "\\s", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "string_body", .kind = .named, .rule = 0 },
+            .{ .name = "digits", .kind = .named, .rule = 1 },
+            .{ .name = "identifier", .kind = .named, .rule = 2 },
+            .{ .name = "comment_tail", .kind = .named, .rule = 3 },
+            .{ .name = "lparen", .kind = .named, .rule = 4 },
+            .{ .name = "space", .kind = .named, .rule = 5 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(?usize, 5), try matchVariable(std.testing.allocator, expanded, 0, "hello\""));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 1, "123abc"));
+    try std.testing.expectEqual(@as(?usize, 6), try matchVariable(std.testing.allocator, expanded, 2, "abc123!"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 3, "abc\n"));
+    try std.testing.expectEqual(@as(?usize, 1), try matchVariable(std.testing.allocator, expanded, 4, "("));
+    try std.testing.expectEqual(@as(?usize, 1), try matchVariable(std.testing.allocator, expanded, 5, " \t"));
 }
