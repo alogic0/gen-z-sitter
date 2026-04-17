@@ -69,6 +69,11 @@ Current staged boundary summary:
   - `tree_sitter_ziggy_json`
   - `tree_sitter_ziggy_schema_json`
 - those same 2 real snapshots are also exposed separately in `external_repo_inventory.json` so real-repo evidence can be read without mentally subtracting the staged fixture families
+- 1 additional real external parser-only snapshot is now onboarded in a deferred parser-boundary mode:
+  - `tree_sitter_c_json`
+  - it currently proves `load` and `prepare`
+  - it is intentionally classified as `deferred_for_parser_boundary` with `parser_external_boundary_gap`
+  - the current stable shortlist does not yet claim emitted parser surfaces, compatibility checks, or compile-smoke for this larger grammar
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`
   - this is now treated explicitly as an intentional ambiguity/control fixture, not as an unresolved external parser-only promotion gap
@@ -97,5 +102,5 @@ Current staged boundary summary:
 
 Recommended next step after this staged boundary:
 
-- keep the parser-only, staged scanner, and sampled real external scanner boundaries stable while shifting the promoted roadmap back toward broader compatibility polish
-- widen real external scanner-family coverage only after preserving the distinction between sampled real scanner proof and full runtime scanner behavior
+- keep the parser-only, staged scanner, and sampled real external scanner boundaries stable while narrowing or promoting the deferred `tree_sitter_c_json` parser-boundary target
+- only after that should the roadmap shift back toward broader compatibility polish or another widened real external wave

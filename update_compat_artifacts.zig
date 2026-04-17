@@ -6,6 +6,7 @@ const shortlist_json = @import("src/compat/shortlist_json.zig");
 const inventory = @import("src/compat/inventory.zig");
 const report_json = @import("src/compat/report_json.zig");
 const mismatch_inventory = @import("src/compat/mismatch_inventory.zig");
+const parser_boundary_profile = @import("src/compat/parser_boundary_profile.zig");
 const coverage_decision = @import("src/compat/coverage_decision.zig");
 const shift_reduce_profile = @import("src/compat/shift_reduce_profile.zig");
 const external_repo_inventory = @import("src/compat/external_repo_inventory.zig");
@@ -32,6 +33,9 @@ pub fn main() !void {
     const mismatch = try mismatch_inventory.renderMismatchInventoryAlloc(allocator, runs);
     defer allocator.free(mismatch);
 
+    const parser_boundary = try parser_boundary_profile.renderParserBoundaryProfileAlloc(allocator, runs);
+    defer allocator.free(parser_boundary);
+
     const decision = try coverage_decision.renderCoverageDecisionAlloc(allocator, runs);
     defer allocator.free(decision);
 
@@ -48,6 +52,7 @@ pub fn main() !void {
     try fs_support.writeFile("compat_targets/shortlist_inventory.json", inventory_json);
     try fs_support.writeFile("compat_targets/shortlist_report.json", report);
     try fs_support.writeFile("compat_targets/shortlist_mismatch_inventory.json", mismatch);
+    try fs_support.writeFile("compat_targets/parser_boundary_profile.json", parser_boundary);
     try fs_support.writeFile("compat_targets/coverage_decision.json", decision);
     try fs_support.writeFile("compat_targets/shortlist_shift_reduce_profile.json", shift_reduce);
     try fs_support.writeFile("compat_targets/external_repo_inventory.json", external_repo);

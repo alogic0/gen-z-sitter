@@ -113,7 +113,7 @@ Current staged compatibility boundary:
 - real external snapshot proof is also exposed separately under `compat_targets/`:
   - `compat_targets/external_repo_inventory.json`
   - this keeps the promoted real external parser-only evidence visible without mixing it into staged fixture-only summaries
-  - it now records the current mixed real-evidence state explicitly: 2 passing external parser-only snapshots plus 2 passing sampled real external scanner snapshots
+  - it now records the current mixed real-evidence state explicitly: 2 passing external parser-only snapshots, 1 deferred external parser-only snapshot, and 2 passing sampled real external scanner snapshots
 - real external scanner proof is now exposed separately under `compat_targets/`:
   - `compat_targets/external_scanner_repo_inventory.json`
   - it now records two passing real external scanner targets: `tree_sitter_haskell_json` and `tree_sitter_bash_json`
@@ -134,6 +134,7 @@ Current staged compatibility boundary:
   - `repeat_choice_seq`
   - `ziggy`
   - `ziggy_schema`
+  - `c`
   - `parse_table_conflict`
 - the currently proven first-wave parser-only boundary is a 5-target set across 5 passing parser-only families:
   - `parse_table_tiny_json`
@@ -145,6 +146,11 @@ Current staged compatibility boundary:
   - `parse_table_conflict_json`
   - it remains blocked on purpose as a known ambiguity boundary without precedence annotations
   - the checked-in reports now classify it explicitly as a `frozen_control_fixture` rather than counting it as a normal staged pass
+- the real external parser-only evidence also now includes one explicitly deferred larger parser-only target:
+  - `tree_sitter_c_json`
+  - it currently proves `load` and `prepare`
+  - it is intentionally classified as `deferred_for_parser_boundary` with `parser_external_boundary_gap` rather than being overstated as a promoted full-pipeline pass
+  - the current stable shortlist does not yet claim emitted parser surfaces, compatibility checks, or compile-smoke for that grammar
 - the currently represented scanner/external-scanner families are:
   - `hidden_external_fields`
   - `mixed_semantics`
@@ -177,7 +183,7 @@ Current staged compatibility boundary:
 - the key distinction is:
   - staged scanner proof lives in the shortlist artifacts and covers promoted in-repo scanner families
   - real external scanner proof lives in `external_scanner_repo_inventory.json` and covers the promoted Haskell and Bash snapshots
-- the current checked-in coverage decision now points back to broader compatibility polish from this stronger mixed real-external boundary
+- the current checked-in coverage decision now points to second-wave parser-only repo coverage so the larger deferred `tree_sitter_c_json` snapshot can either be promoted or remain explicitly bounded
 
 ## Repository Layout
 

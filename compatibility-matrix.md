@@ -100,7 +100,7 @@ What the repo can credibly claim today:
     - versioned checked-in artifacts under `compat_targets/`
   - staged scanner-boundary proof:
     - the promoted scanner-wave entries in those same checked-in artifacts
-- the dedicated external-repo inventory keeps real snapshot evidence visible even when the main shortlist still includes staged fixtures and frozen controls
+- the dedicated external-repo inventory keeps real snapshot evidence visible even when the main shortlist still includes staged fixtures, frozen controls, and deferred larger parser-only targets
 - parser-only shortlist proof currently comes from versioned checked-in artifacts:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`
@@ -125,6 +125,7 @@ What the repo can credibly claim today:
 - the checked-in shortlist inventory and full report now expose family-level coverage alongside aggregate target totals
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:
   - 5 intended first-wave parser-only targets currently pass within the staged boundary
+  - 1 real external parser-only target is now onboarded but explicitly deferred at a parser boundary
   - 1 staged deferred target remains intentionally frozen as an ambiguity/control fixture
   - that control case is now classified explicitly as a `frozen_control_fixture` in the checked-in reports rather than being counted as a normal pass
   - 6 scanner/external-scanner targets now pass within the current sampled boundary across 4 grammar families
@@ -135,6 +136,7 @@ What the repo can credibly claim today:
     - `repeat_choice_seq`
     - `ziggy`
     - `ziggy_schema`
+    - `c`
     - `parse_table_conflict`
   - scanner/external-scanner:
     - `hidden_external_fields`
@@ -148,7 +150,7 @@ What the repo can credibly claim today:
   - `hidden_external_fields`
 - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but now rejects on the staged blocked path as `missing_action`
 - the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
-- the current checked-in coverage decision now recommends broader compatibility polish from this stronger mixed parser-only and sampled-scanner boundary
+- the current checked-in coverage decision now recommends second-wave parser-only repo coverage because the larger real external `tree_sitter_c_json` snapshot is explicitly deferred at a parser boundary rather than already promoted
 
 ## Milestone Compatibility Targets
 

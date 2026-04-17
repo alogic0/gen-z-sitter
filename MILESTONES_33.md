@@ -44,7 +44,7 @@ Out of scope:
 - [x] at least one new real external target is added with provenance and explicit rationale
 - [x] checked-in artifacts record any new blocker shape or proof-scope distinction precisely instead of burying it in notes
 - [x] at least one newly added target is either promoted or explicitly frozen with a named rationale
-- [ ] the milestone ends with a broader real external evidence boundary than M32
+- [x] the milestone ends with a broader real external evidence boundary than M32
 - [x] the next-step recommendation is updated from the final checked-in evidence
 
 ## PR-Sized Slices
@@ -69,17 +69,17 @@ Out of scope:
 
 ### PR 4: Closeout
 
-- [ ] update coverage decision and milestone notes from the final checked-in evidence
-- [ ] tighten `README.md`, `compatibility-matrix.md`, and `compat_targets/README.md`
-- [ ] mark the final widened boundary and remaining limitations explicitly
+- [x] update coverage decision and milestone notes from the final checked-in evidence
+- [x] tighten `README.md`, `compatibility-matrix.md`, and `compat_targets/README.md`
+- [x] mark the final widened boundary and remaining limitations explicitly
 
 ## Progress
 
 - [x] PR 1 completed
 - [x] PR 2 completed
 - [x] PR 3 completed
-- [ ] PR 4 completed
-- [ ] M33 ready for closeout
+- [x] PR 4 completed
+- [x] M33 ready for closeout
 
 ## Non-Goals
 
@@ -113,3 +113,25 @@ Out of scope:
   - which real external scanner families are represented
   - which new targets pass
   - which new targets remain frozen or deferred, and why
+
+## Closeout
+
+- M33 broadened the real external evidence boundary without regressing clean verification
+- the final parser-only real external state is:
+  - passing:
+    - `tree_sitter_ziggy_json`
+    - `tree_sitter_ziggy_schema_json`
+  - deferred at an explicit parser boundary:
+    - `tree_sitter_c_json`
+  - frozen control fixture:
+    - `parse_table_conflict_json`
+- the final real external scanner state remains:
+  - `tree_sitter_haskell_json`
+  - `tree_sitter_bash_json`
+- the new explicit M33 blocker shape is:
+  - `parser_external_boundary_gap`
+- the new explicit M33 deferred status is:
+  - `deferred_parser_wave`
+  - `deferred_for_parser_boundary`
+- the resulting next-step recommendation is:
+  - `second_wave_parser_only_repo_coverage`
