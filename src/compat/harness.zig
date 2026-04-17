@@ -19,6 +19,7 @@ const behavioral_harness = @import("../behavioral/harness.zig");
 
 pub const RunOptions = struct {
     optimize: emit_optimize.Options = .{},
+    progress_log: bool = false,
 };
 
 pub fn runShortlistTargetsAlloc(
@@ -44,7 +45,25 @@ pub fn runTargetsAlloc(
     errdefer allocator.free(runs);
 
     for (target_list, 0..) |target, index| {
+        var timer = try std.time.Timer.start();
+        if (options.progress_log) {
+            std.debug.print("[compat_harness] start {d}/{d} {s}\n", .{ index + 1, target_list.len, target.id });
+        }
         runs[index] = try runTarget(allocator, target, options);
+        if (options.progress_log) {
+            const elapsed_ms = @as(f64, @floatFromInt(timer.read())) / @as(f64, std.time.ns_per_ms);
+            std.debug.print(
+                "[compat_harness] done  {d}/{d} {s} classification={s} first_failed_stage={s} ({d:.2} ms)\n",
+                .{
+                    index + 1,
+                    target_list.len,
+                    target.id,
+                    @tagName(runs[index].final_classification),
+                    if (runs[index].first_failed_stage) |stage| @tagName(stage) else "none",
+                    elapsed_ms,
+                },
+            );
+        }
     }
 
     return runs;

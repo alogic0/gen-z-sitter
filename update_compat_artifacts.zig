@@ -42,7 +42,7 @@ pub fn main() !void {
 
     timer = try std.time.Timer.start();
     logStepStart("run_shortlist_targets");
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
+    const runs = try harness.runShortlistTargetsAlloc(allocator, .{ .progress_log = true });
     logStepDone("run_shortlist_targets", &timer);
     defer result_model.deinitRunResults(allocator, runs);
 

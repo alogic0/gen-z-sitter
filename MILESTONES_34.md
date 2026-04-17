@@ -95,3 +95,14 @@ Out of scope:
     - `extra_count = 2`
     - `supertype_count = 7`
     - `word_token = identifier`
+- current shortlist timing visibility:
+  - `update_compat_artifacts.zig` now logs per-target harness progress and timings
+  - the current shortlist hot path is not `tree_sitter_c_json` at the deferred parser boundary
+  - latest observed target timings in the shortlist run:
+    - `tree_sitter_ziggy_json ~= 649 ms`
+    - `tree_sitter_ziggy_schema_json ~= 115 ms`
+    - `tree_sitter_c_json ~= 28 ms`
+- current parser-boundary probe shape:
+  - `update_parser_boundary_probe.zig` now exists as a standalone isolated parser-boundary probe tool
+  - it keeps heavier deferred parser-boundary experimentation out of the default `update_compat_artifacts.zig` path
+  - the isolated `serialize_only` probe for `tree_sitter_c_json` is still too expensive to treat as a routine checked-in artifact step
