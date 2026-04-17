@@ -47,6 +47,26 @@ pub const ParserBoundaryProbeReport = struct {
     }
 };
 
+pub fn buildParserBoundaryProbeFromTargetsAlloc(
+    allocator: std.mem.Allocator,
+    target_list: []const targets.Target,
+) !ParserBoundaryProbeReport {
+    var items = std.array_list.Managed(ParserBoundaryProbeEntry).init(allocator);
+    defer items.deinit();
+
+    for (target_list) |target| {
+        if (target.candidate_status != .deferred_parser_wave) continue;
+        try items.append(try probeDeferredParserTargetMetadataAlloc(allocator, target));
+    }
+
+    const owned = try items.toOwnedSlice();
+    return .{
+        .schema_version = 1,
+        .target_count = owned.len,
+        .entries = owned,
+    };
+}
+
 pub fn buildParserBoundaryProbeAlloc(
     allocator: std.mem.Allocator,
     runs: []const result_model.TargetRunResult,
@@ -80,22 +100,46 @@ fn probeDeferredParserTargetAlloc(
     allocator: std.mem.Allocator,
     run: result_model.TargetRunResult,
 ) !ParserBoundaryProbeEntry {
-    const probed_mode = nextProbeMode(run.parser_boundary_check_mode);
+    return probeDeferredParserTargetMetadataAlloc(allocator, .{
+        .id = run.id,
+        .display_name = run.display_name,
+        .grammar_path = run.grammar_path,
+        .family = run.family,
+        .source_kind = run.source_kind,
+        .boundary_kind = run.boundary_kind,
+        .parser_boundary_check_mode = run.parser_boundary_check_mode,
+        .scanner_boundary_check_mode = .sampled_behavioral,
+        .real_external_scanner_proof_scope = .none,
+        .provenance = run.provenance,
+        .candidate_status = run.candidate_status,
+        .expected_blocked = run.expected_blocked,
+        .scanner_valid_input_path = null,
+        .scanner_invalid_input_path = null,
+        .notes = run.notes,
+        .success_criteria = run.success_criteria,
+    });
+}
+
+fn probeDeferredParserTargetMetadataAlloc(
+    allocator: std.mem.Allocator,
+    target: targets.Target,
+) !ParserBoundaryProbeEntry {
+    const probed_mode = nextProbeMode(target.parser_boundary_check_mode);
     const recommended_next_mode = nextRecommendedMode(probed_mode);
 
     switch (probed_mode) {
         .serialize_only => return try probeSerializeOnlyAlloc(
             allocator,
-            run,
+            target,
             probed_mode,
             recommended_next_mode,
         ),
         else => return .{
-            .id = try allocator.dupe(u8, run.id),
-            .display_name = try allocator.dupe(u8, run.display_name),
-            .grammar_path = try allocator.dupe(u8, run.grammar_path),
-            .family = run.family,
-            .current_parser_boundary_check_mode = run.parser_boundary_check_mode,
+            .id = try allocator.dupe(u8, target.id),
+            .display_name = try allocator.dupe(u8, target.display_name),
+            .grammar_path = try allocator.dupe(u8, target.grammar_path),
+            .family = target.family,
+            .current_parser_boundary_check_mode = target.parser_boundary_check_mode,
             .probed_parser_boundary_check_mode = probed_mode,
             .recommended_next_parser_boundary_check_mode = recommended_next_mode,
             .probe_status = .failed,
@@ -113,7 +157,7 @@ fn probeDeferredParserTargetAlloc(
 
 fn probeSerializeOnlyAlloc(
     allocator: std.mem.Allocator,
-    run: result_model.TargetRunResult,
+    target: targets.Target,
     probed_mode: targets.ParserBoundaryCheckMode,
     recommended_next_mode: targets.ParserBoundaryCheckMode,
 ) !ParserBoundaryProbeEntry {
@@ -121,14 +165,14 @@ fn probeSerializeOnlyAlloc(
     defer arena.deinit();
 
     var timer = try std.time.Timer.start();
-    logProbeStart(run.id, "load");
-    var loaded = grammar_loader.loadGrammarFile(arena.allocator(), run.grammar_path) catch |err| {
+    logProbeStart(target.id, "load");
+    var loaded = grammar_loader.loadGrammarFile(arena.allocator(), target.grammar_path) catch |err| {
         return .{
-            .id = try allocator.dupe(u8, run.id),
-            .display_name = try allocator.dupe(u8, run.display_name),
-            .grammar_path = try allocator.dupe(u8, run.grammar_path),
-            .family = run.family,
-            .current_parser_boundary_check_mode = run.parser_boundary_check_mode,
+            .id = try allocator.dupe(u8, target.id),
+            .display_name = try allocator.dupe(u8, target.display_name),
+            .grammar_path = try allocator.dupe(u8, target.grammar_path),
+            .family = target.family,
+            .current_parser_boundary_check_mode = target.parser_boundary_check_mode,
             .probed_parser_boundary_check_mode = probed_mode,
             .recommended_next_parser_boundary_check_mode = recommended_next_mode,
             .probe_status = .failed,
@@ -138,19 +182,19 @@ fn probeSerializeOnlyAlloc(
             .serialized_blocked = null,
         };
     };
-    logProbeDone(run.id, "load", &timer);
+    logProbeDone(target.id, "load", &timer);
     defer loaded.deinit();
 
     timer = try std.time.Timer.start();
-    logProbeStart(run.id, "prepare");
+    logProbeStart(target.id, "prepare");
     const prepared = parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar) catch |err| {
         const diagnostic = parse_grammar.errorDiagnostic(err);
         return .{
-            .id = try allocator.dupe(u8, run.id),
-            .display_name = try allocator.dupe(u8, run.display_name),
-            .grammar_path = try allocator.dupe(u8, run.grammar_path),
-            .family = run.family,
-            .current_parser_boundary_check_mode = run.parser_boundary_check_mode,
+            .id = try allocator.dupe(u8, target.id),
+            .display_name = try allocator.dupe(u8, target.display_name),
+            .grammar_path = try allocator.dupe(u8, target.grammar_path),
+            .family = target.family,
+            .current_parser_boundary_check_mode = target.parser_boundary_check_mode,
             .probed_parser_boundary_check_mode = probed_mode,
             .recommended_next_parser_boundary_check_mode = recommended_next_mode,
             .probe_status = .failed,
@@ -160,17 +204,22 @@ fn probeSerializeOnlyAlloc(
             .serialized_blocked = null,
         };
     };
-    logProbeDone(run.id, "prepare", &timer);
+    logProbeDone(target.id, "prepare", &timer);
 
     timer = try std.time.Timer.start();
-    logProbeStart(run.id, "serialize");
-    const serialized = parse_table_pipeline.serializeTableFromPrepared(arena.allocator(), prepared, .diagnostic) catch |err| {
+    logProbeStart(target.id, "serialize");
+    const serialized = parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+        arena.allocator(),
+        prepared,
+        .diagnostic,
+        .{ .closure_lookahead_mode = .none },
+    ) catch |err| {
         return .{
-            .id = try allocator.dupe(u8, run.id),
-            .display_name = try allocator.dupe(u8, run.display_name),
-            .grammar_path = try allocator.dupe(u8, run.grammar_path),
-            .family = run.family,
-            .current_parser_boundary_check_mode = run.parser_boundary_check_mode,
+            .id = try allocator.dupe(u8, target.id),
+            .display_name = try allocator.dupe(u8, target.display_name),
+            .grammar_path = try allocator.dupe(u8, target.grammar_path),
+            .family = target.family,
+            .current_parser_boundary_check_mode = target.parser_boundary_check_mode,
             .probed_parser_boundary_check_mode = probed_mode,
             .recommended_next_parser_boundary_check_mode = recommended_next_mode,
             .probe_status = .failed,
@@ -180,25 +229,25 @@ fn probeSerializeOnlyAlloc(
             .serialized_blocked = null,
         };
     };
-    logProbeDone(run.id, "serialize", &timer);
+    logProbeDone(target.id, "serialize", &timer);
     std.debug.print(
         "[parser_boundary_probe] summary {s} serialized_states={d} blocked={}\n",
-        .{ run.id, serialized.states.len, serialized.blocked },
+        .{ target.id, serialized.states.len, serialized.blocked },
     );
 
     return .{
-        .id = try allocator.dupe(u8, run.id),
-        .display_name = try allocator.dupe(u8, run.display_name),
-        .grammar_path = try allocator.dupe(u8, run.grammar_path),
-        .family = run.family,
-        .current_parser_boundary_check_mode = run.parser_boundary_check_mode,
+        .id = try allocator.dupe(u8, target.id),
+        .display_name = try allocator.dupe(u8, target.display_name),
+        .grammar_path = try allocator.dupe(u8, target.grammar_path),
+        .family = target.family,
+        .current_parser_boundary_check_mode = target.parser_boundary_check_mode,
         .probed_parser_boundary_check_mode = probed_mode,
         .recommended_next_parser_boundary_check_mode = recommended_next_mode,
         .probe_status = .passed,
         .probe_failed_stage = null,
         .detail = try std.fmt.allocPrint(
             allocator,
-            "isolated serialize-only parser probe passed with {d} serialized states; broader emitted surfaces remain outside the current deferred parser boundary",
+            "isolated coarse serialize-only parser probe passed with {d} serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
             .{serialized.states.len},
         ),
         .serialized_state_count = serialized.states.len,
@@ -232,4 +281,13 @@ test "buildParserBoundaryProbeAlloc skips non-deferred parser targets" {
     defer report.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 0), report.target_count);
+}
+
+test "buildParserBoundaryProbeFromTargetsAlloc can select deferred parser-wave targets directly" {
+    const allocator = std.testing.allocator;
+    var report = try buildParserBoundaryProbeFromTargetsAlloc(allocator, targets.shortlistTargets());
+    defer report.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 1), report.target_count);
+    try std.testing.expectEqualStrings("tree_sitter_c_json", report.entries[0].id);
 }

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "deferred_parser_wave_target_count": 1,
+  "singleton_parser_wave": true,
+  "entries": [
+    {
+      "id": "tree_sitter_c_json",
+      "display_name": "tree-sitter-c (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
+      "family": "c",
+      "current_parser_boundary_check_mode": "prepare_only",
+      "proposed_parser_boundary_check_mode": "serialize_only",
+      "evaluation_surface": "standalone_probe",
+      "routine_refresh_safe": false,
+      "singleton_parser_wave": true,
+      "current_proven_steps": [
+        "load",
+        "prepare"
+      ],
+      "deferred_from_step": "serialize",
+      "standalone_probe_status": "implemented_passing",
+      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and currently passes for tree_sitter_c_json; the checked-in parser boundary probe records serialized_state_count=2336 and blocked=false while keeping full lookahead-sensitive parser proof out of the routine boundary",
+      "decision": "keep_standalone_probe",
+      "rationale": "the next named proof step for tree_sitter_c_json is serialize_only; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave singleton is evaluated more narrowly, and the current standalone proof is intentionally coarse rather than a full lookahead-sensitive parser promotion"
+    }
+  ]
+}

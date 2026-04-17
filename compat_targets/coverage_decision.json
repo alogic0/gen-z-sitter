@@ -11,10 +11,12 @@
     "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
     "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, kept at a prepare-only parser boundary while M34 evaluates serialize-only as the next stable proof layer for grammars of this size"
   },
+  "standalone_parser_probe_pass_count": 1,
   "proven_boundary": [
     "5 intended first-wave parser-only targets are currently in the run set",
     "5 intended first-wave targets currently pass within the staged parser-only boundary",
     "6 intended scanner-wave targets currently pass within the staged scanner boundary",
+    "1 deferred parser-wave target currently has a passing standalone coarse serialize-only probe outside the routine shortlist boundary",
     "2 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
   ],
   "deferred_parser_only_targets": [
@@ -35,7 +37,7 @@
   "recommended_next_milestone": "second_wave_parser_only_repo_coverage",
   "recommendation_rationale": [
     "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-    "the only remaining deferred parser-only control fixture is still intentional, but a newly onboarded larger real external parser-only snapshot is now held at an explicit deferred parser boundary",
-    "the next promoted milestone should narrow or promote that larger real external parser-only target before claiming a broader parser-only external boundary"
+    "the only remaining deferred parser-only control fixture is still intentional, and the larger real external parser-only C snapshot remains held at an explicit routine parser proof boundary",
+    "a standalone coarse serialize-only probe now passes for that C snapshot, but the routine shortlist boundary is still narrower and should only move after a deliberate follow-on promotion decision"
   ]
 }

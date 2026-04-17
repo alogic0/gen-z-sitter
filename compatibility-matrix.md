@@ -155,6 +155,15 @@ What the repo can credibly claim today:
   - `update_compat_artifacts.zig` owns the routine checked-in compatibility surfaces
   - `update_parser_boundary_probe.zig` is reserved for standalone deeper parser-boundary investigation
   - `compat_targets/artifact_manifest.json` records that split machine-readably
+- the current low-risk parser-only decision is now also explicit:
+  - the deferred parser-wave set is a singleton
+  - `tree_sitter_c_json` is that singleton
+  - the repo is intentionally not widening the deferred parser-wave set until a narrower promotion hypothesis exists
+  - that narrower hypothesis is now partially implemented in the standalone probe path:
+    - `parser_boundary_probe.json` records a passing coarse `serialize_only` probe for `tree_sitter_c_json`
+    - the coarse probe uses lookahead-insensitive closure expansion to avoid the full LR-style lookahead fanout seen in the earlier serialize attempt
+    - this is still a standalone proof layer, not a promotion of the routine shortlist boundary
+  - `coverage_decision.json` now also records that one deferred parser-wave target has a passing standalone coarse serialize-only probe outside the routine shortlist boundary
 
 ## Milestone Compatibility Targets
 

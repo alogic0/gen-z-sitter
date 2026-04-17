@@ -41,16 +41,17 @@ pub fn runTargetsAlloc(
     target_list: []const targets.Target,
     options: RunOptions,
 ) ![]result_model.TargetRunResult {
+    const progress_log = shouldLogProgress(options);
     const runs = try allocator.alloc(result_model.TargetRunResult, target_list.len);
     errdefer allocator.free(runs);
 
     for (target_list, 0..) |target, index| {
         var timer = try std.time.Timer.start();
-        if (options.progress_log) {
+        if (progress_log) {
             std.debug.print("[compat_harness] start {d}/{d} {s}\n", .{ index + 1, target_list.len, target.id });
         }
         runs[index] = try runTarget(allocator, target, options);
-        if (options.progress_log) {
+        if (progress_log) {
             const elapsed_ms = @as(f64, @floatFromInt(timer.read())) / @as(f64, std.time.ns_per_ms);
             std.debug.print(
                 "[compat_harness] done  {d}/{d} {s} classification={s} first_failed_stage={s} ({d:.2} ms)\n",
@@ -67,6 +68,17 @@ pub fn runTargetsAlloc(
     }
 
     return runs;
+}
+
+fn shouldLogProgress(options: RunOptions) bool {
+    if (options.progress_log) return true;
+
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_PROGRESS") catch return false;
+    defer std.heap.page_allocator.free(value);
+
+    if (value.len == 0) return false;
+    if (std.mem.eql(u8, value, "0")) return false;
+    return true;
 }
 
 pub fn runTarget(

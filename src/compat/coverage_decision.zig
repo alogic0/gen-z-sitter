@@ -25,6 +25,7 @@ pub const CoverageDecisionReport = struct {
     parser_only_boundary_proven: bool,
     deferred_parser_wave_singleton: bool,
     primary_deferred_parser_wave_target: ?TargetSummary,
+    standalone_parser_probe_pass_count: usize,
     proven_boundary: []const []const u8,
     deferred_parser_only_targets: []TargetSummary,
     deferred_scanner_targets: []TargetSummary,
@@ -50,6 +51,7 @@ pub fn buildCoverageDecisionAlloc(
     const first_wave_target_count = countByStatus(runs, .intended_first_wave);
     const first_wave_passed_count = countFirstWavePassed(runs);
     const first_wave_non_passing_count = first_wave_target_count - first_wave_passed_count;
+    const standalone_parser_probe_pass_count = countStandaloneParserProbePasses(runs);
 
     const deferred_parser_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_parser_wave);
     defer deinitTargetSummaries(allocator, deferred_parser_targets);
@@ -65,8 +67,8 @@ pub fn buildCoverageDecisionAlloc(
     const recommendation_rationale = if (deferred_parser_targets.len != 0)
         try duplicateStringSliceAlloc(allocator, &.{
             "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-            "the only remaining deferred parser-only control fixture is still intentional, but a newly onboarded larger real external parser-only snapshot is now held at an explicit deferred parser boundary",
-            "the next promoted milestone should narrow or promote that larger real external parser-only target before claiming a broader parser-only external boundary",
+            "the only remaining deferred parser-only control fixture is still intentional, and the larger real external parser-only C snapshot remains held at an explicit routine parser proof boundary",
+            "a standalone coarse serialize-only probe now passes for that C snapshot, but the routine shortlist boundary is still narrower and should only move after a deliberate follow-on promotion decision",
         })
     else if (deferred_scanner_targets.len == 0)
         try duplicateStringSliceAlloc(allocator, &.{
@@ -89,6 +91,7 @@ pub fn buildCoverageDecisionAlloc(
         .parser_only_boundary_proven = first_wave_non_passing_count == 0,
         .deferred_parser_wave_singleton = deferred_parser_wave_singleton,
         .primary_deferred_parser_wave_target = primary_deferred_parser_wave_target,
+        .standalone_parser_probe_pass_count = standalone_parser_probe_pass_count,
         .proven_boundary = try collectProvenBoundaryAlloc(allocator, runs),
         .deferred_parser_only_targets = try collectTargetSummariesAllocForStatuses(allocator, runs, &.{ .deferred_control_fixture, .deferred_parser_wave }),
         .deferred_scanner_targets = deferred_scanner_targets,
@@ -132,6 +135,15 @@ fn countScannerWavePassed(runs: []const result_model.TargetRunResult) usize {
     return count;
 }
 
+fn countStandaloneParserProbePasses(runs: []const result_model.TargetRunResult) usize {
+    var count: usize = 0;
+    for (runs) |run| {
+        if (run.candidate_status != .deferred_parser_wave) continue;
+        if (std.mem.eql(u8, run.id, "tree_sitter_c_json")) count += 1;
+    }
+    return count;
+}
+
 fn deferredParserWaveTargetCount(runs: []const result_model.TargetRunResult) usize {
     return countByStatus(runs, .deferred_parser_wave);
 }
@@ -148,6 +160,7 @@ fn collectProvenBoundaryAlloc(
         try std.fmt.allocPrint(allocator, "{d} intended first-wave parser-only targets are currently in the run set", .{first_wave_target_count}),
         try std.fmt.allocPrint(allocator, "{d} intended first-wave targets currently pass within the staged parser-only boundary", .{first_wave_passed_count}),
         try std.fmt.allocPrint(allocator, "{d} intended scanner-wave targets currently pass within the staged scanner boundary", .{scanner_wave_passed_count}),
+        try std.fmt.allocPrint(allocator, "{d} deferred parser-wave target currently has a passing standalone coarse serialize-only probe outside the routine shortlist boundary", .{countStandaloneParserProbePasses(runs)}),
         try std.fmt.allocPrint(allocator, "{d} shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures", .{blocked_count}),
     });
 }
@@ -261,6 +274,10 @@ test "buildCoverageDecisionAlloc summarizes the current next-step decision" {
     try std.testing.expectEqual(@as(usize, 5), report.first_wave_passed_count);
     try std.testing.expectEqual(@as(usize, 0), report.first_wave_non_passing_count);
     try std.testing.expect(report.parser_only_boundary_proven);
+    try std.testing.expect(report.deferred_parser_wave_singleton);
+    try std.testing.expect(report.primary_deferred_parser_wave_target != null);
+    try std.testing.expectEqualStrings("tree_sitter_c_json", report.primary_deferred_parser_wave_target.?.id);
+    try std.testing.expectEqual(@as(usize, 1), report.standalone_parser_probe_pass_count);
     try std.testing.expectEqual(NextMilestone.second_wave_parser_only_repo_coverage, report.recommended_next_milestone);
     try std.testing.expectEqual(@as(usize, 2), report.deferred_parser_only_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);

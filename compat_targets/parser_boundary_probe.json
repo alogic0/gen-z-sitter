@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "target_count": 1,
+  "entries": [
+    {
+      "id": "tree_sitter_c_json",
+      "display_name": "tree-sitter-c (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
+      "family": "c",
+      "current_parser_boundary_check_mode": "prepare_only",
+      "probed_parser_boundary_check_mode": "serialize_only",
+      "recommended_next_parser_boundary_check_mode": "full_pipeline",
+      "probe_status": "passed",
+      "probe_failed_stage": null,
+      "detail": "isolated coarse serialize-only parser probe passed with 2336 serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
+      "serialized_state_count": 2336,
+      "serialized_blocked": false
+    }
+  ]
+}

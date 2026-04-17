@@ -1,8 +1,8 @@
 const std = @import("std");
 const fs_support = @import("src/support/fs.zig");
-const harness = @import("src/compat/harness.zig");
-const result_model = @import("src/compat/result.zig");
+const json_support = @import("src/support/json.zig");
 const parser_boundary_probe = @import("src/compat/parser_boundary_probe.zig");
+const targets = @import("src/compat/targets.zig");
 
 fn logStepStart(name: []const u8) void {
     std.debug.print("[update_parser_boundary_probe] start {s}\n", .{name});
@@ -20,15 +20,11 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     var timer = try std.time.Timer.start();
-    logStepStart("run_shortlist_targets");
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{ .progress_log = true });
-    logStepDone("run_shortlist_targets", &timer);
-    defer result_model.deinitRunResults(allocator, runs);
-
-    timer = try std.time.Timer.start();
     logStepStart("parser_boundary_probe");
-    const rendered = try parser_boundary_probe.renderParserBoundaryProbeAlloc(allocator, runs);
+    var report = try parser_boundary_probe.buildParserBoundaryProbeFromTargetsAlloc(allocator, targets.shortlistTargets());
     logStepDone("parser_boundary_probe", &timer);
+    defer report.deinit(allocator);
+    const rendered = try json_support.stringifyAlloc(allocator, report);
     defer allocator.free(rendered);
 
     timer = try std.time.Timer.start();

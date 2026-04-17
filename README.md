@@ -174,6 +174,14 @@ Current staged compatibility boundary:
 - the current coverage decision also now makes the deferred parser-wave singleton explicit:
   - `tree_sitter_c_json` is the only active deferred parser-wave target
   - the current low-risk boundary decision is to keep that singleton unchanged unless a narrower promotion hypothesis appears
+- the current narrower promotion hypothesis for that target is now also machine-readable in `compat_targets/parser_boundary_hypothesis.json`
+  - the routine shortlist remains at `prepare_only`
+  - the next named proof step remains `serialize_only`
+  - that next step is currently scoped to standalone probe tooling rather than the routine refresh path
+  - the current standalone probe result in `compat_targets/parser_boundary_probe.json` now shows that a coarse `serialize_only` parser proof passes for `tree_sitter_c_json`
+  - that standalone proof uses lookahead-insensitive closure expansion and currently serializes `2336` states with `blocked = false`
+  - it is still intentionally narrower than a full lookahead-sensitive parser proof and does not yet promote the routine shortlist boundary
+  - `compat_targets/parser_boundary_hypothesis.json` and `compat_targets/coverage_decision.json` now also encode that standalone coarse proof machine-readably while keeping the routine shortlist boundary at `prepare_only`
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
   - `hidden_external_fields` also proves that the invalid path makes less progress than the valid path through the first staged scanner boundary

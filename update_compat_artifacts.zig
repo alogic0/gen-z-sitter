@@ -8,6 +8,7 @@ const inventory = @import("src/compat/inventory.zig");
 const report_json = @import("src/compat/report_json.zig");
 const mismatch_inventory = @import("src/compat/mismatch_inventory.zig");
 const parser_boundary_profile = @import("src/compat/parser_boundary_profile.zig");
+const parser_boundary_hypothesis = @import("src/compat/parser_boundary_hypothesis.zig");
 const coverage_decision = @import("src/compat/coverage_decision.zig");
 const shift_reduce_profile = @import("src/compat/shift_reduce_profile.zig");
 const external_repo_inventory = @import("src/compat/external_repo_inventory.zig");
@@ -78,6 +79,12 @@ pub fn main() !void {
     defer allocator.free(parser_boundary);
 
     timer = try std.time.Timer.start();
+    logStepStart("parser_boundary_hypothesis");
+    const parser_boundary_hypothesis_json = try parser_boundary_hypothesis.renderParserBoundaryHypothesisAlloc(allocator, runs);
+    logStepDone("parser_boundary_hypothesis", &timer);
+    defer allocator.free(parser_boundary_hypothesis_json);
+
+    timer = try std.time.Timer.start();
     logStepStart("coverage_decision");
     const decision = try coverage_decision.renderCoverageDecisionAlloc(allocator, runs);
     logStepDone("coverage_decision", &timer);
@@ -107,6 +114,7 @@ pub fn main() !void {
     try writeArtifact("compat_targets/shortlist_report.json", report);
     try writeArtifact("compat_targets/shortlist_mismatch_inventory.json", mismatch);
     try writeArtifact("compat_targets/parser_boundary_profile.json", parser_boundary);
+    try writeArtifact("compat_targets/parser_boundary_hypothesis.json", parser_boundary_hypothesis_json);
     try writeArtifact("compat_targets/coverage_decision.json", decision);
     try writeArtifact("compat_targets/shortlist_shift_reduce_profile.json", shift_reduce);
     try writeArtifact("compat_targets/external_repo_inventory.json", external_repo);

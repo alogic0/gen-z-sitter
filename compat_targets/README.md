@@ -63,6 +63,13 @@ Versioned artifacts:
   - classified mismatch inventory with explicit scanner-boundary and deferred-control buckets backed by dedicated classifications
 - `shortlist_shift_reduce_profile.json`
   - focused machine-readable profile for deferred targets currently blocked only by unresolved `shift_reduce` decisions, including readable symbol names, candidate-action summaries, and dominant repeated signatures
+- `parser_boundary_hypothesis.json`
+  - machine-readable statement of the current narrower promotion hypothesis for deferred parser-wave targets
+  - records:
+    - the current proof mode
+    - the proposed next proof mode
+    - whether that next step belongs in routine refreshes or standalone probe tooling
+    - the current decision for that hypothesis
 - `coverage_decision.json`
   - current closeout decision and recommended next promoted milestone
   - now also records whether the deferred parser-wave set is currently a singleton and, when it is, which target owns that deferred slot
@@ -72,6 +79,11 @@ Versioned artifacts:
   - standalone probe runner for heavier deferred parser-only experiments
   - intentionally kept out of the routine compatibility refresh path
   - currently owns `parser_boundary_probe.json` when that deeper probe is run on purpose
+  - `parser_boundary_probe.json` now records a passing coarse `serialize_only` probe for `tree_sitter_c_json`
+    - current result: `serialized_state_count = 2336`
+    - current result: `serialized_blocked = false`
+    - this probe uses lookahead-insensitive closure expansion and is intentionally narrower than the routine shortlist boundary
+  - `parser_boundary_hypothesis.json` and `coverage_decision.json` now also reflect that same standalone coarse proof machine-readably while keeping the routine shortlist classification unchanged
 
 Current staged boundary summary:
 
@@ -85,6 +97,7 @@ Current staged boundary summary:
   - it currently proves `load` and `prepare`
   - it is intentionally classified as `deferred_for_parser_boundary` with `parser_proof_boundary`
   - the current stable shortlist does not yet claim emitted parser surfaces, compatibility checks, or compile-smoke for this larger grammar
+  - the standalone parser-boundary probe now also proves a narrower coarse `serialize_only` layer for this target without changing the routine shortlist classification
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`
   - this is now treated explicitly as an intentional ambiguity/control fixture, not as an unresolved external parser-only promotion gap

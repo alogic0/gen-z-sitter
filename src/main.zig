@@ -55,6 +55,7 @@ test {
     _ = @import("compat/harness.zig");
     _ = @import("compat/inventory.zig");
     _ = @import("compat/mismatch_inventory.zig");
+    _ = @import("compat/parser_boundary_hypothesis.zig");
     _ = @import("compat/parser_boundary_profile.zig");
     _ = @import("compat/parser_boundary_probe.zig");
     _ = @import("compat/report_json.zig");
