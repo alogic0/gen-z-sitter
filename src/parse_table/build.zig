@@ -434,14 +434,14 @@ const ClosureResultCache = struct {
     }
 };
 
-const FollowSetInfo = struct {
-    lookaheads: first.SymbolSet,
-    propagates_lookahead: bool,
+const ClosureFollowInfo = struct {
+    suffix_follow: first.SymbolSet,
+    propagates_inherited_context: bool,
 };
 
 const TransitiveClosureAddition = struct {
     production_id: item.ProductionId,
-    info: FollowSetInfo,
+    info: ClosureFollowInfo,
 };
 
 const ParseItemSetBuilder = struct {
@@ -479,7 +479,7 @@ const ParseItemSetBuilder = struct {
     fn deinit(self: *@This()) void {
         for (self.additions_per_non_terminal) |items| {
             for (items) |addition| {
-                freeSymbolSet(self.allocator, addition.info.lookaheads);
+                freeSymbolSet(self.allocator, addition.info.suffix_follow);
             }
             self.allocator.free(items);
         }
@@ -748,32 +748,32 @@ fn countDistinctFirstSetsForNonTerminal(
 
 const FollowWorkEntry = struct {
     non_terminal: u32,
-    lookaheads: first.SymbolSet,
-    propagates_lookahead: bool,
+    suffix_follow: first.SymbolSet,
+    propagates_inherited_context: bool,
 };
 
-fn findFollowInfoIndex(items: []const ?FollowSetInfo, non_terminal: u32) ?usize {
+fn findFollowInfoIndex(items: []const ?ClosureFollowInfo, non_terminal: u32) ?usize {
     if (non_terminal >= items.len) return null;
     return if (items[non_terminal] != null) non_terminal else null;
 }
 
 fn mergeFollowInfo(
     allocator: std.mem.Allocator,
-    target: *?FollowSetInfo,
+    target: *?ClosureFollowInfo,
     incoming: FollowWorkEntry,
 ) !bool {
     if (target.* == null) {
         target.* = .{
-            .lookaheads = try cloneSymbolSet(allocator, incoming.lookaheads),
-            .propagates_lookahead = incoming.propagates_lookahead,
+            .suffix_follow = try cloneSymbolSet(allocator, incoming.suffix_follow),
+            .propagates_inherited_context = incoming.propagates_inherited_context,
         };
         return true;
     }
 
     var changed = false;
-    changed = mergeSymbolSetLookaheads(&target.*.?.lookaheads, incoming.lookaheads) or changed;
-    if (incoming.propagates_lookahead and !target.*.?.propagates_lookahead) {
-        target.*.?.propagates_lookahead = true;
+    changed = mergeSymbolSetLookaheads(&target.*.?.suffix_follow, incoming.suffix_follow) or changed;
+    if (incoming.propagates_inherited_context and !target.*.?.propagates_inherited_context) {
+        target.*.?.propagates_inherited_context = true;
         changed = true;
     }
     return changed;
@@ -786,10 +786,10 @@ fn computeTransitiveClosureAdditionsAlloc(
     root_non_terminal: u32,
 ) ![]const TransitiveClosureAddition {
     const variable_count = variableCountFromProductions(productions);
-    var infos = try allocator.alloc(?FollowSetInfo, variable_count);
+    var infos = try allocator.alloc(?ClosureFollowInfo, variable_count);
     defer {
         for (infos) |maybe_info| {
-            if (maybe_info) |info| freeSymbolSet(allocator, info.lookaheads);
+            if (maybe_info) |info| freeSymbolSet(allocator, info.suffix_follow);
         }
         allocator.free(infos);
     }
@@ -798,21 +798,21 @@ fn computeTransitiveClosureAdditionsAlloc(
     var stack = std.array_list.Managed(FollowWorkEntry).init(allocator);
     defer {
         for (stack.items) |entry| {
-            freeSymbolSet(allocator, entry.lookaheads);
+            freeSymbolSet(allocator, entry.suffix_follow);
         }
         stack.deinit();
     }
 
     try stack.append(.{
         .non_terminal = root_non_terminal,
-        .lookaheads = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len),
-        .propagates_lookahead = true,
+        .suffix_follow = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len),
+        .propagates_inherited_context = true,
     });
 
     while (stack.items.len > 0) {
         const entry = stack.pop().?;
         const changed = try mergeFollowInfo(allocator, &infos[entry.non_terminal], entry);
-        freeSymbolSet(allocator, entry.lookaheads);
+        freeSymbolSet(allocator, entry.suffix_follow);
         if (!changed) continue;
 
         for (productions) |production| {
@@ -824,21 +824,21 @@ fn computeTransitiveClosureAdditionsAlloc(
                 .non_terminal => |next_non_terminal| {
                     const remainder = production.steps[1..];
                     var propagated = try if (remainder.len == 0)
-                        cloneSymbolSet(allocator, infos[entry.non_terminal].?.lookaheads)
+                        cloneSymbolSet(allocator, infos[entry.non_terminal].?.suffix_follow)
                     else
                         first_sets.firstOfSequence(allocator, remainder);
                     var propagates = false;
                     if (remainder.len == 0) {
-                        propagates = infos[entry.non_terminal].?.propagates_lookahead;
+                        propagates = infos[entry.non_terminal].?.propagates_inherited_context;
                     } else if (propagated.includes_epsilon) {
-                        propagates = infos[entry.non_terminal].?.propagates_lookahead;
+                        propagates = infos[entry.non_terminal].?.propagates_inherited_context;
                         propagated.includes_epsilon = false;
-                        _ = mergeSymbolSetLookaheads(&propagated, infos[entry.non_terminal].?.lookaheads);
+                        _ = mergeSymbolSetLookaheads(&propagated, infos[entry.non_terminal].?.suffix_follow);
                     }
                     try stack.append(.{
                         .non_terminal = next_non_terminal,
-                        .lookaheads = propagated,
-                        .propagates_lookahead = propagates,
+                        .suffix_follow = propagated,
+                        .propagates_inherited_context = propagates,
                     });
                 },
                 else => {},
@@ -857,8 +857,8 @@ fn computeTransitiveClosureAdditionsAlloc(
             try additions.append(.{
                 .production_id = @intCast(production_id),
                 .info = .{
-                    .lookaheads = try cloneSymbolSet(allocator, info.lookaheads),
-                    .propagates_lookahead = info.propagates_lookahead,
+                    .suffix_follow = try cloneSymbolSet(allocator, info.suffix_follow),
+                    .propagates_inherited_context = info.propagates_inherited_context,
                 },
             });
         }
@@ -880,15 +880,13 @@ fn buildClosureExpansionItemsAlloc(
     defer item_indexes.deinit();
 
     for (item_set_builder.additionsForNonTerminal(non_terminal)) |addition| {
-        var effective_follow = try cloneSymbolSet(allocator, addition.info.lookaheads);
-        defer freeSymbolSet(allocator, effective_follow);
-        effective_follow.includes_epsilon = addition.info.propagates_lookahead;
         try appendGeneratedItems(
             allocator,
             &generated,
             &item_indexes,
             addition.production_id,
-            effective_follow,
+            addition.info.suffix_follow,
+            addition.info.propagates_inherited_context,
             inherited_lookahead,
             item_set_builder.first_sets,
             options,
@@ -903,15 +901,16 @@ fn appendGeneratedItems(
     generated: *std.array_list.Managed(item.ParseItemSetEntry),
     item_indexes: *ClosureItemIndexMap,
     production_id: item.ProductionId,
-    propagated_first: first.SymbolSet,
+    suffix_follow: first.SymbolSet,
+    propagates_inherited_context: bool,
     inherited_lookahead: ?syntax_ir.SymbolRef,
     first_sets: first.FirstSets,
     options: BuildOptions,
 ) !void {
     if (options.closure_lookahead_mode == .none) {
-        const has_any_signal = propagated_first.includes_epsilon or
-            countPresent(propagated_first.terminals) > 0 or
-            countPresent(propagated_first.externals) > 0;
+        const has_any_signal = propagates_inherited_context or
+            countPresent(suffix_follow.terminals) > 0 or
+            countPresent(suffix_follow.externals) > 0;
         if (has_any_signal) {
             try appendOrMergeClosureEntry(
                 allocator,
@@ -935,21 +934,21 @@ fn appendGeneratedItems(
         first_sets.externals_len,
         item.ParseItem.init(production_id, 0),
     );
-    var has_any_signal = propagated_first.includes_epsilon;
+    var has_any_signal = propagates_inherited_context;
 
-    for (propagated_first.terminals, 0..) |present, index| {
+    for (suffix_follow.terminals, 0..) |present, index| {
         if (!present) continue;
         item.addLookahead(&generated_entry.lookaheads, .{ .terminal = @intCast(index) });
         has_any_signal = true;
     }
 
-    for (propagated_first.externals, 0..) |present, index| {
+    for (suffix_follow.externals, 0..) |present, index| {
         if (!present) continue;
         item.addLookahead(&generated_entry.lookaheads, .{ .external = @intCast(index) });
         has_any_signal = true;
     }
 
-    if (propagated_first.includes_epsilon) {
+    if (propagates_inherited_context) {
         if (inherited_lookahead) |lookahead| {
             item.addLookahead(&generated_entry.lookaheads, lookahead);
         }
@@ -2230,18 +2229,18 @@ test "ParseItemSetBuilder precomputes transitive closure additions with propagat
         switch (addition.production_id) {
             2 => {
                 saw_a_to_b_c = true;
-                try std.testing.expect(addition.info.propagates_lookahead);
-                try std.testing.expect(!addition.info.lookaheads.containsTerminal(2));
+                try std.testing.expect(addition.info.propagates_inherited_context);
+                try std.testing.expect(!addition.info.suffix_follow.containsTerminal(2));
             },
             3 => {
                 saw_a_to_d = true;
-                try std.testing.expect(addition.info.propagates_lookahead);
-                try std.testing.expect(!addition.info.lookaheads.containsTerminal(2));
+                try std.testing.expect(addition.info.propagates_inherited_context);
+                try std.testing.expect(!addition.info.suffix_follow.containsTerminal(2));
             },
             4 => {
                 saw_b_to_e = true;
-                try std.testing.expect(!addition.info.propagates_lookahead);
-                try std.testing.expect(addition.info.lookaheads.containsTerminal(2));
+                try std.testing.expect(!addition.info.propagates_inherited_context);
+                try std.testing.expect(addition.info.suffix_follow.containsTerminal(2));
             },
             else => return error.UnexpectedProductionId,
         }
@@ -2820,4 +2819,83 @@ test "buildStates accepts dynamic precedence metadata in the current supported s
 
     const result = try buildStates(arena.allocator(), grammar);
     try std.testing.expect(result.states.len > 0);
+}
+
+test "buildStates keeps named-precedence reductions on the suffix symbol, not the inherited terminal" {
+    testLog("buildStates keeps named-precedence reductions on the suffix symbol, not the inherited terminal");
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var expr_recursive_steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .non_terminal = 1 },
+            .precedence = .{ .name = "sum" },
+            .associativity = .left,
+        },
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var expr_atom_steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .terminal = 0 },
+            .precedence = .{ .name = "atom" },
+        },
+    };
+    var plus_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+    const precedence_ordering = [_]syntax_ir.PrecedenceEntry{
+        .{ .name = "atom" },
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .name = "sum" },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{
+                .name = "expr",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = expr_recursive_steps[0..] },
+                    .{ .steps = expr_atom_steps[0..] },
+                },
+            },
+            .{
+                .name = "plus",
+                .kind = .named,
+                .productions = &.{.{ .steps = plus_steps[0..] }},
+            },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{precedence_ordering[0..]},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const result = try buildStates(arena.allocator(), grammar);
+
+    var saw_reduce_on_suffix_symbol = false;
+    var saw_reduce_on_inherited_terminal = false;
+    for (result.resolved_actions.states) |resolved_state| {
+        for (resolved_state.groups) |group| {
+            const chosen = group.chosenAction() orelse continue;
+            switch (chosen) {
+                .reduce => {
+                    if (symbolRefEql(group.symbol, .{ .terminal = 1 })) saw_reduce_on_suffix_symbol = true;
+                    if (symbolRefEql(group.symbol, .{ .terminal = 0 })) saw_reduce_on_inherited_terminal = true;
+                },
+                else => {},
+            }
+        }
+    }
+
+    try std.testing.expect(saw_reduce_on_suffix_symbol);
+    try std.testing.expect(!saw_reduce_on_inherited_terminal);
 }
