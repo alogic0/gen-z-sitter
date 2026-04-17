@@ -867,6 +867,21 @@ pub fn collectTokenMatchesAlloc(
     return matches.toOwnedSlice(allocator);
 }
 
+pub fn selectPreferredMatch(
+    matches: []const TokenMatch,
+    conflict_map: TokenConflictMap,
+) ?TokenMatch {
+    if (matches.len == 0) return null;
+
+    var best = matches[0];
+    for (matches[1..]) |candidate| {
+        if (tokenMatchPreferredByConflict(conflict_map, best, candidate)) {
+            best = candidate;
+        }
+    }
+    return best;
+}
+
 pub fn buildTokenConflictMapAlloc(
     allocator: std.mem.Allocator,
     grammar: ExpandedLexicalGrammar,
@@ -924,6 +939,23 @@ fn tokenMatchLessThan(current: TokenMatch, candidate: TokenMatch) bool {
     }
     if (candidate.kind != current.kind) return candidate.kind == .named;
     return candidate.variable_index < current.variable_index;
+}
+
+fn tokenMatchPreferredByConflict(
+    conflict_map: TokenConflictMap,
+    current: TokenMatch,
+    candidate: TokenMatch,
+) bool {
+    const candidate_status = conflict_map.status(candidate.variable_index, current.variable_index);
+    const current_status = conflict_map.status(current.variable_index, candidate.variable_index);
+
+    if (candidate_status.matches_same_string and !current_status.matches_same_string) return true;
+    if (current_status.matches_same_string and !candidate_status.matches_same_string) return false;
+
+    if (candidate.len > current.len and current_status.does_match_continuation) return true;
+    if (current.len > candidate.len and candidate_status.does_match_continuation) return false;
+
+    return tokenMatchLessThan(current, candidate);
 }
 
 fn matchState(
@@ -1532,4 +1564,44 @@ test "buildTokenConflictMapAlloc marks literal prefix and identifier continuatio
     try std.testing.expect(conflict_map.status(0, 1).matches_same_string);
     try std.testing.expect(!conflict_map.status(0, 1).matches_prefix);
     try std.testing.expect(conflict_map.status(1, 0).does_match_continuation);
+}
+
+test "selectPreferredMatch uses conflict map for same-string lexical conflicts" {
+    const all_rules = [_]rules.Rule{
+        .{ .string = "let" },
+        .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "keyword", .kind = .named, .rule = 0 },
+            .{ .name = "identifier", .kind = .named, .rule = 1 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var conflict_map = try buildTokenConflictMapAlloc(std.testing.allocator, expanded);
+    defer conflict_map.deinit(std.testing.allocator);
+
+    const valid_matches = [_]TokenMatch{
+        .{
+            .variable_index = 1,
+            .len = 3,
+            .completion_precedence = expanded.variables[1].completion_precedence,
+            .implicit_precedence = expanded.variables[1].implicit_precedence,
+            .kind = expanded.variables[1].kind,
+        },
+        .{
+            .variable_index = 0,
+            .len = 3,
+            .completion_precedence = expanded.variables[0].completion_precedence,
+            .implicit_precedence = expanded.variables[0].implicit_precedence,
+            .kind = expanded.variables[0].kind,
+        },
+    };
+
+    const preferred = selectPreferredMatch(valid_matches[0..], conflict_map).?;
+    try std.testing.expectEqual(@as(usize, 0), preferred.variable_index);
 }
