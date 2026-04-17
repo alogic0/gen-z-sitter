@@ -435,7 +435,8 @@ const ClosureResultCache = struct {
 };
 
 const ClosureFollowInfo = struct {
-    suffix_follow: first.SymbolSet,
+    direct_suffix_follow: first.SymbolSet,
+    nullable_ancestor_suffix_follow: first.SymbolSet,
     propagates_inherited_context: bool,
 };
 
@@ -479,7 +480,8 @@ const ParseItemSetBuilder = struct {
     fn deinit(self: *@This()) void {
         for (self.additions_per_non_terminal) |items| {
             for (items) |addition| {
-                freeSymbolSet(self.allocator, addition.info.suffix_follow);
+                freeSymbolSet(self.allocator, addition.info.direct_suffix_follow);
+                freeSymbolSet(self.allocator, addition.info.nullable_ancestor_suffix_follow);
             }
             self.allocator.free(items);
         }
@@ -748,7 +750,8 @@ fn countDistinctFirstSetsForNonTerminal(
 
 const FollowWorkEntry = struct {
     non_terminal: u32,
-    suffix_follow: first.SymbolSet,
+    direct_suffix_follow: first.SymbolSet,
+    nullable_ancestor_suffix_follow: first.SymbolSet,
     propagates_inherited_context: bool,
 };
 
@@ -764,14 +767,16 @@ fn mergeFollowInfo(
 ) !bool {
     if (target.* == null) {
         target.* = .{
-            .suffix_follow = try cloneSymbolSet(allocator, incoming.suffix_follow),
+            .direct_suffix_follow = try cloneSymbolSet(allocator, incoming.direct_suffix_follow),
+            .nullable_ancestor_suffix_follow = try cloneSymbolSet(allocator, incoming.nullable_ancestor_suffix_follow),
             .propagates_inherited_context = incoming.propagates_inherited_context,
         };
         return true;
     }
 
     var changed = false;
-    changed = mergeSymbolSetLookaheads(&target.*.?.suffix_follow, incoming.suffix_follow) or changed;
+    changed = mergeSymbolSetLookaheads(&target.*.?.direct_suffix_follow, incoming.direct_suffix_follow) or changed;
+    changed = mergeSymbolSetLookaheads(&target.*.?.nullable_ancestor_suffix_follow, incoming.nullable_ancestor_suffix_follow) or changed;
     if (incoming.propagates_inherited_context and !target.*.?.propagates_inherited_context) {
         target.*.?.propagates_inherited_context = true;
         changed = true;
@@ -789,7 +794,10 @@ fn computeTransitiveClosureAdditionsAlloc(
     var infos = try allocator.alloc(?ClosureFollowInfo, variable_count);
     defer {
         for (infos) |maybe_info| {
-            if (maybe_info) |info| freeSymbolSet(allocator, info.suffix_follow);
+            if (maybe_info) |info| {
+                freeSymbolSet(allocator, info.direct_suffix_follow);
+                freeSymbolSet(allocator, info.nullable_ancestor_suffix_follow);
+            }
         }
         allocator.free(infos);
     }
@@ -798,21 +806,24 @@ fn computeTransitiveClosureAdditionsAlloc(
     var stack = std.array_list.Managed(FollowWorkEntry).init(allocator);
     defer {
         for (stack.items) |entry| {
-            freeSymbolSet(allocator, entry.suffix_follow);
+            freeSymbolSet(allocator, entry.direct_suffix_follow);
+            freeSymbolSet(allocator, entry.nullable_ancestor_suffix_follow);
         }
         stack.deinit();
     }
 
     try stack.append(.{
         .non_terminal = root_non_terminal,
-        .suffix_follow = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len),
+        .direct_suffix_follow = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len),
+        .nullable_ancestor_suffix_follow = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len),
         .propagates_inherited_context = true,
     });
 
     while (stack.items.len > 0) {
         const entry = stack.pop().?;
         const changed = try mergeFollowInfo(allocator, &infos[entry.non_terminal], entry);
-        freeSymbolSet(allocator, entry.suffix_follow);
+        freeSymbolSet(allocator, entry.direct_suffix_follow);
+        freeSymbolSet(allocator, entry.nullable_ancestor_suffix_follow);
         if (!changed) continue;
 
         for (productions) |production| {
@@ -823,21 +834,37 @@ fn computeTransitiveClosureAdditionsAlloc(
             switch (production.steps[0].symbol) {
                 .non_terminal => |next_non_terminal| {
                     const remainder = production.steps[1..];
-                    var propagated = try if (remainder.len == 0)
-                        cloneSymbolSet(allocator, infos[entry.non_terminal].?.suffix_follow)
+                    var direct_suffix_follow = try if (remainder.len == 0)
+                        initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len)
                     else
                         first_sets.firstOfSequence(allocator, remainder);
+                    var nullable_ancestor_suffix_follow = try if (remainder.len == 0)
+                        cloneSymbolSet(allocator, infos[entry.non_terminal].?.direct_suffix_follow)
+                    else
+                        initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len);
                     var propagates = false;
                     if (remainder.len == 0) {
+                        _ = mergeSymbolSetLookaheads(
+                            &nullable_ancestor_suffix_follow,
+                            infos[entry.non_terminal].?.nullable_ancestor_suffix_follow,
+                        );
                         propagates = infos[entry.non_terminal].?.propagates_inherited_context;
-                    } else if (propagated.includes_epsilon) {
+                    } else if (direct_suffix_follow.includes_epsilon) {
                         propagates = infos[entry.non_terminal].?.propagates_inherited_context;
-                        propagated.includes_epsilon = false;
-                        _ = mergeSymbolSetLookaheads(&propagated, infos[entry.non_terminal].?.suffix_follow);
+                        direct_suffix_follow.includes_epsilon = false;
+                        _ = mergeSymbolSetLookaheads(
+                            &nullable_ancestor_suffix_follow,
+                            infos[entry.non_terminal].?.direct_suffix_follow,
+                        );
+                        _ = mergeSymbolSetLookaheads(
+                            &nullable_ancestor_suffix_follow,
+                            infos[entry.non_terminal].?.nullable_ancestor_suffix_follow,
+                        );
                     }
                     try stack.append(.{
                         .non_terminal = next_non_terminal,
-                        .suffix_follow = propagated,
+                        .direct_suffix_follow = direct_suffix_follow,
+                        .nullable_ancestor_suffix_follow = nullable_ancestor_suffix_follow,
                         .propagates_inherited_context = propagates,
                     });
                 },
@@ -857,7 +884,8 @@ fn computeTransitiveClosureAdditionsAlloc(
             try additions.append(.{
                 .production_id = @intCast(production_id),
                 .info = .{
-                    .suffix_follow = try cloneSymbolSet(allocator, info.suffix_follow),
+                    .direct_suffix_follow = try cloneSymbolSet(allocator, info.direct_suffix_follow),
+                    .nullable_ancestor_suffix_follow = try cloneSymbolSet(allocator, info.nullable_ancestor_suffix_follow),
                     .propagates_inherited_context = info.propagates_inherited_context,
                 },
             });
@@ -880,12 +908,18 @@ fn buildClosureExpansionItemsAlloc(
     defer item_indexes.deinit();
 
     for (item_set_builder.additionsForNonTerminal(non_terminal)) |addition| {
+        var effective_suffix_follow = try cloneSymbolSet(allocator, addition.info.direct_suffix_follow);
+        defer freeSymbolSet(allocator, effective_suffix_follow);
+        _ = mergeSymbolSetLookaheads(
+            &effective_suffix_follow,
+            addition.info.nullable_ancestor_suffix_follow,
+        );
         try appendGeneratedItems(
             allocator,
             &generated,
             &item_indexes,
             addition.production_id,
-            addition.info.suffix_follow,
+            effective_suffix_follow,
             addition.info.propagates_inherited_context,
             inherited_lookahead,
             item_set_builder.first_sets,
@@ -2230,17 +2264,20 @@ test "ParseItemSetBuilder precomputes transitive closure additions with propagat
             2 => {
                 saw_a_to_b_c = true;
                 try std.testing.expect(addition.info.propagates_inherited_context);
-                try std.testing.expect(!addition.info.suffix_follow.containsTerminal(2));
+                try std.testing.expect(!addition.info.direct_suffix_follow.containsTerminal(2));
+                try std.testing.expect(!addition.info.nullable_ancestor_suffix_follow.containsTerminal(2));
             },
             3 => {
                 saw_a_to_d = true;
                 try std.testing.expect(addition.info.propagates_inherited_context);
-                try std.testing.expect(!addition.info.suffix_follow.containsTerminal(2));
+                try std.testing.expect(!addition.info.direct_suffix_follow.containsTerminal(2));
+                try std.testing.expect(!addition.info.nullable_ancestor_suffix_follow.containsTerminal(2));
             },
             4 => {
                 saw_b_to_e = true;
                 try std.testing.expect(!addition.info.propagates_inherited_context);
-                try std.testing.expect(addition.info.suffix_follow.containsTerminal(2));
+                try std.testing.expect(addition.info.direct_suffix_follow.containsTerminal(2));
+                try std.testing.expect(!addition.info.nullable_ancestor_suffix_follow.containsTerminal(2));
             },
             else => return error.UnexpectedProductionId,
         }
@@ -2249,6 +2286,83 @@ test "ParseItemSetBuilder precomputes transitive closure additions with propagat
     try std.testing.expect(saw_a_to_b_c);
     try std.testing.expect(saw_a_to_d);
     try std.testing.expect(saw_b_to_e);
+}
+
+test "ParseItemSetBuilder distinguishes direct suffix follow from nullable ancestor suffix follow" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var a_to_b_c_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .symbol = .{ .non_terminal = 3 } },
+    };
+    var b_to_d_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 4 } },
+    };
+    var c_to_epsilon_steps = [_]syntax_ir.ProductionStep{};
+    var c_to_token_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 2 } },
+    };
+    var d_to_token_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "A", .kind = .named, .productions = &.{.{ .steps = a_to_b_c_steps[0..] }} },
+            .{ .name = "B", .kind = .named, .productions = &.{.{ .steps = b_to_d_steps[0..] }} },
+            .{
+                .name = "C",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = c_to_epsilon_steps[0..] },
+                    .{ .steps = c_to_token_steps[0..] },
+                },
+            },
+            .{ .name = "D", .kind = .named, .productions = &.{.{ .steps = d_to_token_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
+    const productions = try collectProductions(arena.allocator(), grammar);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets);
+    defer item_set_builder.deinit();
+
+    const additions = item_set_builder.additionsForNonTerminal(1);
+
+    var saw_b_production = false;
+    var saw_d_production = false;
+    for (additions) |addition| {
+        switch (addition.production_id) {
+            3 => {
+                saw_b_production = true;
+                try std.testing.expect(addition.info.direct_suffix_follow.containsTerminal(2));
+                try std.testing.expect(!addition.info.nullable_ancestor_suffix_follow.containsTerminal(2));
+                try std.testing.expect(addition.info.propagates_inherited_context);
+            },
+            6 => {
+                saw_d_production = true;
+                try std.testing.expect(!addition.info.direct_suffix_follow.containsTerminal(2));
+                try std.testing.expect(addition.info.nullable_ancestor_suffix_follow.containsTerminal(2));
+                try std.testing.expect(addition.info.propagates_inherited_context);
+            },
+            else => {},
+        }
+    }
+
+    try std.testing.expect(saw_b_production);
+    try std.testing.expect(saw_d_production);
 }
 
 test "closure uses precomputed transitive additions to expand leading recursive items" {
