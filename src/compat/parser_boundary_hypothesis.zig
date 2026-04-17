@@ -143,6 +143,12 @@ fn buildEntryAlloc(
             "no routine-safe parser boundary step is promoted yet for {s}; the current full-pipeline blocker is emit_parser_c with 5 unresolved shift/reduce entries dominated by doc_comment and struct_union, so the next useful step is direct upstream comparison instead of another routine-boundary promotion guess",
             .{run.id},
         )
+    else if (std.mem.eql(u8, run.id, "repeat_choice_seq_js"))
+        try std.fmt.allocPrint(
+            allocator,
+            "no routine-safe parser boundary step is promoted yet for {s}; the current full-pipeline blocker is an intentional 2-entry shift/reduce ambiguity where the next identifier/number token can either continue the current _entry tail or start the next repeated source_file entry, so the target stays deferred unless a later milestone deliberately broadens ambiguity handling",
+            .{run.id},
+        )
     else
         try std.fmt.allocPrint(
             allocator,
@@ -166,6 +172,12 @@ fn buildEntryAlloc(
         try std.fmt.allocPrint(
             allocator,
             "the next named proof step for {s} is direct upstream comparison of the current emit_parser_c conflict set, not a broader routine refresh step; it remains scoped to {s} until the 5 unresolved shift/reduce entries are either fixed or explicitly proven to be a real staged-boundary limitation",
+            .{ run.id, @tagName(evaluation_surface) },
+        )
+    else if (std.mem.eql(u8, run.id, "repeat_choice_seq_js"))
+        try std.fmt.allocPrint(
+            allocator,
+            "the next named proof step for {s} is not a broader routine refresh; it remains scoped to {s} because the staged grammar intentionally keeps the current 2-entry shift/reduce ambiguity as a parser-boundary fixture rather than an upstream-mismatch candidate",
             .{ run.id, @tagName(evaluation_surface) },
         )
     else

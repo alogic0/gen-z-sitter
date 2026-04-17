@@ -125,8 +125,8 @@ pub const shortlist_targets = [_]Target{
         .provenance = .{ .origin_kind = .staged_in_repo },
         .candidate_status = .deferred_parser_wave,
         .expected_blocked = true,
-        .notes = "parser-only JS target kept deferred because parser.c emission still stops at the staged parser-only boundary",
-        .success_criteria = "load through node, keep the current blocked parser-boundary signature stable, and promote only after emit_parser_c and compile-smoke pass",
+        .notes = "staged parser-only JS fixture kept deferred because its _entry alternatives intentionally allow the next identifier/number token to be parsed either as more of the current repeated tail or as the start of the next source_file entry",
+        .success_criteria = "load through node and keep the current 2-entry shift/reduce parser-boundary signature stable unless a later milestone intentionally broadens ambiguity handling for this staged fixture",
     },
     .{
         .id = "tree_sitter_ziggy_json",
