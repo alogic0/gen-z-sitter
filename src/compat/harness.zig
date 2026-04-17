@@ -30,6 +30,7 @@ pub fn runShortlistTargetsAlloc(
     options: RunOptions,
 ) ![]result_model.TargetRunResult {
     const shortlist = targets.shortlistTargets();
+    std.debug.print("[compat/harness] runShortlistTargetsAlloc shortlist_len={d}\n", .{shortlist.len});
     const excluded_targets = loadExcludedTargetsEnv(allocator) catch null;
     defer if (excluded_targets) |items| {
         for (items) |entry| allocator.free(entry);
@@ -37,6 +38,7 @@ pub fn runShortlistTargetsAlloc(
     };
 
     if (excluded_targets == null or excluded_targets.?.len == 0) {
+        std.debug.print("[compat/harness] runShortlistTargetsAlloc no exclusions\n", .{});
         return try runTargetsAlloc(allocator, shortlist, options);
     }
 
@@ -46,12 +48,18 @@ pub fn runShortlistTargetsAlloc(
 }
 
 pub fn cachedShortlistTargetsForTests() ![]const result_model.TargetRunResult {
+    std.debug.print("[compat/harness] cachedShortlistTargetsForTests enter\n", .{});
     cached_shortlist_runs_mutex.lock();
     defer cached_shortlist_runs_mutex.unlock();
 
-    if (cached_shortlist_runs_for_tests) |runs| return runs;
+    if (cached_shortlist_runs_for_tests) |runs| {
+        std.debug.print("[compat/harness] cachedShortlistTargetsForTests cache_hit len={d}\n", .{runs.len});
+        return runs;
+    }
 
+    std.debug.print("[compat/harness] cachedShortlistTargetsForTests cache_miss starting shortlist run\n", .{});
     const runs = try runShortlistTargetsAlloc(std.heap.page_allocator, .{});
+    std.debug.print("[compat/harness] cachedShortlistTargetsForTests shortlist run complete len={d}\n", .{runs.len});
     cached_shortlist_runs_for_tests = runs;
     return runs;
 }
@@ -73,11 +81,13 @@ pub fn runTargetsAlloc(
     errdefer allocator.free(runs);
 
     for (target_list, 0..) |target, index| {
+        std.debug.print("[compat/harness] target_start {d}/{d} {s}\n", .{ index + 1, target_list.len, target.id });
         var timer = try std.time.Timer.start();
         if (progress_log) {
             std.debug.print("[compat_harness] start {d}/{d} {s}\n", .{ index + 1, target_list.len, target.id });
         }
         runs[index] = try runTarget(allocator, target, options);
+        std.debug.print("[compat/harness] target_done {d}/{d} {s}\n", .{ index + 1, target_list.len, target.id });
         if (progress_log) {
             const elapsed_ms = @as(f64, @floatFromInt(timer.read())) / @as(f64, std.time.ns_per_ms);
             std.debug.print(
@@ -324,6 +334,7 @@ pub fn runTarget(
     var run = result_model.TargetRunResult.init(target);
     errdefer run.deinit(allocator);
     const detail_progress = shouldLogDetailProgress(options);
+    std.debug.print("[compat/harness] runTarget enter {s}\n", .{target.id});
 
     if (target.candidate_status == .excluded_out_of_scope) {
         return failRun(
@@ -338,6 +349,7 @@ pub fn runTarget(
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
+    std.debug.print("[compat/harness] stage load {s}\n", .{target.id});
     var load_timer = try std.time.Timer.start();
     if (detail_progress) logDetailStart(target.id, "load");
     var loaded = grammar_loader.loadGrammarFile(arena.allocator(), target.grammar_path) catch |err| {
@@ -353,6 +365,7 @@ pub fn runTarget(
     run.load.status = .passed;
     defer loaded.deinit();
 
+    std.debug.print("[compat/harness] stage prepare {s}\n", .{target.id});
     var prepare_timer = try std.time.Timer.start();
     if (detail_progress) logDetailStart(target.id, "prepare");
     const prepared = parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar) catch |err| {
@@ -383,6 +396,7 @@ pub fn runTarget(
     }
 
     if (target.boundary_kind == .parser_only and target.parser_boundary_check_mode == .serialize_only) {
+        std.debug.print("[compat/harness] stage serialize {s}\n", .{target.id});
         var serialize_timer = try std.time.Timer.start();
         if (detail_progress) logDetailStart(target.id, "routine_coarse_serialize_only");
         const serialized = parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
@@ -407,6 +421,7 @@ pub fn runTarget(
             );
         }
         run.serialize.status = .passed;
+        std.debug.print("[compat/harness] stage emit_parser_tables {s}\n", .{target.id});
         if (detail_progress) logDetailStart(target.id, "emit_parser_tables");
         var parser_tables_timer = try std.time.Timer.start();
         const parser_tables = parser_tables_emit.emitSerializedTableAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
@@ -426,6 +441,7 @@ pub fn runTarget(
             );
         }
         run.emit_parser_tables.status = .passed;
+        std.debug.print("[compat/harness] stage emit_c_tables {s}\n", .{target.id});
         if (detail_progress) logDetailStart(target.id, "emit_c_tables");
         var c_tables_timer = try std.time.Timer.start();
         const c_tables = c_tables_emit.emitCTableSkeletonAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
@@ -445,6 +461,7 @@ pub fn runTarget(
             );
         }
         run.emit_c_tables.status = .passed;
+        std.debug.print("[compat/harness] stage emit_parser_c {s}\n", .{target.id});
         if (detail_progress) logDetailStart(target.id, "emit_parser_c");
         var parser_c_timer = try std.time.Timer.start();
         const parser_c = parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
@@ -464,6 +481,7 @@ pub fn runTarget(
             );
         }
         run.emit_parser_c.status = .passed;
+        std.debug.print("[compat/harness] stage compat_check {s}\n", .{target.id});
         if (detail_progress) logDetailStart(target.id, "compat_check");
         var compat_timer = try std.time.Timer.start();
         compat_checks.validateParserCCompatibilitySurface(parser_c) catch |err| {
@@ -477,6 +495,7 @@ pub fn runTarget(
         };
         if (detail_progress) logDetailDone(target.id, "compat_check", &compat_timer);
         run.compat_check.status = .passed;
+        std.debug.print("[compat/harness] stage compile_smoke {s}\n", .{target.id});
         if (detail_progress) logDetailStart(target.id, "compile_smoke");
         var compile_timer = try std.time.Timer.start();
         var compile_result = compile_smoke.compileParserC(allocator, parser_c) catch |err| {

@@ -106,18 +106,22 @@ pub fn buildStatesFromPreparedWithOptions(
     build_options: build.BuildOptions,
 ) PipelineError!build.BuildResult {
     const progress_log = shouldLogPipelineProgress();
+    std.debug.print("[parse_table/pipeline] buildStatesFromPreparedWithOptions enter\n", .{});
 
     var timer = maybeStartTimer(progress_log);
+    std.debug.print("[parse_table/pipeline] stage extract_tokens\n", .{});
     if (progress_log) logPipelineStart("extract_tokens");
     const extracted = try extract_tokens.extractTokens(allocator, prepared);
     if (progress_log) maybeLogPipelineDone("extract_tokens", if (timer) |*value| value else null);
 
     timer = maybeStartTimer(progress_log);
+    std.debug.print("[parse_table/pipeline] stage flatten_grammar\n", .{});
     if (progress_log) logPipelineStart("flatten_grammar");
     const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
     if (progress_log) maybeLogPipelineDone("flatten_grammar", if (timer) |*value| value else null);
 
     timer = maybeStartTimer(progress_log);
+    std.debug.print("[parse_table/pipeline] stage build_states\n", .{});
     if (progress_log) logPipelineStart("build_states");
     const result = try build.buildStatesWithOptions(allocator, flattened, build_options);
     if (progress_log) {
@@ -244,8 +248,10 @@ pub fn serializeTableFromPreparedWithBuildOptions(
     build_options: build.BuildOptions,
 ) PipelineError!serialize.SerializedTable {
     const progress_log = shouldLogPipelineProgress();
+    std.debug.print("[parse_table/pipeline] serializeTableFromPreparedWithBuildOptions enter mode={s}\n", .{@tagName(mode)});
     const result = try buildStatesFromPreparedWithOptions(allocator, prepared, build_options);
     var timer = maybeStartTimer(progress_log);
+    std.debug.print("[parse_table/pipeline] stage serialize_build_result\n", .{});
     if (progress_log) logPipelineStart("serialize_build_result");
     const serialized = try serialize.serializeBuildResult(allocator, result, mode);
     if (progress_log) {

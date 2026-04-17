@@ -11,6 +11,10 @@ const rules = @import("../ir/rules.zig");
 threadlocal var scoped_progress_enabled: bool = false;
 threadlocal var current_transition_context: ?TransitionContext = null;
 
+fn testLog(name: []const u8) void {
+    std.debug.print("[parse_table/build] {s}\n", .{name});
+}
+
 const TransitionContext = struct {
     source_state_id: state.StateId,
     symbol: syntax_ir.SymbolRef,
@@ -99,6 +103,21 @@ fn optionalSymbolRefText(buf: []u8, value: ?syntax_ir.SymbolRef) []const u8 {
     return stream.getWritten();
 }
 
+fn singleLookahead(lookaheads: first.SymbolSet) ?syntax_ir.SymbolRef {
+    var found: ?syntax_ir.SymbolRef = null;
+    for (lookaheads.terminals, 0..) |present, index| {
+        if (!present) continue;
+        if (found != null) return null;
+        found = .{ .terminal = @intCast(index) };
+    }
+    for (lookaheads.externals, 0..) |present, index| {
+        if (!present) continue;
+        if (found != null) return null;
+        found = .{ .external = @intCast(index) };
+    }
+    return found;
+}
+
 fn symbolDisplayText(
     buf: []u8,
     variables: []const syntax_ir.SyntaxVariable,
@@ -132,30 +151,12 @@ const AppendStats = struct {
     duplicate_hits: usize,
 };
 
-const ParseItemContext = struct {
+const ParseItemCoreContext = struct {
     pub fn hash(_: @This(), value: item.ParseItem) u64 {
         var hasher = std.hash.Wyhash.init(0);
         hasher.update(std.mem.asBytes(&value.production_id));
         hasher.update(std.mem.asBytes(&value.step_index));
-        const lookahead_tag: u8 = switch (value.lookahead orelse return finishWithoutLookahead(hasher)) {
-            .non_terminal => 0,
-            .terminal => 1,
-            .external => 2,
-        };
-        hasher.update(std.mem.asBytes(&lookahead_tag));
-        switch (value.lookahead.?) {
-            .non_terminal => |index| hasher.update(std.mem.asBytes(&index)),
-            .terminal => |index| hasher.update(std.mem.asBytes(&index)),
-            .external => |index| hasher.update(std.mem.asBytes(&index)),
-        }
         return hasher.final();
-    }
-
-    fn finishWithoutLookahead(hasher: std.hash.Wyhash) u64 {
-        var mutable = hasher;
-        const lookahead_tag: u8 = 255;
-        mutable.update(std.mem.asBytes(&lookahead_tag));
-        return mutable.final();
     }
 
     pub fn eql(_: @This(), a: item.ParseItem, b: item.ParseItem) bool {
@@ -163,19 +164,99 @@ const ParseItemContext = struct {
     }
 };
 
-const ParseItemSet = std.HashMap(item.ParseItem, void, ParseItemContext, std.hash_map.default_max_load_percentage);
+const ParseItemContext = struct {
+    pub fn hash(_: @This(), value: item.ParseItemSetEntry) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        hasher.update(std.mem.asBytes(&value.item.production_id));
+        hasher.update(std.mem.asBytes(&value.item.step_index));
+        hasher.update(std.mem.sliceAsBytes(value.lookaheads.terminals));
+        hasher.update(std.mem.sliceAsBytes(value.lookaheads.externals));
+        hasher.update(std.mem.asBytes(&value.lookaheads.includes_epsilon));
+        return hasher.final();
+    }
+
+    pub fn eql(_: @This(), a: item.ParseItemSetEntry, b: item.ParseItemSetEntry) bool {
+        return item.ParseItemSetEntry.eql(a, b);
+    }
+};
+
+const ParseItemSet = std.HashMap(item.ParseItemSetEntry, void, ParseItemContext, std.hash_map.default_max_load_percentage);
+
+const SymbolRefContext = struct {
+    pub fn hash(_: @This(), value: syntax_ir.SymbolRef) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        const tag: u8 = switch (value) {
+            .non_terminal => 0,
+            .terminal => 1,
+            .external => 2,
+        };
+        hasher.update(std.mem.asBytes(&tag));
+        switch (value) {
+            .non_terminal => |index| hasher.update(std.mem.asBytes(&index)),
+            .terminal => |index| hasher.update(std.mem.asBytes(&index)),
+            .external => |index| hasher.update(std.mem.asBytes(&index)),
+        }
+        return hasher.final();
+    }
+
+    pub fn eql(_: @This(), a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
+        return symbolRefEql(a, b);
+    }
+};
+
+const ParseItemSliceContext = struct {
+    pub fn hash(_: @This(), values: []const item.ParseItemSetEntry) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        for (values) |value| {
+            hasher.update(std.mem.asBytes(&value.item.production_id));
+            hasher.update(std.mem.asBytes(&value.item.step_index));
+            hasher.update(std.mem.sliceAsBytes(value.lookaheads.terminals));
+            hasher.update(std.mem.sliceAsBytes(value.lookaheads.externals));
+            hasher.update(std.mem.asBytes(&value.lookaheads.includes_epsilon));
+        }
+        return hasher.final();
+    }
+
+    pub fn eql(_: @This(), a: []const item.ParseItemSetEntry, b: []const item.ParseItemSetEntry) bool {
+        return itemsEql(a, b);
+    }
+};
+
+const StateIdByItemSet = std.HashMap([]const item.ParseItemSetEntry, state.StateId, ParseItemSliceContext, std.hash_map.default_max_load_percentage);
+const ClosedItemsBySeed = std.HashMap([]const item.ParseItemSetEntry, []const item.ParseItemSetEntry, ParseItemSliceContext, std.hash_map.default_max_load_percentage);
+const SymbolIndexMap = std.HashMap(syntax_ir.SymbolRef, usize, SymbolRefContext, std.hash_map.default_max_load_percentage);
+const SuccessorItemIndexMap = std.HashMap(item.ParseItem, usize, ParseItemCoreContext, std.hash_map.default_max_load_percentage);
+
+const SuccessorGroup = struct {
+    symbol: syntax_ir.SymbolRef,
+    items: std.array_list.Managed(item.ParseItemSetEntry),
+    item_indexes: SuccessorItemIndexMap,
+
+    fn init(allocator: std.mem.Allocator, symbol: syntax_ir.SymbolRef) SuccessorGroup {
+        return .{
+            .symbol = symbol,
+            .items = std.array_list.Managed(item.ParseItemSetEntry).init(allocator),
+            .item_indexes = SuccessorItemIndexMap.init(allocator),
+        };
+    }
+
+    fn deinit(self: *@This()) void {
+        self.items.deinit();
+        self.item_indexes.deinit();
+    }
+};
 
 const ClosureExpansionCacheEntry = struct {
     non_terminal: u32,
     closure_lookahead_mode: ClosureLookaheadMode,
     propagated_first: first.SymbolSet,
     inherited_lookahead: ?syntax_ir.SymbolRef,
-    generated_items: []const item.ParseItem,
+    generated_items: []const item.ParseItemSetEntry,
 };
 
 const ClosureResultCacheEntry = struct {
-    seed_items: []const item.ParseItem,
-    closed_items: []const item.ParseItem,
+    seed_items: []const item.ParseItemSetEntry,
+    closed_items: []const item.ParseItemSetEntry,
 };
 
 const FollowSetInfo = struct {
@@ -395,7 +476,7 @@ fn findClosureExpansionCache(
     closure_lookahead_mode: ClosureLookaheadMode,
     propagated_first: first.SymbolSet,
     inherited_lookahead: ?syntax_ir.SymbolRef,
-) ?[]const item.ParseItem {
+) ?[]const item.ParseItemSetEntry {
     for (entries) |entry| {
         if (entry.non_terminal != non_terminal) continue;
         if (entry.closure_lookahead_mode != closure_lookahead_mode) continue;
@@ -618,11 +699,12 @@ fn computeTransitiveClosureAdditionsAlloc(
 fn buildClosureExpansionItemsAlloc(
     allocator: std.mem.Allocator,
     item_set_builder: ParseItemSetBuilder,
+    first_sets: first.FirstSets,
     non_terminal: u32,
     inherited_lookahead: ?syntax_ir.SymbolRef,
     options: BuildOptions,
-) ![]const item.ParseItem {
-    var generated = std.array_list.Managed(item.ParseItem).init(allocator);
+) ![]const item.ParseItemSetEntry {
+    var generated = std.array_list.Managed(item.ParseItemSetEntry).init(allocator);
     defer generated.deinit();
 
     for (item_set_builder.additionsForNonTerminal(non_terminal)) |addition| {
@@ -630,10 +712,12 @@ fn buildClosureExpansionItemsAlloc(
         defer freeSymbolSet(allocator, effective_follow);
         effective_follow.includes_epsilon = addition.info.propagates_lookahead;
         try appendGeneratedItems(
+            allocator,
             &generated,
             addition.production_id,
             effective_follow,
             inherited_lookahead,
+            first_sets,
             options,
         );
     }
@@ -642,10 +726,12 @@ fn buildClosureExpansionItemsAlloc(
 }
 
 fn appendGeneratedItems(
-    generated: *std.array_list.Managed(item.ParseItem),
+    allocator: std.mem.Allocator,
+    generated: *std.array_list.Managed(item.ParseItemSetEntry),
     production_id: item.ProductionId,
     propagated_first: first.SymbolSet,
     inherited_lookahead: ?syntax_ir.SymbolRef,
+    first_sets: first.FirstSets,
     options: BuildOptions,
 ) !void {
     if (options.closure_lookahead_mode == .none) {
@@ -653,26 +739,46 @@ fn appendGeneratedItems(
             countPresent(propagated_first.terminals) > 0 or
             countPresent(propagated_first.externals) > 0;
         if (has_any_signal) {
-            try generated.append(item.ParseItem.init(production_id, 0));
+            try generated.append(try item.ParseItemSetEntry.initEmpty(
+                allocator,
+                first_sets.terminals_len,
+                first_sets.externals_len,
+                item.ParseItem.init(production_id, 0),
+            ));
         }
         return;
     }
 
     for (propagated_first.terminals, 0..) |present, index| {
         if (!present) continue;
-        try generated.append(item.ParseItem.withLookahead(production_id, 0, .{ .terminal = @intCast(index) }));
+        try generated.append(try item.ParseItemSetEntry.withLookahead(
+            allocator,
+            first_sets.terminals_len,
+            first_sets.externals_len,
+            item.ParseItem.init(production_id, 0),
+            .{ .terminal = @intCast(index) },
+        ));
     }
 
     for (propagated_first.externals, 0..) |present, index| {
         if (!present) continue;
-        try generated.append(item.ParseItem.withLookahead(production_id, 0, .{ .external = @intCast(index) }));
+        try generated.append(try item.ParseItemSetEntry.withLookahead(
+            allocator,
+            first_sets.terminals_len,
+            first_sets.externals_len,
+            item.ParseItem.init(production_id, 0),
+            .{ .external = @intCast(index) },
+        ));
     }
 
     if (propagated_first.includes_epsilon) {
-        try generated.append(if (inherited_lookahead) |lookahead|
-            item.ParseItem.withLookahead(production_id, 0, lookahead)
-        else
-            item.ParseItem.init(production_id, 0));
+        try generated.append(try item.ParseItemSetEntry.withOptionalLookahead(
+            allocator,
+            first_sets.terminals_len,
+            first_sets.externals_len,
+            item.ParseItem.init(production_id, 0),
+            inherited_lookahead,
+        ));
     }
 }
 
@@ -782,14 +888,17 @@ pub fn buildStatesWithOptions(
     options: BuildOptions,
 ) BuildError!BuildResult {
     const progress_log = shouldLogBuildProgress();
+    std.debug.print("[parse_table/build] buildStatesWithOptions enter\n", .{});
     try validateSupportedSubset(grammar);
 
     var timer = maybeStartTimer(progress_log);
+    std.debug.print("[parse_table/build] stage compute_first_sets\n", .{});
     if (progress_log) logBuildStart("compute_first_sets");
     const first_sets = try first.computeFirstSets(allocator, grammar);
     if (progress_log) maybeLogBuildDone("compute_first_sets", if (timer) |*value| value else null);
 
     timer = maybeStartTimer(progress_log);
+    std.debug.print("[parse_table/build] stage collect_productions\n", .{});
     if (progress_log) logBuildStart("collect_productions");
     const productions = try collectProductions(allocator, grammar);
     if (progress_log) {
@@ -801,6 +910,7 @@ pub fn buildStatesWithOptions(
     defer item_set_builder.deinit();
 
     timer = maybeStartTimer(progress_log);
+    std.debug.print("[parse_table/build] stage construct_states\n", .{});
     if (progress_log) logBuildStart("construct_states");
     const constructed = try constructStates(allocator, grammar.variables, productions, first_sets, item_set_builder, options);
     if (progress_log) {
@@ -812,11 +922,13 @@ pub fn buildStatesWithOptions(
     }
 
     timer = maybeStartTimer(progress_log);
+    std.debug.print("[parse_table/build] stage group_action_table\n", .{});
     if (progress_log) logBuildStart("group_action_table");
     const grouped_actions = try actions.groupActionTable(allocator, constructed.actions);
     if (progress_log) maybeLogBuildDone("group_action_table", if (timer) |*value| value else null);
 
     timer = maybeStartTimer(progress_log);
+    std.debug.print("[parse_table/build] stage resolve_action_table\n", .{});
     if (progress_log) logBuildStart("resolve_action_table");
     const resolved_actions = try resolution.resolveActionTableWithContext(
         allocator,
@@ -865,15 +977,15 @@ const SuccessorDiagnostic = struct {
 
 fn findClosureResultCache(
     entries: []const ClosureResultCacheEntry,
-    seed_items: []const item.ParseItem,
-) ?[]const item.ParseItem {
+    seed_items: []const item.ParseItemSetEntry,
+) ?[]const item.ParseItemSetEntry {
     for (entries) |entry| {
         if (itemsEql(entry.seed_items, seed_items)) return entry.closed_items;
     }
     return null;
 }
 
-fn countDistinctSeedCores(entries: []const ClosureResultCacheEntry, seed_items: []const item.ParseItem) usize {
+fn countDistinctSeedCores(entries: []const ClosureResultCacheEntry, seed_items: []const item.ParseItemSetEntry) usize {
     var count: usize = 0;
     for (entries, 0..) |entry, index| {
         if (!sameSeedCore(entry.seed_items, seed_items)) continue;
@@ -889,11 +1001,11 @@ fn countDistinctSeedCores(entries: []const ClosureResultCacheEntry, seed_items: 
     return count;
 }
 
-fn sameSeedCore(left: []const item.ParseItem, right: []const item.ParseItem) bool {
+fn sameSeedCore(left: []const item.ParseItemSetEntry, right: []const item.ParseItemSetEntry) bool {
     if (left.len != right.len) return false;
     for (left, right) |a, b| {
-        if (a.production_id != b.production_id) return false;
-        if (a.step_index != b.step_index) return false;
+        if (a.item.production_id != b.item.production_id) return false;
+        if (a.item.step_index != b.item.step_index) return false;
     }
     return true;
 }
@@ -941,6 +1053,7 @@ fn collectProductions(
 }
 
 test "ParseItemSetBuilder precomputes transitive closure additions with propagated follow sets" {
+    testLog("ParseItemSetBuilder precomputes transitive closure additions with propagated follow sets");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -1075,8 +1188,8 @@ test "closure uses precomputed transitive additions to expand leading recursive 
     var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets);
     defer item_set_builder.deinit();
 
-    const seed = [_]item.ParseItem{
-        item.ParseItem.withLookahead(1, 0, .{ .terminal = 0 }),
+    const seed = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(arena.allocator(), first_sets.terminals_len, first_sets.externals_len, item.ParseItem.init(1, 0), .{ .terminal = 0 }),
     };
     const items = try closure(
         arena.allocator(),
@@ -1088,15 +1201,15 @@ test "closure uses precomputed transitive additions to expand leading recursive 
         .{},
     );
 
-    try std.testing.expect(findParseItem(items, item.ParseItem.withLookahead(1, 0, .{ .terminal = 0 })) != null);
-    try std.testing.expect(findParseItem(items, item.ParseItem.withLookahead(2, 0, .{ .terminal = 0 })) != null);
-    try std.testing.expect(findParseItem(items, item.ParseItem.withLookahead(3, 0, .{ .terminal = 0 })) != null);
-    try std.testing.expect(findParseItem(items, item.ParseItem.withLookahead(4, 0, .{ .terminal = 2 })) != null);
+    try std.testing.expect(findParseItem(items, item.ParseItem.init(1, 0), .{ .terminal = 0 }) != null);
+    try std.testing.expect(findParseItem(items, item.ParseItem.init(2, 0), .{ .terminal = 0 }) != null);
+    try std.testing.expect(findParseItem(items, item.ParseItem.init(3, 0), .{ .terminal = 0 }) != null);
+    try std.testing.expect(findParseItem(items, item.ParseItem.init(4, 0), .{ .terminal = 2 }) != null);
 }
 
-fn findParseItem(items: []const item.ParseItem, needle: item.ParseItem) ?usize {
+fn findParseItem(items: []const item.ParseItemSetEntry, needle: item.ParseItem, lookahead: syntax_ir.SymbolRef) ?usize {
     for (items, 0..) |candidate, index| {
-        if (item.ParseItem.eql(candidate, needle)) return index;
+        if (item.ParseItem.eql(candidate.item, needle) and item.containsLookahead(candidate.lookaheads, lookahead)) return index;
     }
     return null;
 }
@@ -1110,12 +1223,17 @@ fn constructStates(
     options: BuildOptions,
 ) BuildError!ConstructedStates {
     const progress_log = shouldLogBuildProgress();
+    std.debug.print("[parse_table/build] constructStates enter\n", .{});
     var states = std.array_list.Managed(state.ParseState).init(allocator);
     defer states.deinit();
+    var state_ids_by_item_set = StateIdByItemSet.init(allocator);
+    defer state_ids_by_item_set.deinit();
     var action_states = std.array_list.Managed(actions.StateActions).init(allocator);
     defer action_states.deinit();
     var closure_result_cache = std.array_list.Managed(ClosureResultCacheEntry).init(allocator);
     defer closure_result_cache.deinit();
+    var closed_items_by_seed = ClosedItemsBySeed.init(allocator);
+    defer closed_items_by_seed.deinit();
     var closure_cache_hits: usize = 0;
     var closure_cache_misses: usize = 0;
     var closure_cache_core_match_misses: usize = 0;
@@ -1124,7 +1242,11 @@ fn constructStates(
 
     var start_timer = maybeStartTimer(progress_log);
     if (progress_log) logBuildStart("construct_states.initial_closure");
-    const start_items = try closure(allocator, variables, productions, first_sets, item_set_builder, &[_]item.ParseItem{item.ParseItem.init(0, 0)}, options);
+    const start_seed = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, first_sets.terminals_len, first_sets.externals_len, item.ParseItem.init(0, 0)),
+    };
+    const start_items = try closure(allocator, variables, productions, first_sets, item_set_builder, start_seed[0..], options);
+    std.debug.print("[parse_table/build] constructStates initial_closure_done items={d}\n", .{start_items.len});
     if (progress_log) {
         maybeLogBuildDone("construct_states.initial_closure", if (start_timer) |*value| value else null);
         logBuildSummary("construct_states initial_closure items={d}", .{start_items.len});
@@ -1135,10 +1257,22 @@ fn constructStates(
         .transitions = &.{},
         .conflicts = &.{},
     });
+    try state_ids_by_item_set.put(start_items, 0);
 
     var next_state_index: usize = 0;
     var next_progress_report: usize = 10;
     while (next_state_index < states.items.len) : (next_state_index += 1) {
+        if (next_state_index < 5 or (next_state_index + 1) % 100 == 0) {
+            std.debug.print(
+                "[parse_table/build] constructStates state_begin index={d} state_id={d} items={d} discovered={d}\n",
+                .{
+                    next_state_index,
+                    states.items[next_state_index].id,
+                    states.items[next_state_index].items.len,
+                    states.items.len,
+                },
+            );
+        }
         if (progress_log and (next_state_index < 5 or next_state_index + 1 == next_progress_report)) {
             logBuildSummary(
                 "construct_states entering state_index={d} state_id={d} items={d} discovered={d}",
@@ -1158,7 +1292,9 @@ fn constructStates(
             first_sets,
             item_set_builder,
             &states,
+            &state_ids_by_item_set,
             &closure_result_cache,
+            &closed_items_by_seed,
             &closure_cache_hits,
             &closure_cache_misses,
             &closure_cache_core_match_misses,
@@ -1169,6 +1305,12 @@ fn constructStates(
             &transition_stats,
             options,
         );
+        if (next_state_index < 5 or (next_state_index + 1) % 100 == 0) {
+            std.debug.print(
+                "[parse_table/build] constructStates state_after_transitions index={d} transitions={d} discovered={d}\n",
+                .{ next_state_index, transitions.len, states.items.len },
+            );
+        }
         const mutable_states = states.items;
         mutable_states[next_state_index].transitions = transitions;
 
@@ -1183,6 +1325,12 @@ fn constructStates(
             .state_id = mutable_states[next_state_index].id,
             .entries = state_actions,
         });
+        if (next_state_index < 5 or (next_state_index + 1) % 100 == 0) {
+            std.debug.print(
+                "[parse_table/build] constructStates state_done index={d} conflicts={d} action_entries={d} discovered={d}\n",
+                .{ next_state_index, detected_conflicts.len, state_actions.len, states.items.len },
+            );
+        }
 
         if (progress_log and next_state_index + 1 >= next_progress_report) {
             logBuildSummary(
@@ -1214,6 +1362,7 @@ fn constructStates(
     }
 
     state.sortStates(states.items);
+    std.debug.print("[parse_table/build] constructStates complete states={d}\n", .{states.items.len});
     if (progress_log) {
         logBuildSummary(
             "construct_states closure_cache summary hits={d} misses={d} core_match_misses={d} entries={d}",
@@ -1241,11 +1390,13 @@ fn collectTransitionsForState(
     first_sets: first.FirstSets,
     item_set_builder: ParseItemSetBuilder,
     states: *std.array_list.Managed(state.ParseState),
+    state_ids_by_item_set: *StateIdByItemSet,
     closure_result_cache: *std.array_list.Managed(ClosureResultCacheEntry),
+    closed_items_by_seed: *ClosedItemsBySeed,
     closure_cache_hits: *usize,
     closure_cache_misses: *usize,
     closure_cache_core_match_misses: *usize,
-    state_items: []const item.ParseItem,
+    state_items: []const item.ParseItemSetEntry,
     source_state_id: state.StateId,
     largest_new_successor: *?SuccessorDiagnostic,
     largest_reused_successor: *?SuccessorDiagnostic,
@@ -1254,12 +1405,50 @@ fn collectTransitionsForState(
 ) BuildError![]const state.Transition {
     var transitions = std.array_list.Managed(state.Transition).init(allocator);
     defer transitions.deinit();
+    var successor_group_indexes = SymbolIndexMap.init(allocator);
+    defer successor_group_indexes.deinit();
+    var successor_groups = std.array_list.Managed(SuccessorGroup).init(allocator);
+    defer {
+        for (successor_groups.items) |*group| group.deinit();
+        successor_groups.deinit();
+    }
 
-    for (state_items) |parse_item| {
+    for (state_items) |entry| {
+        const parse_item = entry.item;
         const production = productions[parse_item.production_id];
         if (parse_item.step_index >= production.steps.len) continue;
         const symbol = production.steps[parse_item.step_index].symbol;
-        if (containsTransition(transitions.items, symbol)) continue;
+        const group_index = blk: {
+            const result = try successor_group_indexes.getOrPut(symbol);
+            if (result.found_existing) break :blk result.value_ptr.*;
+            const new_index = successor_groups.items.len;
+            try successor_groups.append(SuccessorGroup.init(allocator, symbol));
+            result.value_ptr.* = @intCast(new_index);
+            break :blk new_index;
+        };
+
+        const successor_entry = item.ParseItemSetEntry{
+            .item = .{
+                .production_id = parse_item.production_id,
+                .step_index = parse_item.step_index + 1,
+            },
+            .lookaheads = try cloneSymbolSet(allocator, entry.lookaheads),
+        };
+
+        const group = &successor_groups.items[group_index];
+        const item_index = try group.item_indexes.getOrPut(successor_entry.item);
+        if (item_index.found_existing) {
+            _ = mergeSymbolSetLookaheads(&group.items.items[item_index.value_ptr.*].lookaheads, successor_entry.lookaheads);
+            freeSymbolSet(allocator, successor_entry.lookaheads);
+        } else {
+            item_index.value_ptr.* = group.items.items.len;
+            try group.items.append(successor_entry);
+        }
+    }
+
+    for (successor_groups.items) |*group| {
+        const symbol = group.symbol;
+        state.sortItems(group.items.items);
 
         const advanced_items = blk: {
             const prior_transition_context = current_transition_context;
@@ -1287,16 +1476,16 @@ fn collectTransitionsForState(
                 first_sets,
                 item_set_builder,
                 closure_result_cache,
+                closed_items_by_seed,
                 closure_cache_hits,
                 closure_cache_misses,
                 closure_cache_core_match_misses,
-                state_items,
-                symbol,
+                group.items.items,
                 transition_options,
             );
         };
         stats.transition_count += 1;
-        if (findState(states.items, advanced_items)) |existing| {
+        if (state_ids_by_item_set.get(advanced_items)) |existing_id| {
             stats.reused_state_count += 1;
             if (advanced_items.len > stats.largest_reused_state_items) {
                 stats.largest_reused_state_items = advanced_items.len;
@@ -1313,7 +1502,7 @@ fn collectTransitionsForState(
                     logSuccessorDiagnostic("construct_states update largest_reused_successor", variables, largest_reused_successor.*.?);
                 }
             }
-            try transitions.append(.{ .symbol = symbol, .state = existing.id });
+            try transitions.append(.{ .symbol = symbol, .state = existing_id });
             continue;
         }
 
@@ -1340,6 +1529,7 @@ fn collectTransitionsForState(
             .transitions = &.{},
             .conflicts = &.{},
         });
+        try state_ids_by_item_set.put(advanced_items, new_id);
         try transitions.append(.{ .symbol = symbol, .state = new_id });
     }
 
@@ -1348,6 +1538,7 @@ fn collectTransitionsForState(
 }
 
 test "buildStates records LR(0)-style conflicts for an ambiguous expression grammar" {
+    testLog("buildStates records LR(0)-style conflicts for an ambiguous expression grammar");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -1408,15 +1599,15 @@ fn closure(
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
     item_set_builder: ParseItemSetBuilder,
-    seed_items: []const item.ParseItem,
+    seed_items: []const item.ParseItemSetEntry,
     options: BuildOptions,
-) BuildError![]const item.ParseItem {
+) BuildError![]const item.ParseItemSetEntry {
     const progress_log = shouldLogBuildProgress();
     const context_log = shouldLogBuildContexts();
     const variable_count = variableCountFromProductions(productions);
     var effective_closure_lookahead_mode = options.closure_lookahead_mode;
     var pressure_triggered = false;
-    var items = std.array_list.Managed(item.ParseItem).init(allocator);
+    var items = std.array_list.Managed(item.ParseItemSetEntry).init(allocator);
     defer items.deinit();
     var expansion_cache = std.array_list.Managed(ClosureExpansionCacheEntry).init(allocator);
     defer expansion_cache.deinit();
@@ -1487,7 +1678,9 @@ fn closure(
                     .{ round, cursor + 1, items.items.len },
                 );
             }
-            const parse_item = items.items[cursor];
+            const parse_entry = items.items[cursor];
+            const parse_item = parse_entry.item;
+            const inherited_lookahead = singleLookahead(parse_entry.lookaheads);
             const production = productions[parse_item.production_id];
             if (parse_item.step_index >= production.steps.len) continue;
             switch (production.steps[parse_item.step_index].symbol) {
@@ -1502,7 +1695,7 @@ fn closure(
                         non_terminal,
                         effective_closure_lookahead_mode,
                         suffix_first,
-                        parse_item.lookahead,
+                        inherited_lookahead,
                     )) |cached| blk: {
                         if (progress_log and non_terminal < cache_hits.len) {
                             cache_hits[non_terminal] += 1;
@@ -1515,8 +1708,9 @@ fn closure(
                         const generated = try buildClosureExpansionItemsAlloc(
                             allocator,
                             item_set_builder,
+                            first_sets,
                             non_terminal,
-                            parse_item.lookahead,
+                            inherited_lookahead,
                             .{
                                 .closure_lookahead_mode = effective_closure_lookahead_mode,
                             },
@@ -1525,7 +1719,7 @@ fn closure(
                             .non_terminal = non_terminal,
                             .closure_lookahead_mode = effective_closure_lookahead_mode,
                             .propagated_first = try cloneSymbolSet(allocator, suffix_first),
-                            .inherited_lookahead = parse_item.lookahead,
+                            .inherited_lookahead = inherited_lookahead,
                             .generated_items = generated,
                         });
                         if (progress_log and non_terminal < unique_lookaheads.len) {
@@ -1539,7 +1733,7 @@ fn closure(
                             );
                             if (context_log and (cache_misses[non_terminal] <= 3 or cache_misses[non_terminal] % 25 == 0)) {
                                 var lookahead_buf: [64]u8 = undefined;
-                                const lookahead_text = optionalSymbolRefText(&lookahead_buf, parse_item.lookahead);
+                                const lookahead_text = optionalSymbolRefText(&lookahead_buf, inherited_lookahead);
                                 std.debug.print(
                                     "[parse_table_build] closure context non_terminal={d} name={s} contexts={d} unique_lookaheads={d} unique_first_sets={d} lookahead={s} first(terminals={d}, externals={d}, epsilon={})\n",
                                     .{
@@ -1677,58 +1871,43 @@ fn gotoItems(
     first_sets: first.FirstSets,
     item_set_builder: ParseItemSetBuilder,
     closure_result_cache: *std.array_list.Managed(ClosureResultCacheEntry),
+    closed_items_by_seed: *ClosedItemsBySeed,
     closure_cache_hits: *usize,
     closure_cache_misses: *usize,
     closure_cache_core_match_misses: *usize,
-    state_items: []const item.ParseItem,
-    symbol: syntax_ir.SymbolRef,
+    seed_items: []const item.ParseItemSetEntry,
     options: BuildOptions,
-) BuildError![]const item.ParseItem {
-    var advanced = std.array_list.Managed(item.ParseItem).init(allocator);
-    defer advanced.deinit();
-
-    for (state_items) |parse_item| {
-        const production = productions[parse_item.production_id];
-        if (parse_item.step_index >= production.steps.len) continue;
-        if (!symbolRefEql(production.steps[parse_item.step_index].symbol, symbol)) continue;
-        try advanced.append(.{
-            .production_id = parse_item.production_id,
-            .step_index = parse_item.step_index + 1,
-            .lookahead = parse_item.lookahead,
-        });
-    }
-
-    state.sortItems(advanced.items);
-
-    if (findClosureResultCache(closure_result_cache.items, advanced.items)) |cached| {
+) BuildError![]const item.ParseItemSetEntry {
+    if (closed_items_by_seed.get(seed_items)) |cached| {
         closure_cache_hits.* += 1;
         return cached;
     }
 
     closure_cache_misses.* += 1;
-    if (countDistinctSeedCores(closure_result_cache.items, advanced.items) > 0) {
+    if (countDistinctSeedCores(closure_result_cache.items, seed_items) > 0) {
         closure_cache_core_match_misses.* += 1;
-        if (shouldLogBuildProgress() and advanced.items.len >= 12) {
+        if (shouldLogBuildProgress() and seed_items.len >= 12) {
             logBuildSummary(
                 "closure_result_cache core_miss seed_items={d} cache_entries={d} core_match_misses={d}",
-                .{ advanced.items.len, closure_result_cache.items.len, closure_cache_core_match_misses.* },
+                .{ seed_items.len, closure_result_cache.items.len, closure_cache_core_match_misses.* },
             );
         }
     }
 
-    const seed_copy = try allocator.dupe(item.ParseItem, advanced.items);
-    const closed_items = try closure(allocator, variables, productions, first_sets, item_set_builder, advanced.items, options);
+    const seed_copy = try allocator.dupe(item.ParseItemSetEntry, seed_items);
+    const closed_items = try closure(allocator, variables, productions, first_sets, item_set_builder, seed_items, options);
     try closure_result_cache.append(.{
         .seed_items = seed_copy,
         .closed_items = closed_items,
     });
+    try closed_items_by_seed.put(seed_copy, closed_items);
     return closed_items;
 }
 
 fn appendGeneratedItemsToClosure(
-    items: *std.array_list.Managed(item.ParseItem),
+    items: *std.array_list.Managed(item.ParseItemSetEntry),
     item_set: *ParseItemSet,
-    generated_items: []const item.ParseItem,
+    generated_items: []const item.ParseItemSetEntry,
 ) BuildError!AppendStats {
     var stats = AppendStats{
         .changed = false,
@@ -1760,17 +1939,17 @@ fn containsTransition(transitions: []const state.Transition, symbol: syntax_ir.S
     return false;
 }
 
-fn findState(states: []const state.ParseState, candidate_items: []const item.ParseItem) ?state.ParseState {
+fn findState(states: []const state.ParseState, candidate_items: []const item.ParseItemSetEntry) ?state.ParseState {
     for (states) |parse_state| {
         if (itemsEql(parse_state.items, candidate_items)) return parse_state;
     }
     return null;
 }
 
-fn itemsEql(left: []const item.ParseItem, right: []const item.ParseItem) bool {
+fn itemsEql(left: []const item.ParseItemSetEntry, right: []const item.ParseItemSetEntry) bool {
     if (left.len != right.len) return false;
     for (left, right) |a, b| {
-        if (!item.ParseItem.eql(a, b)) return false;
+        if (!item.ParseItemSetEntry.eql(a, b)) return false;
     }
     return true;
 }
@@ -1793,6 +1972,7 @@ fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
 }
 
 test "buildStates constructs deterministic LR(0)-style states for a tiny grammar" {
+    testLog("buildStates constructs deterministic LR(0)-style states for a tiny grammar");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -1826,6 +2006,7 @@ test "buildStates constructs deterministic LR(0)-style states for a tiny grammar
 }
 
 test "buildStates propagates terminal lookaheads through nullable suffix closure" {
+    testLog("buildStates propagates terminal lookaheads through nullable suffix closure");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -1860,10 +2041,10 @@ test "buildStates propagates terminal lookaheads through nullable suffix closure
     var saw_start_with_terminal_lookahead = false;
     var saw_expr_with_terminal_lookahead = false;
     for (result.states[0].items) |parse_item| {
-        if (parse_item.production_id == 2 and hasTerminalLookahead(parse_item, 1)) {
+        if (parse_item.item.production_id == 2 and hasTerminalLookahead(parse_item, 1)) {
             saw_start_with_terminal_lookahead = true;
         }
-        if (parse_item.production_id == 3 and hasTerminalLookahead(parse_item, 1)) {
+        if (parse_item.item.production_id == 3 and hasTerminalLookahead(parse_item, 1)) {
             saw_expr_with_terminal_lookahead = true;
         }
     }
@@ -1872,17 +2053,12 @@ test "buildStates propagates terminal lookaheads through nullable suffix closure
     try std.testing.expect(saw_expr_with_terminal_lookahead);
 }
 
-fn hasTerminalLookahead(parse_item: item.ParseItem, terminal_index: u32) bool {
-    if (parse_item.lookahead) |lookahead| {
-        return switch (lookahead) {
-            .terminal => |index| index == terminal_index,
-            else => false,
-        };
-    }
-    return false;
+fn hasTerminalLookahead(parse_item: item.ParseItemSetEntry, terminal_index: u32) bool {
+    return item.containsLookahead(parse_item.lookaheads, .{ .terminal = terminal_index });
 }
 
 test "buildStates allows inert step metadata in the current supported subset" {
+    testLog("buildStates allows inert step metadata in the current supported subset");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -1917,6 +2093,7 @@ test "buildStates allows inert step metadata in the current supported subset" {
 }
 
 test "buildStates accepts dynamic precedence metadata in the current supported subset" {
+    testLog("buildStates accepts dynamic precedence metadata in the current supported subset");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 

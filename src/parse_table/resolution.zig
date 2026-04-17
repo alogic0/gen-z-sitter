@@ -4,6 +4,10 @@ const item = @import("item.zig");
 const state = @import("state.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
+fn testLog(name: []const u8) void {
+    std.debug.print("[parse_table/resolution] {s}\n", .{name});
+}
+
 pub const UnresolvedReason = enum {
     multiple_candidates,
     shift_reduce,
@@ -463,7 +467,8 @@ fn extractShiftResolutionMetadata(
     var metadata = ProductionResolutionMetadata{};
     var saw_match = false;
 
-    for (parse_state.items) |parse_item| {
+    for (parse_state.items) |entry| {
+        const parse_item = entry.item;
         if (parse_item.production_id >= productions.len) continue;
         const production = productions[parse_item.production_id];
         if (parse_item.step_index >= production.steps.len) continue;
@@ -1397,6 +1402,7 @@ test "resolveActionTable lets positive dynamic precedence outrank named preceden
 }
 
 test "resolveActionTable uses shift-side integer precedence from the current state when available" {
+    testLog("resolveActionTable uses shift-side integer precedence from the current state when available");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -1427,18 +1433,11 @@ test "resolveActionTable uses shift-side integer precedence from the current sta
         .{ .lhs = 1, .steps = shift_steps[0..] },
     };
 
-    const parse_items = [_]item.ParseItem{
-        .{
-            .production_id = 1,
-            .step_index = 1,
-            .lookahead = .{ .terminal = 0 },
-        },
-        .{
-            .production_id = 2,
-            .step_index = 1,
-            .lookahead = null,
-        },
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 1, .step_index = 1 }, .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, .{ .production_id = 2, .step_index = 1 }),
     };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const parse_states = [_]state.ParseState{
         .{
             .id = 6,
@@ -1478,6 +1477,7 @@ test "resolveActionTable uses shift-side integer precedence from the current sta
 }
 
 test "resolveActionTable uses shift-side named precedence from the current state when available" {
+    testLog("resolveActionTable uses shift-side named precedence from the current state when available");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -1508,18 +1508,11 @@ test "resolveActionTable uses shift-side named precedence from the current state
         .{ .lhs = 1, .steps = shift_steps[0..] },
     };
 
-    const parse_items = [_]item.ParseItem{
-        .{
-            .production_id = 1,
-            .step_index = 1,
-            .lookahead = .{ .terminal = 0 },
-        },
-        .{
-            .production_id = 2,
-            .step_index = 1,
-            .lookahead = null,
-        },
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 1, .step_index = 1 }, .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, .{ .production_id = 2, .step_index = 1 }),
     };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const parse_states = [_]state.ParseState{
         .{
             .id = 6,
@@ -1572,6 +1565,7 @@ test "resolveActionTable uses shift-side named precedence from the current state
 }
 
 test "resolveActionTable uses production-level shift precedence from the current state when the conflicted step itself has none" {
+    testLog("resolveActionTable uses production-level shift precedence from the current state when the conflicted step itself has none");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -1602,18 +1596,11 @@ test "resolveActionTable uses production-level shift precedence from the current
         .{ .lhs = 1, .steps = shift_steps[0..] },
     };
 
-    const parse_items = [_]item.ParseItem{
-        .{
-            .production_id = 1,
-            .step_index = 1,
-            .lookahead = .{ .terminal = 0 },
-        },
-        .{
-            .production_id = 2,
-            .step_index = 1,
-            .lookahead = null,
-        },
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 1, .step_index = 1 }, .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, .{ .production_id = 2, .step_index = 1 }),
     };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const parse_states = [_]state.ParseState{
         .{
             .id = 6,
@@ -1653,6 +1640,7 @@ test "resolveActionTable uses production-level shift precedence from the current
 }
 
 test "resolveActionTable prefers shift over reducing repeat auxiliaries" {
+    testLog("resolveActionTable prefers shift over reducing repeat auxiliaries");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -1676,18 +1664,11 @@ test "resolveActionTable prefers shift over reducing repeat auxiliaries" {
         .{ .lhs = 2, .steps = shift_steps[0..] },
     };
 
-    const parse_items = [_]item.ParseItem{
-        .{
-            .production_id = 1,
-            .step_index = 1,
-            .lookahead = .{ .terminal = 0 },
-        },
-        .{
-            .production_id = 2,
-            .step_index = 0,
-            .lookahead = null,
-        },
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 1, .step_index = 1 }, .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, .{ .production_id = 2, .step_index = 0 }),
     };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const parse_states = [_]state.ParseState{
         .{
             .id = 6,

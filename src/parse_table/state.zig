@@ -22,7 +22,7 @@ pub const Conflict = struct {
 
 pub const ParseState = struct {
     id: StateId,
-    items: []const item.ParseItem,
+    items: []const item.ParseItemSetEntry,
     transitions: []const Transition,
     conflicts: []const Conflict = &.{},
 
@@ -31,8 +31,8 @@ pub const ParseState = struct {
     }
 };
 
-pub fn sortItems(items: []item.ParseItem) void {
-    std.mem.sort(item.ParseItem, items, {}, item.ParseItem.lessThan);
+pub fn sortItems(items: []item.ParseItemSetEntry) void {
+    std.mem.sort(item.ParseItemSetEntry, items, {}, item.ParseItemSetEntry.lessThan);
 }
 
 pub fn sortTransitions(transitions: []Transition) void {
@@ -67,15 +67,16 @@ fn symbolLessThan(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
 }
 
 test "state helpers sort items and transitions deterministically" {
-    var items = [_]item.ParseItem{
-        item.ParseItem.withLookahead(1, 1, .{ .external = 5 }),
-        item.ParseItem.init(0, 2),
-        item.ParseItem.init(0, 1),
+    var items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(std.testing.allocator, 1, 6, item.ParseItem.init(1, 1), .{ .external = 5 }),
+        try item.ParseItemSetEntry.initEmpty(std.testing.allocator, 1, 6, item.ParseItem.init(0, 2)),
+        try item.ParseItemSetEntry.initEmpty(std.testing.allocator, 1, 6, item.ParseItem.init(0, 1)),
     };
+    defer for (items) |entry| item.freeSymbolSet(std.testing.allocator, entry.lookaheads);
     sortItems(items[0..]);
-    try std.testing.expectEqual(@as(item.ProductionId, 0), items[0].production_id);
-    try std.testing.expectEqual(@as(u16, 1), items[0].step_index);
-    try std.testing.expectEqual(@as(u16, 2), items[1].step_index);
+    try std.testing.expectEqual(@as(item.ProductionId, 0), items[0].item.production_id);
+    try std.testing.expectEqual(@as(u16, 1), items[0].item.step_index);
+    try std.testing.expectEqual(@as(u16, 2), items[1].item.step_index);
 
     var transitions = [_]Transition{
         .{ .symbol = .{ .external = 7 }, .state = 3 },

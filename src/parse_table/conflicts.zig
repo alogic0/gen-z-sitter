@@ -4,19 +4,24 @@ const syntax_ir = @import("../ir/syntax_grammar.zig");
 const item = @import("item.zig");
 const state = @import("state.zig");
 
+fn testLog(name: []const u8) void {
+    std.debug.print("[parse_table/conflicts] {s}\n", .{name});
+}
+
 pub fn detectConflicts(
     allocator: std.mem.Allocator,
     productions: anytype,
-    state_items: []const item.ParseItem,
+    state_items: []const item.ParseItemSetEntry,
     transitions: []const state.Transition,
 ) std.mem.Allocator.Error![]const state.Conflict {
-    var completed_items = std.array_list.Managed(item.ParseItem).init(allocator);
+    var completed_items = std.array_list.Managed(item.ParseItemSetEntry).init(allocator);
     defer completed_items.deinit();
 
-    for (state_items) |parse_item| {
+    for (state_items) |entry| {
+        const parse_item = entry.item;
         const production = productions[parse_item.production_id];
         if (parse_item.step_index == production.steps.len) {
-            try completed_items.append(parse_item);
+            try completed_items.append(entry);
         }
     }
 
@@ -42,7 +47,8 @@ pub fn detectConflicts(
         defer conflict_items.deinit();
         try appendApplicableCompletedItems(&conflict_items, completed_items.items, transition.symbol);
 
-        for (state_items) |parse_item| {
+        for (state_items) |entry| {
+            const parse_item = entry.item;
             const production = productions[parse_item.production_id];
             if (parse_item.step_index >= production.steps.len) continue;
             if (!symbolRefEql(production.steps[parse_item.step_index].symbol, transition.symbol)) continue;
@@ -96,15 +102,15 @@ pub fn detectConflictsFromActions(
 
 fn collectReduceReduceItems(
     allocator: std.mem.Allocator,
-    completed_items: []const item.ParseItem,
+    completed_items: []const item.ParseItemSetEntry,
     lookahead: ?syntax_ir.SymbolRef,
 ) std.mem.Allocator.Error!?[]const item.ParseItem {
     var grouped = std.array_list.Managed(item.ParseItem).init(allocator);
     defer grouped.deinit();
 
-    for (completed_items) |parse_item| {
-        if (!itemAppliesToLookahead(parse_item, lookahead)) continue;
-        try appendUniqueCoreItem(&grouped, parse_item);
+    for (completed_items) |entry| {
+        if (!itemAppliesToLookahead(entry, lookahead)) continue;
+        try appendUniqueCoreItem(&grouped, entry.item);
     }
 
     if (grouped.items.len < 2) return null;
@@ -113,12 +119,12 @@ fn collectReduceReduceItems(
 
 fn appendApplicableCompletedItems(
     result: *std.array_list.Managed(item.ParseItem),
-    completed_items: []const item.ParseItem,
+    completed_items: []const item.ParseItemSetEntry,
     lookahead: syntax_ir.SymbolRef,
 ) std.mem.Allocator.Error!void {
-    for (completed_items) |parse_item| {
-        if (!itemAppliesToLookahead(parse_item, lookahead)) continue;
-        try appendUniqueCoreItem(result, parse_item);
+    for (completed_items) |entry| {
+        if (!itemAppliesToLookahead(entry, lookahead)) continue;
+        try appendUniqueCoreItem(result, entry.item);
     }
 }
 
@@ -134,27 +140,21 @@ fn appendUniqueCoreItem(
     try result.append(candidate);
 }
 
-fn itemAppliesToLookahead(parse_item: item.ParseItem, lookahead: ?syntax_ir.SymbolRef) bool {
-    if (parse_item.lookahead) |item_lookahead| {
-        if (lookahead) |candidate| {
-            return symbolRefEql(item_lookahead, candidate);
-        }
-        return false;
-    }
-    return true;
+fn itemAppliesToLookahead(entry: item.ParseItemSetEntry, lookahead: ?syntax_ir.SymbolRef) bool {
+    return entry.appliesToLookahead(lookahead);
 }
 
 fn collectConflictItemsForSymbol(
     allocator: std.mem.Allocator,
-    state_items: []const item.ParseItem,
+    state_items: []const item.ParseItemSetEntry,
     symbol: syntax_ir.SymbolRef,
 ) std.mem.Allocator.Error![]const item.ParseItem {
     var grouped = std.array_list.Managed(item.ParseItem).init(allocator);
     defer grouped.deinit();
 
-    for (state_items) |parse_item| {
-        if (!itemAppliesToLookahead(parse_item, symbol)) continue;
-        try appendUniqueCoreItem(&grouped, parse_item);
+    for (state_items) |entry| {
+        if (!itemAppliesToLookahead(entry, symbol)) continue;
+        try appendUniqueCoreItem(&grouped, entry.item);
     }
 
     return try allocator.dupe(item.ParseItem, grouped.items);
@@ -194,6 +194,7 @@ fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
 }
 
 test "detectConflicts reports shift/reduce and reduce/reduce conflicts deterministically" {
+    testLog("detectConflicts reports shift/reduce and reduce/reduce conflicts deterministically");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -222,11 +223,12 @@ test "detectConflicts reports shift/reduce and reduce/reduce conflicts determini
             },
         },
     };
-    const state_items = [_]item.ParseItem{
-        item.ParseItem.init(0, 1),
-        item.ParseItem.init(1, 1),
-        item.ParseItem.init(2, 0),
+    var state_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 2, 0, item.ParseItem.init(0, 1)),
+        try item.ParseItemSetEntry.initEmpty(allocator, 2, 0, item.ParseItem.init(1, 1)),
+        try item.ParseItemSetEntry.initEmpty(allocator, 2, 0, item.ParseItem.init(2, 0)),
     };
+    defer for (state_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const transitions = [_]state.Transition{
         .{ .symbol = .{ .terminal = 0 }, .state = 1 },
     };
@@ -246,6 +248,7 @@ test "detectConflicts reports shift/reduce and reduce/reduce conflicts determini
 }
 
 test "detectConflicts does not report duplicate reductions for the same production core" {
+    testLog("detectConflicts does not report duplicate reductions for the same production core");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -262,10 +265,11 @@ test "detectConflicts does not report duplicate reductions for the same producti
             },
         },
     };
-    const state_items = [_]item.ParseItem{
-        item.ParseItem.init(0, 1),
-        item.ParseItem.withLookahead(0, 1, .{ .terminal = 0 }),
+    var state_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, item.ParseItem.init(0, 1)),
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, item.ParseItem.init(0, 1), .{ .terminal = 0 }),
     };
+    defer for (state_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
 
     const conflicts = try detectConflicts(allocator, productions[0..], state_items[0..], &.{});
     defer allocator.free(conflicts);
@@ -274,14 +278,18 @@ test "detectConflicts does not report duplicate reductions for the same producti
 }
 
 test "detectConflictsFromActions derives shift-reduce conflicts from competing actions" {
+    testLog("detectConflictsFromActions derives shift-reduce conflicts from competing actions");
     const allocator = std.testing.allocator;
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, item.ParseItem.init(1, 1)),
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, item.ParseItem.init(2, 1), .{ .terminal = 0 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
 
     const parse_state = state.ParseState{
         .id = 2,
-        .items = &[_]item.ParseItem{
-            item.ParseItem.init(1, 1),
-            item.ParseItem.withLookahead(2, 1, .{ .terminal = 0 }),
-        },
+        .items = parse_items[0..],
         .transitions = &.{},
     };
     const state_actions = [_]actions.ActionEntry{
@@ -302,14 +310,18 @@ test "detectConflictsFromActions derives shift-reduce conflicts from competing a
 }
 
 test "detectConflictsFromActions derives reduce-reduce conflicts from competing reduces" {
+    testLog("detectConflictsFromActions derives reduce-reduce conflicts from competing reduces");
     const allocator = std.testing.allocator;
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 2, 0, item.ParseItem.init(2, 1), .{ .terminal = 1 }),
+        try item.ParseItemSetEntry.withLookahead(allocator, 2, 0, item.ParseItem.init(3, 1), .{ .terminal = 1 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
 
     const parse_state = state.ParseState{
         .id = 5,
-        .items = &[_]item.ParseItem{
-            item.ParseItem.withLookahead(2, 1, .{ .terminal = 1 }),
-            item.ParseItem.withLookahead(3, 1, .{ .terminal = 1 }),
-        },
+        .items = parse_items[0..],
         .transitions = &.{},
     };
     const state_actions = [_]actions.ActionEntry{

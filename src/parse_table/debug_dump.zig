@@ -5,6 +5,10 @@ const resolution = @import("resolution.zig");
 const serialize = @import("serialize.zig");
 const state = @import("state.zig");
 
+fn testLog(name: []const u8) void {
+    std.debug.print("[parse_table/debug_dump] {s}\n", .{name});
+}
+
 pub const DebugDumpError = std.mem.Allocator.Error || std.fs.File.WriteError;
 
 pub fn dumpStatesAlloc(
@@ -322,18 +326,21 @@ fn writeSymbol(writer: anytype, symbol: @import("../ir/syntax_grammar.zig").Symb
 }
 
 test "dumpStatesAlloc formats parser states deterministically" {
+    testLog("dumpStatesAlloc formats parser states deterministically");
     const allocator = std.testing.allocator;
     const conflict_items = [_]item.ParseItem{
         item.ParseItem.init(0, 1),
-        item.ParseItem.withLookahead(2, 0, .{ .external = 5 }),
+        item.ParseItem.init(2, 0),
     };
+    var state_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 0, 0, item.ParseItem.init(0, 0)),
+        try item.ParseItemSetEntry.initEmpty(allocator, 0, 0, item.ParseItem.init(1, 2)),
+    };
+    defer for (state_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const states = [_]state.ParseState{
         .{
             .id = 0,
-            .items = &[_]item.ParseItem{
-                item.ParseItem.init(0, 0),
-                item.ParseItem.withLookahead(1, 2, .{ .non_terminal = 4 }),
-            },
+            .items = state_items[0..],
             .transitions = &[_]state.Transition{
                 .{ .symbol = .{ .non_terminal = 3 }, .state = 1 },
             },
@@ -354,25 +361,28 @@ test "dumpStatesAlloc formats parser states deterministically" {
         \\state 0
         \\  items:
         \\    #0@0
-        \\    #1@2 ?non_terminal:4
+        \\    #1@2
         \\  transitions:
         \\    non_terminal:3 -> 1
         \\  conflicts:
         \\    shift_reduce on external:7
         \\      #0@1
-        \\      #2@0 ?external:5
+        \\      #2@0
         \\
     , dump);
 }
 
 test "dumpStatesWithActionsAlloc formats parser actions deterministically" {
+    testLog("dumpStatesWithActionsAlloc formats parser actions deterministically");
     const allocator = std.testing.allocator;
+    var state_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 0, 0, item.ParseItem.init(0, 0)),
+    };
+    defer for (state_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const states = [_]state.ParseState{
         .{
             .id = 0,
-            .items = &[_]item.ParseItem{
-                item.ParseItem.init(0, 0),
-            },
+            .items = state_items[0..],
             .transitions = &[_]state.Transition{
                 .{ .symbol = .{ .terminal = 0 }, .state = 2 },
             },
@@ -407,11 +417,12 @@ test "dumpStatesWithActionsAlloc formats parser actions deterministically" {
 }
 
 test "dumpActionTableAlloc formats action tables deterministically" {
+    testLog("dumpActionTableAlloc formats action tables deterministically");
     const allocator = std.testing.allocator;
     const states = [_]state.ParseState{
         .{
             .id = 0,
-            .items = &[_]item.ParseItem{},
+            .items = &[_]item.ParseItemSetEntry{},
             .transitions = &[_]state.Transition{},
             .conflicts = &[_]state.Conflict{
                 .{
@@ -419,7 +430,7 @@ test "dumpActionTableAlloc formats action tables deterministically" {
                     .symbol = .{ .terminal = 0 },
                     .items = &[_]item.ParseItem{
                         item.ParseItem.init(1, 1),
-                        item.ParseItem.withLookahead(2, 1, .{ .terminal = 0 }),
+                        item.ParseItem.init(2, 1),
                     },
                 },
             },
@@ -448,17 +459,18 @@ test "dumpActionTableAlloc formats action tables deterministically" {
         \\  conflicts:
         \\    shift_reduce on terminal:0
         \\      #1@1
-        \\      #2@1 ?terminal:0
+        \\      #2@1
         \\
     , dump);
 }
 
 test "dumpGroupedActionTableAlloc groups actions by symbol deterministically" {
+    testLog("dumpGroupedActionTableAlloc groups actions by symbol deterministically");
     const allocator = std.testing.allocator;
     const states = [_]state.ParseState{
         .{
             .id = 0,
-            .items = &[_]item.ParseItem{},
+            .items = &[_]item.ParseItemSetEntry{},
             .transitions = &[_]state.Transition{},
             .conflicts = &[_]state.Conflict{
                 .{
@@ -466,7 +478,7 @@ test "dumpGroupedActionTableAlloc groups actions by symbol deterministically" {
                     .symbol = .{ .terminal = 0 },
                     .items = &[_]item.ParseItem{
                         item.ParseItem.init(1, 1),
-                        item.ParseItem.withLookahead(2, 1, .{ .terminal = 0 }),
+                        item.ParseItem.init(2, 1),
                     },
                 },
             },

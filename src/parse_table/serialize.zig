@@ -51,18 +51,24 @@ pub fn serializeBuildResult(
     result: build.BuildResult,
     mode: SerializeMode,
 ) SerializeError!SerializedTable {
+    std.debug.print("[parse_table/serialize] serializeBuildResult enter mode={s} states={d}\n", .{ @tagName(mode), result.states.len });
     if (mode == .strict and result.hasUnresolvedDecisions()) {
         return error.UnresolvedDecisions;
     }
 
+    std.debug.print("[parse_table/serialize] stage decision_snapshot\n", .{});
     const snapshot = try result.decisionSnapshotAlloc(allocator);
     defer {
         allocator.free(snapshot.chosen);
         allocator.free(snapshot.unresolved);
     }
+    std.debug.print("[parse_table/serialize] stage allocate_serialized_states len={d}\n", .{result.states.len});
     const serialized_states = try allocator.alloc(SerializedState, result.states.len);
 
     for (result.states, 0..) |parse_state, index| {
+        if (index < 5 or (index + 1) % 500 == 0) {
+            std.debug.print("[parse_table/serialize] state {d}/{d} id={d}\n", .{ index + 1, result.states.len, parse_state.id });
+        }
         serialized_states[index] = .{
             .id = parse_state.id,
             .actions = try collectActionsForState(allocator, snapshot.chosen, parse_state.id),
@@ -74,6 +80,7 @@ pub fn serializeBuildResult(
         };
     }
 
+    std.debug.print("[parse_table/serialize] serializeBuildResult done blocked={}\n", .{snapshot.unresolved.len > 0});
     return .{
         .states = serialized_states,
         .blocked = snapshot.unresolved.len > 0,

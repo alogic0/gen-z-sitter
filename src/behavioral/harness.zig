@@ -978,7 +978,8 @@ fn findGotoState(result: build.BuildResult, state_id: u32, lhs: u32) ?u32 {
 
 fn stateHasCompletedAugmentedProduction(result: build.BuildResult, state_id: u32) bool {
     const parse_state = findState(result.states, state_id) orelse return false;
-    for (parse_state.items) |parse_item| {
+    for (parse_state.items) |entry| {
+        const parse_item = entry.item;
         const production = result.productions[parse_item.production_id];
         if (production.augmented and parse_item.step_index == production.steps.len) return true;
     }

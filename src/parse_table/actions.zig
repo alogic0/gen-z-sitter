@@ -3,6 +3,10 @@ const item = @import("item.zig");
 const state = @import("state.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
+fn testLog(name: []const u8) void {
+    std.debug.print("[parse_table/actions] {s}\n", .{name});
+}
+
 pub const ActionKind = enum {
     shift,
     reduce,
@@ -95,20 +99,30 @@ pub fn buildActionsForState(
         }
     }
 
-    for (parse_state.items) |parse_item| {
+    for (parse_state.items) |entry| {
+        const parse_item = entry.item;
         const production = productions[parse_item.production_id];
         if (parse_item.step_index != production.steps.len) continue;
-        const lookahead = parse_item.lookahead orelse continue;
 
         const action: ParseAction = if (production.augmented)
             .{ .accept = {} }
         else
             .{ .reduce = parse_item.production_id };
 
-        try appendUniqueAction(&entries, .{
-            .symbol = lookahead,
-            .action = action,
-        });
+        for (entry.lookaheads.terminals, 0..) |present, index| {
+            if (!present) continue;
+            try appendUniqueAction(&entries, .{
+                .symbol = .{ .terminal = @intCast(index) },
+                .action = action,
+            });
+        }
+        for (entry.lookaheads.externals, 0..) |present, index| {
+            if (!present) continue;
+            try appendUniqueAction(&entries, .{
+                .symbol = .{ .external = @intCast(index) },
+                .action = action,
+            });
+        }
     }
 
     sortActionEntries(entries.items);
@@ -244,6 +258,7 @@ fn symbolLessThan(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
 }
 
 test "action helpers sort deterministically" {
+    testLog("action helpers sort deterministically");
     var entries = [_]ActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
@@ -258,6 +273,7 @@ test "action helpers sort deterministically" {
 }
 
 test "buildActionsForState derives shift reduce and accept actions" {
+    testLog("buildActionsForState derives shift reduce and accept actions");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -282,13 +298,16 @@ test "buildActionsForState derives shift reduce and accept actions" {
         },
     };
 
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 3, item.ParseItem.init(0, 1), .{ .external = 2 }),
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 3, item.ParseItem.init(1, 1), .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 3, item.ParseItem.init(1, 0), .{ .terminal = 0 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+
     const parse_state = state.ParseState{
         .id = 3,
-        .items = &[_]item.ParseItem{
-            item.ParseItem.withLookahead(0, 1, .{ .external = 2 }),
-            item.ParseItem.withLookahead(1, 1, .{ .terminal = 0 }),
-            item.ParseItem.withLookahead(1, 0, .{ .terminal = 0 }),
-        },
+        .items = parse_items[0..],
         .transitions = &[_]state.Transition{
             .{ .symbol = .{ .terminal = 0 }, .state = 7 },
             .{ .symbol = .{ .non_terminal = 0 }, .state = 8 },
@@ -307,6 +326,7 @@ test "buildActionsForState derives shift reduce and accept actions" {
 }
 
 test "buildActionTable keeps per-state actions addressable by state id" {
+    testLog("buildActionTable keeps per-state actions addressable by state id");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -331,19 +351,24 @@ test "buildActionTable keeps per-state actions addressable by state id" {
         },
     };
 
+    var state_two_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 2, item.ParseItem.init(1, 1), .{ .terminal = 0 }),
+    };
+    defer for (state_two_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+    var state_seven_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 2, item.ParseItem.init(0, 1), .{ .external = 1 }),
+    };
+    defer for (state_seven_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+
     const parse_states = [_]state.ParseState{
         .{
             .id = 2,
-            .items = &[_]item.ParseItem{
-                item.ParseItem.withLookahead(1, 1, .{ .terminal = 0 }),
-            },
+            .items = state_two_items[0..],
             .transitions = &[_]state.Transition{},
         },
         .{
             .id = 7,
-            .items = &[_]item.ParseItem{
-                item.ParseItem.withLookahead(0, 1, .{ .external = 1 }),
-            },
+            .items = state_seven_items[0..],
             .transitions = &[_]state.Transition{},
         },
     };
