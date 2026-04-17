@@ -7,6 +7,7 @@
     "scanner_wave_targets": 6,
     "scanner_wave_passed": 6,
     "deferred_parser_targets": 1,
+    "standalone_parser_proof_targets": 1,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
     "passed_within_current_boundary": 11,
@@ -143,6 +144,7 @@
       "boundary_kind": "parser_only",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -215,6 +217,7 @@
       "boundary_kind": "parser_only",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -287,6 +290,7 @@
       "boundary_kind": "parser_only",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -402,6 +406,7 @@
       "boundary_kind": "parser_only",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
         "upstream_repository": "tree-sitter-ziggy",
@@ -474,6 +479,7 @@
       "boundary_kind": "parser_only",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
         "upstream_repository": "tree-sitter-ziggy-schema",
@@ -546,6 +552,7 @@
       "boundary_kind": "parser_only",
       "parser_boundary_check_mode": "prepare_only",
       "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
         "upstream_repository": "tree-sitter-c",
@@ -607,6 +614,7 @@
       "boundary_kind": "scanner_external_scanner",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "sampled_external_sequence",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
         "upstream_repository": "tree-sitter-haskell",
@@ -668,6 +676,7 @@
       "boundary_kind": "scanner_external_scanner",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "sampled_expansion_path",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
         "upstream_repository": "tree-sitter-bash",
@@ -729,6 +738,7 @@
       "boundary_kind": "parser_only",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -829,6 +839,7 @@
       "boundary_kind": "scanner_external_scanner",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -890,6 +901,7 @@
       "boundary_kind": "scanner_external_scanner",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -951,6 +963,7 @@
       "boundary_kind": "scanner_external_scanner",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,
@@ -1012,6 +1025,7 @@
       "boundary_kind": "scanner_external_scanner",
       "parser_boundary_check_mode": "full_pipeline",
       "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "provenance": {
         "origin_kind": "staged_in_repo",
         "upstream_repository": null,

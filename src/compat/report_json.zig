@@ -10,6 +10,7 @@ pub const AggregateCounts = struct {
     scanner_wave_targets: usize,
     scanner_wave_passed: usize,
     deferred_parser_targets: usize,
+    standalone_parser_proof_targets: usize,
     deferred_control_targets: usize,
     deferred_scanner_targets: usize,
     passed_within_current_boundary: usize,
@@ -71,6 +72,7 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
         .scanner_wave_targets = 0,
         .scanner_wave_passed = 0,
         .deferred_parser_targets = 0,
+        .standalone_parser_proof_targets = 0,
         .deferred_control_targets = 0,
         .deferred_scanner_targets = 0,
         .passed_within_current_boundary = 0,
@@ -105,6 +107,9 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
             .deferred_control_fixture => counts.deferred_control_targets += 1,
             .deferred_scanner_wave => counts.deferred_scanner_targets += 1,
             .excluded_out_of_scope => {},
+        }
+        if (run.standalone_parser_proof_scope != .none) {
+            counts.standalone_parser_proof_targets += 1;
         }
         switch (run.final_classification) {
             .passed_within_current_boundary => {

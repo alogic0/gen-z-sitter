@@ -12,6 +12,7 @@ pub const BoundarySummary = struct {
     scanner_wave_passed: usize,
     scanner_wave_non_passing: usize,
     deferred_parser_targets: usize,
+    standalone_parser_proof_targets: usize,
     deferred_control_targets: usize,
     frozen_control_fixtures: usize,
     deferred_scanner_targets: usize,
@@ -26,6 +27,7 @@ pub const InventoryEntry = struct {
     grammar_path: []const u8,
     family: targets.TargetFamily,
     boundary_kind: targets.BoundaryKind,
+    standalone_parser_proof_scope: targets.StandaloneParserProofScope,
     candidate_status: targets.CandidateStatus,
     expected_blocked: bool,
     emission_blocked: bool,
@@ -108,6 +110,7 @@ pub fn collectBoundarySummary(runs: []const result_model.TargetRunResult) Bounda
         .scanner_wave_passed = 0,
         .scanner_wave_non_passing = 0,
         .deferred_parser_targets = 0,
+        .standalone_parser_proof_targets = 0,
         .deferred_control_targets = 0,
         .frozen_control_fixtures = 0,
         .deferred_scanner_targets = 0,
@@ -143,6 +146,9 @@ pub fn collectBoundarySummary(runs: []const result_model.TargetRunResult) Bounda
             },
             .deferred_scanner_wave => summary.deferred_scanner_targets += 1,
             .excluded_out_of_scope => summary.excluded_targets += 1,
+        }
+        if (run.standalone_parser_proof_scope != .none) {
+            summary.standalone_parser_proof_targets += 1;
         }
         if (run.emission) |emission| {
             if (emission.blocked) {
@@ -181,6 +187,7 @@ fn cloneInventoryEntry(
         .grammar_path = try allocator.dupe(u8, run.grammar_path),
         .family = run.family,
         .boundary_kind = run.boundary_kind,
+        .standalone_parser_proof_scope = run.standalone_parser_proof_scope,
         .candidate_status = run.candidate_status,
         .expected_blocked = run.expected_blocked,
         .emission_blocked = if (run.emission) |emission| emission.blocked else false,

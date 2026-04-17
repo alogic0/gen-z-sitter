@@ -2,6 +2,7 @@
   "schema_version": 1,
   "total_external_repo_targets": 5,
   "passed_external_repo_targets": 4,
+  "standalone_parser_proof_targets": 1,
   "family_coverage": [
     {
       "family": "ziggy",
@@ -48,7 +49,7 @@
   ],
   "current_limitations": [
     "the checked-in real external evidence now includes a larger parser-only snapshot that is still held at an explicit deferred parser boundary",
-    "tree-sitter-c currently proves load and prepare cleanly, but the stable shortlist does not yet claim the full emitted and compiled parser surface for a grammar of that size",
+    "tree-sitter-c currently proves load and prepare in the routine shortlist and also has a passing standalone coarse serialize-only parser proof, but the stable shortlist still does not claim the full emitted and compiled parser surface for a grammar of that size",
     "real external scanner evidence and the promoted Ziggy parser-only snapshots remain passing while this larger parser-only target stays explicitly deferred"
   ],
   "recommended_next_step": "narrow_or_promote_onboarded_external_parser_targets",
@@ -61,6 +62,7 @@
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
       "proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "upstream_repository": "tree-sitter-ziggy",
       "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
       "upstream_grammar_path": "src/grammar.json",
@@ -76,6 +78,7 @@
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
       "proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
       "upstream_repository": "tree-sitter-ziggy-schema",
       "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
       "upstream_grammar_path": "src/grammar.json",
@@ -91,6 +94,7 @@
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
       "proof_scope": "none",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
       "upstream_repository": "tree-sitter-c",
       "upstream_revision": "ae19b676b13bdcc13b7665397e6d9b14975473dd",
       "upstream_grammar_path": "src/grammar.json",
@@ -106,6 +110,7 @@
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
       "proof_scope": "sampled_external_sequence",
+      "standalone_parser_proof_scope": "none",
       "upstream_repository": "tree-sitter-haskell",
       "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
       "upstream_grammar_path": "src/grammar.json",
@@ -121,6 +126,7 @@
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
       "proof_scope": "sampled_expansion_path",
+      "standalone_parser_proof_scope": "none",
       "upstream_repository": "tree-sitter-bash",
       "upstream_revision": "a06c2e4415e9bc0346c6b86d401879ffb44058f7",
       "upstream_grammar_path": "src/grammar.json",

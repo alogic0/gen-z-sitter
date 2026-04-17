@@ -11,6 +11,7 @@ pub const ExternalRepoEntry = struct {
     source_kind: targets.SourceKind,
     boundary_kind: targets.BoundaryKind,
     proof_scope: targets.RealExternalScannerProofScope,
+    standalone_parser_proof_scope: targets.StandaloneParserProofScope,
     upstream_repository: ?[]const u8,
     upstream_revision: ?[]const u8,
     upstream_grammar_path: ?[]const u8,
@@ -43,6 +44,7 @@ pub const ExternalRepoInventoryReport = struct {
     schema_version: u32,
     total_external_repo_targets: usize,
     passed_external_repo_targets: usize,
+    standalone_parser_proof_targets: usize,
     family_coverage: []ExternalRepoFamilyEntry,
     boundary_coverage: []ExternalRepoBoundaryEntry,
     current_limitations: []const []const u8,
@@ -72,6 +74,7 @@ pub fn buildExternalRepoInventoryAlloc(
         .schema_version = 1,
         .total_external_repo_targets = total_external_repo_targets,
         .passed_external_repo_targets = passed_external_repo_targets,
+        .standalone_parser_proof_targets = countStandaloneParserProofTargets(runs),
         .family_coverage = try collectFamilyCoverageAlloc(allocator, runs),
         .boundary_coverage = try collectBoundaryCoverageAlloc(allocator, runs),
         .current_limitations = try collectCurrentLimitationsAlloc(
@@ -82,6 +85,7 @@ pub fn buildExternalRepoInventoryAlloc(
             passed_external_parser_targets,
             total_external_scanner_targets,
             passed_external_scanner_targets,
+            countStandaloneParserProofTargets(runs),
         ),
         .recommended_next_step = if (total_external_parser_targets != 0 and passed_external_parser_targets < total_external_parser_targets)
             .narrow_or_promote_onboarded_external_parser_targets
@@ -129,6 +133,15 @@ fn countExternalTargetsByBoundary(
     for (runs) |run| {
         if (run.provenance.origin_kind != .external_repo_snapshot) continue;
         if (run.boundary_kind == boundary_kind) count += 1;
+    }
+    return count;
+}
+
+fn countStandaloneParserProofTargets(runs: []const result_model.TargetRunResult) usize {
+    var count: usize = 0;
+    for (runs) |run| {
+        if (run.provenance.origin_kind != .external_repo_snapshot) continue;
+        if (run.standalone_parser_proof_scope != .none) count += 1;
     }
     return count;
 }
@@ -232,6 +245,7 @@ fn collectEntriesAlloc(
             .source_kind = run.source_kind,
             .boundary_kind = run.boundary_kind,
             .proof_scope = run.real_external_scanner_proof_scope,
+            .standalone_parser_proof_scope = run.standalone_parser_proof_scope,
             .upstream_repository = if (run.provenance.upstream_repository) |value| try allocator.dupe(u8, value) else null,
             .upstream_revision = if (run.provenance.upstream_revision) |value| try allocator.dupe(u8, value) else null,
             .upstream_grammar_path = if (run.provenance.upstream_grammar_path) |value| try allocator.dupe(u8, value) else null,
@@ -252,6 +266,7 @@ fn collectCurrentLimitationsAlloc(
     passed_external_parser_targets: usize,
     total_external_scanner_targets: usize,
     passed_external_scanner_targets: usize,
+    standalone_parser_proof_targets: usize,
 ) ![]const []const u8 {
     _ = total_external_repo_targets;
     _ = passed_external_repo_targets;
@@ -259,7 +274,10 @@ fn collectCurrentLimitationsAlloc(
     if (total_external_parser_targets != 0 and passed_external_parser_targets < total_external_parser_targets) {
         return try duplicateStringSliceAlloc(allocator, &.{
             "the checked-in real external evidence now includes a larger parser-only snapshot that is still held at an explicit deferred parser boundary",
-            "tree-sitter-c currently proves load and prepare cleanly, but the stable shortlist does not yet claim the full emitted and compiled parser surface for a grammar of that size",
+            if (standalone_parser_proof_targets != 0)
+                "tree-sitter-c currently proves load and prepare in the routine shortlist and also has a passing standalone coarse serialize-only parser proof, but the stable shortlist still does not claim the full emitted and compiled parser surface for a grammar of that size"
+            else
+                "tree-sitter-c currently proves load and prepare cleanly, but the stable shortlist does not yet claim the full emitted and compiled parser surface for a grammar of that size",
             "real external scanner evidence and the promoted Ziggy parser-only snapshots remain passing while this larger parser-only target stays explicitly deferred",
         });
     }

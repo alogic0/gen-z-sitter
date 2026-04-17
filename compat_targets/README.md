@@ -42,10 +42,12 @@ Versioned artifacts:
   - this is the canonical place to see which checked-in compatibility surfaces are expected to refresh routinely versus only during targeted deeper investigation
 - `shortlist.json`
   - target selection policy, family, boundary kind, candidate classification, and success criteria
+  - now also exposes `standalone_parser_proof_scope` so deferred parser-wave targets can carry narrower passing standalone proof without being mistaken for routine-boundary promotions
 - `external_repo_inventory.json`
   - dedicated machine-readable inventory of the currently represented real external snapshots, including upstream provenance, represented families, boundary coverage, current real-evidence limitations, and the recommended next real-evidence step
   - this keeps real external evidence separate from the broader staged shortlist, which still includes staged fixtures and frozen controls
   - scanner-family external entries now also carry a machine-readable `proof_scope` field so narrower sampled proofs are not left implicit in prose notes alone
+  - parser-only external entries can now also carry `standalone_parser_proof_scope` when a narrower passing standalone parser probe exists outside the routine shortlist boundary
 - `external_scanner_repo_inventory.json`
   - dedicated machine-readable inventory of real external scanner or external-scanner evidence
   - now records two passing real external scanner snapshots, their current limitations, and the recommended next scanner-evidence step
@@ -55,8 +57,10 @@ Versioned artifacts:
     - `sampled_expansion_path`
 - `shortlist_inventory.json`
   - aggregate boundary summary plus family-level coverage and explicit proven first-wave, deferred-control, deferred-scanner, and out-of-scope target sections
+  - now also includes `standalone_parser_proof_targets` in the top-level boundary summary and per-entry `standalone_parser_proof_scope`
 - `shortlist_report.json`
   - full per-target machine-readable harness report with aggregate counts and family-level coverage for the current staged boundary
+  - now also includes aggregate `standalone_parser_proof_targets` so the main run report distinguishes routine proof from narrower standalone parser proof
 - frozen control fixtures
   - appear in the main checked-in reports as `frozen_control_fixture` so intentionally blocked controls are not confused with ordinary staged passes
 - `shortlist_mismatch_inventory.json`
@@ -98,6 +102,7 @@ Current staged boundary summary:
   - it is intentionally classified as `deferred_for_parser_boundary` with `parser_proof_boundary`
   - the current stable shortlist does not yet claim emitted parser surfaces, compatibility checks, or compile-smoke for this larger grammar
   - the standalone parser-boundary probe now also proves a narrower coarse `serialize_only` layer for this target without changing the routine shortlist classification
+  - the central shortlist and external-repo inventory artifacts now expose that standalone proof directly with `standalone_parser_proof_scope = coarse_serialize_only`
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`
   - this is now treated explicitly as an intentional ambiguity/control fixture, not as an unresolved external parser-only promotion gap

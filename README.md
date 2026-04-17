@@ -151,6 +151,9 @@ Current staged compatibility boundary:
   - it currently proves `load` and `prepare`
   - it is intentionally classified as `deferred_for_parser_boundary` with `parser_proof_boundary` rather than being overstated as a promoted full-pipeline pass
   - the current stable shortlist does not yet claim emitted parser surfaces, compatibility checks, or compile-smoke for that grammar
+  - the main shortlist and external-repo inventory artifacts now also expose its standalone parser-proof scope directly:
+    - current standalone parser proof is `coarse_serialize_only`
+    - this makes the narrower passing probe visible outside `parser_boundary_probe.json`
 - the currently represented scanner/external-scanner families are:
   - `hidden_external_fields`
   - `mixed_semantics`
@@ -182,6 +185,7 @@ Current staged compatibility boundary:
   - that standalone proof uses lookahead-insensitive closure expansion and currently serializes `2336` states with `blocked = false`
   - it is still intentionally narrower than a full lookahead-sensitive parser proof and does not yet promote the routine shortlist boundary
   - `compat_targets/parser_boundary_hypothesis.json` and `compat_targets/coverage_decision.json` now also encode that standalone coarse proof machine-readably while keeping the routine shortlist boundary at `prepare_only`
+  - the main shortlist and external-repo inventories now also carry that standalone parser-proof scope so readers can see the split without leaving the central compatibility summaries
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
   - `hidden_external_fields` also proves that the invalid path makes less progress than the valid path through the first staged scanner boundary

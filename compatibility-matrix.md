@@ -163,6 +163,7 @@ What the repo can credibly claim today:
     - `parser_boundary_probe.json` records a passing coarse `serialize_only` probe for `tree_sitter_c_json`
     - the coarse probe uses lookahead-insensitive closure expansion to avoid the full LR-style lookahead fanout seen in the earlier serialize attempt
     - this is still a standalone proof layer, not a promotion of the routine shortlist boundary
+  - the main shortlist and external-repo inventories now also expose that standalone parser-proof scope directly, so the deferred C snapshot is not described only as a routine parser-boundary hold without its narrower passing standalone proof
   - `coverage_decision.json` now also records that one deferred parser-wave target has a passing standalone coarse serialize-only probe outside the routine shortlist boundary
 
 ## Milestone Compatibility Targets

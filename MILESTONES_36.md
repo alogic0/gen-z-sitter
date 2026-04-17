@@ -40,9 +40,9 @@ Out of scope:
 ## Exit Criteria
 
 - [x] the next promotion hypothesis for `tree_sitter_c_json` is explicit and measured
-- [ ] `tree_sitter_c_json` is either promoted one step further or left deferred with a tighter rationale than M35
+- [x] `tree_sitter_c_json` is either promoted one step further or left deferred with a tighter rationale than M35
 - [x] routine artifact refreshes and standalone probe tooling remain stable and clearly separated
-- [ ] the checked-in coverage decision and docs reflect the final M36 boundary accurately
+- [x] the checked-in coverage decision and docs reflect the final M36 boundary accurately
 
 ## PR-Sized Slices
 
@@ -56,27 +56,27 @@ Out of scope:
 
 - [x] implement the chosen narrower parser-only proof step or bound it explicitly in tooling
 - [x] keep `zig run update_compat_artifacts.zig` fast and routine
-- [ ] keep `zig build test` clean
+- [x] keep `zig build test` clean
 
 ### PR 3: Promote Or Freeze tree_sitter_c_json
 
-- [ ] either promote `tree_sitter_c_json` one step beyond the current deferred boundary or freeze it with a tighter rationale
-- [ ] regenerate any affected checked-in artifacts
-- [ ] avoid broadening the deferred parser-wave set
+- [x] either promote `tree_sitter_c_json` one step beyond the current deferred boundary or freeze it with a tighter rationale
+- [x] regenerate any affected checked-in artifacts
+- [x] avoid broadening the deferred parser-wave set
 
 ### PR 4: Closeout
 
-- [ ] update coverage decision and milestone notes from the final checked-in evidence
-- [ ] tighten `README.md`, `compatibility-matrix.md`, and `compat_targets/README.md`
-- [ ] mark the final M36 parser-only boundary and remaining limitations explicitly
+- [x] update coverage decision and milestone notes from the final checked-in evidence
+- [x] tighten `README.md`, `compatibility-matrix.md`, and `compat_targets/README.md`
+- [x] mark the final M36 parser-only boundary and remaining limitations explicitly
 
 ## Progress
 
 - [x] PR 1 completed
-- [ ] PR 2 completed
-- [ ] PR 3 completed
-- [ ] PR 4 completed
-- [ ] M36 ready for closeout
+- [x] PR 2 completed
+- [x] PR 3 completed
+- [x] PR 4 completed
+- [x] M36 ready for closeout
 
 ## Current Focus
 
@@ -107,3 +107,21 @@ Out of scope:
     - `serialized_blocked = false`
   - this is intentionally narrower than a full lookahead-sensitive parser proof and does not yet change the routine shortlist boundary
   - `compat_targets/parser_boundary_hypothesis.json` and `compat_targets/coverage_decision.json` now record that standalone coarse proof machine-readably while keeping the routine shortlist boundary unchanged
+
+## Closeout
+
+M36 closes with `tree_sitter_c_json` still deferred in the routine shortlist boundary, but no longer with only a vague next-step hypothesis.
+
+- the routine parser-only boundary remains:
+  - `prepare_only` in the routine shortlist
+  - explicitly classified as `deferred_for_parser_boundary`
+  - still described by `parser_proof_boundary`
+- the narrower standalone proof is now real and checked in:
+  - `compat_targets/parser_boundary_probe.json` records a passing coarse `serialize_only` probe
+  - current result is `serialized_state_count = 2336`
+  - current result is `serialized_blocked = false`
+- the central decision surfaces now reflect that split:
+  - `compat_targets/parser_boundary_hypothesis.json` records the standalone coarse probe as implemented and passing
+  - `compat_targets/coverage_decision.json` records one deferred parser-wave target with a passing standalone coarse serialize-only probe outside the routine shortlist boundary
+
+That is enough to close M36 without overstating the routine parser-only proof. The next milestone can decide whether to promote the routine boundary further or keep this standalone coarse proof as the stable stopping point for `tree_sitter_c_json`.

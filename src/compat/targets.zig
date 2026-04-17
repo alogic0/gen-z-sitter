@@ -28,6 +28,11 @@ pub const RealExternalScannerProofScope = enum {
     sampled_expansion_path,
 };
 
+pub const StandaloneParserProofScope = enum {
+    none,
+    coarse_serialize_only,
+};
+
 pub const TargetFamily = enum {
     parse_table_tiny,
     behavioral_config,
@@ -73,6 +78,7 @@ pub const Target = struct {
     parser_boundary_check_mode: ParserBoundaryCheckMode = .full_pipeline,
     scanner_boundary_check_mode: ScannerBoundaryCheckMode = .sampled_behavioral,
     real_external_scanner_proof_scope: RealExternalScannerProofScope = .none,
+    standalone_parser_proof_scope: StandaloneParserProofScope = .none,
     provenance: Provenance = .{ .origin_kind = .staged_in_repo },
     candidate_status: CandidateStatus,
     expected_blocked: bool = false,
@@ -166,6 +172,7 @@ pub const shortlist_targets = [_]Target{
         .source_kind = .grammar_json,
         .boundary_kind = .parser_only,
         .parser_boundary_check_mode = .prepare_only,
+        .standalone_parser_proof_scope = .coarse_serialize_only,
         .provenance = .{
             .origin_kind = .external_repo_snapshot,
             .upstream_repository = "tree-sitter-c",
