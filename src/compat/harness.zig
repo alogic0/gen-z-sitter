@@ -265,6 +265,25 @@ fn shouldEnableHaskellState5OpenerFamilyExperiment(target_id: []const u8) bool {
     return true;
 }
 
+fn shouldEnableHaskellThresholdedClosureExperiment(target_id: []const u8) bool {
+    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
+
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_THRESHOLD_LR0") catch return false;
+    defer std.heap.page_allocator.free(value);
+
+    if (value.len == 0) return false;
+    if (std.mem.eql(u8, value, "0")) return false;
+    return true;
+}
+
+fn haskellThresholdedClosureThresholds() parse_table_build.ClosurePressureThresholds {
+    return .{
+        .max_closure_items = 3584,
+        .max_duplicate_hits = 12000,
+        .max_contexts_per_non_terminal = 160,
+    };
+}
+
 const haskell_start_layout_family = [_]parse_table_build.CoarseTransitionSpec{
     .{ .source_state_id = 0, .symbol = .{ .external = 2 } },
     .{ .source_state_id = 0, .symbol = .{ .external = 3 } },
@@ -713,6 +732,7 @@ pub fn runTarget(
         const enable_haskell_modifier = shouldEnableHaskellModifierExperiment(target.id);
         const enable_haskell_state5_non_terminal_386 = shouldEnableHaskellState5NonTerminal386Experiment(target.id);
         const enable_haskell_state5_non_terminal_390 = shouldEnableHaskellState5NonTerminal390Experiment(target.id);
+        const enable_haskell_thresholded_closure = shouldEnableHaskellThresholdedClosureExperiment(target.id);
         if (enable_haskell_start_layout) {
             @memcpy(coarse_transitions_buf[0..haskell_start_layout_family.len], haskell_start_layout_family[0..]);
             coarse_transition_count += haskell_start_layout_family.len;
@@ -738,8 +758,28 @@ pub fn runTarget(
             }
         }
         const build_options: parse_table_build.BuildOptions = .{
-            .coarse_transitions = coarse_transitions_buf[0..coarse_transition_count],
+            .closure_pressure_mode = if (enable_haskell_thresholded_closure) .thresholded_lr0 else .none,
+            .closure_pressure_thresholds = if (enable_haskell_thresholded_closure) haskellThresholdedClosureThresholds() else .{},
+            .coarse_transitions = if (enable_haskell_thresholded_closure) &.{} else coarse_transitions_buf[0..coarse_transition_count],
         };
+        if (detail_progress and enable_haskell_thresholded_closure) {
+            const thresholds = build_options.closure_pressure_thresholds;
+            logDetailSummary(
+                "{s} scanner_build_states enabling thresholded_lr0 max_closure_items={d} max_duplicate_hits={d} max_contexts_per_non_terminal={d}",
+                .{
+                    target.id,
+                    thresholds.max_closure_items,
+                    thresholds.max_duplicate_hits,
+                    thresholds.max_contexts_per_non_terminal,
+                },
+            );
+            if (coarse_transition_count != 0) {
+                logDetailSummary(
+                    "{s} scanner_build_states ignoring coarse_transition overrides while thresholded_lr0 is active",
+                    .{target.id},
+                );
+            }
+        }
         if (detail_progress and build_options.coarse_transitions.len != 0) {
             if (enable_haskell_start_layout) {
                 logDetailSummary(

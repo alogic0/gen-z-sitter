@@ -324,7 +324,7 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[6].candidate_status == .intended_scanner_wave);
     try std.testing.expect(shortlist[6].family == .haskell);
     try std.testing.expect(shortlist[6].provenance.origin_kind == .external_repo_snapshot);
-    try std.testing.expect(shortlist[6].scanner_boundary_check_mode == .sampled_external_only);
+    try std.testing.expect(shortlist[6].scanner_boundary_check_mode == .sampled_behavioral);
     try std.testing.expect(shortlist[6].real_external_scanner_proof_scope == .sampled_external_sequence);
     try std.testing.expect(shortlist[6].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[6].scanner_invalid_input_path != null);

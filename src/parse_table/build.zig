@@ -167,6 +167,7 @@ const ParseItemSet = std.HashMap(item.ParseItem, void, ParseItemContext, std.has
 
 const ClosureExpansionCacheEntry = struct {
     non_terminal: u32,
+    closure_lookahead_mode: ClosureLookaheadMode,
     propagated_first: first.SymbolSet,
     inherited_lookahead: ?syntax_ir.SymbolRef,
     generated_items: []const item.ParseItem,
@@ -175,6 +176,59 @@ const ClosureExpansionCacheEntry = struct {
 const ClosureResultCacheEntry = struct {
     seed_items: []const item.ParseItem,
     closed_items: []const item.ParseItem,
+};
+
+const FollowSetInfo = struct {
+    lookaheads: first.SymbolSet,
+    propagates_lookahead: bool,
+};
+
+const TransitiveClosureAddition = struct {
+    production_id: item.ProductionId,
+    info: FollowSetInfo,
+};
+
+const ParseItemSetBuilder = struct {
+    allocator: std.mem.Allocator,
+    additions_per_non_terminal: [][]const TransitiveClosureAddition,
+
+    fn init(
+        allocator: std.mem.Allocator,
+        productions: []const ProductionInfo,
+        first_sets: first.FirstSets,
+    ) !@This() {
+        const variable_count = variableCountFromProductions(productions);
+        const additions_per_non_terminal = try allocator.alloc([]const TransitiveClosureAddition, variable_count);
+        errdefer allocator.free(additions_per_non_terminal);
+
+        for (0..variable_count) |non_terminal| {
+            additions_per_non_terminal[non_terminal] = try computeTransitiveClosureAdditionsAlloc(
+                allocator,
+                productions,
+                first_sets,
+                @intCast(non_terminal),
+            );
+        }
+
+        return .{
+            .allocator = allocator,
+            .additions_per_non_terminal = additions_per_non_terminal,
+        };
+    }
+
+    fn deinit(self: *@This()) void {
+        for (self.additions_per_non_terminal) |items| {
+            for (items) |addition| {
+                freeSymbolSet(self.allocator, addition.info.lookaheads);
+            }
+            self.allocator.free(items);
+        }
+        self.allocator.free(self.additions_per_non_terminal);
+    }
+
+    fn additionsForNonTerminal(self: @This(), non_terminal: u32) []const TransitiveClosureAddition {
+        return self.additions_per_non_terminal[non_terminal];
+    }
 };
 
 fn variableCountFromProductions(productions: []const ProductionInfo) usize {
@@ -283,6 +337,50 @@ fn cloneSymbolSet(allocator: std.mem.Allocator, set: first.SymbolSet) !first.Sym
     };
 }
 
+fn initEmptySymbolSet(allocator: std.mem.Allocator, terminals_len: usize, externals_len: usize) !first.SymbolSet {
+    const terminals = try allocator.alloc(bool, terminals_len);
+    errdefer allocator.free(terminals);
+    const externals = try allocator.alloc(bool, externals_len);
+    errdefer allocator.free(externals);
+    @memset(terminals, false);
+    @memset(externals, false);
+    return .{
+        .terminals = terminals,
+        .externals = externals,
+        .includes_epsilon = false,
+    };
+}
+
+fn freeSymbolSet(allocator: std.mem.Allocator, set: first.SymbolSet) void {
+    allocator.free(set.terminals);
+    allocator.free(set.externals);
+}
+
+fn mergeSymbolSetLookaheads(target: *first.SymbolSet, incoming: first.SymbolSet) bool {
+    var changed = false;
+    for (incoming.terminals, 0..) |present, index| {
+        if (present and !target.terminals[index]) {
+            target.terminals[index] = true;
+            changed = true;
+        }
+    }
+    for (incoming.externals, 0..) |present, index| {
+        if (present and !target.externals[index]) {
+            target.externals[index] = true;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+fn addSymbolToSet(target: *first.SymbolSet, symbol: syntax_ir.SymbolRef) void {
+    switch (symbol) {
+        .terminal => |index| target.terminals[index] = true,
+        .external => |index| target.externals[index] = true,
+        .non_terminal => {},
+    }
+}
+
 fn optionalSymbolRefEql(a: ?syntax_ir.SymbolRef, b: ?syntax_ir.SymbolRef) bool {
     if (a) |left| {
         if (b) |right| return symbolRefEql(left, right);
@@ -294,15 +392,65 @@ fn optionalSymbolRefEql(a: ?syntax_ir.SymbolRef, b: ?syntax_ir.SymbolRef) bool {
 fn findClosureExpansionCache(
     entries: []const ClosureExpansionCacheEntry,
     non_terminal: u32,
+    closure_lookahead_mode: ClosureLookaheadMode,
     propagated_first: first.SymbolSet,
     inherited_lookahead: ?syntax_ir.SymbolRef,
 ) ?[]const item.ParseItem {
     for (entries) |entry| {
         if (entry.non_terminal != non_terminal) continue;
+        if (entry.closure_lookahead_mode != closure_lookahead_mode) continue;
         if (!optionalSymbolRefEql(entry.inherited_lookahead, inherited_lookahead)) continue;
         if (!first.SymbolSet.eql(entry.propagated_first, propagated_first)) continue;
         return entry.generated_items;
     }
+    return null;
+}
+
+const ClosurePressureTrigger = struct {
+    reason: []const u8,
+    current_value: usize,
+    threshold: usize,
+};
+
+fn closurePressureTrigger(
+    options: BuildOptions,
+    item_count: usize,
+    duplicate_hit_count: usize,
+    context_count: usize,
+) ?ClosurePressureTrigger {
+    if (options.closure_pressure_mode != .thresholded_lr0) return null;
+    if (!options.closure_pressure_thresholds.enabled()) return null;
+
+    if (options.closure_pressure_thresholds.max_closure_items != 0 and
+        item_count >= options.closure_pressure_thresholds.max_closure_items)
+    {
+        return .{
+            .reason = "max_closure_items",
+            .current_value = item_count,
+            .threshold = options.closure_pressure_thresholds.max_closure_items,
+        };
+    }
+
+    if (options.closure_pressure_thresholds.max_duplicate_hits != 0 and
+        duplicate_hit_count >= options.closure_pressure_thresholds.max_duplicate_hits)
+    {
+        return .{
+            .reason = "max_duplicate_hits",
+            .current_value = duplicate_hit_count,
+            .threshold = options.closure_pressure_thresholds.max_duplicate_hits,
+        };
+    }
+
+    if (options.closure_pressure_thresholds.max_contexts_per_non_terminal != 0 and
+        context_count >= options.closure_pressure_thresholds.max_contexts_per_non_terminal)
+    {
+        return .{
+            .reason = "max_contexts_per_non_terminal",
+            .current_value = context_count,
+            .threshold = options.closure_pressure_thresholds.max_contexts_per_non_terminal,
+        };
+    }
+
     return null;
 }
 
@@ -346,24 +494,145 @@ fn countDistinctFirstSetsForNonTerminal(
     return count;
 }
 
-fn buildClosureExpansionItemsAlloc(
+const FollowWorkEntry = struct {
+    non_terminal: u32,
+    lookaheads: first.SymbolSet,
+    propagates_lookahead: bool,
+};
+
+fn findFollowInfoIndex(items: []const ?FollowSetInfo, non_terminal: u32) ?usize {
+    if (non_terminal >= items.len) return null;
+    return if (items[non_terminal] != null) non_terminal else null;
+}
+
+fn mergeFollowInfo(
+    allocator: std.mem.Allocator,
+    target: *?FollowSetInfo,
+    incoming: FollowWorkEntry,
+) !bool {
+    if (target.* == null) {
+        target.* = .{
+            .lookaheads = try cloneSymbolSet(allocator, incoming.lookaheads),
+            .propagates_lookahead = incoming.propagates_lookahead,
+        };
+        return true;
+    }
+
+    var changed = false;
+    changed = mergeSymbolSetLookaheads(&target.*.?.lookaheads, incoming.lookaheads) or changed;
+    if (incoming.propagates_lookahead and !target.*.?.propagates_lookahead) {
+        target.*.?.propagates_lookahead = true;
+        changed = true;
+    }
+    return changed;
+}
+
+fn computeTransitiveClosureAdditionsAlloc(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
+    first_sets: first.FirstSets,
+    root_non_terminal: u32,
+) ![]const TransitiveClosureAddition {
+    const variable_count = variableCountFromProductions(productions);
+    var infos = try allocator.alloc(?FollowSetInfo, variable_count);
+    defer {
+        for (infos) |maybe_info| {
+            if (maybe_info) |info| freeSymbolSet(allocator, info.lookaheads);
+        }
+        allocator.free(infos);
+    }
+    @memset(infos, null);
+
+    var stack = std.array_list.Managed(FollowWorkEntry).init(allocator);
+    defer {
+        for (stack.items) |entry| {
+            freeSymbolSet(allocator, entry.lookaheads);
+        }
+        stack.deinit();
+    }
+
+    try stack.append(.{
+        .non_terminal = root_non_terminal,
+        .lookaheads = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len),
+        .propagates_lookahead = true,
+    });
+
+    while (stack.items.len > 0) {
+        const entry = stack.pop().?;
+        const changed = try mergeFollowInfo(allocator, &infos[entry.non_terminal], entry);
+        freeSymbolSet(allocator, entry.lookaheads);
+        if (!changed) continue;
+
+        for (productions) |production| {
+            if (production.augmented) continue;
+            if (production.lhs != entry.non_terminal) continue;
+            if (production.steps.len == 0) continue;
+
+            switch (production.steps[0].symbol) {
+                .non_terminal => |next_non_terminal| {
+                    const remainder = production.steps[1..];
+                    var propagated = try if (remainder.len == 0)
+                        cloneSymbolSet(allocator, infos[entry.non_terminal].?.lookaheads)
+                    else
+                        first_sets.firstOfSequence(allocator, remainder);
+                    var propagates = false;
+                    if (remainder.len == 0) {
+                        propagates = infos[entry.non_terminal].?.propagates_lookahead;
+                    } else if (propagated.includes_epsilon) {
+                        propagates = infos[entry.non_terminal].?.propagates_lookahead;
+                        propagated.includes_epsilon = false;
+                        _ = mergeSymbolSetLookaheads(&propagated, infos[entry.non_terminal].?.lookaheads);
+                    }
+                    try stack.append(.{
+                        .non_terminal = next_non_terminal,
+                        .lookaheads = propagated,
+                        .propagates_lookahead = propagates,
+                    });
+                },
+                else => {},
+            }
+        }
+    }
+
+    var additions = std.array_list.Managed(TransitiveClosureAddition).init(allocator);
+    defer additions.deinit();
+
+    for (infos, 0..) |maybe_info, non_terminal| {
+        const info = maybe_info orelse continue;
+        for (productions, 0..) |production, production_id| {
+            if (production.augmented) continue;
+            if (production.lhs != non_terminal) continue;
+            try additions.append(.{
+                .production_id = @intCast(production_id),
+                .info = .{
+                    .lookaheads = try cloneSymbolSet(allocator, info.lookaheads),
+                    .propagates_lookahead = info.propagates_lookahead,
+                },
+            });
+        }
+    }
+
+    return try additions.toOwnedSlice();
+}
+
+fn buildClosureExpansionItemsAlloc(
+    allocator: std.mem.Allocator,
+    item_set_builder: ParseItemSetBuilder,
     non_terminal: u32,
-    propagated_first: first.SymbolSet,
     inherited_lookahead: ?syntax_ir.SymbolRef,
     options: BuildOptions,
 ) ![]const item.ParseItem {
     var generated = std.array_list.Managed(item.ParseItem).init(allocator);
     defer generated.deinit();
 
-    for (productions, 0..) |candidate, production_index| {
-        if (candidate.augmented) continue;
-        if (candidate.lhs != non_terminal) continue;
+    for (item_set_builder.additionsForNonTerminal(non_terminal)) |addition| {
+        var effective_follow = try cloneSymbolSet(allocator, addition.info.lookaheads);
+        defer freeSymbolSet(allocator, effective_follow);
+        effective_follow.includes_epsilon = addition.info.propagates_lookahead;
         try appendGeneratedItems(
             &generated,
-            @intCast(production_index),
-            propagated_first,
+            addition.production_id,
+            effective_follow,
             inherited_lookahead,
             options,
         );
@@ -417,6 +686,23 @@ pub const ClosureLookaheadMode = enum {
     none,
 };
 
+pub const ClosurePressureMode = enum {
+    none,
+    thresholded_lr0,
+};
+
+pub const ClosurePressureThresholds = struct {
+    max_closure_items: usize = 0,
+    max_duplicate_hits: usize = 0,
+    max_contexts_per_non_terminal: usize = 0,
+
+    pub fn enabled(self: @This()) bool {
+        return self.max_closure_items != 0 or
+            self.max_duplicate_hits != 0 or
+            self.max_contexts_per_non_terminal != 0;
+    }
+};
+
 pub const CoarseTransitionSpec = struct {
     source_state_id: state.StateId,
     symbol: syntax_ir.SymbolRef,
@@ -424,6 +710,8 @@ pub const CoarseTransitionSpec = struct {
 
 pub const BuildOptions = struct {
     closure_lookahead_mode: ClosureLookaheadMode = .full,
+    closure_pressure_mode: ClosurePressureMode = .none,
+    closure_pressure_thresholds: ClosurePressureThresholds = .{},
     coarse_transitions: []const CoarseTransitionSpec = &.{},
 };
 
@@ -509,9 +797,12 @@ pub fn buildStatesWithOptions(
         logBuildSummary("collect_productions summary productions={d}", .{productions.len});
     }
 
+    var item_set_builder = try ParseItemSetBuilder.init(allocator, productions, first_sets);
+    defer item_set_builder.deinit();
+
     timer = maybeStartTimer(progress_log);
     if (progress_log) logBuildStart("construct_states");
-    const constructed = try constructStates(allocator, grammar.variables, productions, first_sets, options);
+    const constructed = try constructStates(allocator, grammar.variables, productions, first_sets, item_set_builder, options);
     if (progress_log) {
         maybeLogBuildDone("construct_states", if (timer) |*value| value else null);
         logBuildSummary(
@@ -649,11 +940,173 @@ fn collectProductions(
     return try productions.toOwnedSlice();
 }
 
+test "ParseItemSetBuilder precomputes transitive closure additions with propagated follow sets" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var a_to_b_c_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .symbol = .{ .terminal = 2 } },
+    };
+    var a_to_d_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    var b_to_e_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{
+                .name = "A",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = a_to_b_c_steps[0..] },
+                    .{ .steps = a_to_d_steps[0..] },
+                },
+            },
+            .{
+                .name = "B",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = b_to_e_steps[0..] },
+                },
+            },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
+    const productions = try collectProductions(arena.allocator(), grammar);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets);
+    defer item_set_builder.deinit();
+
+    const additions = item_set_builder.additionsForNonTerminal(1);
+    try std.testing.expectEqual(@as(usize, 3), additions.len);
+
+    var saw_a_to_b_c = false;
+    var saw_a_to_d = false;
+    var saw_b_to_e = false;
+
+    for (additions) |addition| {
+        switch (addition.production_id) {
+            2 => {
+                saw_a_to_b_c = true;
+                try std.testing.expect(addition.info.propagates_lookahead);
+                try std.testing.expect(!addition.info.lookaheads.containsTerminal(2));
+            },
+            3 => {
+                saw_a_to_d = true;
+                try std.testing.expect(addition.info.propagates_lookahead);
+                try std.testing.expect(!addition.info.lookaheads.containsTerminal(2));
+            },
+            4 => {
+                saw_b_to_e = true;
+                try std.testing.expect(!addition.info.propagates_lookahead);
+                try std.testing.expect(addition.info.lookaheads.containsTerminal(2));
+            },
+            else => return error.UnexpectedProductionId,
+        }
+    }
+
+    try std.testing.expect(saw_a_to_b_c);
+    try std.testing.expect(saw_a_to_d);
+    try std.testing.expect(saw_b_to_e);
+}
+
+test "closure uses precomputed transitive additions to expand leading recursive items" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var a_to_b_c_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .symbol = .{ .terminal = 2 } },
+    };
+    var a_to_d_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    var b_to_e_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{
+                .name = "A",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = a_to_b_c_steps[0..] },
+                    .{ .steps = a_to_d_steps[0..] },
+                },
+            },
+            .{
+                .name = "B",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = b_to_e_steps[0..] },
+                },
+            },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
+    const productions = try collectProductions(arena.allocator(), grammar);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets);
+    defer item_set_builder.deinit();
+
+    const seed = [_]item.ParseItem{
+        item.ParseItem.withLookahead(1, 0, .{ .terminal = 0 }),
+    };
+    const items = try closure(
+        arena.allocator(),
+        grammar.variables,
+        productions,
+        first_sets,
+        item_set_builder,
+        seed[0..],
+        .{},
+    );
+
+    try std.testing.expect(findParseItem(items, item.ParseItem.withLookahead(1, 0, .{ .terminal = 0 })) != null);
+    try std.testing.expect(findParseItem(items, item.ParseItem.withLookahead(2, 0, .{ .terminal = 0 })) != null);
+    try std.testing.expect(findParseItem(items, item.ParseItem.withLookahead(3, 0, .{ .terminal = 0 })) != null);
+    try std.testing.expect(findParseItem(items, item.ParseItem.withLookahead(4, 0, .{ .terminal = 2 })) != null);
+}
+
+fn findParseItem(items: []const item.ParseItem, needle: item.ParseItem) ?usize {
+    for (items, 0..) |candidate, index| {
+        if (item.ParseItem.eql(candidate, needle)) return index;
+    }
+    return null;
+}
+
 fn constructStates(
     allocator: std.mem.Allocator,
     variables: []const syntax_ir.SyntaxVariable,
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
+    item_set_builder: ParseItemSetBuilder,
     options: BuildOptions,
 ) BuildError!ConstructedStates {
     const progress_log = shouldLogBuildProgress();
@@ -671,7 +1124,7 @@ fn constructStates(
 
     var start_timer = maybeStartTimer(progress_log);
     if (progress_log) logBuildStart("construct_states.initial_closure");
-    const start_items = try closure(allocator, variables, productions, first_sets, &[_]item.ParseItem{item.ParseItem.init(0, 0)}, options);
+    const start_items = try closure(allocator, variables, productions, first_sets, item_set_builder, &[_]item.ParseItem{item.ParseItem.init(0, 0)}, options);
     if (progress_log) {
         maybeLogBuildDone("construct_states.initial_closure", if (start_timer) |*value| value else null);
         logBuildSummary("construct_states initial_closure items={d}", .{start_items.len});
@@ -703,6 +1156,7 @@ fn constructStates(
             variables,
             productions,
             first_sets,
+            item_set_builder,
             &states,
             &closure_result_cache,
             &closure_cache_hits,
@@ -785,6 +1239,7 @@ fn collectTransitionsForState(
     variables: []const syntax_ir.SyntaxVariable,
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
+    item_set_builder: ParseItemSetBuilder,
     states: *std.array_list.Managed(state.ParseState),
     closure_result_cache: *std.array_list.Managed(ClosureResultCacheEntry),
     closure_cache_hits: *usize,
@@ -830,6 +1285,7 @@ fn collectTransitionsForState(
                 variables,
                 productions,
                 first_sets,
+                item_set_builder,
                 closure_result_cache,
                 closure_cache_hits,
                 closure_cache_misses,
@@ -951,12 +1407,15 @@ fn closure(
     variables: []const syntax_ir.SyntaxVariable,
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
+    item_set_builder: ParseItemSetBuilder,
     seed_items: []const item.ParseItem,
     options: BuildOptions,
 ) BuildError![]const item.ParseItem {
     const progress_log = shouldLogBuildProgress();
     const context_log = shouldLogBuildContexts();
     const variable_count = variableCountFromProductions(productions);
+    var effective_closure_lookahead_mode = options.closure_lookahead_mode;
+    var pressure_triggered = false;
     var items = std.array_list.Managed(item.ParseItem).init(allocator);
     defer items.deinit();
     var expansion_cache = std.array_list.Managed(ClosureExpansionCacheEntry).init(allocator);
@@ -1041,6 +1500,7 @@ fn closure(
                     const generated_items = if (findClosureExpansionCache(
                         expansion_cache.items,
                         non_terminal,
+                        effective_closure_lookahead_mode,
                         suffix_first,
                         parse_item.lookahead,
                     )) |cached| blk: {
@@ -1054,14 +1514,16 @@ fn closure(
                         }
                         const generated = try buildClosureExpansionItemsAlloc(
                             allocator,
-                            productions,
+                            item_set_builder,
                             non_terminal,
-                            suffix_first,
                             parse_item.lookahead,
-                            options,
+                            .{
+                                .closure_lookahead_mode = effective_closure_lookahead_mode,
+                            },
                         );
                         try expansion_cache.append(.{
                             .non_terminal = non_terminal,
+                            .closure_lookahead_mode = effective_closure_lookahead_mode,
                             .propagated_first = try cloneSymbolSet(allocator, suffix_first),
                             .inherited_lookahead = parse_item.lookahead,
                             .generated_items = generated,
@@ -1141,6 +1603,30 @@ fn closure(
                             next_added_report[non_terminal] += 250;
                         }
                     }
+                    if (!pressure_triggered and effective_closure_lookahead_mode == .full) {
+                        const context_count = if (non_terminal < cache_misses.len) cache_misses[non_terminal] else 0;
+                        const duplicate_hit_count = if (non_terminal < duplicate_hits.len) duplicate_hits[non_terminal] else 0;
+                        if (closurePressureTrigger(options, items.items.len, duplicate_hit_count, context_count)) |trigger| {
+                            effective_closure_lookahead_mode = .none;
+                            pressure_triggered = true;
+                            if (progress_log) {
+                                logBuildSummary(
+                                    "closure pressure_trigger round={d} cursor={d}/{d} non_terminal={d} name={s} reason={s} value={d} threshold={d} items={d}",
+                                    .{
+                                        round,
+                                        cursor + 1,
+                                        items.items.len,
+                                        non_terminal,
+                                        if (non_terminal < variables.len) variables[non_terminal].name else "<unknown>",
+                                        trigger.reason,
+                                        trigger.current_value,
+                                        trigger.threshold,
+                                        items.items.len,
+                                    },
+                                );
+                            }
+                        }
+                    }
                     if (append_stats.changed) {
                         changed = true;
                     }
@@ -1171,7 +1657,14 @@ fn closure(
     }
 
     if (progress_log) {
-        logBuildSummary("closure complete rounds={d} items={d}", .{ round, items.items.len });
+        logBuildSummary(
+            "closure complete rounds={d} items={d} closure_lookahead_mode={s}",
+            .{
+                round,
+                items.items.len,
+                if (effective_closure_lookahead_mode == .full) "full" else "none",
+            },
+        );
     }
 
     return try items.toOwnedSlice();
@@ -1182,6 +1675,7 @@ fn gotoItems(
     variables: []const syntax_ir.SyntaxVariable,
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
+    item_set_builder: ParseItemSetBuilder,
     closure_result_cache: *std.array_list.Managed(ClosureResultCacheEntry),
     closure_cache_hits: *usize,
     closure_cache_misses: *usize,
@@ -1223,7 +1717,7 @@ fn gotoItems(
     }
 
     const seed_copy = try allocator.dupe(item.ParseItem, advanced.items);
-    const closed_items = try closure(allocator, variables, productions, first_sets, advanced.items, options);
+    const closed_items = try closure(allocator, variables, productions, first_sets, item_set_builder, advanced.items, options);
     try closure_result_cache.append(.{
         .seed_items = seed_copy,
         .closed_items = closed_items,
