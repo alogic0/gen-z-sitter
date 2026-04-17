@@ -90,6 +90,51 @@ const SampledExternalState = struct {
     }
 };
 
+fn shouldLogBehavioralProgress() bool {
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_BEHAVIORAL_PROGRESS") catch {
+        const fallback = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_PROGRESS") catch return false;
+        defer std.heap.page_allocator.free(fallback);
+        if (fallback.len == 0) return false;
+        if (std.mem.eql(u8, fallback, "0")) return false;
+        return true;
+    };
+    defer std.heap.page_allocator.free(value);
+
+    if (value.len == 0) return false;
+    if (std.mem.eql(u8, value, "0")) return false;
+    return true;
+}
+
+fn logBehavioral(comptime format: []const u8, args: anytype) void {
+    std.debug.print("[behavioral_harness] " ++ format ++ "\n", args);
+}
+
+fn logSimulationProgress(
+    label: []const u8,
+    steps: usize,
+    cursor: usize,
+    shifted_tokens: usize,
+    state_id: u32,
+) void {
+    logBehavioral(
+        "{s} steps={d} cursor={d} shifted={d} state={d}",
+        .{ label, steps, cursor, shifted_tokens, state_id },
+    );
+}
+
+fn logSimulationResult(label: []const u8, result: SimulationResult) void {
+    switch (result) {
+        .accepted => |accepted| logBehavioral(
+            "{s} result=accepted consumed_bytes={d} shifted_tokens={d}",
+            .{ label, accepted.consumed_bytes, accepted.shifted_tokens },
+        ),
+        .rejected => |rejected| logBehavioral(
+            "{s} result=rejected consumed_bytes={d} shifted_tokens={d} reason={s}",
+            .{ label, rejected.consumed_bytes, rejected.shifted_tokens, @tagName(rejected.reason) },
+        ),
+    }
+}
+
 pub fn simulatePreparedScannerFree(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
@@ -146,6 +191,7 @@ pub fn sampleExtractedExternalBoundaryOnly(
     input: []const u8,
 ) BehavioralError!ExternalBoundarySample {
     if (!external_boundary.isReady()) return error.UnsupportedExternalScannerGrammar;
+    const progress = shouldLogBehavioralProgress();
 
     var external_state = SampledExternalState.init(allocator);
     defer external_state.deinit();
@@ -156,7 +202,20 @@ pub fn sampleExtractedExternalBoundaryOnly(
     var steps: usize = 0;
     const max_steps = input.len * 32 + 64;
 
+    if (progress) {
+        logBehavioral(
+            "sample_external_only start bytes={d} tokens={d}",
+            .{ input.len, external_boundary.tokens.len },
+        );
+    }
+
     while (steps < max_steps) : (steps += 1) {
+        if (progress and steps > 0 and steps % 256 == 0) {
+            logBehavioral(
+                "sample_external_only progress steps={d} cursor={d} external_matches={d} lexical_matches={d}",
+                .{ steps, cursor, external_matches, lexical_matches },
+            );
+        }
         if (cursor >= input.len) {
             if (matchExternalAtEof(external_boundary, external_state)) |match| {
                 if (match.len == 0 and match.effect == .none) break;
@@ -191,11 +250,18 @@ pub fn sampleExtractedExternalBoundaryOnly(
 
     if (steps >= max_steps) return error.SimulationStepLimitExceeded;
 
-    return .{
+    const sample: ExternalBoundarySample = .{
         .consumed_bytes = cursor,
         .external_matches = external_matches,
         .lexical_matches = lexical_matches,
     };
+    if (progress) {
+        logBehavioral(
+            "sample_external_only done consumed_bytes={d} external_matches={d} lexical_matches={d} steps={d}",
+            .{ sample.consumed_bytes, sample.external_matches, sample.lexical_matches, steps },
+        );
+    }
+    return sample;
 }
 
 fn simulateBuiltScannerFree(
@@ -345,6 +411,7 @@ fn simulateBuiltWithFirstExternalBoundary(
 ) BehavioralError!SimulationResult {
     if (lexical.separators.len != 0) return error.UnsupportedExternalScannerGrammar;
     if (!external_boundary.isReady()) return error.UnsupportedExternalScannerGrammar;
+    const progress = shouldLogBehavioralProgress();
 
     var stack = std.array_list.Managed(u32).init(allocator);
     defer stack.deinit();
@@ -357,23 +424,41 @@ fn simulateBuiltWithFirstExternalBoundary(
     var steps: usize = 0;
     const max_steps = input.len * 16 + 32;
 
+    if (progress) {
+        logBehavioral(
+            "simulate_external_boundary start bytes={d} states={d} external_tokens={d}",
+            .{ input.len, result.states.len, external_boundary.tokens.len },
+        );
+    }
+
     while (steps < max_steps) : (steps += 1) {
         const state_id = stack.items[stack.items.len - 1];
+        if (progress and steps > 0 and steps % 256 == 0) {
+            logSimulationProgress("simulate_external_boundary progress", steps, cursor, shifted_tokens, state_id);
+        }
         if (cursor >= input.len) {
             if (selectMatchingExternalAtBoundaryEof(result, state_id, external_boundary, &external_state)) |matched| {
                 const decision = result.resolved_actions.decisionFor(state_id, matched.symbol) orelse
-                    return .{ .rejected = .{
-                        .consumed_bytes = cursor,
-                        .shifted_tokens = shifted_tokens,
-                        .reason = .missing_action,
-                    } };
+                    {
+                        const rejected: SimulationResult = .{ .rejected = .{
+                            .consumed_bytes = cursor,
+                            .shifted_tokens = shifted_tokens,
+                            .reason = .missing_action,
+                        } };
+                        if (progress) logSimulationResult("simulate_external_boundary eof_missing_action", rejected);
+                        return rejected;
+                    };
 
                 switch (decision) {
-                    .unresolved => return .{ .rejected = .{
-                        .consumed_bytes = cursor,
-                        .shifted_tokens = shifted_tokens,
-                        .reason = .unresolved_decision,
-                    } },
+                    .unresolved => {
+                        const rejected: SimulationResult = .{ .rejected = .{
+                            .consumed_bytes = cursor,
+                            .shifted_tokens = shifted_tokens,
+                            .reason = .unresolved_decision,
+                        } };
+                        if (progress) logSimulationResult("simulate_external_boundary eof_unresolved", rejected);
+                        return rejected;
+                    },
                     .chosen => |action| switch (action) {
                         .shift => |target| {
                             try stack.append(target);
@@ -400,45 +485,69 @@ fn simulateBuiltWithFirstExternalBoundary(
                             try stack.append(goto_state);
                             continue;
                         },
-                        .accept => return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } },
+                        .accept => {
+                            const accepted: SimulationResult = .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } };
+                            if (progress) logSimulationResult("simulate_external_boundary eof_accept", accepted);
+                            return accepted;
+                        },
                     },
                 }
             }
             if (stateHasCompletedAugmentedProduction(result, state_id)) {
-                return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } };
+                const accepted: SimulationResult = .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } };
+                if (progress) logSimulationResult("simulate_external_boundary completed_augmented", accepted);
+                return accepted;
             }
             if (selectFallbackAction(result, state_id)) |action| switch (action) {
-                .shift => return .{ .rejected = .{
-                    .consumed_bytes = cursor,
-                    .shifted_tokens = shifted_tokens,
-                    .reason = .missing_action,
-                } },
-                .reduce => |production_id| {
-                    const production = result.productions[production_id];
-                    if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
+                .shift => {
+                    const rejected: SimulationResult = .{ .rejected = .{
                         .consumed_bytes = cursor,
                         .shifted_tokens = shifted_tokens,
-                        .reason = .missing_goto,
+                        .reason = .missing_action,
                     } };
-                    for (0..production.steps.len) |_| {
-                        _ = stack.pop();
-                    }
-                    const goto_state = findGotoState(result, stack.items[stack.items.len - 1], production.lhs) orelse
-                        return .{ .rejected = .{
+                    if (progress) logSimulationResult("simulate_external_boundary eof_fallback_shift", rejected);
+                    return rejected;
+                },
+                .reduce => |production_id| {
+                    const production = result.productions[production_id];
+                    if (production.steps.len > stack.items.len - 1) {
+                        const rejected: SimulationResult = .{ .rejected = .{
                             .consumed_bytes = cursor,
                             .shifted_tokens = shifted_tokens,
                             .reason = .missing_goto,
                         } };
+                        if (progress) logSimulationResult("simulate_external_boundary eof_reduce_missing_goto", rejected);
+                        return rejected;
+                    }
+                    for (0..production.steps.len) |_| {
+                        _ = stack.pop();
+                    }
+                    const goto_state = findGotoState(result, stack.items[stack.items.len - 1], production.lhs) orelse
+                        {
+                            const rejected: SimulationResult = .{ .rejected = .{
+                                .consumed_bytes = cursor,
+                                .shifted_tokens = shifted_tokens,
+                                .reason = .missing_goto,
+                            } };
+                            if (progress) logSimulationResult("simulate_external_boundary eof_goto_missing", rejected);
+                            return rejected;
+                        };
                     try stack.append(goto_state);
                     continue;
                 },
-                .accept => return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } },
+                .accept => {
+                    const accepted: SimulationResult = .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } };
+                    if (progress) logSimulationResult("simulate_external_boundary eof_fallback_accept", accepted);
+                    return accepted;
+                },
             };
-            return .{ .rejected = .{
+            const rejected: SimulationResult = .{ .rejected = .{
                 .consumed_bytes = cursor,
                 .shifted_tokens = shifted_tokens,
                 .reason = .missing_action,
             } };
+            if (progress) logSimulationResult("simulate_external_boundary eof_no_action", rejected);
+            return rejected;
         }
 
         const matched = selectMatchingSymbolWithExternalBoundary(
@@ -451,51 +560,77 @@ fn simulateBuiltWithFirstExternalBoundary(
             input[cursor..],
         ) orelse {
             if (selectFallbackAction(result, state_id)) |action| switch (action) {
-                .shift => return .{ .rejected = .{
-                    .consumed_bytes = cursor,
-                    .shifted_tokens = shifted_tokens,
-                    .reason = .tokenization_failed,
-                } },
-                .reduce => |production_id| {
-                    const production = result.productions[production_id];
-                    if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
+                .shift => {
+                    const rejected: SimulationResult = .{ .rejected = .{
                         .consumed_bytes = cursor,
                         .shifted_tokens = shifted_tokens,
-                        .reason = .missing_goto,
+                        .reason = .tokenization_failed,
                     } };
-                    for (0..production.steps.len) |_| {
-                        _ = stack.pop();
-                    }
-                    const goto_state = findGotoState(result, stack.items[stack.items.len - 1], production.lhs) orelse
-                        return .{ .rejected = .{
+                    if (progress) logSimulationResult("simulate_external_boundary tokenization_failed_shift", rejected);
+                    return rejected;
+                },
+                .reduce => |production_id| {
+                    const production = result.productions[production_id];
+                    if (production.steps.len > stack.items.len - 1) {
+                        const rejected: SimulationResult = .{ .rejected = .{
                             .consumed_bytes = cursor,
                             .shifted_tokens = shifted_tokens,
                             .reason = .missing_goto,
                         } };
+                        if (progress) logSimulationResult("simulate_external_boundary tokenization_reduce_missing_goto", rejected);
+                        return rejected;
+                    }
+                    for (0..production.steps.len) |_| {
+                        _ = stack.pop();
+                    }
+                    const goto_state = findGotoState(result, stack.items[stack.items.len - 1], production.lhs) orelse
+                        {
+                            const rejected: SimulationResult = .{ .rejected = .{
+                                .consumed_bytes = cursor,
+                                .shifted_tokens = shifted_tokens,
+                                .reason = .missing_goto,
+                            } };
+                            if (progress) logSimulationResult("simulate_external_boundary tokenization_goto_missing", rejected);
+                            return rejected;
+                        };
                     try stack.append(goto_state);
                     continue;
                 },
-                .accept => return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } },
+                .accept => {
+                    const accepted: SimulationResult = .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } };
+                    if (progress) logSimulationResult("simulate_external_boundary tokenization_fallback_accept", accepted);
+                    return accepted;
+                },
             };
-            return .{ .rejected = .{
+            const rejected: SimulationResult = .{ .rejected = .{
                 .consumed_bytes = cursor,
                 .shifted_tokens = shifted_tokens,
                 .reason = .tokenization_failed,
             } };
+            if (progress) logSimulationResult("simulate_external_boundary no_symbol_match", rejected);
+            return rejected;
         };
         const decision = result.resolved_actions.decisionFor(state_id, matched.symbol) orelse
-            return .{ .rejected = .{
-                .consumed_bytes = cursor,
-                .shifted_tokens = shifted_tokens,
-                .reason = .missing_action,
-            } };
+            {
+                const rejected: SimulationResult = .{ .rejected = .{
+                    .consumed_bytes = cursor,
+                    .shifted_tokens = shifted_tokens,
+                    .reason = .missing_action,
+                } };
+                if (progress) logSimulationResult("simulate_external_boundary missing_action", rejected);
+                return rejected;
+            };
 
         switch (decision) {
-            .unresolved => return .{ .rejected = .{
-                .consumed_bytes = cursor,
-                .shifted_tokens = shifted_tokens,
-                .reason = .unresolved_decision,
-            } },
+            .unresolved => {
+                const rejected: SimulationResult = .{ .rejected = .{
+                    .consumed_bytes = cursor,
+                    .shifted_tokens = shifted_tokens,
+                    .reason = .unresolved_decision,
+                } };
+                if (progress) logSimulationResult("simulate_external_boundary unresolved_decision", rejected);
+                return rejected;
+            },
             .chosen => |action| switch (action) {
                 .shift => |target| {
                     try stack.append(target);
@@ -521,11 +656,21 @@ fn simulateBuiltWithFirstExternalBoundary(
                         } };
                     try stack.append(goto_state);
                 },
-                .accept => return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } },
+                .accept => {
+                    const accepted: SimulationResult = .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } };
+                    if (progress) logSimulationResult("simulate_external_boundary accept", accepted);
+                    return accepted;
+                },
             },
         }
     }
 
+    if (progress) {
+        logBehavioral(
+            "simulate_external_boundary step_limit_exceeded cursor={d} shifted={d} max_steps={d}",
+            .{ cursor, shifted_tokens, max_steps },
+        );
+    }
     return error.SimulationStepLimitExceeded;
 }
 
@@ -1197,8 +1342,7 @@ test "simulatePreparedWithFirstExternalBoundary supports sampled layout token fa
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    const prepared = try parsePreparedFromJsonFixture(
-        arena.allocator(),
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(),
         \\{
         \\  "name": "sampled_layout_block",
         \\  "rules": {

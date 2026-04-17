@@ -191,7 +191,7 @@ pub const shortlist_targets = [_]Target{
         .family = .haskell,
         .source_kind = .grammar_json,
         .boundary_kind = .scanner_external_scanner,
-        .scanner_boundary_check_mode = .sampled_external_only,
+        .scanner_boundary_check_mode = .sampled_behavioral,
         .real_external_scanner_proof_scope = .sampled_external_sequence,
         .provenance = .{
             .origin_kind = .external_repo_snapshot,
@@ -203,8 +203,8 @@ pub const shortlist_targets = [_]Target{
         .expected_blocked = false,
         .scanner_valid_input_path = "compat_targets/tree_sitter_haskell/valid.txt",
         .scanner_invalid_input_path = "compat_targets/tree_sitter_haskell/invalid.txt",
-        .notes = "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; M30 promotes it into a sampled external-sequence proof layer before any broader parser-integrated scanner claim",
-        .success_criteria = "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove a sampled real external scanner path makes stronger progress on the valid input than on the invalid input",
+        .notes = "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current boundary now targets a sampled behavioral layout-sensitive proof rather than only external-sequence sampling",
+        .success_criteria = "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove the sampled behavioral scanner path makes stronger valid-input progress than the invalid input",
     },
     .{
         .id = "tree_sitter_bash_json",

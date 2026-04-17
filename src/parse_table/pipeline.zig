@@ -19,6 +19,8 @@ const json_loader = @import("../grammar/json_loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const emit_optimize = @import("../parser_emit/optimize.zig");
 
+threadlocal var scoped_progress_enabled: bool = false;
+
 fn envFlagEnabled(name: []const u8) bool {
     const value = std.process.getEnvVarOwned(std.heap.page_allocator, name) catch return false;
     defer std.heap.page_allocator.free(value);
@@ -28,10 +30,23 @@ fn envFlagEnabled(name: []const u8) bool {
     return true;
 }
 
+fn hasProgressTargetFilter() bool {
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_PARSE_TABLE_TARGET_FILTER") catch return false;
+    defer std.heap.page_allocator.free(value);
+    return value.len != 0;
+}
+
+pub fn setScopedProgressEnabled(enabled: bool) void {
+    scoped_progress_enabled = enabled;
+}
+
 fn shouldLogPipelineProgress() bool {
-    if (envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_PROGRESS")) return true;
-    if (envFlagEnabled("GEN_Z_SITTER_PROGRESS")) return true;
-    return false;
+    const requested =
+        envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_PROGRESS") or
+        envFlagEnabled("GEN_Z_SITTER_PROGRESS");
+    if (!requested) return false;
+    if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
+    return true;
 }
 
 fn logPipelineStart(step: []const u8) void {

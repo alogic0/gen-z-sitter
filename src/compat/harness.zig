@@ -29,7 +29,20 @@ pub fn runShortlistTargetsAlloc(
     allocator: std.mem.Allocator,
     options: RunOptions,
 ) ![]result_model.TargetRunResult {
-    return try runTargetsAlloc(allocator, targets.shortlistTargets(), options);
+    const shortlist = targets.shortlistTargets();
+    const excluded_targets = loadExcludedTargetsEnv(allocator) catch null;
+    defer if (excluded_targets) |items| {
+        for (items) |entry| allocator.free(entry);
+        allocator.free(items);
+    };
+
+    if (excluded_targets == null or excluded_targets.?.len == 0) {
+        return try runTargetsAlloc(allocator, shortlist, options);
+    }
+
+    const filtered = try filterTargetsAlloc(allocator, shortlist, excluded_targets.?);
+    defer allocator.free(filtered);
+    return try runTargetsAlloc(allocator, filtered, options);
 }
 
 pub fn cachedShortlistTargetsForTests() ![]const result_model.TargetRunResult {
@@ -106,6 +119,56 @@ fn shouldLogDetailProgress(options: RunOptions) bool {
     return true;
 }
 
+fn loadExcludedTargetsEnv(allocator: std.mem.Allocator) !?[][]const u8 {
+    const raw = std.process.getEnvVarOwned(allocator, "GEN_Z_SITTER_COMPAT_EXCLUDE_TARGETS") catch return null;
+    defer allocator.free(raw);
+
+    if (raw.len == 0) return null;
+
+    var entries = std.array_list.Managed([]const u8).init(allocator);
+    errdefer {
+        for (entries.items) |entry| allocator.free(entry);
+        entries.deinit();
+    }
+
+    var iter = std.mem.tokenizeScalar(u8, raw, ',');
+    while (iter.next()) |token| {
+        const trimmed = std.mem.trim(u8, token, " \t\r\n");
+        if (trimmed.len == 0) continue;
+        try entries.append(try allocator.dupe(u8, trimmed));
+    }
+
+    if (entries.items.len == 0) {
+        entries.deinit();
+        return null;
+    }
+
+    return try entries.toOwnedSlice();
+}
+
+fn shouldExcludeTarget(target_id: []const u8, excluded_targets: [][]const u8) bool {
+    for (excluded_targets) |excluded| {
+        if (std.mem.eql(u8, target_id, excluded)) return true;
+    }
+    return false;
+}
+
+fn filterTargetsAlloc(
+    allocator: std.mem.Allocator,
+    target_list: []const targets.Target,
+    excluded_targets: [][]const u8,
+) ![]targets.Target {
+    var filtered = std.array_list.Managed(targets.Target).init(allocator);
+    defer filtered.deinit();
+
+    for (target_list) |target| {
+        if (shouldExcludeTarget(target.id, excluded_targets)) continue;
+        try filtered.append(target);
+    }
+
+    return try filtered.toOwnedSlice();
+}
+
 fn logDetailStart(target_id: []const u8, step: []const u8) void {
     std.debug.print("[compat_harness_detail] start {s} {s}\n", .{ target_id, step });
 }
@@ -118,6 +181,121 @@ fn logDetailDone(target_id: []const u8, step: []const u8, timer: *std.time.Timer
 fn logDetailSummary(comptime format: []const u8, args: anytype) void {
     std.debug.print("[compat_harness_detail] " ++ format ++ "\n", args);
 }
+
+fn logSimulationSummary(target_id: []const u8, label: []const u8, result: behavioral_harness.SimulationResult) void {
+    switch (result) {
+        .accepted => |accepted| logDetailSummary(
+            "{s} {s} result=accepted consumed_bytes={d} shifted_tokens={d}",
+            .{ target_id, label, accepted.consumed_bytes, accepted.shifted_tokens },
+        ),
+        .rejected => |rejected| logDetailSummary(
+            "{s} {s} result=rejected consumed_bytes={d} shifted_tokens={d} reason={s}",
+            .{ target_id, label, rejected.consumed_bytes, rejected.shifted_tokens, @tagName(rejected.reason) },
+        ),
+    }
+}
+
+fn logExternalSampleSummary(target_id: []const u8, label: []const u8, sample: behavioral_harness.ExternalBoundarySample) void {
+    logDetailSummary(
+        "{s} {s} consumed_bytes={d} external_matches={d} lexical_matches={d}",
+        .{ target_id, label, sample.consumed_bytes, sample.external_matches, sample.lexical_matches },
+    );
+}
+
+fn shouldEnableParseTableScopedProgress(target_id: []const u8) bool {
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_PARSE_TABLE_TARGET_FILTER") catch return false;
+    defer std.heap.page_allocator.free(value);
+
+    if (value.len == 0) return false;
+    return std.mem.eql(u8, value, target_id);
+}
+
+fn shouldEnableHaskellStartLayoutExperiment(target_id: []const u8) bool {
+    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
+
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_COARSE_START_LAYOUT") catch return false;
+    defer std.heap.page_allocator.free(value);
+
+    if (value.len == 0) return false;
+    if (std.mem.eql(u8, value, "0")) return false;
+    return true;
+}
+
+fn shouldEnableHaskellModifierExperiment(target_id: []const u8) bool {
+    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
+
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_COARSE_MODIFIER") catch return false;
+    defer std.heap.page_allocator.free(value);
+
+    if (value.len == 0) return false;
+    if (std.mem.eql(u8, value, "0")) return false;
+    return true;
+}
+
+fn shouldEnableHaskellState5NonTerminal386Experiment(target_id: []const u8) bool {
+    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
+
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_COARSE_STATE5_NONTERMINAL386") catch return false;
+    defer std.heap.page_allocator.free(value);
+
+    if (value.len == 0) return false;
+    if (std.mem.eql(u8, value, "0")) return false;
+    return true;
+}
+
+fn shouldEnableHaskellState5NonTerminal390Experiment(target_id: []const u8) bool {
+    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
+
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_COARSE_STATE5_NONTERMINAL390") catch return false;
+    defer std.heap.page_allocator.free(value);
+
+    if (value.len == 0) return false;
+    if (std.mem.eql(u8, value, "0")) return false;
+    return true;
+}
+
+fn shouldEnableHaskellState5OpenerFamilyExperiment(target_id: []const u8) bool {
+    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
+
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_COARSE_STATE5_OPENERS") catch return false;
+    defer std.heap.page_allocator.free(value);
+
+    if (value.len == 0) return false;
+    if (std.mem.eql(u8, value, "0")) return false;
+    return true;
+}
+
+const haskell_start_layout_family = [_]parse_table_build.CoarseTransitionSpec{
+    .{ .source_state_id = 0, .symbol = .{ .external = 2 } },
+    .{ .source_state_id = 0, .symbol = .{ .external = 3 } },
+    .{ .source_state_id = 0, .symbol = .{ .external = 4 } },
+    .{ .source_state_id = 0, .symbol = .{ .external = 5 } },
+    .{ .source_state_id = 0, .symbol = .{ .external = 6 } },
+    .{ .source_state_id = 0, .symbol = .{ .external = 7 } },
+    .{ .source_state_id = 0, .symbol = .{ .external = 8 } },
+};
+
+const haskell_modifier_transition = parse_table_build.CoarseTransitionSpec{
+    .source_state_id = 5,
+    .symbol = .{ .terminal = 41 },
+};
+
+const haskell_state5_non_terminal_386_transition = parse_table_build.CoarseTransitionSpec{
+    .source_state_id = 5,
+    .symbol = .{ .non_terminal = 386 },
+};
+
+const haskell_state5_non_terminal_390_transition = parse_table_build.CoarseTransitionSpec{
+    .source_state_id = 5,
+    .symbol = .{ .non_terminal = 390 },
+};
+
+const haskell_state5_opener_family = [_]parse_table_build.CoarseTransitionSpec{
+    .{ .source_state_id = 5, .symbol = .{ .terminal = 41 } },
+    .{ .source_state_id = 5, .symbol = .{ .non_terminal = 386 } },
+    .{ .source_state_id = 5, .symbol = .{ .non_terminal = 388 } },
+    .{ .source_state_id = 5, .symbol = .{ .non_terminal = 390 } },
+};
 
 pub fn runTarget(
     allocator: std.mem.Allocator,
@@ -324,6 +502,8 @@ pub fn runTarget(
     }
 
     if (target.boundary_kind == .scanner_external_scanner) {
+        if (detail_progress) logDetailStart(target.id, "scanner_extract_tokens");
+        var scanner_extract_timer = try std.time.Timer.start();
         const extracted = extract_tokens.extractTokens(arena.allocator(), prepared) catch |err| {
             return failRun(
                 &run,
@@ -333,6 +513,16 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "scanner-boundary token extraction failed: {s}", .{@errorName(err)}),
             );
         };
+        if (detail_progress) {
+            logDetailDone(target.id, "scanner_extract_tokens", &scanner_extract_timer);
+            logDetailSummary(
+                "{s} scanner_extract_tokens syntax_variables={d} lexical_variables={d} external_tokens={d}",
+                .{ target.id, extracted.syntax.variables.len, extracted.lexical.variables.len, extracted.syntax.external_tokens.len },
+            );
+        }
+
+        if (detail_progress) logDetailStart(target.id, "scanner_serialize_boundary");
+        var scanner_serialize_timer = try std.time.Timer.start();
         const serialized_boundary = scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax) catch |err| {
             return failRun(
                 &run,
@@ -342,6 +532,13 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "external-scanner boundary extraction failed: {s}", .{@errorName(err)}),
             );
         };
+        if (detail_progress) {
+            logDetailDone(target.id, "scanner_serialize_boundary", &scanner_serialize_timer);
+            logDetailSummary(
+                "{s} scanner_serialize_boundary ready={} tokens={d} unsupported_features={d}",
+                .{ target.id, serialized_boundary.isReady(), serialized_boundary.tokens.len, serialized_boundary.unsupported_features.len },
+            );
+        }
 
         if (!serialized_boundary.isReady()) {
             return failRun(
@@ -387,6 +584,12 @@ pub fn runTarget(
                 );
             };
 
+            if (detail_progress) {
+                logDetailSummary("{s} scanner_valid_input bytes={d} path={s}", .{ target.id, valid_input.len, valid_input_path });
+                logDetailStart(target.id, "sampled_external_only_valid");
+            }
+            var valid_sample_timer = try std.time.Timer.start();
+
             const valid_sample = behavioral_harness.sampleExtractedExternalBoundaryOnly(
                 arena.allocator(),
                 prepared,
@@ -402,6 +605,10 @@ pub fn runTarget(
                     try std.fmt.allocPrint(allocator, "scanner sampled external-only valid-path probe failed: {s}", .{@errorName(err)}),
                 );
             };
+            if (detail_progress) {
+                logDetailDone(target.id, "sampled_external_only_valid", &valid_sample_timer);
+                logExternalSampleSummary(target.id, "sampled_external_only_valid", valid_sample);
+            }
 
             const invalid_input_path = target.scanner_invalid_input_path orelse
                 return failRun(
@@ -421,6 +628,12 @@ pub fn runTarget(
                 );
             };
 
+            if (detail_progress) {
+                logDetailSummary("{s} scanner_invalid_input bytes={d} path={s}", .{ target.id, invalid_input.len, invalid_input_path });
+                logDetailStart(target.id, "sampled_external_only_invalid");
+            }
+            var invalid_sample_timer = try std.time.Timer.start();
+
             const invalid_sample = behavioral_harness.sampleExtractedExternalBoundaryOnly(
                 arena.allocator(),
                 prepared,
@@ -436,6 +649,10 @@ pub fn runTarget(
                     try std.fmt.allocPrint(allocator, "scanner sampled external-only invalid-path probe failed: {s}", .{@errorName(err)}),
                 );
             };
+            if (detail_progress) {
+                logDetailDone(target.id, "sampled_external_only_invalid", &invalid_sample_timer);
+                logExternalSampleSummary(target.id, "sampled_external_only_invalid", invalid_sample);
+            }
 
             if (!(valid_sample.external_matches > 0 and valid_sample.consumed_bytes > invalid_sample.consumed_bytes)) {
                 return failRun(
@@ -461,6 +678,8 @@ pub fn runTarget(
             return run;
         }
 
+        if (detail_progress) logDetailStart(target.id, "scanner_flatten");
+        var scanner_flatten_timer = try std.time.Timer.start();
         const flattened = flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax) catch |err| {
             return failRun(
                 &run,
@@ -470,7 +689,89 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "scanner-boundary flattening failed: {s}", .{@errorName(err)}),
             );
         };
-        const build_result = parse_table_build.buildStates(arena.allocator(), flattened) catch |err| {
+        if (detail_progress) {
+            logDetailDone(target.id, "scanner_flatten", &scanner_flatten_timer);
+            logDetailSummary("{s} scanner_flatten variables={d}", .{ target.id, flattened.variables.len });
+        }
+
+        const scoped_parse_table_progress = shouldEnableParseTableScopedProgress(target.id);
+        if (scoped_parse_table_progress) {
+            parse_table_build.setScopedProgressEnabled(true);
+            parse_table_pipeline.setScopedProgressEnabled(true);
+        }
+        defer if (scoped_parse_table_progress) {
+            parse_table_build.setScopedProgressEnabled(false);
+            parse_table_pipeline.setScopedProgressEnabled(false);
+        };
+
+        if (detail_progress) logDetailStart(target.id, "scanner_build_states");
+        var scanner_build_timer = try std.time.Timer.start();
+        var coarse_transitions_buf: [11]parse_table_build.CoarseTransitionSpec = undefined;
+        var coarse_transition_count: usize = 0;
+        const enable_haskell_start_layout = shouldEnableHaskellStartLayoutExperiment(target.id);
+        const enable_haskell_state5_opener_family = shouldEnableHaskellState5OpenerFamilyExperiment(target.id);
+        const enable_haskell_modifier = shouldEnableHaskellModifierExperiment(target.id);
+        const enable_haskell_state5_non_terminal_386 = shouldEnableHaskellState5NonTerminal386Experiment(target.id);
+        const enable_haskell_state5_non_terminal_390 = shouldEnableHaskellState5NonTerminal390Experiment(target.id);
+        if (enable_haskell_start_layout) {
+            @memcpy(coarse_transitions_buf[0..haskell_start_layout_family.len], haskell_start_layout_family[0..]);
+            coarse_transition_count += haskell_start_layout_family.len;
+        }
+        if (enable_haskell_state5_opener_family) {
+            @memcpy(
+                coarse_transitions_buf[coarse_transition_count .. coarse_transition_count + haskell_state5_opener_family.len],
+                haskell_state5_opener_family[0..],
+            );
+            coarse_transition_count += haskell_state5_opener_family.len;
+        } else {
+            if (enable_haskell_modifier) {
+                coarse_transitions_buf[coarse_transition_count] = haskell_modifier_transition;
+                coarse_transition_count += 1;
+            }
+            if (enable_haskell_state5_non_terminal_386) {
+                coarse_transitions_buf[coarse_transition_count] = haskell_state5_non_terminal_386_transition;
+                coarse_transition_count += 1;
+            }
+            if (enable_haskell_state5_non_terminal_390) {
+                coarse_transitions_buf[coarse_transition_count] = haskell_state5_non_terminal_390_transition;
+                coarse_transition_count += 1;
+            }
+        }
+        const build_options: parse_table_build.BuildOptions = .{
+            .coarse_transitions = coarse_transitions_buf[0..coarse_transition_count],
+        };
+        if (detail_progress and build_options.coarse_transitions.len != 0) {
+            if (enable_haskell_start_layout) {
+                logDetailSummary(
+                    "{s} scanner_build_states enabling coarse_transition_family source_state=0 externals=2,3,4,5,6,7,8",
+                    .{target.id},
+                );
+            }
+            if (enable_haskell_state5_opener_family) {
+                logDetailSummary(
+                    "{s} scanner_build_states enabling coarse_transition_family source_state=5 terminal=41 non_terminals=386,388,390",
+                    .{target.id},
+                );
+            } else if (enable_haskell_modifier) {
+                logDetailSummary(
+                    "{s} scanner_build_states enabling coarse_transition source_state=5 terminal=41",
+                    .{target.id},
+                );
+            }
+            if (!enable_haskell_state5_opener_family and enable_haskell_state5_non_terminal_386) {
+                logDetailSummary(
+                    "{s} scanner_build_states enabling coarse_transition source_state=5 non_terminal=386",
+                    .{target.id},
+                );
+            }
+            if (!enable_haskell_state5_opener_family and enable_haskell_state5_non_terminal_390) {
+                logDetailSummary(
+                    "{s} scanner_build_states enabling coarse_transition source_state=5 non_terminal=390",
+                    .{target.id},
+                );
+            }
+        }
+        const build_result = parse_table_build.buildStatesWithOptions(arena.allocator(), flattened, build_options) catch |err| {
             return failRun(
                 &run,
                 .scanner_boundary_check,
@@ -479,6 +780,13 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "scanner-boundary state construction failed: {s}", .{@errorName(err)}),
             );
         };
+        if (detail_progress) {
+            logDetailDone(target.id, "scanner_build_states", &scanner_build_timer);
+            logDetailSummary(
+                "{s} scanner_build_states states={d} productions={d}",
+                .{ target.id, build_result.states.len, build_result.productions.len },
+            );
+        }
 
         const valid_input_path = target.scanner_valid_input_path orelse
             return failRun(
@@ -497,6 +805,11 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "failed to read scanner valid input {s}: {s}", .{ valid_input_path, @errorName(err) }),
             );
         };
+        if (detail_progress) {
+            logDetailSummary("{s} scanner_valid_input bytes={d} path={s}", .{ target.id, valid_input.len, valid_input_path });
+            logDetailStart(target.id, "sampled_behavioral_valid");
+        }
+        var valid_simulation_timer = try std.time.Timer.start();
 
         const simulation = behavioral_harness.simulateBuiltWithSerializedExternalBoundary(
             arena.allocator(),
@@ -514,6 +827,10 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "scanner valid-path simulation failed: {s}", .{@errorName(err)}),
             );
         };
+        if (detail_progress) {
+            logDetailDone(target.id, "sampled_behavioral_valid", &valid_simulation_timer);
+            logSimulationSummary(target.id, "sampled_behavioral_valid", simulation);
+        }
 
         if (!isCompatibilitySafeValidResult(simulation)) {
             return failRun(
@@ -542,6 +859,11 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "failed to read scanner invalid input {s}: {s}", .{ invalid_input_path, @errorName(err) }),
             );
         };
+        if (detail_progress) {
+            logDetailSummary("{s} scanner_invalid_input bytes={d} path={s}", .{ target.id, invalid_input.len, invalid_input_path });
+            logDetailStart(target.id, "sampled_behavioral_invalid");
+        }
+        var invalid_simulation_timer = try std.time.Timer.start();
 
         const invalid_simulation = behavioral_harness.simulateBuiltWithSerializedExternalBoundary(
             arena.allocator(),
@@ -559,6 +881,10 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "scanner invalid-path simulation failed: {s}", .{@errorName(err)}),
             );
         };
+        if (detail_progress) {
+            logDetailDone(target.id, "sampled_behavioral_invalid", &invalid_simulation_timer);
+            logSimulationSummary(target.id, "sampled_behavioral_invalid", invalid_simulation);
+        }
 
         if (!(progressOf(simulation) > progressOf(invalid_simulation))) {
             return failRun(

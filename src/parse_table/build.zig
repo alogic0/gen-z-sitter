@@ -8,6 +8,14 @@ const conflicts = @import("conflicts.zig");
 const resolution = @import("resolution.zig");
 const rules = @import("../ir/rules.zig");
 
+threadlocal var scoped_progress_enabled: bool = false;
+threadlocal var current_transition_context: ?TransitionContext = null;
+
+const TransitionContext = struct {
+    source_state_id: state.StateId,
+    symbol: syntax_ir.SymbolRef,
+};
+
 fn envFlagEnabled(name: []const u8) bool {
     const value = std.process.getEnvVarOwned(std.heap.page_allocator, name) catch return false;
     defer std.heap.page_allocator.free(value);
@@ -17,15 +25,30 @@ fn envFlagEnabled(name: []const u8) bool {
     return true;
 }
 
+fn hasProgressTargetFilter() bool {
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_PARSE_TABLE_TARGET_FILTER") catch return false;
+    defer std.heap.page_allocator.free(value);
+    return value.len != 0;
+}
+
+pub fn setScopedProgressEnabled(enabled: bool) void {
+    scoped_progress_enabled = enabled;
+}
+
 fn shouldLogBuildProgress() bool {
-    if (envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_BUILD_PROGRESS")) return true;
-    if (envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_PROGRESS")) return true;
-    if (envFlagEnabled("GEN_Z_SITTER_PROGRESS")) return true;
-    return false;
+    const requested =
+        envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_BUILD_PROGRESS") or
+        envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_PROGRESS") or
+        envFlagEnabled("GEN_Z_SITTER_PROGRESS");
+    if (!requested) return false;
+    if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
+    return true;
 }
 
 fn shouldLogBuildContexts() bool {
-    return envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_CONTEXT_LOG");
+    if (!envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_CONTEXT_LOG")) return false;
+    if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
+    return true;
 }
 
 fn logBuildStart(step: []const u8) void {
@@ -76,6 +99,32 @@ fn optionalSymbolRefText(buf: []u8, value: ?syntax_ir.SymbolRef) []const u8 {
     return stream.getWritten();
 }
 
+fn symbolDisplayText(
+    buf: []u8,
+    variables: []const syntax_ir.SyntaxVariable,
+    symbol: syntax_ir.SymbolRef,
+) []const u8 {
+    var stream = std.io.fixedBufferStream(buf);
+    switch (symbol) {
+        .non_terminal => |index| {
+            const name = if (index < variables.len) variables[index].name else "<unknown>";
+            stream.writer().print("non_terminal:{d}({s})", .{ index, name }) catch return "format_error";
+        },
+        .terminal => |index| {
+            const name = if (index < variables.len) variables[index].name else "<unknown>";
+            stream.writer().print("terminal:{d}({s})", .{ index, name }) catch return "format_error";
+        },
+        .external => |index| {
+            stream.writer().print("external:{d}", .{index}) catch return "format_error";
+        },
+    }
+    return stream.getWritten();
+}
+
+fn setCurrentTransitionContext(context: ?TransitionContext) void {
+    current_transition_context = context;
+}
+
 const AppendStats = struct {
     changed: bool,
     added: usize,
@@ -83,11 +132,49 @@ const AppendStats = struct {
     duplicate_hits: usize,
 };
 
+const ParseItemContext = struct {
+    pub fn hash(_: @This(), value: item.ParseItem) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        hasher.update(std.mem.asBytes(&value.production_id));
+        hasher.update(std.mem.asBytes(&value.step_index));
+        const lookahead_tag: u8 = switch (value.lookahead orelse return finishWithoutLookahead(hasher)) {
+            .non_terminal => 0,
+            .terminal => 1,
+            .external => 2,
+        };
+        hasher.update(std.mem.asBytes(&lookahead_tag));
+        switch (value.lookahead.?) {
+            .non_terminal => |index| hasher.update(std.mem.asBytes(&index)),
+            .terminal => |index| hasher.update(std.mem.asBytes(&index)),
+            .external => |index| hasher.update(std.mem.asBytes(&index)),
+        }
+        return hasher.final();
+    }
+
+    fn finishWithoutLookahead(hasher: std.hash.Wyhash) u64 {
+        var mutable = hasher;
+        const lookahead_tag: u8 = 255;
+        mutable.update(std.mem.asBytes(&lookahead_tag));
+        return mutable.final();
+    }
+
+    pub fn eql(_: @This(), a: item.ParseItem, b: item.ParseItem) bool {
+        return item.ParseItem.eql(a, b);
+    }
+};
+
+const ParseItemSet = std.HashMap(item.ParseItem, void, ParseItemContext, std.hash_map.default_max_load_percentage);
+
 const ClosureExpansionCacheEntry = struct {
     non_terminal: u32,
     propagated_first: first.SymbolSet,
     inherited_lookahead: ?syntax_ir.SymbolRef,
     generated_items: []const item.ParseItem,
+};
+
+const ClosureResultCacheEntry = struct {
+    seed_items: []const item.ParseItem,
+    closed_items: []const item.ParseItem,
 };
 
 fn variableCountFromProductions(productions: []const ProductionInfo) usize {
@@ -127,6 +214,15 @@ fn logTopClosureContributors(
     unique_lookaheads: []const usize,
     unique_first_sets: []const usize,
 ) void {
+    if (current_transition_context) |context| {
+        var symbol_buf: [128]u8 = undefined;
+        const symbol_text = symbolDisplayText(&symbol_buf, variables, context.symbol);
+        logBuildSummary(
+            "closure contributor context source_state={d} symbol={s}",
+            .{ context.source_state_id, symbol_text },
+        );
+    }
+
     var top_indices = [_]?usize{null} ** 5;
 
     var slot: usize = 0;
@@ -321,9 +417,24 @@ pub const ClosureLookaheadMode = enum {
     none,
 };
 
+pub const CoarseTransitionSpec = struct {
+    source_state_id: state.StateId,
+    symbol: syntax_ir.SymbolRef,
+};
+
 pub const BuildOptions = struct {
     closure_lookahead_mode: ClosureLookaheadMode = .full,
+    coarse_transitions: []const CoarseTransitionSpec = &.{},
 };
+
+fn shouldUseCoarseTransition(options: BuildOptions, source_state_id: state.StateId, symbol: syntax_ir.SymbolRef) bool {
+    for (options.coarse_transitions) |spec| {
+        if (spec.source_state_id != source_state_id) continue;
+        if (!symbolRefEql(spec.symbol, symbol)) continue;
+        return true;
+    }
+    return false;
+}
 
 pub const ProductionInfo = struct {
     lhs: u32,
@@ -444,6 +555,67 @@ const ConstructedStates = struct {
     actions: actions.ActionTable,
 };
 
+const TransitionBuildStats = struct {
+    transition_count: usize = 0,
+    new_state_count: usize = 0,
+    reused_state_count: usize = 0,
+    largest_new_state_items: usize = 0,
+    largest_new_state_symbol: ?syntax_ir.SymbolRef = null,
+    largest_reused_state_items: usize = 0,
+    largest_reused_state_symbol: ?syntax_ir.SymbolRef = null,
+};
+
+const SuccessorDiagnostic = struct {
+    source_state_id: state.StateId,
+    symbol: syntax_ir.SymbolRef,
+    item_count: usize,
+    reused: bool,
+};
+
+fn findClosureResultCache(
+    entries: []const ClosureResultCacheEntry,
+    seed_items: []const item.ParseItem,
+) ?[]const item.ParseItem {
+    for (entries) |entry| {
+        if (itemsEql(entry.seed_items, seed_items)) return entry.closed_items;
+    }
+    return null;
+}
+
+fn countDistinctSeedCores(entries: []const ClosureResultCacheEntry, seed_items: []const item.ParseItem) usize {
+    var count: usize = 0;
+    for (entries, 0..) |entry, index| {
+        if (!sameSeedCore(entry.seed_items, seed_items)) continue;
+        var already_seen = false;
+        var previous: usize = 0;
+        while (previous < index) : (previous += 1) {
+            if (!sameSeedCore(entries[previous].seed_items, seed_items)) continue;
+            already_seen = true;
+            break;
+        }
+        if (!already_seen) count += 1;
+    }
+    return count;
+}
+
+fn sameSeedCore(left: []const item.ParseItem, right: []const item.ParseItem) bool {
+    if (left.len != right.len) return false;
+    for (left, right) |a, b| {
+        if (a.production_id != b.production_id) return false;
+        if (a.step_index != b.step_index) return false;
+    }
+    return true;
+}
+
+fn logSuccessorDiagnostic(label: []const u8, variables: []const syntax_ir.SyntaxVariable, diagnostic: SuccessorDiagnostic) void {
+    var symbol_buf: [128]u8 = undefined;
+    const symbol_text = symbolDisplayText(&symbol_buf, variables, diagnostic.symbol);
+    logBuildSummary(
+        "{s} source_state={d} symbol={s} items={d} reused={}",
+        .{ label, diagnostic.source_state_id, symbol_text, diagnostic.item_count, diagnostic.reused },
+    );
+}
+
 fn validateSupportedSubset(grammar: syntax_ir.SyntaxGrammar) BuildError!void {
     _ = grammar;
 }
@@ -489,6 +661,13 @@ fn constructStates(
     defer states.deinit();
     var action_states = std.array_list.Managed(actions.StateActions).init(allocator);
     defer action_states.deinit();
+    var closure_result_cache = std.array_list.Managed(ClosureResultCacheEntry).init(allocator);
+    defer closure_result_cache.deinit();
+    var closure_cache_hits: usize = 0;
+    var closure_cache_misses: usize = 0;
+    var closure_cache_core_match_misses: usize = 0;
+    var largest_new_successor: ?SuccessorDiagnostic = null;
+    var largest_reused_successor: ?SuccessorDiagnostic = null;
 
     var start_timer = maybeStartTimer(progress_log);
     if (progress_log) logBuildStart("construct_states.initial_closure");
@@ -518,7 +697,24 @@ fn constructStates(
                 },
             );
         }
-        const transitions = try collectTransitionsForState(allocator, variables, productions, first_sets, &states, states.items[next_state_index].items, options);
+        var transition_stats = TransitionBuildStats{};
+        const transitions = try collectTransitionsForState(
+            allocator,
+            variables,
+            productions,
+            first_sets,
+            &states,
+            &closure_result_cache,
+            &closure_cache_hits,
+            &closure_cache_misses,
+            &closure_cache_core_match_misses,
+            states.items[next_state_index].items,
+            states.items[next_state_index].id,
+            &largest_new_successor,
+            &largest_reused_successor,
+            &transition_stats,
+            options,
+        );
         const mutable_states = states.items;
         mutable_states[next_state_index].transitions = transitions;
 
@@ -536,14 +732,46 @@ fn constructStates(
 
         if (progress_log and next_state_index + 1 >= next_progress_report) {
             logBuildSummary(
-                "construct_states progress processed={d} discovered={d}",
-                .{ next_state_index + 1, states.items.len },
+                "construct_states progress processed={d} discovered={d} closure_cache_hits={d} closure_cache_misses={d} core_match_misses={d}",
+                .{ next_state_index + 1, states.items.len, closure_cache_hits, closure_cache_misses, closure_cache_core_match_misses },
             );
             next_progress_report += if (next_progress_report < 100) 10 else 100;
+        }
+
+        if (progress_log and (transition_stats.new_state_count > 0 or transition_stats.transition_count >= 16)) {
+            var largest_new_symbol_buf: [64]u8 = undefined;
+            var largest_reused_symbol_buf: [64]u8 = undefined;
+            const largest_new_symbol = optionalSymbolRefText(&largest_new_symbol_buf, transition_stats.largest_new_state_symbol);
+            const largest_reused_symbol = optionalSymbolRefText(&largest_reused_symbol_buf, transition_stats.largest_reused_state_symbol);
+            logBuildSummary(
+                "construct_states state_id={d} transitions={d} new_states={d} reused_states={d} largest_new_items={d} largest_new_symbol={s} largest_reused_items={d} largest_reused_symbol={s}",
+                .{
+                    mutable_states[next_state_index].id,
+                    transition_stats.transition_count,
+                    transition_stats.new_state_count,
+                    transition_stats.reused_state_count,
+                    transition_stats.largest_new_state_items,
+                    largest_new_symbol,
+                    transition_stats.largest_reused_state_items,
+                    largest_reused_symbol,
+                },
+            );
         }
     }
 
     state.sortStates(states.items);
+    if (progress_log) {
+        logBuildSummary(
+            "construct_states closure_cache summary hits={d} misses={d} core_match_misses={d} entries={d}",
+            .{ closure_cache_hits, closure_cache_misses, closure_cache_core_match_misses, closure_result_cache.items.len },
+        );
+        if (largest_new_successor) |diagnostic| {
+            logSuccessorDiagnostic("construct_states largest_new_successor", variables, diagnostic);
+        }
+        if (largest_reused_successor) |diagnostic| {
+            logSuccessorDiagnostic("construct_states largest_reused_successor", variables, diagnostic);
+        }
+    }
     return .{
         .states = try states.toOwnedSlice(),
         .actions = .{
@@ -558,7 +786,15 @@ fn collectTransitionsForState(
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
     states: *std.array_list.Managed(state.ParseState),
+    closure_result_cache: *std.array_list.Managed(ClosureResultCacheEntry),
+    closure_cache_hits: *usize,
+    closure_cache_misses: *usize,
+    closure_cache_core_match_misses: *usize,
     state_items: []const item.ParseItem,
+    source_state_id: state.StateId,
+    largest_new_successor: *?SuccessorDiagnostic,
+    largest_reused_successor: *?SuccessorDiagnostic,
+    stats: *TransitionBuildStats,
     options: BuildOptions,
 ) BuildError![]const state.Transition {
     var transitions = std.array_list.Managed(state.Transition).init(allocator);
@@ -570,13 +806,78 @@ fn collectTransitionsForState(
         const symbol = production.steps[parse_item.step_index].symbol;
         if (containsTransition(transitions.items, symbol)) continue;
 
-        const advanced_items = try gotoItems(allocator, variables, productions, first_sets, state_items, symbol, options);
+        const advanced_items = blk: {
+            const prior_transition_context = current_transition_context;
+            setCurrentTransitionContext(.{
+                .source_state_id = source_state_id,
+                .symbol = symbol,
+            });
+            defer setCurrentTransitionContext(prior_transition_context);
+            var transition_options = options;
+            if (shouldUseCoarseTransition(options, source_state_id, symbol)) {
+                transition_options.closure_lookahead_mode = .none;
+                if (shouldLogBuildProgress()) {
+                    var symbol_buf: [128]u8 = undefined;
+                    const symbol_text = symbolDisplayText(&symbol_buf, variables, symbol);
+                    logBuildSummary(
+                        "construct_states applying coarse_transition source_state={d} symbol={s}",
+                        .{ source_state_id, symbol_text },
+                    );
+                }
+            }
+            break :blk try gotoItems(
+                allocator,
+                variables,
+                productions,
+                first_sets,
+                closure_result_cache,
+                closure_cache_hits,
+                closure_cache_misses,
+                closure_cache_core_match_misses,
+                state_items,
+                symbol,
+                transition_options,
+            );
+        };
+        stats.transition_count += 1;
         if (findState(states.items, advanced_items)) |existing| {
+            stats.reused_state_count += 1;
+            if (advanced_items.len > stats.largest_reused_state_items) {
+                stats.largest_reused_state_items = advanced_items.len;
+                stats.largest_reused_state_symbol = symbol;
+            }
+            if (largest_reused_successor.* == null or advanced_items.len > largest_reused_successor.*.?.item_count) {
+                largest_reused_successor.* = .{
+                    .source_state_id = source_state_id,
+                    .symbol = symbol,
+                    .item_count = advanced_items.len,
+                    .reused = true,
+                };
+                if (shouldLogBuildProgress()) {
+                    logSuccessorDiagnostic("construct_states update largest_reused_successor", variables, largest_reused_successor.*.?);
+                }
+            }
             try transitions.append(.{ .symbol = symbol, .state = existing.id });
             continue;
         }
 
         const new_id: state.StateId = @intCast(states.items.len);
+        stats.new_state_count += 1;
+        if (advanced_items.len > stats.largest_new_state_items) {
+            stats.largest_new_state_items = advanced_items.len;
+            stats.largest_new_state_symbol = symbol;
+        }
+        if (largest_new_successor.* == null or advanced_items.len > largest_new_successor.*.?.item_count) {
+            largest_new_successor.* = .{
+                .source_state_id = source_state_id,
+                .symbol = symbol,
+                .item_count = advanced_items.len,
+                .reused = false,
+            };
+            if (shouldLogBuildProgress()) {
+                logSuccessorDiagnostic("construct_states update largest_new_successor", variables, largest_new_successor.*.?);
+            }
+        }
         try states.append(.{
             .id = new_id,
             .items = advanced_items,
@@ -662,6 +963,11 @@ fn closure(
     defer expansion_cache.deinit();
     try items.appendSlice(seed_items);
     state.sortItems(items.items);
+    var item_set = ParseItemSet.init(allocator);
+    defer item_set.deinit();
+    for (items.items) |existing_item| {
+        try item_set.put(existing_item, {});
+    }
 
     var expansion_visits: []usize = &.{};
     defer if (progress_log and variable_count > 0) allocator.free(expansion_visits);
@@ -791,7 +1097,28 @@ fn closure(
                         break :blk generated;
                     };
 
-                    const append_stats = try appendGeneratedItemsToClosure(&items, generated_items);
+                    const append_timer = maybeStartTimer(progress_log);
+                    const append_stats = try appendGeneratedItemsToClosure(&items, &item_set, generated_items);
+                    if (append_timer) |timer_snapshot| {
+                        var timer_value = timer_snapshot;
+                        const append_ns = timer_value.read();
+                        if (append_ns >= 100 * std.time.ns_per_ms) {
+                            const append_ms = @as(f64, @floatFromInt(append_ns)) / @as(f64, std.time.ns_per_ms);
+                            logBuildSummary(
+                                "closure slow_append non_terminal={d} name={s} generated_items={d} existing_items={d} added={d} duplicate_checks={d} duplicate_hits={d} ({d:.2} ms)",
+                                .{
+                                    non_terminal,
+                                    if (non_terminal < variables.len) variables[non_terminal].name else "<unknown>",
+                                    generated_items.len,
+                                    items.items.len,
+                                    append_stats.added,
+                                    append_stats.duplicate_checks,
+                                    append_stats.duplicate_hits,
+                                    append_ms,
+                                },
+                            );
+                        }
+                    }
                     if (progress_log and non_terminal < added_items.len) {
                         added_items[non_terminal] += append_stats.added;
                         duplicate_hits[non_terminal] += append_stats.duplicate_hits;
@@ -855,6 +1182,10 @@ fn gotoItems(
     variables: []const syntax_ir.SyntaxVariable,
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
+    closure_result_cache: *std.array_list.Managed(ClosureResultCacheEntry),
+    closure_cache_hits: *usize,
+    closure_cache_misses: *usize,
+    closure_cache_core_match_misses: *usize,
     state_items: []const item.ParseItem,
     symbol: syntax_ir.SymbolRef,
     options: BuildOptions,
@@ -873,11 +1204,36 @@ fn gotoItems(
         });
     }
 
-    return try closure(allocator, variables, productions, first_sets, advanced.items, options);
+    state.sortItems(advanced.items);
+
+    if (findClosureResultCache(closure_result_cache.items, advanced.items)) |cached| {
+        closure_cache_hits.* += 1;
+        return cached;
+    }
+
+    closure_cache_misses.* += 1;
+    if (countDistinctSeedCores(closure_result_cache.items, advanced.items) > 0) {
+        closure_cache_core_match_misses.* += 1;
+        if (shouldLogBuildProgress() and advanced.items.len >= 12) {
+            logBuildSummary(
+                "closure_result_cache core_miss seed_items={d} cache_entries={d} core_match_misses={d}",
+                .{ advanced.items.len, closure_result_cache.items.len, closure_cache_core_match_misses.* },
+            );
+        }
+    }
+
+    const seed_copy = try allocator.dupe(item.ParseItem, advanced.items);
+    const closed_items = try closure(allocator, variables, productions, first_sets, advanced.items, options);
+    try closure_result_cache.append(.{
+        .seed_items = seed_copy,
+        .closed_items = closed_items,
+    });
+    return closed_items;
 }
 
 fn appendGeneratedItemsToClosure(
     items: *std.array_list.Managed(item.ParseItem),
+    item_set: *ParseItemSet,
     generated_items: []const item.ParseItem,
 ) BuildError!AppendStats {
     var stats = AppendStats{
@@ -888,25 +1244,19 @@ fn appendGeneratedItemsToClosure(
     };
 
     for (generated_items) |new_item| {
-        const duplicate = containsItem(items.items, new_item);
+        const duplicate = item_set.contains(new_item);
         stats.duplicate_checks += 1;
         if (duplicate) {
             stats.duplicate_hits += 1;
         } else {
             try items.append(new_item);
+            try item_set.put(new_item, {});
             stats.changed = true;
             stats.added += 1;
         }
     }
 
     return stats;
-}
-
-fn containsItem(items: []const item.ParseItem, candidate: item.ParseItem) bool {
-    for (items) |entry| {
-        if (item.ParseItem.eql(entry, candidate)) return true;
-    }
-    return false;
 }
 
 fn containsTransition(transitions: []const state.Transition, symbol: syntax_ir.SymbolRef) bool {
