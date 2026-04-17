@@ -184,6 +184,32 @@ pub const TokenMatch = struct {
     kind: lexical_ir.VariableKind,
 };
 
+pub const TokenConflictStatus = packed struct(u8) {
+    matches_prefix: bool = false,
+    does_match_continuation: bool = false,
+    matches_same_string: bool = false,
+    matches_different_string: bool = false,
+    starting_overlap: bool = false,
+    _padding: u3 = 0,
+};
+
+pub const TokenConflictMap = struct {
+    variable_count: usize,
+    status_matrix: []TokenConflictStatus,
+    starting_chars_by_index: []CharacterSet,
+
+    pub fn deinit(self: *TokenConflictMap, allocator: std.mem.Allocator) void {
+        for (self.starting_chars_by_index) |*chars| chars.deinit(allocator);
+        allocator.free(self.starting_chars_by_index);
+        allocator.free(self.status_matrix);
+        self.* = undefined;
+    }
+
+    pub fn status(self: TokenConflictMap, left: usize, right: usize) TokenConflictStatus {
+        return self.status_matrix[matrixIndex(self.variable_count, left, right)];
+    }
+};
+
 const MatchCursor = struct {
     codepoint: u21,
     byte_len: usize,
@@ -192,6 +218,23 @@ const MatchCursor = struct {
 const VisitedState = struct {
     state_id: u32,
     offset: usize,
+};
+
+const AdvanceTransition = struct {
+    chars: CharacterSet,
+    target_state: u32,
+    is_separator: bool,
+    precedence: i32,
+};
+
+const ConflictCompletion = struct {
+    variable_index: usize,
+    precedence: i32,
+};
+
+const TokenConflictPairState = struct {
+    left: []const u32,
+    right: []const u32,
 };
 
 const PatternQuantifier = enum {
@@ -824,6 +867,53 @@ pub fn collectTokenMatchesAlloc(
     return matches.toOwnedSlice(allocator);
 }
 
+pub fn buildTokenConflictMapAlloc(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+) std.mem.Allocator.Error!TokenConflictMap {
+    const variable_count = grammar.variables.len;
+    const status_matrix = try allocator.alloc(TokenConflictStatus, variable_count * variable_count);
+    @memset(status_matrix, .{});
+    errdefer allocator.free(status_matrix);
+
+    const starting_chars_by_index = try allocator.alloc(CharacterSet, variable_count);
+    errdefer {
+        for (starting_chars_by_index[0..variable_count]) |*chars| chars.deinit(allocator);
+        allocator.free(starting_chars_by_index);
+    }
+
+    for (grammar.variables, 0..) |variable, index| {
+        starting_chars_by_index[index] = try startingCharsForVariable(allocator, grammar, variable.start_state);
+    }
+
+    for (0..variable_count) |left| {
+        for (0..variable_count) |right| {
+            if (left == right) continue;
+            if (characterSetsIntersect(starting_chars_by_index[left], starting_chars_by_index[right])) {
+                status_matrix[matrixIndex(variable_count, left, right)].starting_overlap = true;
+            }
+        }
+    }
+
+    for (0..variable_count) |left| {
+        for (0..left) |right| {
+            const pair_status = try computeConflictStatusPair(allocator, grammar, left, right);
+            status_matrix[matrixIndex(variable_count, left, right)] = pair_status[0];
+            status_matrix[matrixIndex(variable_count, right, left)] = pair_status[1];
+            if (characterSetsIntersect(starting_chars_by_index[left], starting_chars_by_index[right])) {
+                status_matrix[matrixIndex(variable_count, left, right)].starting_overlap = true;
+                status_matrix[matrixIndex(variable_count, right, left)].starting_overlap = true;
+            }
+        }
+    }
+
+    return .{
+        .variable_count = variable_count,
+        .status_matrix = status_matrix,
+        .starting_chars_by_index = starting_chars_by_index,
+    };
+}
+
 fn tokenMatchLessThan(current: TokenMatch, candidate: TokenMatch) bool {
     if (candidate.len != current.len) return candidate.len > current.len;
     if (candidate.completion_precedence != current.completion_precedence) {
@@ -877,6 +967,273 @@ fn maxOptionalOffset(left: ?usize, right: ?usize) ?usize {
     if (left == null) return right;
     if (right == null) return left;
     return @max(left.?, right.?);
+}
+
+fn matrixIndex(variable_count: usize, left: usize, right: usize) usize {
+    return variable_count * left + right;
+}
+
+fn startingCharsForVariable(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    start_state: u32,
+) std.mem.Allocator.Error!CharacterSet {
+    const closure = try epsilonClosureAlloc(allocator, grammar, &.{start_state});
+    defer allocator.free(closure);
+
+    var result = CharacterSet.empty();
+    for (closure) |state_id| {
+        switch (grammar.nfa.states.items[state_id]) {
+            .advance => |advance| try result.addSet(allocator, advance.chars),
+            else => {},
+        }
+    }
+    return result;
+}
+
+fn computeConflictStatusPair(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    left_index: usize,
+    right_index: usize,
+) std.mem.Allocator.Error![2]TokenConflictStatus {
+    var queue = std.ArrayListUnmanaged(TokenConflictPairState).empty;
+    defer {
+        for (queue.items) |state| {
+            allocator.free(state.left);
+            allocator.free(state.right);
+        }
+        queue.deinit(allocator);
+    }
+
+    var visited = std.AutoHashMap(u64, void).init(allocator);
+    defer visited.deinit();
+
+    const left_start = try epsilonClosureAlloc(allocator, grammar, &.{grammar.variables[left_index].start_state});
+    const right_start = try epsilonClosureAlloc(allocator, grammar, &.{grammar.variables[right_index].start_state});
+    try queue.append(allocator, .{ .left = left_start, .right = right_start });
+    try visited.put(pairStateHash(left_start, right_start), {});
+
+    var result = [2]TokenConflictStatus{ .{}, .{} };
+
+    while (queue.items.len != 0) {
+        const pair_state = queue.pop().?;
+        defer allocator.free(pair_state.left);
+        defer allocator.free(pair_state.right);
+
+        const left_completion = firstCompletion(pair_state.left, grammar);
+        const right_completion = firstCompletion(pair_state.right, grammar);
+        if (left_completion != null and right_completion != null) {
+            const preferred_left = preferCompletedToken(grammar, left_completion.?, right_completion.?);
+            if (preferred_left) {
+                result[0].matches_same_string = true;
+            } else {
+                result[1].matches_same_string = true;
+            }
+        }
+
+        const left_transitions = try collectTransitionsAlloc(allocator, grammar, pair_state.left);
+        defer freeTransitions(allocator, left_transitions);
+        const right_transitions = try collectTransitionsAlloc(allocator, grammar, pair_state.right);
+        defer freeTransitions(allocator, right_transitions);
+
+        if (left_transitions.len == 0 and right_transitions.len == 0) continue;
+
+        var left_overlap = false;
+        var right_overlap = false;
+        for (left_transitions) |left_transition| {
+            for (right_transitions) |right_transition| {
+                if (!characterSetsIntersect(left_transition.chars, right_transition.chars)) continue;
+                left_overlap = true;
+                right_overlap = true;
+
+                const left_next = try epsilonClosureAlloc(allocator, grammar, &.{left_transition.target_state});
+                const right_next = try epsilonClosureAlloc(allocator, grammar, &.{right_transition.target_state});
+                const hash = pairStateHash(left_next, right_next);
+                if (!visited.contains(hash)) {
+                    try visited.put(hash, {});
+                    try queue.append(allocator, .{ .left = left_next, .right = right_next });
+                } else {
+                    allocator.free(left_next);
+                    allocator.free(right_next);
+                }
+            }
+        }
+
+        if (!left_overlap and left_transitions.len != 0) result[0].matches_different_string = true;
+        if (!right_overlap and right_transitions.len != 0) result[1].matches_different_string = true;
+
+        if (left_completion) |completion| {
+            for (right_transitions) |transition| {
+                if (preferAdvanceOverCompletion(grammar, completion, transition)) {
+                    result[1].does_match_continuation = true;
+                } else {
+                    result[0].matches_prefix = true;
+                }
+            }
+        }
+        if (right_completion) |completion| {
+            for (left_transitions) |transition| {
+                if (preferAdvanceOverCompletion(grammar, completion, transition)) {
+                    result[0].does_match_continuation = true;
+                } else {
+                    result[1].matches_prefix = true;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+fn epsilonClosureAlloc(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    seeds: []const u32,
+) std.mem.Allocator.Error![]u32 {
+    var closure = std.ArrayListUnmanaged(u32).empty;
+    errdefer closure.deinit(allocator);
+    var stack = std.ArrayListUnmanaged(u32).empty;
+    defer stack.deinit(allocator);
+
+    for (seeds) |seed| {
+        if (!containsState(closure.items, seed)) {
+            try closure.append(allocator, seed);
+            try stack.append(allocator, seed);
+        }
+    }
+
+    while (stack.items.len != 0) {
+        const state_id = stack.pop().?;
+        switch (grammar.nfa.states.items[state_id]) {
+            .split => |split| {
+                if (!containsState(closure.items, split.left)) {
+                    try closure.append(allocator, split.left);
+                    try stack.append(allocator, split.left);
+                }
+                if (!containsState(closure.items, split.right)) {
+                    try closure.append(allocator, split.right);
+                    try stack.append(allocator, split.right);
+                }
+            },
+            else => {},
+        }
+    }
+
+    std.mem.sort(u32, closure.items, {}, std.sort.asc(u32));
+    return closure.toOwnedSlice(allocator);
+}
+
+fn containsState(states: []const u32, target: u32) bool {
+    for (states) |state_id| {
+        if (state_id == target) return true;
+    }
+    return false;
+}
+
+fn collectTransitionsAlloc(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    states: []const u32,
+) std.mem.Allocator.Error![]AdvanceTransition {
+    var transitions = std.ArrayListUnmanaged(AdvanceTransition).empty;
+    errdefer {
+        for (transitions.items) |*transition| transition.chars.deinit(allocator);
+        transitions.deinit(allocator);
+    }
+
+    for (states) |state_id| {
+        switch (grammar.nfa.states.items[state_id]) {
+            .advance => |advance| try transitions.append(allocator, .{
+                .chars = try cloneCharacterSet(allocator, advance.chars),
+                .target_state = advance.state_id,
+                .is_separator = advance.is_separator,
+                .precedence = advance.precedence,
+            }),
+            else => {},
+        }
+    }
+
+    return transitions.toOwnedSlice(allocator);
+}
+
+fn freeTransitions(allocator: std.mem.Allocator, transitions: []AdvanceTransition) void {
+    for (transitions) |*transition| transition.chars.deinit(allocator);
+    allocator.free(transitions);
+}
+
+fn firstCompletion(states: []const u32, grammar: ExpandedLexicalGrammar) ?ConflictCompletion {
+    var completion: ?ConflictCompletion = null;
+    for (states) |state_id| {
+        switch (grammar.nfa.states.items[state_id]) {
+            .accept => |accept| {
+                const candidate: ConflictCompletion = .{
+                    .variable_index = accept.variable_index,
+                    .precedence = accept.precedence,
+                };
+                if (completion == null or preferCompletedToken(grammar, candidate, completion.?)) {
+                    completion = candidate;
+                }
+            },
+            else => {},
+        }
+    }
+    return completion;
+}
+
+fn preferCompletedToken(
+    grammar: ExpandedLexicalGrammar,
+    left: ConflictCompletion,
+    right: ConflictCompletion,
+) bool {
+    if (left.precedence != right.precedence) return left.precedence > right.precedence;
+    const left_var = grammar.variables[left.variable_index];
+    const right_var = grammar.variables[right.variable_index];
+    if (left_var.implicit_precedence != right_var.implicit_precedence) {
+        return left_var.implicit_precedence > right_var.implicit_precedence;
+    }
+    return left.variable_index < right.variable_index;
+}
+
+fn preferAdvanceOverCompletion(
+    grammar: ExpandedLexicalGrammar,
+    completion: ConflictCompletion,
+    transition: AdvanceTransition,
+) bool {
+    if (transition.precedence != completion.precedence) {
+        return transition.precedence > completion.precedence;
+    }
+    if (transition.is_separator) return false;
+    _ = grammar;
+    return true;
+}
+
+fn pairStateHash(left: []const u32, right: []const u32) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    std.hash.autoHash(&hasher, left.len);
+    for (left) |value| std.hash.autoHash(&hasher, value);
+    std.hash.autoHash(&hasher, right.len);
+    for (right) |value| std.hash.autoHash(&hasher, value);
+    return hasher.final();
+}
+
+fn characterSetsIntersect(left: CharacterSet, right: CharacterSet) bool {
+    var i: usize = 0;
+    var j: usize = 0;
+    while (i < left.ranges.items.len and j < right.ranges.items.len) {
+        const left_range = left.ranges.items[i];
+        const right_range = right.ranges.items[j];
+        if (left_range.end <= right_range.start) {
+            i += 1;
+            continue;
+        }
+        if (right_range.end <= left_range.start) {
+            j += 1;
+            continue;
+        }
+        return true;
+    }
+    return false;
 }
 
 fn decodeNextCodepoint(input: []const u8, offset: usize) ?MatchCursor {
@@ -1121,4 +1478,58 @@ test "expandExtractedLexicalGrammar supports ziggy-schema and bash regex forms" 
     try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 3, "abc\n"));
     try std.testing.expectEqual(@as(?usize, 1), try matchVariable(std.testing.allocator, expanded, 4, "("));
     try std.testing.expectEqual(@as(?usize, 1), try matchVariable(std.testing.allocator, expanded, 5, " \t"));
+}
+
+test "buildTokenConflictMapAlloc marks same-string conflicts for identical literals" {
+    const all_rules = [_]rules.Rule{
+        .{
+            .metadata = .{
+                .inner = 1,
+                .data = .{ .precedence = .{ .integer = 2 } },
+            },
+        },
+        .{ .string = "let" },
+        .{ .string = "let" },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "preferred", .kind = .named, .rule = 0 },
+            .{ .name = "other", .kind = .named, .rule = 2 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var conflict_map = try buildTokenConflictMapAlloc(std.testing.allocator, expanded);
+    defer conflict_map.deinit(std.testing.allocator);
+
+    try std.testing.expect(conflict_map.status(0, 1).matches_same_string);
+    try std.testing.expect(!conflict_map.status(1, 0).matches_same_string);
+    try std.testing.expect(conflict_map.status(0, 1).starting_overlap);
+}
+
+test "buildTokenConflictMapAlloc marks literal prefix and identifier continuation" {
+    const all_rules = [_]rules.Rule{
+        .{ .string = "let" },
+        .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "keyword", .kind = .named, .rule = 0 },
+            .{ .name = "identifier", .kind = .named, .rule = 1 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var conflict_map = try buildTokenConflictMapAlloc(std.testing.allocator, expanded);
+    defer conflict_map.deinit(std.testing.allocator);
+
+    try std.testing.expect(conflict_map.status(0, 1).matches_same_string);
+    try std.testing.expect(!conflict_map.status(0, 1).matches_prefix);
+    try std.testing.expect(conflict_map.status(1, 0).does_match_continuation);
 }
