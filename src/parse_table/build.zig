@@ -344,8 +344,7 @@ const SuccessorGroups = struct {
 const ClosureExpansionCacheEntry = struct {
     non_terminal: u32,
     closure_lookahead_mode: ClosureLookaheadMode,
-    propagated_first: first.SymbolSet,
-    inherited_lookahead: ?syntax_ir.SymbolRef,
+    context_follow: first.SymbolSet,
     generated_items: []const item.ParseItemSetEntry,
 };
 
@@ -582,7 +581,7 @@ fn logTopClosureContributors(
         const index = maybe_index.?;
         const variable_name = if (index < variables.len) variables[index].name else "<unknown>";
         logBuildSummary(
-            "closure contributor rank={d} non_terminal={d} name={s} productions={d} visits={d} contexts={d} cache_hits={d} unique_lookaheads={d} unique_first_sets={d} added={d} duplicate_hits={d}",
+            "closure contributor rank={d} non_terminal={d} name={s} productions={d} visits={d} contexts={d} cache_hits={d} unique_context_lookaheads={d} unique_context_first_sets={d} added={d} duplicate_hits={d}",
             .{
                 idx + 1,
                 index,
@@ -624,6 +623,18 @@ fn addSymbolToSet(target: *first.SymbolSet, symbol: syntax_ir.SymbolRef) void {
     }
 }
 
+fn closureContextFollowSet(
+    allocator: std.mem.Allocator,
+    suffix_first: first.SymbolSet,
+    inherited_lookahead: ?syntax_ir.SymbolRef,
+) !first.SymbolSet {
+    var result = try cloneSymbolSet(allocator, suffix_first);
+    if (result.includes_epsilon) {
+        if (inherited_lookahead) |lookahead| addSymbolToSet(&result, lookahead);
+    }
+    return result;
+}
+
 fn optionalSymbolRefEql(a: ?syntax_ir.SymbolRef, b: ?syntax_ir.SymbolRef) bool {
     if (a) |left| {
         if (b) |right| return symbolRefEql(left, right);
@@ -636,14 +647,12 @@ fn findClosureExpansionCache(
     entries: []const ClosureExpansionCacheEntry,
     non_terminal: u32,
     closure_lookahead_mode: ClosureLookaheadMode,
-    propagated_first: first.SymbolSet,
-    inherited_lookahead: ?syntax_ir.SymbolRef,
+    context_follow: first.SymbolSet,
 ) ?[]const item.ParseItemSetEntry {
     for (entries) |entry| {
         if (entry.non_terminal != non_terminal) continue;
         if (entry.closure_lookahead_mode != closure_lookahead_mode) continue;
-        if (!optionalSymbolRefEql(entry.inherited_lookahead, inherited_lookahead)) continue;
-        if (!first.SymbolSet.eql(entry.propagated_first, propagated_first)) continue;
+        if (!first.SymbolSet.eql(entry.context_follow, context_follow)) continue;
         return entry.generated_items;
     }
     return null;
@@ -707,7 +716,7 @@ fn countDistinctLookaheadsForNonTerminal(
         var already_seen = false;
         for (entries[0..index]) |prior| {
             if (prior.non_terminal != non_terminal) continue;
-            if (optionalSymbolRefEql(prior.inherited_lookahead, entry.inherited_lookahead)) {
+            if (first.SymbolSet.eql(prior.context_follow, entry.context_follow)) {
                 already_seen = true;
                 break;
             }
@@ -727,7 +736,7 @@ fn countDistinctFirstSetsForNonTerminal(
         var already_seen = false;
         for (entries[0..index]) |prior| {
             if (prior.non_terminal != non_terminal) continue;
-            if (first.SymbolSet.eql(prior.propagated_first, entry.propagated_first)) {
+            if (first.SymbolSet.eql(prior.context_follow, entry.context_follow)) {
                 already_seen = true;
                 break;
             }
@@ -1941,7 +1950,7 @@ const ClosureRun = struct {
                     stats.duplicate_hits[non_terminal] += append_stats.duplicate_hits;
                     if (stats.added_items[non_terminal] >= stats.next_added_report[non_terminal]) {
                         logBuildSummary(
-                            "closure hot non_terminal={d} name={s} productions={d} visits={d} contexts={d} cache_hits={d} unique_lookaheads={d} unique_first_sets={d} added={d} duplicate_hits={d}",
+                            "closure hot non_terminal={d} name={s} productions={d} visits={d} contexts={d} cache_hits={d} unique_context_lookaheads={d} unique_context_first_sets={d} added={d} duplicate_hits={d}",
                             .{
                                 non_terminal,
                                 if (non_terminal < self.variables.len) self.variables[non_terminal].name else "<unknown>",
@@ -1997,12 +2006,18 @@ const ClosureRun = struct {
         inherited_lookahead: ?syntax_ir.SymbolRef,
         suffix_first: first.SymbolSet,
     ) ![]const item.ParseItemSetEntry {
+        const context_follow = try closureContextFollowSet(
+            self.allocator,
+            suffix_first,
+            inherited_lookahead,
+        );
+        defer freeSymbolSet(self.allocator, context_follow);
+
         if (findClosureExpansionCache(
             self.expansion_cache.items,
             non_terminal,
             self.effective_closure_lookahead_mode,
-            suffix_first,
-            inherited_lookahead,
+            context_follow,
         )) |cached| {
             if (self.trace_current_closure and (cursor < 10 or (cursor + 1) % 25 == 0)) {
                 std.debug.print(
@@ -2037,8 +2052,7 @@ const ClosureRun = struct {
         try self.expansion_cache.append(.{
             .non_terminal = non_terminal,
             .closure_lookahead_mode = self.effective_closure_lookahead_mode,
-            .propagated_first = try cloneSymbolSet(self.allocator, suffix_first),
-            .inherited_lookahead = inherited_lookahead,
+            .context_follow = try cloneSymbolSet(self.allocator, context_follow),
             .generated_items = generated,
         });
         if (self.progress_log and non_terminal < stats.unique_lookaheads.len) {
@@ -2054,7 +2068,7 @@ const ClosureRun = struct {
                 var lookahead_buf: [64]u8 = undefined;
                 const lookahead_text = optionalSymbolRefText(&lookahead_buf, inherited_lookahead);
                 std.debug.print(
-                    "[parse_table_build] closure context non_terminal={d} name={s} contexts={d} unique_lookaheads={d} unique_first_sets={d} lookahead={s} first(terminals={d}, externals={d}, epsilon={})\n",
+                    "[parse_table_build] closure context non_terminal={d} name={s} contexts={d} unique_context_lookaheads={d} unique_context_first_sets={d} lookahead={s} first(terminals={d}, externals={d}, epsilon={}) merged_follow(terminals={d}, externals={d}, epsilon={})\n",
                     .{
                         non_terminal,
                         if (non_terminal < self.variables.len) self.variables[non_terminal].name else "<unknown>",
@@ -2065,6 +2079,9 @@ const ClosureRun = struct {
                         countPresent(suffix_first.terminals),
                         countPresent(suffix_first.externals),
                         suffix_first.includes_epsilon,
+                        countPresent(context_follow.terminals),
+                        countPresent(context_follow.externals),
+                        context_follow.includes_epsilon,
                     },
                 );
             }
@@ -2301,6 +2318,91 @@ test "closure uses precomputed transitive additions to expand leading recursive 
     try std.testing.expect(findParseItem(items, item.ParseItem.init(2, 0), .{ .terminal = 0 }) != null);
     try std.testing.expect(findParseItem(items, item.ParseItem.init(3, 0), .{ .terminal = 0 }) != null);
     try std.testing.expect(findParseItem(items, item.ParseItem.init(4, 0), .{ .terminal = 2 }) != null);
+}
+
+test "buildClosureExpansionItemsAlloc preserves inherited and propagated follow signals" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var a_to_b_c_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .symbol = .{ .terminal = 2 } },
+    };
+    var a_to_d_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    var b_to_e_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{
+                .name = "A",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = a_to_b_c_steps[0..] },
+                    .{ .steps = a_to_d_steps[0..] },
+                },
+            },
+            .{
+                .name = "B",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = b_to_e_steps[0..] },
+                },
+            },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
+    const productions = try collectProductions(arena.allocator(), grammar);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets);
+    defer item_set_builder.deinit();
+
+    const generated = try buildClosureExpansionItemsAlloc(
+        arena.allocator(),
+        item_set_builder,
+        1,
+        .{ .terminal = 0 },
+        .{},
+    );
+
+    try std.testing.expect(findParseItem(generated, item.ParseItem.init(2, 0), .{ .terminal = 0 }) != null);
+    try std.testing.expect(findParseItem(generated, item.ParseItem.init(3, 0), .{ .terminal = 0 }) != null);
+    try std.testing.expect(findParseItem(generated, item.ParseItem.init(4, 0), .{ .terminal = 2 }) != null);
+}
+
+test "closureContextFollowSet merges inherited lookahead only through nullable suffixes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var suffix = try initEmptySymbolSet(arena.allocator(), 3, 0);
+    suffix.terminals[1] = true;
+    suffix.includes_epsilon = true;
+
+    const merged = try closureContextFollowSet(arena.allocator(), suffix, .{ .terminal = 2 });
+    try std.testing.expect(merged.terminals[1]);
+    try std.testing.expect(merged.terminals[2]);
+    try std.testing.expect(merged.includes_epsilon);
+
+    var non_nullable = try initEmptySymbolSet(arena.allocator(), 3, 0);
+    non_nullable.terminals[1] = true;
+    const unchanged = try closureContextFollowSet(arena.allocator(), non_nullable, .{ .terminal = 2 });
+    try std.testing.expect(unchanged.terminals[1]);
+    try std.testing.expect(!unchanged.terminals[2]);
+    try std.testing.expect(!unchanged.includes_epsilon);
 }
 
 fn findParseItem(items: []const item.ParseItemSetEntry, needle: item.ParseItem, lookahead: syntax_ir.SymbolRef) ?usize {
