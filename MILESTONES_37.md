@@ -42,7 +42,7 @@ Out of scope:
 - [x] the main shortlist and external inventories expose the standalone coarse parser proof explicitly
 - [x] aggregate compatibility summaries distinguish routine proof from standalone parser proof cleanly
 - [x] docs describe the current `tree_sitter_c_json` split without relying on probe-only artifacts
-- [ ] the checked-in coverage decision and milestone notes reflect the final M37 boundary accurately
+- [x] the checked-in coverage decision and milestone notes reflect the final M37 boundary accurately
 
 ## PR-Sized Slices
 
@@ -66,17 +66,17 @@ Out of scope:
 
 ### PR 4: Closeout
 
-- [ ] update milestone notes and next-step wording from the final checked-in evidence
-- [ ] mark the final M37 compatibility boundary and remaining limitations explicitly
-- [ ] keep the next-step recommendation narrow and honest
+- [x] update milestone notes and next-step wording from the final checked-in evidence
+- [x] mark the final M37 compatibility boundary and remaining limitations explicitly
+- [x] keep the next-step recommendation narrow and honest
 
 ## Progress
 
 - [x] PR 1 completed
 - [x] PR 2 completed
 - [x] PR 3 completed
-- [ ] PR 4 completed
-- [ ] M37 ready for closeout
+- [x] PR 4 completed
+- [x] M37 ready for closeout
 
 ## Current Focus
 
@@ -96,3 +96,39 @@ Out of scope:
   - `external_repo_inventory.json` now exposes:
     - `standalone_parser_proof_targets = 1`
     - `tree_sitter_c_json` with `standalone_parser_proof_scope = coarse_serialize_only`
+
+## Closeout
+
+M37 closes without widening the routine shortlist boundary.
+
+- the routine parser-only boundary remains unchanged:
+  - `tree_sitter_c_json` is still `deferred_for_parser_boundary`
+  - routine parser mode is still `prepare_only`
+- the standalone parser-proof split is now visible in the main compatibility surfaces:
+  - `shortlist.json`
+  - `shortlist_inventory.json`
+  - `shortlist_report.json`
+  - `external_repo_inventory.json`
+- aggregate reporting now exposes that split directly:
+  - `shortlist_inventory.json` reports `standalone_parser_proof_targets = 1`
+  - `shortlist_report.json` reports `standalone_parser_proof_targets = 1`
+  - `external_repo_inventory.json` reports `standalone_parser_proof_targets = 1`
+- the deferred C snapshot now carries:
+  - `standalone_parser_proof_scope = coarse_serialize_only`
+  - alongside its unchanged routine `parser_proof_boundary`
+
+Final M37 boundary:
+
+- 5 intended first-wave parser-only targets pass in the routine shortlist
+- 6 intended scanner-wave targets pass in the routine shortlist
+- 1 deferred parser-wave singleton remains:
+  - `tree_sitter_c_json`
+- 1 standalone coarse parser proof remains visible and passing outside the routine shortlist:
+  - `tree_sitter_c_json`
+- 1 frozen control fixture remains:
+  - `parse_table_conflict_json`
+
+Recommended next step after M37:
+
+- keep the next milestone narrow and parser-focused:
+  - revisit `tree_sitter_c_json` only when there is a credible routine-boundary promotion hypothesis beyond the current standalone coarse serialize proof

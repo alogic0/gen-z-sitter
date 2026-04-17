@@ -6,17 +6,7 @@
   "grammar_input_shape_issues": [],
   "compile_surface_issues": [],
   "harness_limitations": [],
-  "deferred_parser_targets": [
-    {
-      "id": "tree_sitter_c_json",
-      "display_name": "tree-sitter-c (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
-      "candidate_status": "deferred_parser_wave",
-      "first_failed_stage": "serialize",
-      "detail": "full parser-surface emission is deferred for tree_sitter_c_json: the current stable shortlist only proves load and prepare for this larger external parser-only target",
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, kept at a prepare-only parser boundary while M34 evaluates serialize-only as the next stable proof layer for grammars of this size"
-    }
-  ],
+  "deferred_parser_targets": [],
   "deferred_control_targets": [
     {
       "id": "parse_table_conflict_json",

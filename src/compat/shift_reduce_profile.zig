@@ -110,8 +110,7 @@ test "buildShiftReduceProfileAlloc reflects that no deferred shift-reduce blocke
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     var report = try buildShiftReduceProfileAlloc(allocator, runs);
     defer report.deinit(allocator);
@@ -130,8 +129,7 @@ test "renderShiftReduceProfileAlloc matches the checked-in shortlist shift-reduc
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     const rendered = try renderShiftReduceProfileAlloc(allocator, runs);
     defer allocator.free(rendered);

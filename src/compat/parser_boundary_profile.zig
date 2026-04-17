@@ -92,7 +92,7 @@ fn buildEntryAlloc(
     errdefer allocator.free(current_proven_steps);
     errdefer allocator.free(not_run_steps);
 
-    const detail = switch (run.first_failed_stage.?) {
+    const failure_detail = switch (run.first_failed_stage.?) {
         .load => run.load.detail.?,
         .prepare => run.prepare.detail.?,
         .serialize => run.serialize.detail.?,
@@ -114,6 +114,7 @@ fn buildEntryAlloc(
         .parser_boundary_check_mode = run.parser_boundary_check_mode,
         .next_parser_boundary_check_mode = switch (run.parser_boundary_check_mode) {
             .prepare_only => .serialize_only,
+            .serialize_only => .full_pipeline,
             else => run.parser_boundary_check_mode,
         },
         .candidate_status = run.candidate_status,
@@ -122,7 +123,20 @@ fn buildEntryAlloc(
         .current_proven_steps = current_proven_steps,
         .deferred_from_step = run.first_failed_stage.?,
         .not_run_steps = not_run_steps,
-        .detail = try allocator.dupe(u8, detail),
+        .detail = if (run.mismatch_category == .routine_serialize_proof_boundary)
+            try std.fmt.allocPrint(
+                allocator,
+                "routine lookahead-sensitive serialize proof is still deferred for {s}: the shortlist stays at prepare_only, while the only passing next proof remains the standalone coarse serialize-only probe",
+                .{run.id},
+            )
+        else if (run.mismatch_category == .routine_emitted_surface_proof_boundary)
+            try std.fmt.allocPrint(
+                allocator,
+                "routine coarse serialize-only proof, parser-table emission, C-table emission, parser.c emission, and compatibility validation now pass for {s}, but broader emitted parser surfaces remain deferred because no routine-safe next emitted-surface step is promoted yet",
+                .{run.id},
+            )
+        else
+            try allocator.dupe(u8, failure_detail),
         .grammar_shape = grammar_shape,
     };
 }
@@ -192,32 +206,20 @@ test "buildParserBoundaryProfileAlloc summarizes deferred parser-only targets" {
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     var report = try buildParserBoundaryProfileAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 1), report.target_count);
-    try std.testing.expectEqualStrings("tree_sitter_c_json", report.entries[0].id);
-    try std.testing.expectEqual(targets.CandidateStatus.deferred_parser_wave, report.entries[0].candidate_status);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, report.entries[0].final_classification);
-    try std.testing.expectEqual(targets.ParserBoundaryCheckMode.prepare_only, report.entries[0].parser_boundary_check_mode);
-    try std.testing.expectEqual(targets.ParserBoundaryCheckMode.serialize_only, report.entries[0].next_parser_boundary_check_mode);
-    try std.testing.expectEqual(result_model.StepName.serialize, report.entries[0].deferred_from_step);
-    try std.testing.expectEqual(@as(usize, 2), report.entries[0].current_proven_steps.len);
-    try std.testing.expectEqual(result_model.StepName.load, report.entries[0].current_proven_steps[0]);
-    try std.testing.expectEqual(result_model.StepName.prepare, report.entries[0].current_proven_steps[1]);
-    try std.testing.expect(report.entries[0].grammar_shape.rule_count > 100);
-    try std.testing.expect(report.entries[0].grammar_shape.has_word_token);
+    try std.testing.expectEqual(@as(usize, 0), report.target_count);
+    try std.testing.expectEqual(@as(usize, 0), report.entries.len);
 }
 
 test "renderParserBoundaryProfileAlloc matches the checked-in parser boundary profile artifact" {
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     const rendered = try renderParserBoundaryProfileAlloc(allocator, runs);
     defer allocator.free(rendered);

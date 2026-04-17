@@ -22,11 +22,25 @@ pub const RunOptions = struct {
     progress_log: bool = false,
 };
 
+var cached_shortlist_runs_for_tests: ?[]result_model.TargetRunResult = null;
+var cached_shortlist_runs_mutex: std.Thread.Mutex = .{};
+
 pub fn runShortlistTargetsAlloc(
     allocator: std.mem.Allocator,
     options: RunOptions,
 ) ![]result_model.TargetRunResult {
     return try runTargetsAlloc(allocator, targets.shortlistTargets(), options);
+}
+
+pub fn cachedShortlistTargetsForTests() ![]const result_model.TargetRunResult {
+    cached_shortlist_runs_mutex.lock();
+    defer cached_shortlist_runs_mutex.unlock();
+
+    if (cached_shortlist_runs_for_tests) |runs| return runs;
+
+    const runs = try runShortlistTargetsAlloc(std.heap.page_allocator, .{});
+    cached_shortlist_runs_for_tests = runs;
+    return runs;
 }
 
 pub fn runStagedTargetsAlloc(
@@ -81,6 +95,30 @@ fn shouldLogProgress(options: RunOptions) bool {
     return true;
 }
 
+fn shouldLogDetailProgress(options: RunOptions) bool {
+    if (shouldLogProgress(options)) return true;
+
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_COMPAT_DETAIL_PROGRESS") catch return false;
+    defer std.heap.page_allocator.free(value);
+
+    if (value.len == 0) return false;
+    if (std.mem.eql(u8, value, "0")) return false;
+    return true;
+}
+
+fn logDetailStart(target_id: []const u8, step: []const u8) void {
+    std.debug.print("[compat_harness_detail] start {s} {s}\n", .{ target_id, step });
+}
+
+fn logDetailDone(target_id: []const u8, step: []const u8, timer: *std.time.Timer) void {
+    const elapsed_ms = @as(f64, @floatFromInt(timer.read())) / @as(f64, std.time.ns_per_ms);
+    std.debug.print("[compat_harness_detail] done  {s} {s} ({d:.2} ms)\n", .{ target_id, step, elapsed_ms });
+}
+
+fn logDetailSummary(comptime format: []const u8, args: anytype) void {
+    std.debug.print("[compat_harness_detail] " ++ format ++ "\n", args);
+}
+
 pub fn runTarget(
     allocator: std.mem.Allocator,
     target: targets.Target,
@@ -88,6 +126,7 @@ pub fn runTarget(
 ) !result_model.TargetRunResult {
     var run = result_model.TargetRunResult.init(target);
     errdefer run.deinit(allocator);
+    const detail_progress = shouldLogDetailProgress(options);
 
     if (target.candidate_status == .excluded_out_of_scope) {
         return failRun(
@@ -102,6 +141,8 @@ pub fn runTarget(
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
+    var load_timer = try std.time.Timer.start();
+    if (detail_progress) logDetailStart(target.id, "load");
     var loaded = grammar_loader.loadGrammarFile(arena.allocator(), target.grammar_path) catch |err| {
         return failRun(
             &run,
@@ -111,9 +152,12 @@ pub fn runTarget(
             try std.fmt.allocPrint(allocator, "{s}: {s}", .{ target.grammar_path, grammar_loader.errorMessage(err) }),
         );
     };
+    if (detail_progress) logDetailDone(target.id, "load", &load_timer);
     run.load.status = .passed;
     defer loaded.deinit();
 
+    var prepare_timer = try std.time.Timer.start();
+    if (detail_progress) logDetailStart(target.id, "prepare");
     const prepared = parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar) catch |err| {
         const diagnostic = parse_grammar.errorDiagnostic(err);
         return failRun(
@@ -124,6 +168,7 @@ pub fn runTarget(
             try std.fmt.allocPrint(allocator, "{s}: {s}", .{ target.grammar_path, diagnostic.summary }),
         );
     };
+    if (detail_progress) logDetailDone(target.id, "prepare", &prepare_timer);
     run.prepare.status = .passed;
 
     if (target.boundary_kind == .parser_only and target.parser_boundary_check_mode == .prepare_only) {
@@ -131,13 +176,151 @@ pub fn runTarget(
             &run,
             .serialize,
             .deferred_for_parser_boundary,
-            .parser_proof_boundary,
+            .routine_serialize_proof_boundary,
             try std.fmt.allocPrint(
                 allocator,
-                "full parser-surface emission is deferred for {s}: the current stable shortlist only proves load and prepare for this larger external parser-only target",
+                "routine lookahead-sensitive serialize proof is deferred for {s}: the current stable shortlist only proves load and prepare here, while the only passing next proof is the standalone coarse serialize-only probe",
                 .{target.id},
             ),
         );
+    }
+
+    if (target.boundary_kind == .parser_only and target.parser_boundary_check_mode == .serialize_only) {
+        var serialize_timer = try std.time.Timer.start();
+        if (detail_progress) logDetailStart(target.id, "routine_coarse_serialize_only");
+        const serialized = parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+            arena.allocator(),
+            prepared,
+            .diagnostic,
+            .{ .closure_lookahead_mode = .none },
+        ) catch |err| {
+            return failRun(
+                &run,
+                .serialize,
+                .deferred_for_parser_boundary,
+                .routine_serialize_proof_boundary,
+                try std.fmt.allocPrint(allocator, "routine coarse serialize-only proof failed: {s}", .{@errorName(err)}),
+            );
+        };
+        if (detail_progress) {
+            logDetailDone(target.id, "routine_coarse_serialize_only", &serialize_timer);
+            logDetailSummary(
+                "{s} routine_coarse_serialize_only serialized_states={d} blocked={}",
+                .{ target.id, serialized.states.len, serialized.blocked },
+            );
+        }
+        run.serialize.status = .passed;
+        if (detail_progress) logDetailStart(target.id, "emit_parser_tables");
+        var parser_tables_timer = try std.time.Timer.start();
+        const parser_tables = parser_tables_emit.emitSerializedTableAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
+            return failRun(
+                &run,
+                .emit_parser_tables,
+                .deferred_for_parser_boundary,
+                .routine_emitted_surface_proof_boundary,
+                try std.fmt.allocPrint(allocator, "routine parser-table emission proof failed: {s}", .{@errorName(err)}),
+            );
+        };
+        if (detail_progress) {
+            logDetailDone(target.id, "emit_parser_tables", &parser_tables_timer);
+            logDetailSummary(
+                "{s} emit_parser_tables bytes={d}",
+                .{ target.id, parser_tables.len },
+            );
+        }
+        run.emit_parser_tables.status = .passed;
+        if (detail_progress) logDetailStart(target.id, "emit_c_tables");
+        var c_tables_timer = try std.time.Timer.start();
+        const c_tables = c_tables_emit.emitCTableSkeletonAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
+            return failRun(
+                &run,
+                .emit_c_tables,
+                .deferred_for_parser_boundary,
+                .routine_emitted_surface_proof_boundary,
+                try std.fmt.allocPrint(allocator, "routine C-table emission proof failed: {s}", .{@errorName(err)}),
+            );
+        };
+        if (detail_progress) {
+            logDetailDone(target.id, "emit_c_tables", &c_tables_timer);
+            logDetailSummary(
+                "{s} emit_c_tables bytes={d}",
+                .{ target.id, c_tables.len },
+            );
+        }
+        run.emit_c_tables.status = .passed;
+        if (detail_progress) logDetailStart(target.id, "emit_parser_c");
+        var parser_c_timer = try std.time.Timer.start();
+        const parser_c = parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
+            return failRun(
+                &run,
+                .emit_parser_c,
+                .deferred_for_parser_boundary,
+                .routine_emitted_surface_proof_boundary,
+                try std.fmt.allocPrint(allocator, "routine parser.c emission proof failed: {s}", .{@errorName(err)}),
+            );
+        };
+        if (detail_progress) {
+            logDetailDone(target.id, "emit_parser_c", &parser_c_timer);
+            logDetailSummary(
+                "{s} emit_parser_c bytes={d}",
+                .{ target.id, parser_c.len },
+            );
+        }
+        run.emit_parser_c.status = .passed;
+        if (detail_progress) logDetailStart(target.id, "compat_check");
+        var compat_timer = try std.time.Timer.start();
+        compat_checks.validateParserCCompatibilitySurface(parser_c) catch |err| {
+            return failRun(
+                &run,
+                .compat_check,
+                .deferred_for_parser_boundary,
+                .routine_emitted_surface_proof_boundary,
+                try std.fmt.allocPrint(allocator, "routine compatibility check failed: {s}", .{@errorName(err)}),
+            );
+        };
+        if (detail_progress) logDetailDone(target.id, "compat_check", &compat_timer);
+        run.compat_check.status = .passed;
+        if (detail_progress) logDetailStart(target.id, "compile_smoke");
+        var compile_timer = try std.time.Timer.start();
+        var compile_result = compile_smoke.compileParserC(allocator, parser_c) catch |err| {
+            return failRun(
+                &run,
+                .compile_smoke,
+                .infrastructure_failure,
+                .infrastructure_failure,
+                try std.fmt.allocPrint(allocator, "routine compile-smoke infrastructure failure: {s}", .{@errorName(err)}),
+            );
+        };
+        defer compile_result.deinit(allocator);
+        switch (compile_result) {
+            .success => {
+                if (detail_progress) logDetailDone(target.id, "compile_smoke", &compile_timer);
+                run.compile_smoke.status = .passed;
+            },
+            .compiler_error => |stderr| {
+                return failRun(
+                    &run,
+                    .compile_smoke,
+                    .deferred_for_parser_boundary,
+                    .routine_emitted_surface_proof_boundary,
+                    try std.fmt.allocPrint(allocator, "routine compile-smoke proof failed:\n{s}", .{stderr}),
+                );
+            },
+        }
+        run.emission = .{
+            .blocked = serialized.blocked,
+            .serialized_state_count = serialized.states.len,
+            .emitted_state_count = 0,
+            .merged_state_count = 0,
+            .action_entry_count = 0,
+            .goto_entry_count = 0,
+            .unresolved_entry_count = 0,
+            .parser_tables_bytes = parser_tables.len,
+            .c_tables_bytes = c_tables.len,
+            .parser_c_bytes = parser_c.len,
+        };
+
+        return run;
     }
 
     if (target.boundary_kind == .scanner_external_scanner) {
@@ -957,8 +1140,7 @@ test "runTarget reports out-of-scope classification for explicitly excluded cand
 test "runStagedTargetsAlloc can be rendered to a deterministic JSON report" {
     const allocator = std.testing.allocator;
 
-    const runs = try runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try cachedShortlistTargetsForTests();
 
     const json = try report_json.renderRunReportAlloc(allocator, runs);
     defer allocator.free(json);
@@ -973,15 +1155,12 @@ test "runStagedTargetsAlloc can be rendered to a deterministic JSON report" {
 }
 
 test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entries" {
-    const allocator = std.testing.allocator;
-
-    const runs = try runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqual(@as(usize, 13), runs.len);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[5].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[6].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.frozen_control_fixture, runs[8].final_classification);
@@ -991,11 +1170,8 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[12].final_classification);
 }
 
-test "runShortlistTargetsAlloc promotes the external Ziggy targets, defers tree_sitter_c, and keeps only staged blocked controls" {
-    const allocator = std.testing.allocator;
-
-    const runs = try runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_c, and keeps only staged blocked controls" {
+    const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[3].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[4].mismatch_category);
@@ -1003,9 +1179,15 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets, defers tree_
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[4].blocked_boundary);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
-    try std.testing.expectEqual(result_model.MismatchCategory.parser_proof_boundary, runs[5].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[5].mismatch_category);
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[5].blocked_boundary);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[5].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].serialize.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_parser_tables.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_c_tables.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_parser_c.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].compat_check.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].compile_smoke.status);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[6].mismatch_category);
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[6].blocked_boundary);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[7].mismatch_category);
@@ -1019,26 +1201,25 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets, defers tree_
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[12].mismatch_category);
 }
 
-test "runShortlistTargetsAlloc defers tree_sitter_c as an explicit parser-boundary target" {
-    const allocator = std.testing.allocator;
-
-    const runs = try runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+test "runShortlistTargetsAlloc promotes tree_sitter_c through compile smoke" {
+    const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqualStrings("tree_sitter_c_json", runs[5].id);
-    try std.testing.expectEqual(targets.CandidateStatus.deferred_parser_wave, runs[5].candidate_status);
+    try std.testing.expectEqual(targets.CandidateStatus.intended_first_wave, runs[5].candidate_status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].load.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].prepare.status);
-    try std.testing.expectEqual(result_model.StepStatus.failed, runs[5].serialize.status);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[5].final_classification);
-    try std.testing.expectEqual(result_model.MismatchCategory.parser_proof_boundary, runs[5].mismatch_category);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].serialize.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_parser_tables.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_c_tables.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_parser_c.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].compat_check.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].compile_smoke.status);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[5].mismatch_category);
 }
 
 test "runShortlistTargetsAlloc promotes tree_sitter_haskell into sampled real external scanner proof" {
-    const allocator = std.testing.allocator;
-
-    const runs = try runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqualStrings("tree_sitter_haskell_json", runs[6].id);
     try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[6].candidate_status);
@@ -1051,10 +1232,7 @@ test "runShortlistTargetsAlloc promotes tree_sitter_haskell into sampled real ex
 }
 
 test "runShortlistTargetsAlloc promotes tree_sitter_bash through a sampled expansion path" {
-    const allocator = std.testing.allocator;
-
-    const runs = try runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqualStrings("tree_sitter_bash_json", runs[7].id);
     try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[7].candidate_status);
@@ -1068,10 +1246,7 @@ test "runShortlistTargetsAlloc promotes tree_sitter_bash through a sampled expan
 }
 
 test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked control case" {
-    const allocator = std.testing.allocator;
-
-    const runs = try runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqualStrings("parse_table_conflict_json", runs[8].id);
     try std.testing.expectEqual(targets.CandidateStatus.deferred_control_fixture, runs[8].candidate_status);
@@ -1086,10 +1261,7 @@ test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked
 }
 
 test "runShortlistTargetsAlloc promotes scanner-wave targets through the staged scanner boundary" {
-    const allocator = std.testing.allocator;
-
-    const runs = try runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqualStrings("hidden_external_fields_json", runs[9].id);
     try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[9].candidate_status);

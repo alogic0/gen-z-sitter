@@ -1,43 +1,5 @@
 {
   "schema_version": 1,
-  "target_count": 1,
-  "entries": [
-    {
-      "id": "tree_sitter_c_json",
-      "display_name": "tree-sitter-c (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
-      "family": "c",
-      "parser_boundary_check_mode": "prepare_only",
-      "next_parser_boundary_check_mode": "serialize_only",
-      "candidate_status": "deferred_parser_wave",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "parser_proof_boundary",
-      "current_proven_steps": [
-        "load",
-        "prepare"
-      ],
-      "deferred_from_step": "serialize",
-      "not_run_steps": [
-        "emit_parser_tables",
-        "emit_c_tables",
-        "emit_parser_c",
-        "scanner_boundary_check",
-        "compat_check",
-        "compile_smoke"
-      ],
-      "detail": "full parser-surface emission is deferred for tree_sitter_c_json: the current stable shortlist only proves load and prepare for this larger external parser-only target",
-      "grammar_shape": {
-        "rule_count": 182,
-        "precedence_count": 0,
-        "conflict_count": 17,
-        "external_count": 0,
-        "extra_count": 2,
-        "inline_rule_count": 6,
-        "supertype_count": 7,
-        "reserved_set_count": 0,
-        "has_word_token": true,
-        "word_token": "identifier"
-      }
-    }
-  ]
+  "target_count": 0,
+  "entries": []
 }

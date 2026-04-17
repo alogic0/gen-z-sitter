@@ -146,14 +146,13 @@ Current staged compatibility boundary:
   - `parse_table_conflict_json`
   - it remains blocked on purpose as a known ambiguity boundary without precedence annotations
   - the checked-in reports now classify it explicitly as a `frozen_control_fixture` rather than counting it as a normal staged pass
-- the real external parser-only evidence also now includes one explicitly deferred larger parser-only target:
+- the real external parser-only evidence now includes three passing snapshots:
   - `tree_sitter_c_json`
-  - it currently proves `load` and `prepare`
-  - it is intentionally classified as `deferred_for_parser_boundary` with `parser_proof_boundary` rather than being overstated as a promoted full-pipeline pass
-  - the current stable shortlist does not yet claim emitted parser surfaces, compatibility checks, or compile-smoke for that grammar
+  - it currently proves `load`, `prepare`, routine coarse `serialize_only`, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke
+  - it is now classified as `passed_within_current_boundary`
   - the main shortlist and external-repo inventory artifacts now also expose its standalone parser-proof scope directly:
     - current standalone parser proof is `coarse_serialize_only`
-    - this makes the narrower passing probe visible outside `parser_boundary_probe.json`
+    - this keeps the narrower passing probe visible outside `parser_boundary_probe.json` even after the routine promotion
 - the currently represented scanner/external-scanner families are:
   - `hidden_external_fields`
   - `mixed_semantics`
@@ -174,18 +173,12 @@ Current staged compatibility boundary:
 - routine compatibility artifacts are now indexed machine-readably in `compat_targets/artifact_manifest.json`
   - routine refreshes come from `update_compat_artifacts.zig`
   - heavier deferred parser-boundary probing remains separate in `update_parser_boundary_probe.zig`
-- the current coverage decision also now makes the deferred parser-wave singleton explicit:
-  - `tree_sitter_c_json` is the only active deferred parser-wave target
-  - the current low-risk boundary decision is to keep that singleton unchanged unless a narrower promotion hypothesis appears
-- the current narrower promotion hypothesis for that target is now also machine-readable in `compat_targets/parser_boundary_hypothesis.json`
-  - the routine shortlist remains at `prepare_only`
-  - the next named proof step remains `serialize_only`
-  - that next step is currently scoped to standalone probe tooling rather than the routine refresh path
+- the current standalone parser probe remains machine-readable in `compat_targets/parser_boundary_hypothesis.json` and `compat_targets/parser_boundary_probe.json`
+  - the narrower standalone probe still exists to keep heavier parser-boundary investigation separate from the routine refresh path
   - the current standalone probe result in `compat_targets/parser_boundary_probe.json` now shows that a coarse `serialize_only` parser proof passes for `tree_sitter_c_json`
   - that standalone proof uses lookahead-insensitive closure expansion and currently serializes `2336` states with `blocked = false`
-  - it is still intentionally narrower than a full lookahead-sensitive parser proof and does not yet promote the routine shortlist boundary
-  - `compat_targets/parser_boundary_hypothesis.json` and `compat_targets/coverage_decision.json` now also encode that standalone coarse proof machine-readably while keeping the routine shortlist boundary at `prepare_only`
-  - the main shortlist and external-repo inventories now also carry that standalone parser-proof scope so readers can see the split without leaving the central compatibility summaries
+  - it remains intentionally narrower than the now-promoted routine parser-only boundary
+  - the main shortlist and external-repo inventories still carry that standalone parser-proof scope so readers can see the narrower supporting proof without leaving the central compatibility summaries
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
   - `hidden_external_fields` also proves that the invalid path makes less progress than the valid path through the first staged scanner boundary
@@ -201,7 +194,7 @@ Current staged compatibility boundary:
 - the key distinction is:
   - staged scanner proof lives in the shortlist artifacts and covers promoted in-repo scanner families
   - real external scanner proof lives in `external_scanner_repo_inventory.json` and covers the promoted Haskell and Bash snapshots
-- the current checked-in coverage decision now points to second-wave parser-only repo coverage so the larger deferred `tree_sitter_c_json` snapshot can either be promoted or remain explicitly bounded
+- the current checked-in coverage decision now points back to broader compatibility polish, because the larger `tree_sitter_c_json` snapshot has been promoted and the only remaining deferred parser-only target is the intentional control fixture
 
 ## Repository Layout
 

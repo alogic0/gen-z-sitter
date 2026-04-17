@@ -234,8 +234,7 @@ test "buildExternalScannerRepoInventoryAlloc summarizes the current real externa
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     var report = try buildExternalScannerRepoInventoryAlloc(allocator, runs);
     defer report.deinit(allocator);
@@ -254,8 +253,7 @@ test "renderExternalScannerRepoInventoryAlloc matches the checked-in external sc
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     const rendered = try renderExternalScannerRepoInventoryAlloc(allocator, runs);
     defer allocator.free(rendered);

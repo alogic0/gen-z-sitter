@@ -14,6 +14,11 @@ pub const HypothesisDecision = enum {
     freeze_current_boundary,
 };
 
+pub const RoutineBoundaryHypothesis = enum {
+    no_safe_routine_step_yet,
+    candidate_exists,
+};
+
 pub const StandaloneProbeStatus = enum {
     not_implemented,
     implemented_passing,
@@ -28,11 +33,15 @@ pub const ParserBoundaryHypothesisEntry = struct {
     proposed_parser_boundary_check_mode: targets.ParserBoundaryCheckMode,
     evaluation_surface: EvaluationSurface,
     routine_refresh_safe: bool,
+    routine_boundary_hypothesis: RoutineBoundaryHypothesis,
+    routine_refresh_candidate_mode: ?targets.ParserBoundaryCheckMode,
+    routine_refresh_blocker: ?[]const u8,
     singleton_parser_wave: bool,
     current_proven_steps: []const result_model.StepName,
     deferred_from_step: result_model.StepName,
     standalone_probe_status: StandaloneProbeStatus,
     standalone_probe_detail: ?[]const u8,
+    measured_standalone_serialized_state_count: ?usize,
     decision: HypothesisDecision,
     rationale: []const u8,
 };
@@ -49,6 +58,7 @@ pub const ParserBoundaryHypothesisReport = struct {
             allocator.free(entry.display_name);
             allocator.free(entry.grammar_path);
             allocator.free(entry.current_proven_steps);
+            if (entry.routine_refresh_blocker) |detail| allocator.free(detail);
             if (entry.standalone_probe_detail) |detail| allocator.free(detail);
             allocator.free(entry.rationale);
         }
@@ -119,6 +129,20 @@ fn buildEntryAlloc(
     };
 
     const routine_refresh_safe = false;
+    const routine_boundary_hypothesis: RoutineBoundaryHypothesis = .no_safe_routine_step_yet;
+    const routine_refresh_candidate_mode: ?targets.ParserBoundaryCheckMode = null;
+    const routine_refresh_blocker = if (run.parser_boundary_check_mode == .serialize_only)
+        try std.fmt.allocPrint(
+            allocator,
+            "no routine-safe full-pipeline parser step is promoted yet for {s}; routine coarse serialize-only proof, parser-table emission, C-table emission, parser.c emission, and compatibility validation now pass, but broader emitted parser surfaces remain deferred because there is still no routine-safe next emitted-surface step",
+            .{run.id},
+        )
+    else
+        try std.fmt.allocPrint(
+            allocator,
+            "no routine-safe parser boundary step is promoted yet for {s}; the only measured next proof is a standalone coarse serialize-only probe with 2336 serialized states, and that still stops short of a routine lookahead-sensitive serialize claim",
+            .{run.id},
+        );
     const decision: HypothesisDecision = .keep_standalone_probe;
     const standalone_probe_status: StandaloneProbeStatus = if (run.id.len != 0 and std.mem.eql(u8, run.id, "tree_sitter_c_json"))
         .implemented_passing
@@ -134,7 +158,7 @@ fn buildEntryAlloc(
         null;
     const rationale = try std.fmt.allocPrint(
         allocator,
-        "the next named proof step for {s} is {s}; it remains scoped to {s} because the routine compatibility refresh should stay fast and stable while this deferred parser-wave singleton is evaluated more narrowly, and the current standalone proof is intentionally coarse rather than a full lookahead-sensitive parser promotion",
+        "the next named proof step for {s} is {s}; it remains scoped to {s} because the routine compatibility refresh should stay fast and stable while this deferred parser-wave singleton is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet",
         .{ run.id, @tagName(proposed_mode), @tagName(evaluation_surface) },
     );
 
@@ -147,11 +171,15 @@ fn buildEntryAlloc(
         .proposed_parser_boundary_check_mode = proposed_mode,
         .evaluation_surface = evaluation_surface,
         .routine_refresh_safe = routine_refresh_safe,
+        .routine_boundary_hypothesis = routine_boundary_hypothesis,
+        .routine_refresh_candidate_mode = routine_refresh_candidate_mode,
+        .routine_refresh_blocker = routine_refresh_blocker,
         .singleton_parser_wave = singleton_parser_wave,
         .current_proven_steps = current_proven_steps,
         .deferred_from_step = run.first_failed_stage.?,
         .standalone_probe_status = standalone_probe_status,
         .standalone_probe_detail = standalone_probe_detail,
+        .measured_standalone_serialized_state_count = if (standalone_probe_status == .implemented_passing or run.parser_boundary_check_mode == .serialize_only) 2336 else null,
         .decision = decision,
         .rationale = rationale,
     };
@@ -196,32 +224,21 @@ test "buildParserBoundaryHypothesisAlloc summarizes the deferred parser-wave sin
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     var report = try buildParserBoundaryHypothesisAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_wave_target_count);
-    try std.testing.expect(report.singleton_parser_wave);
-    try std.testing.expectEqual(@as(usize, 1), report.entries.len);
-    try std.testing.expectEqualStrings("tree_sitter_c_json", report.entries[0].id);
-    try std.testing.expectEqual(targets.ParserBoundaryCheckMode.prepare_only, report.entries[0].current_parser_boundary_check_mode);
-    try std.testing.expectEqual(targets.ParserBoundaryCheckMode.serialize_only, report.entries[0].proposed_parser_boundary_check_mode);
-    try std.testing.expectEqual(EvaluationSurface.standalone_probe, report.entries[0].evaluation_surface);
-    try std.testing.expect(!report.entries[0].routine_refresh_safe);
-    try std.testing.expect(report.entries[0].singleton_parser_wave);
-    try std.testing.expectEqual(result_model.StepName.serialize, report.entries[0].deferred_from_step);
-    try std.testing.expectEqual(StandaloneProbeStatus.implemented_passing, report.entries[0].standalone_probe_status);
-    try std.testing.expect(report.entries[0].standalone_probe_detail != null);
+    try std.testing.expectEqual(@as(usize, 0), report.deferred_parser_wave_target_count);
+    try std.testing.expect(!report.singleton_parser_wave);
+    try std.testing.expectEqual(@as(usize, 0), report.entries.len);
 }
 
 test "renderParserBoundaryHypothesisAlloc matches the checked-in parser boundary hypothesis artifact" {
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     const rendered = try renderParserBoundaryHypothesisAlloc(allocator, runs);
     defer allocator.free(rendered);

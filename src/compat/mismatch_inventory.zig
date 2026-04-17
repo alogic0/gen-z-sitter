@@ -169,7 +169,12 @@ fn includeDeferredControl(run: result_model.TargetRunResult) bool {
 }
 
 fn includeDeferredParserTarget(run: result_model.TargetRunResult) bool {
-    return run.mismatch_category == .parser_proof_boundary;
+    return switch (run.mismatch_category) {
+        .routine_serialize_proof_boundary,
+        .routine_emitted_surface_proof_boundary,
+        => true,
+        else => false,
+    };
 }
 
 fn includeDeferredScannerTarget(run: result_model.TargetRunResult) bool {
@@ -180,8 +185,7 @@ test "buildMismatchInventoryAlloc classifies the current shortlist" {
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     var report = try buildMismatchInventoryAlloc(allocator, runs);
     defer report.deinit(allocator);
@@ -192,7 +196,7 @@ test "buildMismatchInventoryAlloc classifies the current shortlist" {
     try std.testing.expectEqual(@as(usize, 0), report.grammar_input_shape_issues.len);
     try std.testing.expectEqual(@as(usize, 0), report.compile_surface_issues.len);
     try std.testing.expectEqual(@as(usize, 0), report.harness_limitations.len);
-    try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_targets.len);
+    try std.testing.expectEqual(@as(usize, 0), report.deferred_parser_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.out_of_scope_targets.len);
@@ -202,8 +206,7 @@ test "renderMismatchInventoryAlloc matches the checked-in shortlist mismatch inv
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     const rendered = try renderMismatchInventoryAlloc(allocator, runs);
     defer allocator.free(rendered);

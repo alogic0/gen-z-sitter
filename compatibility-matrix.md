@@ -124,8 +124,7 @@ What the repo can credibly claim today:
 - `compat_targets/README.md` explains the relationship between shortlist policy, aggregate boundary, mismatch inventory, and coverage decision artifacts
 - the checked-in shortlist inventory and full report now expose family-level coverage alongside aggregate target totals
 - the current parser-only shortlist boundary is now explicit and broader than the original staged wave:
-  - 5 intended first-wave parser-only targets currently pass within the staged boundary
-  - 1 real external parser-only target is now onboarded but explicitly deferred at a parser boundary
+  - 6 intended first-wave parser-only targets currently pass within the staged boundary
   - 1 staged deferred target remains intentionally frozen as an ambiguity/control fixture
   - that control case is now classified explicitly as a `frozen_control_fixture` in the checked-in reports rather than being counted as a normal pass
   - 6 scanner/external-scanner targets now pass within the current sampled boundary across 4 grammar families
@@ -150,21 +149,20 @@ What the repo can credibly claim today:
   - `hidden_external_fields`
 - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but now rejects on the staged blocked path as `missing_action`
 - the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
-- the current checked-in coverage decision now recommends second-wave parser-only repo coverage because the larger real external `tree_sitter_c_json` snapshot is explicitly deferred at a parser proof boundary rather than already promoted
+- the current checked-in coverage decision now recommends broader compatibility polish because the larger real external `tree_sitter_c_json` snapshot is now promoted rather than still deferred at a parser proof boundary
 - the routine compatibility refresh and the heavier deferred parser probe are now separated explicitly:
   - `update_compat_artifacts.zig` owns the routine checked-in compatibility surfaces
   - `update_parser_boundary_probe.zig` is reserved for standalone deeper parser-boundary investigation
   - `compat_targets/artifact_manifest.json` records that split machine-readably
 - the current low-risk parser-only decision is now also explicit:
-  - the deferred parser-wave set is a singleton
-  - `tree_sitter_c_json` is that singleton
-  - the repo is intentionally not widening the deferred parser-wave set until a narrower promotion hypothesis exists
-  - that narrower hypothesis is now partially implemented in the standalone probe path:
+  - there is no active deferred parser-wave target after the `tree_sitter_c_json` promotion
+  - the narrower standalone probe remains available in the standalone probe path:
     - `parser_boundary_probe.json` records a passing coarse `serialize_only` probe for `tree_sitter_c_json`
     - the coarse probe uses lookahead-insensitive closure expansion to avoid the full LR-style lookahead fanout seen in the earlier serialize attempt
-    - this is still a standalone proof layer, not a promotion of the routine shortlist boundary
+    - this is now a narrower supporting proof layer alongside the promoted routine shortlist boundary
   - the main shortlist and external-repo inventories now also expose that standalone parser-proof scope directly, so the deferred C snapshot is not described only as a routine parser-boundary hold without its narrower passing standalone proof
-  - `coverage_decision.json` now also records that one deferred parser-wave target has a passing standalone coarse serialize-only probe outside the routine shortlist boundary
+  - `coverage_decision.json` now also records that one shortlist target still carries a passing standalone coarse serialize-only probe outside the routine shortlist boundary
+  - the routine shortlist itself now proves `load`, `prepare`, coarse `serialize_only`, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke for `tree_sitter_c_json`
 
 ## Milestone Compatibility Targets
 

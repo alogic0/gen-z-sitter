@@ -1,31 +1,20 @@
 {
   "schema_version": 1,
-  "first_wave_target_count": 5,
-  "first_wave_passed_count": 5,
+  "first_wave_target_count": 6,
+  "first_wave_passed_count": 6,
   "first_wave_non_passing_count": 0,
   "parser_only_boundary_proven": true,
-  "deferred_parser_wave_singleton": true,
-  "primary_deferred_parser_wave_target": {
-    "id": "tree_sitter_c_json",
-    "display_name": "tree-sitter-c (JSON snapshot)",
-    "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
-    "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, kept at a prepare-only parser boundary while M34 evaluates serialize-only as the next stable proof layer for grammars of this size"
-  },
-  "standalone_parser_probe_pass_count": 1,
+  "deferred_parser_wave_singleton": false,
+  "primary_deferred_parser_wave_target": null,
+  "standalone_parser_probe_pass_count": 0,
   "proven_boundary": [
-    "5 intended first-wave parser-only targets are currently in the run set",
-    "5 intended first-wave targets currently pass within the staged parser-only boundary",
+    "6 intended first-wave parser-only targets are currently in the run set",
+    "6 intended first-wave targets currently pass within the staged parser-only boundary",
     "6 intended scanner-wave targets currently pass within the staged scanner boundary",
-    "1 deferred parser-wave target currently has a passing standalone coarse serialize-only probe outside the routine shortlist boundary",
+    "0 shortlist target currently carries a passing standalone coarse serialize-only probe outside the routine shortlist boundary",
     "2 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
   ],
   "deferred_parser_only_targets": [
-    {
-      "id": "tree_sitter_c_json",
-      "display_name": "tree-sitter-c (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, kept at a prepare-only parser boundary while M34 evaluates serialize-only as the next stable proof layer for grammars of this size"
-    },
     {
       "id": "parse_table_conflict_json",
       "display_name": "Parse Table Conflict (JSON)",
@@ -34,10 +23,10 @@
     }
   ],
   "deferred_scanner_targets": [],
-  "recommended_next_milestone": "second_wave_parser_only_repo_coverage",
+  "recommended_next_milestone": "broader_compatibility_polish",
   "recommendation_rationale": [
     "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-    "the only remaining deferred parser-only control fixture is still intentional, and the larger real external parser-only C snapshot remains held at an explicit routine parser proof boundary",
-    "a standalone coarse serialize-only probe now passes for that C snapshot, but the routine shortlist boundary is still narrower and should only move after a deliberate follow-on promotion decision"
+    "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
+    "a second scanner grammar family now passes within the staged first-boundary checks, so the next promoted milestone can shift from scanner onboarding toward broader compatibility polish"
   ]
 }

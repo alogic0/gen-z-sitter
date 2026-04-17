@@ -96,12 +96,11 @@ Current staged boundary summary:
   - `tree_sitter_ziggy_json`
   - `tree_sitter_ziggy_schema_json`
 - those same 2 real snapshots are also exposed separately in `external_repo_inventory.json` so real-repo evidence can be read without mentally subtracting the staged fixture families
-- 1 additional real external parser-only snapshot is now onboarded in a deferred parser-boundary mode:
+- 1 additional real external parser-only snapshot is now promoted into the routine parser-only boundary:
   - `tree_sitter_c_json`
-  - it currently proves `load` and `prepare`
-  - it is intentionally classified as `deferred_for_parser_boundary` with `parser_proof_boundary`
-  - the current stable shortlist does not yet claim emitted parser surfaces, compatibility checks, or compile-smoke for this larger grammar
-  - the standalone parser-boundary probe now also proves a narrower coarse `serialize_only` layer for this target without changing the routine shortlist classification
+  - it currently proves `load`, `prepare`, routine coarse `serialize_only`, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke
+  - it is now classified as `passed_within_current_boundary`
+  - the standalone parser-boundary probe still proves a narrower coarse `serialize_only` layer for this target as supporting evidence
   - the central shortlist and external-repo inventory artifacts now expose that standalone proof directly with `standalone_parser_proof_scope = coarse_serialize_only`
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`
@@ -131,6 +130,6 @@ Current staged boundary summary:
 
 Recommended next step after this staged boundary:
 
-- keep the parser-only, staged scanner, and sampled real external scanner boundaries stable while narrowing or promoting the deferred `tree_sitter_c_json` parser-boundary target
-- only after that should the roadmap shift back toward broader compatibility polish or another widened real external wave
-- the current low-risk evidence decision is to keep `tree_sitter_c_json` as the only deferred parser-wave target until a narrower promotion hypothesis exists
+- keep the parser-only, staged scanner, and sampled real external scanner boundaries stable now that `tree_sitter_c_json` has been promoted
+- the remaining deferred parser-only case is the intentional frozen control fixture `parse_table_conflict_json`
+- the roadmap can now shift back toward broader compatibility polish or another widened real external wave

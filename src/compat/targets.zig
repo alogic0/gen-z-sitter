@@ -171,7 +171,7 @@ pub const shortlist_targets = [_]Target{
         .family = .c,
         .source_kind = .grammar_json,
         .boundary_kind = .parser_only,
-        .parser_boundary_check_mode = .prepare_only,
+        .parser_boundary_check_mode = .serialize_only,
         .standalone_parser_proof_scope = .coarse_serialize_only,
         .provenance = .{
             .origin_kind = .external_repo_snapshot,
@@ -179,10 +179,10 @@ pub const shortlist_targets = [_]Target{
             .upstream_revision = "ae19b676b13bdcc13b7665397e6d9b14975473dd",
             .upstream_grammar_path = "src/grammar.json",
         },
-        .candidate_status = .deferred_parser_wave,
+        .candidate_status = .intended_first_wave,
         .expected_blocked = false,
-        .notes = "real external parser-only grammar snapshot from the local tree-sitter-c repo, kept at a prepare-only parser boundary while M34 evaluates serialize-only as the next stable proof layer for grammars of this size",
-        .success_criteria = "load and prepare the snapshotted upstream grammar.json cleanly, and keep the next serialize-only parser-boundary step explicit until a later milestone proves a broader emitted surface",
+        .notes = "real external parser-only grammar snapshot from the local tree-sitter-c repo, now promoted through routine coarse serialize-only, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke",
+        .success_criteria = "load, prepare, complete the routine coarse serialize-only parser step, emit parser tables plus C tables, emit parser.c, pass compatibility validation, and pass compile-smoke cleanly",
     },
     .{
         .id = "tree_sitter_haskell_json",
@@ -317,10 +317,10 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[0].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
-    try std.testing.expect(shortlist[5].candidate_status == .deferred_parser_wave);
+    try std.testing.expect(shortlist[5].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[5].family == .c);
     try std.testing.expect(shortlist[5].provenance.origin_kind == .external_repo_snapshot);
-    try std.testing.expect(shortlist[5].parser_boundary_check_mode == .prepare_only);
+    try std.testing.expect(shortlist[5].parser_boundary_check_mode == .serialize_only);
     try std.testing.expect(shortlist[6].candidate_status == .intended_scanner_wave);
     try std.testing.expect(shortlist[6].family == .haskell);
     try std.testing.expect(shortlist[6].provenance.origin_kind == .external_repo_snapshot);

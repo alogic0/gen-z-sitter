@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "total_external_repo_targets": 5,
-  "passed_external_repo_targets": 4,
+  "passed_external_repo_targets": 5,
   "standalone_parser_proof_targets": 1,
   "family_coverage": [
     {
@@ -20,7 +20,7 @@
       "family": "c",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 0
+      "passed_count": 1
     },
     {
       "family": "haskell",
@@ -39,7 +39,7 @@
     {
       "boundary_kind": "parser_only",
       "target_count": 3,
-      "passed_count": 2
+      "passed_count": 3
     },
     {
       "boundary_kind": "scanner_external_scanner",
@@ -48,11 +48,10 @@
     }
   ],
   "current_limitations": [
-    "the checked-in real external evidence now includes a larger parser-only snapshot that is still held at an explicit deferred parser boundary",
-    "tree-sitter-c currently proves load and prepare in the routine shortlist and also has a passing standalone coarse serialize-only parser proof, but the stable shortlist still does not claim the full emitted and compiled parser surface for a grammar of that size",
-    "real external scanner evidence and the promoted Ziggy parser-only snapshots remain passing while this larger parser-only target stays explicitly deferred"
+    "the checked-in real external evidence now includes at least one passing external scanner-family snapshot",
+    "the next step is to widen real external scanner-family coverage without collapsing parser-only and scanner evidence into a single flat claim"
   ],
-  "recommended_next_step": "narrow_or_promote_onboarded_external_parser_targets",
+  "recommended_next_step": "broader_compatibility_polish",
   "targets": [
     {
       "id": "tree_sitter_ziggy_json",
@@ -98,9 +97,9 @@
       "upstream_repository": "tree-sitter-c",
       "upstream_revision": "ae19b676b13bdcc13b7665397e6d9b14975473dd",
       "upstream_grammar_path": "src/grammar.json",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "parser_proof_boundary",
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, kept at a prepare-only parser boundary while M34 evaluates serialize-only as the next stable proof layer for grammars of this size"
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, now promoted through routine coarse serialize-only, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke"
     },
     {
       "id": "tree_sitter_haskell_json",

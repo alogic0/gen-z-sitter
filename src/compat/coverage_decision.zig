@@ -67,8 +67,8 @@ pub fn buildCoverageDecisionAlloc(
     const recommendation_rationale = if (deferred_parser_targets.len != 0)
         try duplicateStringSliceAlloc(allocator, &.{
             "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-            "the only remaining deferred parser-only control fixture is still intentional, and the larger real external parser-only C snapshot remains held at an explicit routine parser proof boundary",
-            "a standalone coarse serialize-only probe now passes for that C snapshot, but the routine shortlist boundary is still narrower and should only move after a deliberate follow-on promotion decision",
+            "the only remaining deferred parser-only control fixture is still intentional, and the larger real external parser-only C snapshot is now promoted through a routine coarse serialize-only boundary while still remaining deferred overall",
+            "the routine shortlist now proves load, prepare, coarse serialize, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke for that C snapshot, so the parser-wave singleton is gone and the next promoted milestone can return to broader compatibility polish",
         })
     else if (deferred_scanner_targets.len == 0)
         try duplicateStringSliceAlloc(allocator, &.{
@@ -139,7 +139,7 @@ fn countStandaloneParserProbePasses(runs: []const result_model.TargetRunResult) 
     var count: usize = 0;
     for (runs) |run| {
         if (run.candidate_status != .deferred_parser_wave) continue;
-        if (std.mem.eql(u8, run.id, "tree_sitter_c_json")) count += 1;
+        if (run.standalone_parser_proof_scope != .none) count += 1;
     }
     return count;
 }
@@ -160,7 +160,7 @@ fn collectProvenBoundaryAlloc(
         try std.fmt.allocPrint(allocator, "{d} intended first-wave parser-only targets are currently in the run set", .{first_wave_target_count}),
         try std.fmt.allocPrint(allocator, "{d} intended first-wave targets currently pass within the staged parser-only boundary", .{first_wave_passed_count}),
         try std.fmt.allocPrint(allocator, "{d} intended scanner-wave targets currently pass within the staged scanner boundary", .{scanner_wave_passed_count}),
-        try std.fmt.allocPrint(allocator, "{d} deferred parser-wave target currently has a passing standalone coarse serialize-only probe outside the routine shortlist boundary", .{countStandaloneParserProbePasses(runs)}),
+        try std.fmt.allocPrint(allocator, "{d} shortlist target currently carries a passing standalone coarse serialize-only probe outside the routine shortlist boundary", .{countStandaloneParserProbePasses(runs)}),
         try std.fmt.allocPrint(allocator, "{d} shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures", .{blocked_count}),
     });
 }
@@ -264,22 +264,20 @@ test "buildCoverageDecisionAlloc summarizes the current next-step decision" {
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     var report = try buildCoverageDecisionAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 5), report.first_wave_target_count);
-    try std.testing.expectEqual(@as(usize, 5), report.first_wave_passed_count);
+    try std.testing.expectEqual(@as(usize, 6), report.first_wave_target_count);
+    try std.testing.expectEqual(@as(usize, 6), report.first_wave_passed_count);
     try std.testing.expectEqual(@as(usize, 0), report.first_wave_non_passing_count);
     try std.testing.expect(report.parser_only_boundary_proven);
-    try std.testing.expect(report.deferred_parser_wave_singleton);
-    try std.testing.expect(report.primary_deferred_parser_wave_target != null);
-    try std.testing.expectEqualStrings("tree_sitter_c_json", report.primary_deferred_parser_wave_target.?.id);
-    try std.testing.expectEqual(@as(usize, 1), report.standalone_parser_probe_pass_count);
-    try std.testing.expectEqual(NextMilestone.second_wave_parser_only_repo_coverage, report.recommended_next_milestone);
-    try std.testing.expectEqual(@as(usize, 2), report.deferred_parser_only_targets.len);
+    try std.testing.expect(!report.deferred_parser_wave_singleton);
+    try std.testing.expect(report.primary_deferred_parser_wave_target == null);
+    try std.testing.expectEqual(@as(usize, 0), report.standalone_parser_probe_pass_count);
+    try std.testing.expectEqual(NextMilestone.broader_compatibility_polish, report.recommended_next_milestone);
+    try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_only_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
 }
 
@@ -287,8 +285,7 @@ test "renderCoverageDecisionAlloc matches the checked-in coverage decision artif
     const allocator = std.testing.allocator;
     const harness = @import("harness.zig");
 
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{});
-    defer result_model.deinitRunResults(allocator, runs);
+    const runs = try harness.cachedShortlistTargetsForTests();
 
     const rendered = try renderCoverageDecisionAlloc(allocator, runs);
     defer allocator.free(rendered);
