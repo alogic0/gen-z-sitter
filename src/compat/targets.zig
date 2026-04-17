@@ -191,7 +191,7 @@ pub const shortlist_targets = [_]Target{
         .family = .haskell,
         .source_kind = .grammar_json,
         .boundary_kind = .scanner_external_scanner,
-        .scanner_boundary_check_mode = .sampled_behavioral,
+        .scanner_boundary_check_mode = .sampled_external_only,
         .real_external_scanner_proof_scope = .sampled_external_sequence,
         .provenance = .{
             .origin_kind = .external_repo_snapshot,
@@ -203,8 +203,8 @@ pub const shortlist_targets = [_]Target{
         .expected_blocked = false,
         .scanner_valid_input_path = "compat_targets/tree_sitter_haskell/valid.txt",
         .scanner_invalid_input_path = "compat_targets/tree_sitter_haskell/invalid.txt",
-        .notes = "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current boundary now targets a sampled behavioral layout-sensitive proof rather than only external-sequence sampling",
-        .success_criteria = "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove the sampled behavioral scanner path makes stronger valid-input progress than the invalid input",
+        .notes = "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current supported boundary is the sampled external-sequence proof because the behavioral simulator still rejects lexical separators",
+        .success_criteria = "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove the sampled external-sequence path makes stronger valid-input progress than the invalid input",
     },
     .{
         .id = "tree_sitter_bash_json",
@@ -331,7 +331,7 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[6].candidate_status == .intended_scanner_wave);
     try std.testing.expect(shortlist[6].family == .haskell);
     try std.testing.expect(shortlist[6].provenance.origin_kind == .external_repo_snapshot);
-    try std.testing.expect(shortlist[6].scanner_boundary_check_mode == .sampled_behavioral);
+    try std.testing.expect(shortlist[6].scanner_boundary_check_mode == .sampled_external_only);
     try std.testing.expect(shortlist[6].real_external_scanner_proof_scope == .sampled_external_sequence);
     try std.testing.expect(shortlist[6].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[6].scanner_invalid_input_path != null);

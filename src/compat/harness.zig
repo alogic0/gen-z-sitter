@@ -716,6 +716,20 @@ pub fn runTarget(
             return run;
         }
 
+        if (extracted.lexical.separators.len != 0) {
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(
+                    allocator,
+                    "sampled behavioral external-scanner simulation does not support lexical separators yet for {s}: separators={d}",
+                    .{ target.id, extracted.lexical.separators.len },
+                ),
+            );
+        }
+
         if (detail_progress) logDetailStart(target.id, "scanner_flatten");
         var scanner_flatten_timer = try std.time.Timer.start();
         const flattened = flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax) catch |err| {
@@ -1637,7 +1651,7 @@ test "runShortlistTargetsAlloc promotes tree_sitter_c through compile smoke" {
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[5].mismatch_category);
 }
 
-test "runShortlistTargetsAlloc promotes tree_sitter_haskell into sampled real external scanner proof" {
+test "runShortlistTargetsAlloc promotes tree_sitter_haskell through the sampled external-sequence boundary" {
     const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqualStrings("tree_sitter_haskell_json", runs[6].id);
@@ -1648,6 +1662,7 @@ test "runShortlistTargetsAlloc promotes tree_sitter_haskell into sampled real ex
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[6].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[6].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[6].mismatch_category);
+    try std.testing.expect(std.mem.indexOf(u8, runs[6].success_criteria, "external-sequence path") != null);
 }
 
 test "runShortlistTargetsAlloc promotes tree_sitter_bash through a sampled expansion path" {
