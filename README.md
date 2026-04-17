@@ -149,7 +149,7 @@ Current staged compatibility boundary:
 - the real external parser-only evidence also now includes one explicitly deferred larger parser-only target:
   - `tree_sitter_c_json`
   - it currently proves `load` and `prepare`
-  - it is intentionally classified as `deferred_for_parser_boundary` with `parser_external_boundary_gap` rather than being overstated as a promoted full-pipeline pass
+  - it is intentionally classified as `deferred_for_parser_boundary` with `parser_proof_boundary` rather than being overstated as a promoted full-pipeline pass
   - the current stable shortlist does not yet claim emitted parser surfaces, compatibility checks, or compile-smoke for that grammar
 - the currently represented scanner/external-scanner families are:
   - `hidden_external_fields`

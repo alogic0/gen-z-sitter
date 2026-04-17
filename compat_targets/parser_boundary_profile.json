@@ -11,7 +11,7 @@
       "next_parser_boundary_check_mode": "serialize_only",
       "candidate_status": "deferred_parser_wave",
       "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "parser_external_boundary_gap",
+      "mismatch_category": "parser_proof_boundary",
       "current_proven_steps": [
         "load",
         "prepare"

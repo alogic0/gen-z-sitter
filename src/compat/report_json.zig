@@ -27,7 +27,7 @@ pub const AggregateCounts = struct {
 pub const MismatchCategoryCounts = struct {
     grammar_input_load_mismatch: usize,
     preparation_lowering_mismatch: usize,
-    parser_external_boundary_gap: usize,
+    parser_proof_boundary: usize,
     scanner_external_scanner_boundary_gap: usize,
     parse_table_construction_gap: usize,
     shift_reduce_boundary: usize,
@@ -85,7 +85,7 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
         .mismatch_categories = .{
             .grammar_input_load_mismatch = 0,
             .preparation_lowering_mismatch = 0,
-            .parser_external_boundary_gap = 0,
+            .parser_proof_boundary = 0,
             .scanner_external_scanner_boundary_gap = 0,
             .parse_table_construction_gap = 0,
             .shift_reduce_boundary = 0,
@@ -123,7 +123,7 @@ pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) Agg
             .none => {},
             .grammar_input_load_mismatch => counts.mismatch_categories.grammar_input_load_mismatch += 1,
             .preparation_lowering_mismatch => counts.mismatch_categories.preparation_lowering_mismatch += 1,
-            .parser_external_boundary_gap => counts.mismatch_categories.parser_external_boundary_gap += 1,
+            .parser_proof_boundary => counts.mismatch_categories.parser_proof_boundary += 1,
             .scanner_external_scanner_boundary_gap => counts.mismatch_categories.scanner_external_scanner_boundary_gap += 1,
             .parse_table_construction_gap => counts.mismatch_categories.parse_table_construction_gap += 1,
             .shift_reduce_boundary => counts.mismatch_categories.shift_reduce_boundary += 1,

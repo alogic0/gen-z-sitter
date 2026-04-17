@@ -33,7 +33,7 @@ pub const MismatchCategory = enum {
     none,
     grammar_input_load_mismatch,
     preparation_lowering_mismatch,
-    parser_external_boundary_gap,
+    parser_proof_boundary,
     scanner_external_scanner_boundary_gap,
     parse_table_construction_gap,
     shift_reduce_boundary,

@@ -119,7 +119,7 @@ pub fn runTarget(
             &run,
             .serialize,
             .deferred_for_parser_boundary,
-            .parser_external_boundary_gap,
+            .parser_proof_boundary,
             try std.fmt.allocPrint(
                 allocator,
                 "full parser-surface emission is deferred for {s}: the current stable shortlist only proves load and prepare for this larger external parser-only target",
@@ -991,7 +991,7 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets, defers tree_
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[4].blocked_boundary);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
-    try std.testing.expectEqual(result_model.MismatchCategory.parser_external_boundary_gap, runs[5].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.parser_proof_boundary, runs[5].mismatch_category);
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[5].blocked_boundary);
     try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[5].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[6].mismatch_category);
@@ -1019,7 +1019,7 @@ test "runShortlistTargetsAlloc defers tree_sitter_c as an explicit parser-bounda
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].prepare.status);
     try std.testing.expectEqual(result_model.StepStatus.failed, runs[5].serialize.status);
     try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[5].final_classification);
-    try std.testing.expectEqual(result_model.MismatchCategory.parser_external_boundary_gap, runs[5].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.parser_proof_boundary, runs[5].mismatch_category);
 }
 
 test "runShortlistTargetsAlloc promotes tree_sitter_haskell into sampled real external scanner proof" {

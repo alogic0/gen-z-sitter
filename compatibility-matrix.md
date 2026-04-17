@@ -150,7 +150,7 @@ What the repo can credibly claim today:
   - `hidden_external_fields`
 - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but now rejects on the staged blocked path as `missing_action`
 - the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
-- the current checked-in coverage decision now recommends second-wave parser-only repo coverage because the larger real external `tree_sitter_c_json` snapshot is explicitly deferred at a parser boundary rather than already promoted
+- the current checked-in coverage decision now recommends second-wave parser-only repo coverage because the larger real external `tree_sitter_c_json` snapshot is explicitly deferred at a parser proof boundary rather than already promoted
 
 ## Milestone Compatibility Targets
 

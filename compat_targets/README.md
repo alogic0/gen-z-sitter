@@ -72,7 +72,7 @@ Current staged boundary summary:
 - 1 additional real external parser-only snapshot is now onboarded in a deferred parser-boundary mode:
   - `tree_sitter_c_json`
   - it currently proves `load` and `prepare`
-  - it is intentionally classified as `deferred_for_parser_boundary` with `parser_external_boundary_gap`
+  - it is intentionally classified as `deferred_for_parser_boundary` with `parser_proof_boundary`
   - the current stable shortlist does not yet claim emitted parser surfaces, compatibility checks, or compile-smoke for this larger grammar
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`

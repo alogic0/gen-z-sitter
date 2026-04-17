@@ -21,7 +21,7 @@
     "mismatch_categories": {
       "grammar_input_load_mismatch": 0,
       "preparation_lowering_mismatch": 0,
-      "parser_external_boundary_gap": 1,
+      "parser_proof_boundary": 1,
       "scanner_external_scanner_boundary_gap": 0,
       "parse_table_construction_gap": 0,
       "shift_reduce_boundary": 0,
@@ -558,7 +558,7 @@
       "success_criteria": "load and prepare the snapshotted upstream grammar.json cleanly, and keep the next serialize-only parser-boundary step explicit until a later milestone proves a broader emitted surface",
       "first_failed_stage": "serialize",
       "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "parser_external_boundary_gap",
+      "mismatch_category": "parser_proof_boundary",
       "load": {
         "status": "passed",
         "detail": null

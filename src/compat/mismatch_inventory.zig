@@ -169,7 +169,7 @@ fn includeDeferredControl(run: result_model.TargetRunResult) bool {
 }
 
 fn includeDeferredParserTarget(run: result_model.TargetRunResult) bool {
-    return run.mismatch_category == .parser_external_boundary_gap;
+    return run.mismatch_category == .parser_proof_boundary;
 }
 
 fn includeDeferredScannerTarget(run: result_model.TargetRunResult) bool {

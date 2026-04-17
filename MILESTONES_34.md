@@ -39,9 +39,9 @@ Out of scope:
 ## Exit Criteria
 
 - [x] the current deferred parser-boundary target has a dedicated machine-readable profile
-- [ ] the next parser-only proof layer after `prepare` is explicit in code and artifacts
-- [ ] `tree_sitter_c_json` is either promoted beyond `prepare_only` or remains deferred with a tighter named boundary
-- [ ] the checked-in coverage decision and docs reflect the final M34 boundary accurately
+- [x] the next parser-only proof layer after `prepare` is explicit in code and artifacts
+- [x] `tree_sitter_c_json` is either promoted beyond `prepare_only` or remains deferred with a tighter named boundary
+- [x] the checked-in coverage decision and docs reflect the final M34 boundary accurately
 
 ## PR-Sized Slices
 
@@ -53,29 +53,29 @@ Out of scope:
 
 ### PR 2: Add The Next Narrow Parser-Only Proof Layer
 
-- [ ] define one proof layer between `prepare_only` and full promotion
-- [ ] thread that mode through the harness and artifacts
-- [ ] keep the existing passing targets stable
+- [x] define one proof layer between `prepare_only` and full promotion
+- [x] thread that mode through the harness and artifacts
+- [x] keep the existing passing targets stable
 
 ### PR 3: Promote Or Rebound tree_sitter_c_json
 
-- [ ] either promote `tree_sitter_c_json` beyond the current deferred boundary or keep it deferred with a tighter named rationale
-- [ ] regenerate the checked-in artifacts from the resulting state
-- [ ] keep clean `zig run update_compat_artifacts.zig` and `zig build test` runs
+- [x] either promote `tree_sitter_c_json` beyond the current deferred boundary or keep it deferred with a tighter named rationale
+- [x] regenerate the checked-in artifacts from the resulting state
+- [x] keep clean `zig run update_compat_artifacts.zig` and `zig build test` runs
 
 ### PR 4: Closeout
 
-- [ ] update coverage decision and milestone notes from the final checked-in evidence
-- [ ] tighten `README.md`, `compatibility-matrix.md`, and `compat_targets/README.md`
-- [ ] mark the final M34 parser-only boundary and remaining limitations explicitly
+- [x] update coverage decision and milestone notes from the final checked-in evidence
+- [x] tighten `README.md`, `compatibility-matrix.md`, and `compat_targets/README.md`
+- [x] mark the final M34 parser-only boundary and remaining limitations explicitly
 
 ## Progress
 
 - [x] PR 1 completed
-- [ ] PR 2 completed
-- [ ] PR 3 completed
-- [ ] PR 4 completed
-- [ ] M34 ready for closeout
+- [x] PR 2 completed
+- [x] PR 3 completed
+- [x] PR 4 completed
+- [x] M34 ready for closeout
 
 ## Current Focus
 
@@ -88,7 +88,7 @@ Out of scope:
   - current deferred classification:
     - `deferred_for_parser_boundary`
   - current mismatch category:
-    - `parser_external_boundary_gap`
+    - `parser_proof_boundary`
   - current raw grammar-shape profile:
     - `rule_count = 182`
     - `conflict_count = 17`
@@ -106,3 +106,29 @@ Out of scope:
   - `update_parser_boundary_probe.zig` now exists as a standalone isolated parser-boundary probe tool
   - it keeps heavier deferred parser-boundary experimentation out of the default `update_compat_artifacts.zig` path
   - the isolated `serialize_only` probe for `tree_sitter_c_json` is still too expensive to treat as a routine checked-in artifact step
+- current deferred boundary rationale:
+  - `tree_sitter_c_json` is no longer described as a generic parser gap
+  - it is intentionally classified as `deferred_for_parser_boundary` with `parser_proof_boundary`
+  - that keeps the current stable boundary honest: the parser-only proof ladder is explicit, but broader emitted-surface proof remains out of scope for this milestone
+
+## Closeout
+
+- `tree_sitter_c_json` remains deferred, but the deferred state is now explicit and narrower:
+  - current proven parser-only steps:
+    - `load`
+    - `prepare`
+  - current deferred starting step:
+    - `serialize`
+  - current deferred classification:
+    - `deferred_for_parser_boundary`
+  - current mismatch category:
+    - `parser_proof_boundary`
+- the next parser-only proof layer after `prepare` is explicit:
+  - `serialize_only` remains the next named proof step in the parser-boundary profile
+  - heavier isolated probing lives outside the default artifact refresh path
+- the default compatibility refresh and test path remain clean:
+  - `zig run update_compat_artifacts.zig`
+  - `zig build test`
+- milestone outcome:
+  - M34 does not promote `tree_sitter_c_json`
+  - it closes with a sharper and more honest parser-only proof boundary for that larger real external grammar

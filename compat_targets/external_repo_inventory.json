@@ -95,7 +95,7 @@
       "upstream_revision": "ae19b676b13bdcc13b7665397e6d9b14975473dd",
       "upstream_grammar_path": "src/grammar.json",
       "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "parser_external_boundary_gap",
+      "mismatch_category": "parser_proof_boundary",
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, kept at a prepare-only parser boundary while M34 evaluates serialize-only as the next stable proof layer for grammars of this size"
     },
     {
