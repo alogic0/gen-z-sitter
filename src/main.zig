@@ -83,6 +83,7 @@ test {
     _ = @import("ir/lexical_grammar.zig");
     _ = @import("lexer/checks.zig");
     _ = @import("lexer/debug_dump.zig");
+    _ = @import("lexer/model.zig");
     _ = @import("lexer/pipeline.zig");
     _ = @import("lexer/serialize.zig");
     _ = @import("scanner/debug_dump.zig");
