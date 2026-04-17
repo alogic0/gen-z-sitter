@@ -111,10 +111,38 @@ pub const ParseItemSetEntry = struct {
 
 pub const ParseItemSet = struct {
     entries: []const ParseItemSetEntry,
+
+    pub fn lessThan(_: void, a: ParseItemSet, b: ParseItemSet) bool {
+        return entriesLessThan(a.entries, b.entries);
+    }
 };
 
 pub const ParseItemSetCore = struct {
     items: []const ParseItem,
+
+    pub fn fromEntriesAlloc(
+        allocator: std.mem.Allocator,
+        entries: []const ParseItemSetEntry,
+    ) !ParseItemSetCore {
+        const items = try allocator.alloc(ParseItem, entries.len);
+        for (entries, 0..) |entry, index| {
+            items[index] = entry.item;
+        }
+        std.mem.sort(ParseItem, items, {}, ParseItem.lessThan);
+        return .{ .items = items };
+    }
+
+    pub fn eql(a: ParseItemSetCore, b: ParseItemSetCore) bool {
+        if (a.items.len != b.items.len) return false;
+        for (a.items, b.items) |left, right| {
+            if (!ParseItem.eql(left, right)) return false;
+        }
+        return true;
+    }
+
+    pub fn lessThan(_: void, a: ParseItemSetCore, b: ParseItemSetCore) bool {
+        return itemsLessThan(a.items, b.items);
+    }
 };
 
 pub fn initEmptyLookaheadSet(
@@ -163,6 +191,27 @@ pub fn containsLookahead(symbol_set: first.SymbolSet, lookahead: syntax_ir.Symbo
     };
 }
 
+pub fn mergeSymbolSetLookaheads(target: *first.SymbolSet, incoming: first.SymbolSet) bool {
+    var changed = false;
+    for (incoming.terminals, 0..) |present, index| {
+        if (present and !target.terminals[index]) {
+            target.terminals[index] = true;
+            changed = true;
+        }
+    }
+    for (incoming.externals, 0..) |present, index| {
+        if (present and !target.externals[index]) {
+            target.externals[index] = true;
+            changed = true;
+        }
+    }
+    if (incoming.includes_epsilon and !target.includes_epsilon) {
+        target.includes_epsilon = true;
+        changed = true;
+    }
+    return changed;
+}
+
 pub fn isSymbolSetEmpty(symbol_set: first.SymbolSet) bool {
     return symbol_set.isEmpty();
 }
@@ -176,6 +225,24 @@ fn symbolSetLessThan(a: first.SymbolSet, b: first.SymbolSet) bool {
         if (left != right) return !left and right;
     }
     return false;
+}
+
+fn entriesLessThan(left: []const ParseItemSetEntry, right: []const ParseItemSetEntry) bool {
+    const shared_len = @min(left.len, right.len);
+    for (0..shared_len) |index| {
+        if (ParseItemSetEntry.lessThan({}, left[index], right[index])) return true;
+        if (ParseItemSetEntry.lessThan({}, right[index], left[index])) return false;
+    }
+    return left.len < right.len;
+}
+
+fn itemsLessThan(left: []const ParseItem, right: []const ParseItem) bool {
+    const shared_len = @min(left.len, right.len);
+    for (0..shared_len) |index| {
+        if (ParseItem.lessThan({}, left[index], right[index])) return true;
+        if (ParseItem.lessThan({}, right[index], left[index])) return false;
+    }
+    return left.len < right.len;
 }
 
 test "parse items compare deterministically" {
@@ -212,4 +279,35 @@ test "parse item set entry applies to matching lookahead" {
 
     try std.testing.expect(entry.appliesToLookahead(.{ .terminal = 1 }));
     try std.testing.expect(!entry.appliesToLookahead(.{ .terminal = 0 }));
+}
+
+test "parse item set core extracts sorted item identity from entries" {
+    var entries = [_]ParseItemSetEntry{
+        try ParseItemSetEntry.withLookahead(std.testing.allocator, 2, 0, ParseItem.init(2, 0), .{ .terminal = 1 }),
+        try ParseItemSetEntry.initEmpty(std.testing.allocator, 2, 0, ParseItem.init(1, 3)),
+    };
+    defer for (entries) |entry| freeSymbolSet(std.testing.allocator, entry.lookaheads);
+
+    const core = try ParseItemSetCore.fromEntriesAlloc(std.testing.allocator, entries[0..]);
+    defer std.testing.allocator.free(core.items);
+
+    try std.testing.expectEqual(@as(usize, 2), core.items.len);
+    try std.testing.expect(ParseItem.eql(ParseItem.init(1, 3), core.items[0]));
+    try std.testing.expect(ParseItem.eql(ParseItem.init(2, 0), core.items[1]));
+}
+
+test "mergeSymbolSetLookaheads unions terminals externals and epsilon" {
+    var target = try initEmptyLookaheadSet(std.testing.allocator, 2, 2);
+    defer freeSymbolSet(std.testing.allocator, target);
+    addLookahead(&target, .{ .terminal = 0 });
+
+    var incoming = try initEmptyLookaheadSet(std.testing.allocator, 2, 2);
+    defer freeSymbolSet(std.testing.allocator, incoming);
+    addLookahead(&incoming, .{ .external = 1 });
+    incoming.includes_epsilon = true;
+
+    try std.testing.expect(mergeSymbolSetLookaheads(&target, incoming));
+    try std.testing.expect(target.terminals[0]);
+    try std.testing.expect(target.externals[1]);
+    try std.testing.expect(target.includes_epsilon);
 }

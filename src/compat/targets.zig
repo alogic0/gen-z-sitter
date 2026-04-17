@@ -124,9 +124,9 @@ pub const shortlist_targets = [_]Target{
         .boundary_kind = .parser_only,
         .provenance = .{ .origin_kind = .staged_in_repo },
         .candidate_status = .intended_first_wave,
-        .expected_blocked = true,
-        .notes = "parser-only JS target that exercises the staged blocked boundary",
-        .success_criteria = "load through node, emit parser surfaces, and preserve the staged blocked boundary without infrastructure failure",
+        .expected_blocked = false,
+        .notes = "parser-only JS target promoted into the first-wave parser-only set",
+        .success_criteria = "load through node, emit parser surfaces, pass compat-check, and compile emitted parser.c",
     },
     .{
         .id = "tree_sitter_ziggy_json",

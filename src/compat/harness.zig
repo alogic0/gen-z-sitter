@@ -1039,9 +1039,15 @@ pub fn runTarget(
     }
 
     if (emission_stats.blocked != target.expected_blocked) {
-        const blocked_summary = try summarizeBlockedBoundaryAlloc(allocator, run.blocked_boundary.?);
+        const blocked_summary = if (run.blocked_boundary) |blocked_boundary|
+            try summarizeBlockedBoundaryAlloc(allocator, blocked_boundary)
+        else
+            try allocator.dupe(u8, "blocked boundary summary unavailable");
         defer allocator.free(blocked_summary);
-        const blocked_category = classifyBlockedBoundary(run.blocked_boundary.?);
+        const blocked_category = if (run.blocked_boundary) |blocked_boundary|
+            classifyBlockedBoundary(blocked_boundary)
+        else
+            result_model.MismatchCategory.emitted_surface_structural_gap;
         return failRun(
             &run,
             .emit_parser_c,

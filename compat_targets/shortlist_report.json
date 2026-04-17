@@ -3,30 +3,30 @@
   "aggregate": {
     "total_targets": 13,
     "first_wave_targets": 6,
-    "first_wave_passed": 6,
+    "first_wave_passed": 4,
     "scanner_wave_targets": 6,
-    "scanner_wave_passed": 6,
+    "scanner_wave_passed": 5,
     "deferred_parser_targets": 0,
     "standalone_parser_proof_targets": 1,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
-    "passed_within_current_boundary": 12,
+    "passed_within_current_boundary": 9,
     "frozen_control_fixture": 1,
     "deferred_for_parser_boundary": 0,
-    "deferred_for_scanner_boundary": 0,
-    "failed_due_to_parser_only_gap": 0,
+    "deferred_for_scanner_boundary": 1,
+    "failed_due_to_parser_only_gap": 2,
     "out_of_scope_for_scanner_boundary": 0,
     "infrastructure_failure": 0,
-    "blocked_targets": 2,
+    "blocked_targets": 3,
     "blocked_control_targets": 1,
     "mismatch_categories": {
       "grammar_input_load_mismatch": 0,
       "preparation_lowering_mismatch": 0,
       "routine_serialize_proof_boundary": 0,
       "routine_emitted_surface_proof_boundary": 0,
-      "scanner_external_scanner_boundary_gap": 0,
+      "scanner_external_scanner_boundary_gap": 1,
       "parse_table_construction_gap": 0,
-      "shift_reduce_boundary": 0,
+      "shift_reduce_boundary": 2,
       "intentional_control_fixture": 1,
       "emitted_surface_structural_gap": 0,
       "compile_smoke_failure": 0,
@@ -57,7 +57,7 @@
       "family": "repeat_choice_seq",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 1,
+      "passed_count": 0,
       "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 1
@@ -75,10 +75,10 @@
       "family": "ziggy_schema",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 1,
+      "passed_count": 0,
       "control_count": 0,
       "deferred_count": 0,
-      "blocked_count": 0
+      "blocked_count": 1
     },
     {
       "family": "c",
@@ -93,9 +93,9 @@
       "family": "haskell",
       "boundary_kind": "scanner_external_scanner",
       "target_count": 1,
-      "passed_count": 1,
+      "passed_count": 0,
       "control_count": 0,
-      "deferred_count": 0,
+      "deferred_count": 1,
       "blocked_count": 0
     },
     {
@@ -270,15 +270,15 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 57,
-        "emitted_state_count": 45,
-        "merged_state_count": 12,
-        "action_entry_count": 84,
-        "goto_entry_count": 19,
+        "serialized_state_count": 23,
+        "emitted_state_count": 10,
+        "merged_state_count": 13,
+        "action_entry_count": 33,
+        "goto_entry_count": 11,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 3580,
-        "c_tables_bytes": 9083,
-        "parser_c_bytes": 32011
+        "parser_tables_bytes": 1368,
+        "c_tables_bytes": 2794,
+        "parser_c_bytes": 18850
       },
       "blocked_boundary": null
     },
@@ -299,12 +299,12 @@
         "upstream_grammar_path": null
       },
       "candidate_status": "intended_first_wave",
-      "expected_blocked": true,
-      "notes": "parser-only JS target that exercises the staged blocked boundary",
-      "success_criteria": "load through node, emit parser surfaces, and preserve the staged blocked boundary without infrastructure failure",
-      "first_failed_stage": null,
-      "final_classification": "passed_within_current_boundary",
-      "mismatch_category": "none",
+      "expected_blocked": false,
+      "notes": "parser-only JS target promoted into the first-wave parser-only set",
+      "success_criteria": "load through node, emit parser surfaces, pass compat-check, and compile emitted parser.c",
+      "first_failed_stage": "emit_parser_c",
+      "final_classification": "failed_due_to_parser_only_gap",
+      "mismatch_category": "shift_reduce_boundary",
       "load": {
         "status": "passed",
         "detail": null
@@ -326,32 +326,32 @@
         "detail": null
       },
       "emit_parser_c": {
-        "status": "passed",
-        "detail": null
+        "status": "failed",
+        "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:17, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:14, reduce:2(_entry)] count=1], samples=[state 13 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:14, reduce:2(_entry)]; state 16 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:17, reduce:3(_entry)]]"
       },
       "scanner_boundary_check": {
         "status": "not_run",
         "detail": null
       },
       "compat_check": {
-        "status": "passed",
+        "status": "not_run",
         "detail": null
       },
       "compile_smoke": {
-        "status": "passed",
+        "status": "not_run",
         "detail": null
       },
       "emission": {
         "blocked": true,
-        "serialized_state_count": 16,
-        "emitted_state_count": 16,
+        "serialized_state_count": 23,
+        "emitted_state_count": 23,
         "merged_state_count": 0,
-        "action_entry_count": 26,
-        "goto_entry_count": 14,
+        "action_entry_count": 28,
+        "goto_entry_count": 20,
         "unresolved_entry_count": 2,
-        "parser_tables_bytes": 1450,
-        "c_tables_bytes": 3606,
-        "parser_c_bytes": 20264
+        "parser_tables_bytes": 1758,
+        "c_tables_bytes": 4717,
+        "parser_c_bytes": 22694
       },
       "blocked_boundary": {
         "unresolved_state_count": 2,
@@ -364,35 +364,35 @@
         },
         "samples": [
           {
-            "state_id": 9,
+            "state_id": 13,
             "symbol_kind": "terminal",
             "symbol_index": 1,
             "symbol_name": "number_literal",
             "reason": "shift_reduce",
             "candidate_count": 2,
-            "candidate_actions_summary": "shift:10, reduce:2(_entry)"
+            "candidate_actions_summary": "shift:14, reduce:2(_entry)"
           },
           {
-            "state_id": 12,
+            "state_id": 16,
             "symbol_kind": "terminal",
             "symbol_index": 0,
             "symbol_name": "identifier",
             "reason": "shift_reduce",
             "candidate_count": 2,
-            "candidate_actions_summary": "shift:5, reduce:3(_entry)"
+            "candidate_actions_summary": "shift:17, reduce:3(_entry)"
           }
         ],
         "dominant_signatures": [
           {
             "symbol_name": "identifier",
             "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:5, reduce:3(_entry)",
+            "candidate_actions_summary": "shift:17, reduce:3(_entry)",
             "count": 1
           },
           {
             "symbol_name": "number_literal",
             "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:10, reduce:2(_entry)",
+            "candidate_actions_summary": "shift:14, reduce:2(_entry)",
             "count": 1
           }
         ]
@@ -459,15 +459,15 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 1077,
-        "emitted_state_count": 1031,
-        "merged_state_count": 46,
-        "action_entry_count": 3793,
-        "goto_entry_count": 680,
+        "serialized_state_count": 1808,
+        "emitted_state_count": 1753,
+        "merged_state_count": 55,
+        "action_entry_count": 4933,
+        "goto_entry_count": 1533,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 151041,
-        "c_tables_bytes": 294053,
-        "parser_c_bytes": 469980
+        "parser_tables_bytes": 221069,
+        "c_tables_bytes": 459255,
+        "parser_c_bytes": 758511
       },
       "blocked_boundary": null
     },
@@ -491,9 +491,9 @@
       "expected_blocked": false,
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after the word-token lowering and repeat-auxiliary fixes",
       "success_criteria": "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
-      "first_failed_stage": null,
-      "final_classification": "passed_within_current_boundary",
-      "mismatch_category": "none",
+      "first_failed_stage": "emit_parser_c",
+      "final_classification": "failed_due_to_parser_only_gap",
+      "mismatch_category": "shift_reduce_boundary",
       "load": {
         "status": "passed",
         "detail": null
@@ -515,34 +515,122 @@
         "detail": null
       },
       "emit_parser_c": {
-        "status": "passed",
-        "detail": null
+        "status": "failed",
+        "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=5, entries=5, reasons={shift_reduce:5, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[doc_comment shift_reduce actions=[shift:147, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:52, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:71, reduce:47(doc_comment)] count=1; struct_union shift_reduce actions=[shift:34, reduce:12(expr)] count=1; struct_union shift_reduce actions=[shift:53, reduce:32(struct_union)] count=1], samples=[state 28 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:52, reduce:47(doc_comment)]; state 61 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:71, reduce:47(doc_comment)]; state 104 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:147, reduce:47(doc_comment)]; state 109 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:34, reduce:12(expr)]; state 149 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:53, reduce:32(struct_union)]]"
       },
       "scanner_boundary_check": {
         "status": "not_run",
         "detail": null
       },
       "compat_check": {
-        "status": "passed",
+        "status": "not_run",
         "detail": null
       },
       "compile_smoke": {
-        "status": "passed",
+        "status": "not_run",
         "detail": null
       },
       "emission": {
-        "blocked": false,
-        "serialized_state_count": 198,
-        "emitted_state_count": 196,
-        "merged_state_count": 2,
-        "action_entry_count": 689,
-        "goto_entry_count": 223,
-        "unresolved_entry_count": 0,
-        "parser_tables_bytes": 29729,
-        "c_tables_bytes": 57421,
-        "parser_c_bytes": 102135
+        "blocked": true,
+        "serialized_state_count": 376,
+        "emitted_state_count": 338,
+        "merged_state_count": 38,
+        "action_entry_count": 786,
+        "goto_entry_count": 389,
+        "unresolved_entry_count": 5,
+        "parser_tables_bytes": 39063,
+        "c_tables_bytes": 84490,
+        "parser_c_bytes": 154640
       },
-      "blocked_boundary": null
+      "blocked_boundary": {
+        "unresolved_state_count": 5,
+        "unresolved_entry_count": 5,
+        "reasons": {
+          "shift_reduce": 5,
+          "reduce_reduce_deferred": 0,
+          "multiple_candidates": 0,
+          "unsupported_action_mix": 0
+        },
+        "samples": [
+          {
+            "state_id": 28,
+            "symbol_kind": "terminal",
+            "symbol_index": 42,
+            "symbol_name": "doc_comment",
+            "reason": "shift_reduce",
+            "candidate_count": 2,
+            "candidate_actions_summary": "shift:52, reduce:47(doc_comment)"
+          },
+          {
+            "state_id": 61,
+            "symbol_kind": "terminal",
+            "symbol_index": 42,
+            "symbol_name": "doc_comment",
+            "reason": "shift_reduce",
+            "candidate_count": 2,
+            "candidate_actions_summary": "shift:71, reduce:47(doc_comment)"
+          },
+          {
+            "state_id": 104,
+            "symbol_kind": "terminal",
+            "symbol_index": 42,
+            "symbol_name": "doc_comment",
+            "reason": "shift_reduce",
+            "candidate_count": 2,
+            "candidate_actions_summary": "shift:147, reduce:47(doc_comment)"
+          },
+          {
+            "state_id": 109,
+            "symbol_kind": "terminal",
+            "symbol_index": 27,
+            "symbol_name": "struct_union",
+            "reason": "shift_reduce",
+            "candidate_count": 2,
+            "candidate_actions_summary": "shift:34, reduce:12(expr)"
+          },
+          {
+            "state_id": 149,
+            "symbol_kind": "terminal",
+            "symbol_index": 27,
+            "symbol_name": "struct_union",
+            "reason": "shift_reduce",
+            "candidate_count": 2,
+            "candidate_actions_summary": "shift:53, reduce:32(struct_union)"
+          }
+        ],
+        "dominant_signatures": [
+          {
+            "symbol_name": "doc_comment",
+            "reason": "shift_reduce",
+            "candidate_actions_summary": "shift:147, reduce:47(doc_comment)",
+            "count": 1
+          },
+          {
+            "symbol_name": "doc_comment",
+            "reason": "shift_reduce",
+            "candidate_actions_summary": "shift:52, reduce:47(doc_comment)",
+            "count": 1
+          },
+          {
+            "symbol_name": "doc_comment",
+            "reason": "shift_reduce",
+            "candidate_actions_summary": "shift:71, reduce:47(doc_comment)",
+            "count": 1
+          },
+          {
+            "symbol_name": "struct_union",
+            "reason": "shift_reduce",
+            "candidate_actions_summary": "shift:34, reduce:12(expr)",
+            "count": 1
+          },
+          {
+            "symbol_name": "struct_union",
+            "reason": "shift_reduce",
+            "candidate_actions_summary": "shift:53, reduce:32(struct_union)",
+            "count": 1
+          }
+        ]
+      }
     },
     {
       "id": "tree_sitter_c_json",
@@ -635,11 +723,11 @@
       },
       "candidate_status": "intended_scanner_wave",
       "expected_blocked": false,
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; M30 promotes it into a sampled external-sequence proof layer before any broader parser-integrated scanner claim",
-      "success_criteria": "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove a sampled real external scanner path makes stronger progress on the valid input than on the invalid input",
-      "first_failed_stage": null,
-      "final_classification": "passed_within_current_boundary",
-      "mismatch_category": "none",
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current boundary now targets a sampled behavioral layout-sensitive proof rather than only external-sequence sampling",
+      "success_criteria": "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove the sampled behavioral scanner path makes stronger valid-input progress than the invalid input",
+      "first_failed_stage": "scanner_boundary_check",
+      "final_classification": "deferred_for_scanner_boundary",
+      "mismatch_category": "scanner_external_scanner_boundary_gap",
       "load": {
         "status": "passed",
         "detail": null
@@ -665,8 +753,8 @@
         "detail": null
       },
       "scanner_boundary_check": {
-        "status": "passed",
-        "detail": null
+        "status": "failed",
+        "detail": "scanner valid-path simulation failed: UnsupportedExternalScannerGrammar"
       },
       "compat_check": {
         "status": "not_run",

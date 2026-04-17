@@ -228,6 +228,10 @@ test "detectConflicts reports shift/reduce and reduce/reduce conflicts determini
         try item.ParseItemSetEntry.initEmpty(allocator, 2, 0, item.ParseItem.init(1, 1)),
         try item.ParseItemSetEntry.initEmpty(allocator, 2, 0, item.ParseItem.init(2, 0)),
     };
+    inline for (0..2) |index| {
+        item.addLookahead(&state_items[index].lookaheads, .{ .terminal = 0 });
+        state_items[index].lookaheads.includes_epsilon = true;
+    }
     defer for (state_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const transitions = [_]state.Transition{
         .{ .symbol = .{ .terminal = 0 }, .state = 1 },
@@ -282,7 +286,7 @@ test "detectConflictsFromActions derives shift-reduce conflicts from competing a
     const allocator = std.testing.allocator;
 
     var parse_items = [_]item.ParseItemSetEntry{
-        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, item.ParseItem.init(1, 1)),
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, item.ParseItem.init(1, 1), .{ .terminal = 0 }),
         try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, item.ParseItem.init(2, 1), .{ .terminal = 0 }),
     };
     defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);

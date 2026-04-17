@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "total_external_scanner_targets": 2,
-  "passed_external_scanner_targets": 2,
+  "passed_external_scanner_targets": 1,
   "proof_scope_coverage": [
     {
       "proof_scope": "sampled_external_sequence",
       "target_count": 1,
-      "passed_count": 1
+      "passed_count": 0
     },
     {
       "proof_scope": "sampled_expansion_path",
@@ -31,9 +31,9 @@
       "upstream_repository": "tree-sitter-haskell",
       "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
       "upstream_grammar_path": "src/grammar.json",
-      "final_classification": "passed_within_current_boundary",
-      "mismatch_category": "none",
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; M30 promotes it into a sampled external-sequence proof layer before any broader parser-integrated scanner claim"
+      "final_classification": "deferred_for_scanner_boundary",
+      "mismatch_category": "scanner_external_scanner_boundary_gap",
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current boundary now targets a sampled behavioral layout-sensitive proof rather than only external-sequence sampling"
     },
     {
       "id": "tree_sitter_bash_json",

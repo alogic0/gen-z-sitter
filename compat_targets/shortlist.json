@@ -64,8 +64,8 @@
       "upstream_repository": null,
       "upstream_revision": null,
       "upstream_grammar_path": null,
-      "why": "parser-only JS target that exercises the staged blocked boundary",
-      "success_means": "load through node, emit parser surfaces, and preserve the staged blocked boundary without infrastructure failure"
+      "why": "parser-only JS target promoted into the first-wave parser-only set",
+      "success_means": "load through node, emit parser surfaces, pass compat-check, and compile emitted parser.c"
     },
     {
       "id": "tree_sitter_ziggy_json",
@@ -126,7 +126,7 @@
       "family": "haskell",
       "boundary_kind": "scanner_external_scanner",
       "parser_boundary_check_mode": "full_pipeline",
-      "scanner_boundary_check_mode": "sampled_external_only",
+      "scanner_boundary_check_mode": "sampled_behavioral",
       "real_external_scanner_proof_scope": "sampled_external_sequence",
       "standalone_parser_proof_scope": "none",
       "status": "intended_scanner_wave",
@@ -136,8 +136,8 @@
       "upstream_repository": "tree-sitter-haskell",
       "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
       "upstream_grammar_path": "src/grammar.json",
-      "why": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; M30 promotes it into a sampled external-sequence proof layer before any broader parser-integrated scanner claim",
-      "success_means": "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove a sampled real external scanner path makes stronger progress on the valid input than on the invalid input"
+      "why": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current boundary now targets a sampled behavioral layout-sensitive proof rather than only external-sequence sampling",
+      "success_means": "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove the sampled behavioral scanner path makes stronger valid-input progress than the invalid input"
     },
     {
       "id": "tree_sitter_bash_json",
