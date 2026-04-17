@@ -312,11 +312,11 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     defer report.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 13), report.boundary.total_shortlist_targets);
-    try std.testing.expectEqual(@as(usize, 4), report.boundary.first_wave_targets);
-    try std.testing.expectEqual(@as(usize, 4), report.boundary.first_wave_passed);
+    try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_targets);
+    try std.testing.expectEqual(@as(usize, 5), report.boundary.first_wave_passed);
     try std.testing.expectEqual(@as(usize, 6), report.boundary.scanner_wave_targets);
     try std.testing.expectEqual(@as(usize, 6), report.boundary.scanner_wave_passed);
-    try std.testing.expectEqual(@as(usize, 2), report.boundary.deferred_parser_targets);
+    try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_parser_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_control_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.frozen_control_fixtures);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.deferred_scanner_targets);
@@ -337,9 +337,9 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     try std.testing.expectEqual(@as(usize, 2), report.family_coverage[9].passed_count);
     try std.testing.expectEqual(targets.TargetFamily.mixed_semantics, report.family_coverage[10].family);
     try std.testing.expectEqual(@as(usize, 2), report.family_coverage[10].passed_count);
-    try std.testing.expectEqual(@as(usize, 4), report.proven_first_wave_targets.len);
+    try std.testing.expectEqual(@as(usize, 5), report.proven_first_wave_targets.len);
     try std.testing.expectEqual(@as(usize, 6), report.proven_scanner_wave_targets.len);
-    try std.testing.expectEqual(@as(usize, 2), report.deferred_parser_targets.len);
+    try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
 }

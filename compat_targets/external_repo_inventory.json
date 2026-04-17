@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "total_external_repo_targets": 5,
-  "passed_external_repo_targets": 4,
+  "passed_external_repo_targets": 5,
   "standalone_parser_proof_targets": 1,
   "family_coverage": [
     {
@@ -14,7 +14,7 @@
       "family": "ziggy_schema",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 0
+      "passed_count": 1
     },
     {
       "family": "c",
@@ -39,7 +39,7 @@
     {
       "boundary_kind": "parser_only",
       "target_count": 3,
-      "passed_count": 2
+      "passed_count": 3
     },
     {
       "boundary_kind": "scanner_external_scanner",
@@ -48,11 +48,10 @@
     }
   ],
   "current_limitations": [
-    "the checked-in real external evidence now includes a larger parser-only snapshot that is still held at an explicit deferred parser boundary",
-    "tree-sitter-c currently proves load, prepare, routine coarse serialize-only, parser-table emission, and C-table emission in the shortlist and also has a matching standalone coarse serialize-only parser proof, but the stable shortlist still does not claim broader emitted parser.c or compiled parser surfaces for a grammar of that size",
-    "real external scanner evidence and the promoted Ziggy parser-only snapshots remain passing while this larger parser-only target stays explicitly deferred"
+    "the checked-in real external evidence now includes at least one passing external scanner-family snapshot",
+    "the next step is to widen real external scanner-family coverage without collapsing parser-only and scanner evidence into a single flat claim"
   ],
-  "recommended_next_step": "narrow_or_promote_onboarded_external_parser_targets",
+  "recommended_next_step": "broader_compatibility_polish",
   "targets": [
     {
       "id": "tree_sitter_ziggy_json",
@@ -82,9 +81,9 @@
       "upstream_repository": "tree-sitter-ziggy-schema",
       "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
       "upstream_grammar_path": "src/grammar.json",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "shift_reduce_boundary",
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo; still deferred because parser.c emission remains blocked after the word-token lowering and repeat-auxiliary fixes"
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after aligning repeat-auxiliary shift/reduce resolution with upstream tree-sitter behavior"
     },
     {
       "id": "tree_sitter_c_json",

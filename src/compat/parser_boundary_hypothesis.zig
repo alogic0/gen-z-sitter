@@ -137,6 +137,12 @@ fn buildEntryAlloc(
             "no routine-safe full-pipeline parser step is promoted yet for {s}; routine coarse serialize-only proof, parser-table emission, C-table emission, parser.c emission, and compatibility validation now pass, but broader emitted parser surfaces remain deferred because there is still no routine-safe next emitted-surface step",
             .{run.id},
         )
+    else if (std.mem.eql(u8, run.id, "tree_sitter_ziggy_schema_json"))
+        try std.fmt.allocPrint(
+            allocator,
+            "no routine-safe parser boundary step is promoted yet for {s}; the current full-pipeline blocker is emit_parser_c with 5 unresolved shift/reduce entries dominated by doc_comment and struct_union, so the next useful step is direct upstream comparison instead of another routine-boundary promotion guess",
+            .{run.id},
+        )
     else
         try std.fmt.allocPrint(
             allocator,
@@ -156,11 +162,18 @@ fn buildEntryAlloc(
         )
     else
         null;
-    const rationale = try std.fmt.allocPrint(
-        allocator,
-        "the next named proof step for {s} is {s}; it remains scoped to {s} because the routine compatibility refresh should stay fast and stable while this deferred parser-wave singleton is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet",
-        .{ run.id, @tagName(proposed_mode), @tagName(evaluation_surface) },
-    );
+    const rationale = if (std.mem.eql(u8, run.id, "tree_sitter_ziggy_schema_json"))
+        try std.fmt.allocPrint(
+            allocator,
+            "the next named proof step for {s} is direct upstream comparison of the current emit_parser_c conflict set, not a broader routine refresh step; it remains scoped to {s} until the 5 unresolved shift/reduce entries are either fixed or explicitly proven to be a real staged-boundary limitation",
+            .{ run.id, @tagName(evaluation_surface) },
+        )
+    else
+        try std.fmt.allocPrint(
+            allocator,
+            "the next named proof step for {s} is {s}; it remains scoped to {s} because the routine compatibility refresh should stay fast and stable while this deferred parser-wave singleton is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet",
+            .{ run.id, @tagName(proposed_mode), @tagName(evaluation_surface) },
+        );
 
     return .{
         .id = try allocator.dupe(u8, run.id),
@@ -229,9 +242,9 @@ test "buildParserBoundaryHypothesisAlloc summarizes the current deferred parser-
     var report = try buildParserBoundaryHypothesisAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 2), report.deferred_parser_wave_target_count);
-    try std.testing.expect(!report.singleton_parser_wave);
-    try std.testing.expectEqual(@as(usize, 2), report.entries.len);
+    try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_wave_target_count);
+    try std.testing.expect(report.singleton_parser_wave);
+    try std.testing.expectEqual(@as(usize, 1), report.entries.len);
 }
 
 test "renderParserBoundaryHypothesisAlloc matches the checked-in parser boundary hypothesis artifact" {

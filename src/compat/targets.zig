@@ -159,10 +159,10 @@ pub const shortlist_targets = [_]Target{
             .upstream_revision = "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
             .upstream_grammar_path = "src/grammar.json",
         },
-        .candidate_status = .deferred_parser_wave,
-        .expected_blocked = true,
-        .notes = "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo; still deferred because parser.c emission remains blocked after the word-token lowering and repeat-auxiliary fixes",
-        .success_criteria = "load the snapshotted upstream grammar.json, keep the current blocked parser-boundary signature stable, and promote only after emit_parser_c and compile-smoke pass",
+        .candidate_status = .intended_first_wave,
+        .expected_blocked = false,
+        .notes = "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after aligning repeat-auxiliary shift/reduce resolution with upstream tree-sitter behavior",
+        .success_criteria = "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
     },
     .{
         .id = "tree_sitter_c_json",
@@ -311,6 +311,7 @@ const first_wave_targets = [_]Target{
     shortlist_targets[0],
     shortlist_targets[1],
     shortlist_targets[3],
+    shortlist_targets[4],
     shortlist_targets[5],
 };
 
@@ -356,12 +357,14 @@ test "stagedTargets exposes a small versioned shortlist" {
 
 test "firstWaveTargets returns only the intended first-wave run set" {
     const shortlist = firstWaveTargets();
-    try std.testing.expectEqual(@as(usize, 4), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 5), shortlist.len);
     try std.testing.expect(shortlist[0].source_kind == .grammar_json);
     try std.testing.expect(shortlist[2].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
+    try std.testing.expect(shortlist[4].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expectEqualStrings("tree_sitter_ziggy_json", shortlist[2].id);
-    try std.testing.expectEqualStrings("tree_sitter_c_json", shortlist[3].id);
+    try std.testing.expectEqualStrings("tree_sitter_ziggy_schema_json", shortlist[3].id);
+    try std.testing.expectEqualStrings("tree_sitter_c_json", shortlist[4].id);
     for (shortlist) |target| {
         try std.testing.expect(target.candidate_status == .intended_first_wave);
     }

@@ -93,15 +93,15 @@
       "scanner_boundary_check_mode": "sampled_behavioral",
       "real_external_scanner_proof_scope": "none",
       "standalone_parser_proof_scope": "none",
-      "status": "deferred_parser_wave",
+      "status": "intended_first_wave",
       "source_kind": "grammar_json",
       "origin_kind": "external_repo_snapshot",
       "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
       "upstream_repository": "tree-sitter-ziggy-schema",
       "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
       "upstream_grammar_path": "src/grammar.json",
-      "why": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo; still deferred because parser.c emission remains blocked after the word-token lowering and repeat-auxiliary fixes",
-      "success_means": "load the snapshotted upstream grammar.json, keep the current blocked parser-boundary signature stable, and promote only after emit_parser_c and compile-smoke pass"
+      "why": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after aligning repeat-auxiliary shift/reduce resolution with upstream tree-sitter behavior",
+      "success_means": "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c"
     },
     {
       "id": "tree_sitter_c_json",

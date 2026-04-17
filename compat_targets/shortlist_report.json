@@ -2,22 +2,22 @@
   "schema_version": 1,
   "aggregate": {
     "total_targets": 13,
-    "first_wave_targets": 4,
-    "first_wave_passed": 4,
+    "first_wave_targets": 5,
+    "first_wave_passed": 5,
     "scanner_wave_targets": 6,
     "scanner_wave_passed": 6,
-    "deferred_parser_targets": 2,
+    "deferred_parser_targets": 1,
     "standalone_parser_proof_targets": 1,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
-    "passed_within_current_boundary": 10,
+    "passed_within_current_boundary": 11,
     "frozen_control_fixture": 1,
-    "deferred_for_parser_boundary": 2,
+    "deferred_for_parser_boundary": 1,
     "deferred_for_scanner_boundary": 0,
     "failed_due_to_parser_only_gap": 0,
     "out_of_scope_for_scanner_boundary": 0,
     "infrastructure_failure": 0,
-    "blocked_targets": 3,
+    "blocked_targets": 2,
     "blocked_control_targets": 1,
     "mismatch_categories": {
       "grammar_input_load_mismatch": 0,
@@ -26,7 +26,7 @@
       "routine_emitted_surface_proof_boundary": 0,
       "scanner_external_scanner_boundary_gap": 0,
       "parse_table_construction_gap": 0,
-      "shift_reduce_boundary": 2,
+      "shift_reduce_boundary": 1,
       "intentional_control_fixture": 1,
       "emitted_surface_structural_gap": 0,
       "compile_smoke_failure": 0,
@@ -75,10 +75,10 @@
       "family": "ziggy_schema",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 0,
+      "passed_count": 1,
       "control_count": 0,
-      "deferred_count": 1,
-      "blocked_count": 1
+      "deferred_count": 0,
+      "blocked_count": 0
     },
     {
       "family": "c",
@@ -487,13 +487,13 @@
         "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
         "upstream_grammar_path": "src/grammar.json"
       },
-      "candidate_status": "deferred_parser_wave",
-      "expected_blocked": true,
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo; still deferred because parser.c emission remains blocked after the word-token lowering and repeat-auxiliary fixes",
-      "success_criteria": "load the snapshotted upstream grammar.json, keep the current blocked parser-boundary signature stable, and promote only after emit_parser_c and compile-smoke pass",
-      "first_failed_stage": "emit_parser_c",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "shift_reduce_boundary",
+      "candidate_status": "intended_first_wave",
+      "expected_blocked": false,
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after aligning repeat-auxiliary shift/reduce resolution with upstream tree-sitter behavior",
+      "success_criteria": "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
       "load": {
         "status": "passed",
         "detail": null
@@ -515,122 +515,34 @@
         "detail": null
       },
       "emit_parser_c": {
-        "status": "failed",
-        "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=5, entries=5, reasons={shift_reduce:5, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[doc_comment shift_reduce actions=[shift:144, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:52, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:71, reduce:47(doc_comment)] count=1; struct_union shift_reduce actions=[shift:34, reduce:12(expr)] count=1; struct_union shift_reduce actions=[shift:53, reduce:32(struct_union)] count=1], samples=[state 28 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:52, reduce:47(doc_comment)]; state 61 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:71, reduce:47(doc_comment)]; state 103 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:144, reduce:47(doc_comment)]; state 108 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:34, reduce:12(expr)]; state 146 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:53, reduce:32(struct_union)]]"
+        "status": "passed",
+        "detail": null
       },
       "scanner_boundary_check": {
         "status": "not_run",
         "detail": null
       },
       "compat_check": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "compile_smoke": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "emission": {
-        "blocked": true,
+        "blocked": false,
         "serialized_state_count": 374,
-        "emitted_state_count": 336,
-        "merged_state_count": 38,
-        "action_entry_count": 778,
+        "emitted_state_count": 334,
+        "merged_state_count": 40,
+        "action_entry_count": 780,
         "goto_entry_count": 388,
-        "unresolved_entry_count": 5,
-        "parser_tables_bytes": 38755,
-        "c_tables_bytes": 83904,
-        "parser_c_bytes": 153807
+        "unresolved_entry_count": 0,
+        "parser_tables_bytes": 38529,
+        "c_tables_bytes": 83164,
+        "parser_c_bytes": 152518
       },
-      "blocked_boundary": {
-        "unresolved_state_count": 5,
-        "unresolved_entry_count": 5,
-        "reasons": {
-          "shift_reduce": 5,
-          "reduce_reduce_deferred": 0,
-          "multiple_candidates": 0,
-          "unsupported_action_mix": 0
-        },
-        "samples": [
-          {
-            "state_id": 28,
-            "symbol_kind": "terminal",
-            "symbol_index": 42,
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:52, reduce:47(doc_comment)"
-          },
-          {
-            "state_id": 61,
-            "symbol_kind": "terminal",
-            "symbol_index": 42,
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:71, reduce:47(doc_comment)"
-          },
-          {
-            "state_id": 103,
-            "symbol_kind": "terminal",
-            "symbol_index": 42,
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:144, reduce:47(doc_comment)"
-          },
-          {
-            "state_id": 108,
-            "symbol_kind": "terminal",
-            "symbol_index": 27,
-            "symbol_name": "struct_union",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:34, reduce:12(expr)"
-          },
-          {
-            "state_id": 146,
-            "symbol_kind": "terminal",
-            "symbol_index": 27,
-            "symbol_name": "struct_union",
-            "reason": "shift_reduce",
-            "candidate_count": 2,
-            "candidate_actions_summary": "shift:53, reduce:32(struct_union)"
-          }
-        ],
-        "dominant_signatures": [
-          {
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:144, reduce:47(doc_comment)",
-            "count": 1
-          },
-          {
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:52, reduce:47(doc_comment)",
-            "count": 1
-          },
-          {
-            "symbol_name": "doc_comment",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:71, reduce:47(doc_comment)",
-            "count": 1
-          },
-          {
-            "symbol_name": "struct_union",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:34, reduce:12(expr)",
-            "count": 1
-          },
-          {
-            "symbol_name": "struct_union",
-            "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:53, reduce:32(struct_union)",
-            "count": 1
-          }
-        ]
-      }
+      "blocked_boundary": null
     },
     {
       "id": "tree_sitter_c_json",

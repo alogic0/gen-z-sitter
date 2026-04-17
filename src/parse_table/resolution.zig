@@ -229,6 +229,11 @@ const ProductionResolutionMetadata = struct {
     dynamic_precedence: i32 = 0,
 };
 
+const ShiftResolutionMetadata = struct {
+    resolution: ProductionResolutionMetadata = .{},
+    has_repeat_auxiliary_candidate: bool = false,
+};
+
 pub fn resolveActionTableSkeleton(
     allocator: std.mem.Allocator,
     grouped_table: actions.GroupedActionTable,
@@ -363,14 +368,14 @@ fn resolveShiftReduce(
 
     if (shift_metadata) |shift| {
         if (metadata.max_integer_precedence) |reduce_value| {
-            if (shift.max_integer_precedence) |shift_value| {
+            if (shift.resolution.max_integer_precedence) |shift_value| {
                 if (reduce_value > shift_value) return reduce_action;
                 if (reduce_value < shift_value) return shift_action;
             }
         }
 
         if (metadata.named_precedence) |reduce_name| {
-            if (shift.named_precedence) |shift_name| {
+            if (shift.resolution.named_precedence) |shift_name| {
                 if (comparePrecedenceEntries(
                     precedence_orderings,
                     .{ .name = reduce_name },
@@ -402,6 +407,10 @@ fn resolveShiftReduce(
                 .none => {},
             };
         }
+    }
+
+    if (shift_metadata) |shift| {
+        if (shift.has_repeat_auxiliary_candidate) return shift_action;
     }
 
     if (productionIsRepeatAuxiliary(production)) return shift_action;
@@ -463,8 +472,8 @@ fn extractShiftResolutionMetadata(
     productions: anytype,
     parse_state: state.ParseState,
     shift_symbol: syntax_ir.SymbolRef,
-) ?ProductionResolutionMetadata {
-    var metadata = ProductionResolutionMetadata{};
+) ?ShiftResolutionMetadata {
+    var metadata = ShiftResolutionMetadata{};
     var saw_match = false;
 
     for (parse_state.items) |entry| {
@@ -476,7 +485,10 @@ fn extractShiftResolutionMetadata(
         if (!symbolRefEql(step.symbol, shift_symbol)) continue;
 
         saw_match = true;
-        metadata = mergeResolutionMetadata(metadata, extractResolutionMetadata(production));
+        metadata.resolution = mergeResolutionMetadata(metadata.resolution, extractResolutionMetadata(production));
+        if (productionIsRepeatAuxiliary(production)) {
+            metadata.has_repeat_auxiliary_candidate = true;
+        }
     }
 
     return if (saw_match) metadata else null;
@@ -1667,6 +1679,150 @@ test "resolveActionTable prefers shift over reducing repeat auxiliaries" {
     var parse_items = [_]item.ParseItemSetEntry{
         try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 1, .step_index = 1 }, .{ .terminal = 0 }),
         try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, .{ .production_id = 2, .step_index = 0 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 6,
+            .items = parse_items[0..],
+            .transitions = &.{},
+            .conflicts = &.{},
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 6,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, parse_states[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
+}
+
+test "resolveActionTable prefers shift when the shift candidate continues a repeat auxiliary" {
+    testLog("resolveActionTable prefers shift when the shift candidate continues a repeat auxiliary");
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        lhs_is_repeat_auxiliary: bool = false,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const wrapper_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+    };
+    const repeat_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = wrapper_steps[0..] },
+        .{ .lhs = 2, .steps = repeat_steps[0..], .lhs_is_repeat_auxiliary = true },
+    };
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 1, .step_index = 1 }, .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 2, .step_index = 1 }, .{ .terminal = 0 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 6,
+            .items = parse_items[0..],
+            .transitions = &.{},
+            .conflicts = &.{},
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 6,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, parse_states[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
+}
+
+test "resolveActionTable prefers shift when repeat auxiliary continuation conflicts with wrapper reductions" {
+    testLog("resolveActionTable prefers shift when repeat auxiliary continuation conflicts with wrapper reductions");
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        lhs_is_repeat_auxiliary: bool = false,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const wrapper_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .symbol = .{ .non_terminal = 3 } },
+    };
+    const wrapper_seq_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+    };
+    const repeat_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = wrapper_seq_steps[0..] },
+        .{ .lhs = 2, .steps = wrapper_steps[0..] },
+        .{ .lhs = 3, .steps = repeat_steps[0..], .lhs_is_repeat_auxiliary = true },
+    };
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 1, .step_index = 1 }, .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 2, .step_index = 2 }, .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 3, .step_index = 1 }, .{ .terminal = 0 }),
     };
     defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const parse_states = [_]state.ParseState{

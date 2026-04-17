@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "target_count": 2,
+  "target_count": 1,
   "entries": [
     {
       "id": "repeat_choice_seq_js",
@@ -37,43 +37,6 @@
         "reserved_set_count": 0,
         "has_word_token": false,
         "word_token": null
-      }
-    },
-    {
-      "id": "tree_sitter_ziggy_schema_json",
-      "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
-      "family": "ziggy_schema",
-      "parser_boundary_check_mode": "full_pipeline",
-      "next_parser_boundary_check_mode": "full_pipeline",
-      "candidate_status": "deferred_parser_wave",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "shift_reduce_boundary",
-      "current_proven_steps": [
-        "load",
-        "prepare",
-        "serialize",
-        "emit_parser_tables",
-        "emit_c_tables"
-      ],
-      "deferred_from_step": "emit_parser_c",
-      "not_run_steps": [
-        "scanner_boundary_check",
-        "compat_check",
-        "compile_smoke"
-      ],
-      "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=5, entries=5, reasons={shift_reduce:5, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[doc_comment shift_reduce actions=[shift:144, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:52, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:71, reduce:47(doc_comment)] count=1; struct_union shift_reduce actions=[shift:34, reduce:12(expr)] count=1; struct_union shift_reduce actions=[shift:53, reduce:32(struct_union)] count=1], samples=[state 28 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:52, reduce:47(doc_comment)]; state 61 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:71, reduce:47(doc_comment)]; state 103 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:144, reduce:47(doc_comment)]; state 108 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:34, reduce:12(expr)]; state 146 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:53, reduce:32(struct_union)]]",
-      "grammar_shape": {
-        "rule_count": 16,
-        "precedence_count": 0,
-        "conflict_count": 0,
-        "external_count": 0,
-        "extra_count": 1,
-        "inline_rule_count": 0,
-        "supertype_count": 0,
-        "reserved_set_count": 0,
-        "has_word_token": true,
-        "word_token": "identifier"
       }
     }
   ]

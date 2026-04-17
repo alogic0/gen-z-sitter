@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "first_wave_target_count": 4,
-  "first_wave_passed_count": 4,
+  "first_wave_target_count": 5,
+  "first_wave_passed_count": 5,
   "first_wave_non_passing_count": 0,
   "parser_only_boundary_proven": true,
-  "deferred_parser_wave_singleton": false,
+  "deferred_parser_wave_singleton": true,
   "primary_deferred_parser_wave_target": {
     "id": "repeat_choice_seq_js",
     "display_name": "Repeat Choice Seq (JS)",
@@ -13,11 +13,11 @@
   },
   "standalone_parser_probe_pass_count": 0,
   "proven_boundary": [
-    "4 intended first-wave parser-only targets are currently in the run set",
-    "4 intended first-wave targets currently pass within the staged parser-only boundary",
+    "5 intended first-wave parser-only targets are currently in the run set",
+    "5 intended first-wave targets currently pass within the staged parser-only boundary",
     "6 intended scanner-wave targets currently pass within the staged scanner boundary",
     "0 shortlist target currently carries a passing standalone coarse serialize-only probe outside the routine shortlist boundary",
-    "3 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
+    "2 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
   ],
   "deferred_parser_only_targets": [
     {
@@ -25,12 +25,6 @@
       "display_name": "Repeat Choice Seq (JS)",
       "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
       "notes": "parser-only JS target kept deferred because parser.c emission still stops at the staged parser-only boundary"
-    },
-    {
-      "id": "tree_sitter_ziggy_schema_json",
-      "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo; still deferred because parser.c emission remains blocked after the word-token lowering and repeat-auxiliary fixes"
     },
     {
       "id": "parse_table_conflict_json",
