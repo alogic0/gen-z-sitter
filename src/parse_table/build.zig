@@ -637,6 +637,26 @@ fn closureContextFollowSet(
     return result;
 }
 
+const ClosureContext = struct {
+    following_tokens: first.SymbolSet,
+    inherited_symbol: ?syntax_ir.SymbolRef,
+
+    fn init(
+        allocator: std.mem.Allocator,
+        suffix_first: first.SymbolSet,
+        inherited_lookahead: ?syntax_ir.SymbolRef,
+    ) !@This() {
+        return .{
+            .following_tokens = try closureContextFollowSet(allocator, suffix_first, inherited_lookahead),
+            .inherited_symbol = inherited_lookahead,
+        };
+    }
+
+    fn deinit(self: @This(), allocator: std.mem.Allocator) void {
+        freeSymbolSet(allocator, self.following_tokens);
+    }
+};
+
 fn optionalSymbolRefEql(a: ?syntax_ir.SymbolRef, b: ?syntax_ir.SymbolRef) bool {
     if (a) |left| {
         if (b) |right| return symbolRefEql(left, right);
@@ -899,11 +919,9 @@ fn buildClosureExpansionItemsAlloc(
     allocator: std.mem.Allocator,
     item_set_builder: ParseItemSetBuilder,
     non_terminal: u32,
-    inherited_lookahead: ?syntax_ir.SymbolRef,
-    context_follow: first.SymbolSet,
+    context: ClosureContext,
     options: BuildOptions,
 ) ![]const item.ParseItemSetEntry {
-    _ = context_follow;
     var generated = std.array_list.Managed(item.ParseItemSetEntry).init(allocator);
     defer generated.deinit();
     var item_indexes = ClosureItemIndexMap.init(allocator);
@@ -918,7 +936,7 @@ fn buildClosureExpansionItemsAlloc(
             addition.info.direct_suffix_follow,
             addition.info.nullable_ancestor_suffix_follow,
             addition.info.propagates_inherited_context,
-            inherited_lookahead,
+            context,
             item_set_builder.first_sets,
             options,
         );
@@ -935,7 +953,7 @@ fn appendGeneratedItems(
     direct_suffix_follow: first.SymbolSet,
     nullable_ancestor_suffix_follow: first.SymbolSet,
     propagates_inherited_context: bool,
-    inherited_lookahead: ?syntax_ir.SymbolRef,
+    context: ClosureContext,
     first_sets: first.FirstSets,
     options: BuildOptions,
 ) !void {
@@ -985,7 +1003,7 @@ fn appendGeneratedItems(
     }
 
     if (propagates_inherited_context) {
-        if (inherited_lookahead) |lookahead| {
+        if (context.inherited_symbol) |lookahead| {
             if (!item.containsLookahead(generated_entry.lookaheads, lookahead)) item.addLookahead(&generated_entry.lookaheads, lookahead);
         }
     }
@@ -1929,13 +1947,14 @@ const ClosureRun = struct {
                 }
                 const suffix = production.steps[parse_item.step_index + 1 ..];
                 const suffix_first = try self.item_set_builder.first_sets.firstOfSequence(self.allocator, suffix);
+                const context = try ClosureContext.init(self.allocator, suffix_first, inherited_lookahead);
+                defer context.deinit(self.allocator);
                 const generated_items = try self.lookupGeneratedItems(
                     stats,
                     round,
                     cursor,
                     non_terminal,
-                    inherited_lookahead,
-                    suffix_first,
+                    context,
                 );
 
                 const append_timer = maybeStartTimer(self.progress_log);
@@ -2038,21 +2057,13 @@ const ClosureRun = struct {
         round: usize,
         cursor: usize,
         non_terminal: u32,
-        inherited_lookahead: ?syntax_ir.SymbolRef,
-        suffix_first: first.SymbolSet,
+        context: ClosureContext,
     ) ![]const item.ParseItemSetEntry {
-        const context_follow = try closureContextFollowSet(
-            self.allocator,
-            suffix_first,
-            inherited_lookahead,
-        );
-        defer freeSymbolSet(self.allocator, context_follow);
-
         if (findClosureExpansionCache(
             self.expansion_cache.items,
             non_terminal,
             self.effective_closure_lookahead_mode,
-            context_follow,
+            context.following_tokens,
         )) |cached| {
             if (self.trace_current_closure and (cursor < 10 or (cursor + 1) % 25 == 0)) {
                 std.debug.print(
@@ -2079,8 +2090,7 @@ const ClosureRun = struct {
             self.allocator,
             self.item_set_builder,
             non_terminal,
-            inherited_lookahead,
-            context_follow,
+            context,
             .{
                 .closure_lookahead_mode = self.effective_closure_lookahead_mode,
             },
@@ -2088,7 +2098,7 @@ const ClosureRun = struct {
         try self.expansion_cache.append(.{
             .non_terminal = non_terminal,
             .closure_lookahead_mode = self.effective_closure_lookahead_mode,
-            .context_follow = try cloneSymbolSet(self.allocator, context_follow),
+            .context_follow = try cloneSymbolSet(self.allocator, context.following_tokens),
             .generated_items = generated,
         });
         if (self.progress_log and non_terminal < stats.unique_lookaheads.len) {
@@ -2102,9 +2112,9 @@ const ClosureRun = struct {
             );
             if (self.context_log and (stats.cache_misses[non_terminal] <= 3 or stats.cache_misses[non_terminal] % 25 == 0)) {
                 var lookahead_buf: [64]u8 = undefined;
-                const lookahead_text = optionalSymbolRefText(&lookahead_buf, inherited_lookahead);
+                const lookahead_text = optionalSymbolRefText(&lookahead_buf, context.inherited_symbol);
                 std.debug.print(
-                    "[parse_table_build] closure context non_terminal={d} name={s} contexts={d} unique_context_lookaheads={d} unique_context_first_sets={d} lookahead={s} first(terminals={d}, externals={d}, epsilon={}) merged_follow(terminals={d}, externals={d}, epsilon={})\n",
+                    "[parse_table_build] closure context non_terminal={d} name={s} contexts={d} unique_context_lookaheads={d} unique_context_first_sets={d} lookahead={s} merged_follow(terminals={d}, externals={d}, epsilon={})\n",
                     .{
                         non_terminal,
                         if (non_terminal < self.variables.len) self.variables[non_terminal].name else "<unknown>",
@@ -2112,12 +2122,9 @@ const ClosureRun = struct {
                         stats.unique_lookaheads[non_terminal],
                         stats.unique_first_sets[non_terminal],
                         lookahead_text,
-                        countPresent(suffix_first.terminals),
-                        countPresent(suffix_first.externals),
-                        suffix_first.includes_epsilon,
-                        countPresent(context_follow.terminals),
-                        countPresent(context_follow.externals),
-                        context_follow.includes_epsilon,
+                        countPresent(context.following_tokens.terminals),
+                        countPresent(context.following_tokens.externals),
+                        context.following_tokens.includes_epsilon,
                     },
                 );
             }
@@ -2487,19 +2494,15 @@ test "buildClosureExpansionItemsAlloc preserves inherited and propagated follow 
     var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets);
     defer item_set_builder.deinit();
 
-    const generated = try buildClosureExpansionItemsAlloc(
-        arena.allocator(),
-        item_set_builder,
-        1,
-        .{ .terminal = 0 },
-        blk: {
-            var context_follow = try initEmptySymbolSet(arena.allocator(), first_sets.terminals_len, first_sets.externals_len);
-            context_follow.includes_epsilon = true;
-            context_follow.terminals[0] = true;
-            break :blk context_follow;
-        },
-        .{},
-    );
+    const generated = try buildClosureExpansionItemsAlloc(arena.allocator(), item_set_builder, 1, blk: {
+        var context_follow = try initEmptySymbolSet(arena.allocator(), first_sets.terminals_len, first_sets.externals_len);
+        context_follow.includes_epsilon = true;
+        context_follow.terminals[0] = true;
+        break :blk ClosureContext{
+            .following_tokens = context_follow,
+            .inherited_symbol = .{ .terminal = 0 },
+        };
+    }, .{});
 
     try std.testing.expect(findParseItem(generated, item.ParseItem.init(2, 0), .{ .terminal = 0 }) != null);
     try std.testing.expect(findParseItem(generated, item.ParseItem.init(3, 0), .{ .terminal = 0 }) != null);
