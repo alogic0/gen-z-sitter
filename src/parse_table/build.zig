@@ -1249,6 +1249,387 @@ const SuccessorDiagnostic = struct {
     reused: bool,
 };
 
+const TransitionReporter = struct {
+    variables: []const syntax_ir.SyntaxVariable,
+    progress_log: bool,
+
+    fn init(variables: []const syntax_ir.SyntaxVariable) @This() {
+        return .{
+            .variables = variables,
+            .progress_log = shouldLogBuildProgress(),
+        };
+    }
+
+    fn logCollectEnter(self: @This(), source_state_id: state.StateId, state_item_count: usize) void {
+        if (!self.progress_log) return;
+        std.debug.print(
+            "[parse_table/build] collectTransitionsForState enter source_state={d} state_items={d}\n",
+            .{ source_state_id, state_item_count },
+        );
+    }
+
+    fn logGrouped(self: @This(), source_state_id: state.StateId, successor_group_count: usize) void {
+        if (!self.progress_log) return;
+        std.debug.print(
+            "[parse_table/build] collectTransitionsForState grouped source_state={d} successor_groups={d}\n",
+            .{ source_state_id, successor_group_count },
+        );
+    }
+
+    fn logTransitionBegin(
+        self: @This(),
+        source_state_id: state.StateId,
+        group_index: usize,
+        group_count: usize,
+        symbol: syntax_ir.SymbolRef,
+        seed_item_count: usize,
+    ) void {
+        const trace_transition = shouldTraceTransition(source_state_id, symbol);
+        if (!(self.progress_log or trace_transition)) return;
+
+        var symbol_buf: [128]u8 = undefined;
+        const symbol_text = symbolDisplayText(&symbol_buf, self.variables, symbol);
+        std.debug.print(
+            "[parse_table/build] construct_states transition_begin source_state={d} group={d}/{d} symbol={s} seed_items={d}\n",
+            .{ source_state_id, group_index + 1, group_count, symbol_text, seed_item_count },
+        );
+    }
+
+    fn logTransitionClosed(
+        self: @This(),
+        source_state_id: state.StateId,
+        group_index: usize,
+        group_count: usize,
+        symbol: syntax_ir.SymbolRef,
+        advanced_item_count: usize,
+    ) void {
+        const trace_transition = shouldTraceTransition(source_state_id, symbol);
+        if (!(self.progress_log or trace_transition)) return;
+
+        var symbol_buf: [128]u8 = undefined;
+        const symbol_text = symbolDisplayText(&symbol_buf, self.variables, symbol);
+        std.debug.print(
+            "[parse_table/build] construct_states transition_closed source_state={d} group={d}/{d} symbol={s} advanced_items={d}\n",
+            .{ source_state_id, group_index + 1, group_count, symbol_text, advanced_item_count },
+        );
+    }
+
+    fn maybeLogLargestSuccessor(self: @This(), label: []const u8, diagnostic: SuccessorDiagnostic) void {
+        if (!self.progress_log) return;
+        logSuccessorDiagnostic(label, self.variables, diagnostic);
+    }
+};
+
+const ConstructStatesReporter = struct {
+    variables: []const syntax_ir.SyntaxVariable,
+    progress_log: bool,
+    next_progress_report: usize = 10,
+
+    fn init(variables: []const syntax_ir.SyntaxVariable) @This() {
+        return .{
+            .variables = variables,
+            .progress_log = shouldLogBuildProgress(),
+        };
+    }
+
+    fn logEnter(self: @This()) void {
+        _ = self;
+        std.debug.print("[parse_table/build] constructStates enter\n", .{});
+    }
+
+    fn startInitialClosure(self: @This()) ?std.time.Timer {
+        const timer = maybeStartTimer(self.progress_log);
+        if (self.progress_log) logBuildStart("construct_states.initial_closure");
+        return timer;
+    }
+
+    fn logInitialClosureDone(self: @This(), start_timer: ?*std.time.Timer, item_count: usize) void {
+        std.debug.print("[parse_table/build] constructStates initial_closure_done items={d}\n", .{item_count});
+        if (self.progress_log) {
+            maybeLogBuildDone("construct_states.initial_closure", start_timer);
+            logBuildSummary("construct_states initial_closure items={d}", .{item_count});
+        }
+    }
+
+    fn logStateBegin(self: *@This(), state_index: usize, parse_state: state.ParseState, discovered_count: usize) void {
+        if (state_index < 5 or (state_index + 1) % 100 == 0) {
+            std.debug.print(
+                "[parse_table/build] constructStates state_begin index={d} state_id={d} items={d} discovered={d}\n",
+                .{
+                    state_index,
+                    parse_state.id,
+                    parse_state.items.len,
+                    discovered_count,
+                },
+            );
+        }
+        if (self.progress_log and (state_index < 5 or state_index + 1 == self.next_progress_report)) {
+            logBuildSummary(
+                "construct_states entering state_index={d} state_id={d} items={d} discovered={d}",
+                .{
+                    state_index,
+                    parse_state.id,
+                    parse_state.items.len,
+                    discovered_count,
+                },
+            );
+        }
+    }
+
+    fn logStateAfterTransitions(self: @This(), state_index: usize, transition_count: usize, discovered_count: usize) void {
+        _ = self;
+        if (state_index < 5 or (state_index + 1) % 100 == 0) {
+            std.debug.print(
+                "[parse_table/build] constructStates state_after_transitions index={d} transitions={d} discovered={d}\n",
+                .{ state_index, transition_count, discovered_count },
+            );
+        }
+    }
+
+    fn logStateDone(
+        self: *@This(),
+        state_index: usize,
+        parse_state: state.ParseState,
+        action_entry_count: usize,
+        discovered_count: usize,
+        detected_conflict_count: usize,
+        transition_stats: TransitionBuildStats,
+        closure_result_cache: ClosureResultCache,
+    ) void {
+        if (state_index < 5 or (state_index + 1) % 100 == 0) {
+            std.debug.print(
+                "[parse_table/build] constructStates state_done index={d} conflicts={d} action_entries={d} discovered={d}\n",
+                .{ state_index, detected_conflict_count, action_entry_count, discovered_count },
+            );
+        }
+
+        if (self.progress_log and state_index + 1 >= self.next_progress_report) {
+            logBuildSummary(
+                "construct_states progress processed={d} discovered={d} closure_cache_hits={d} closure_cache_misses={d} core_match_misses={d}",
+                .{
+                    state_index + 1,
+                    discovered_count,
+                    closure_result_cache.hits,
+                    closure_result_cache.misses,
+                    closure_result_cache.core_match_misses,
+                },
+            );
+            self.next_progress_report += if (self.next_progress_report < 100) 10 else 100;
+        }
+
+        if (self.progress_log and (transition_stats.new_state_count > 0 or transition_stats.transition_count >= 16)) {
+            var largest_new_symbol_buf: [64]u8 = undefined;
+            var largest_reused_symbol_buf: [64]u8 = undefined;
+            const largest_new_symbol = optionalSymbolRefText(&largest_new_symbol_buf, transition_stats.largest_new_state_symbol);
+            const largest_reused_symbol = optionalSymbolRefText(&largest_reused_symbol_buf, transition_stats.largest_reused_state_symbol);
+            logBuildSummary(
+                "construct_states state_id={d} transitions={d} new_states={d} reused_states={d} largest_new_items={d} largest_new_symbol={s} largest_reused_items={d} largest_reused_symbol={s}",
+                .{
+                    parse_state.id,
+                    transition_stats.transition_count,
+                    transition_stats.new_state_count,
+                    transition_stats.reused_state_count,
+                    transition_stats.largest_new_state_items,
+                    largest_new_symbol,
+                    transition_stats.largest_reused_state_items,
+                    largest_reused_symbol,
+                },
+            );
+        }
+    }
+
+    fn logComplete(
+        self: @This(),
+        state_count: usize,
+        closure_result_cache: ClosureResultCache,
+        largest_new_successor: ?SuccessorDiagnostic,
+        largest_reused_successor: ?SuccessorDiagnostic,
+    ) void {
+        std.debug.print("[parse_table/build] constructStates complete states={d}\n", .{state_count});
+        if (!self.progress_log) return;
+
+        logBuildSummary(
+            "construct_states closure_cache summary hits={d} misses={d} core_match_misses={d} entries={d}",
+            .{
+                closure_result_cache.hits,
+                closure_result_cache.misses,
+                closure_result_cache.core_match_misses,
+                closure_result_cache.len(),
+            },
+        );
+        if (largest_new_successor) |diagnostic| {
+            logSuccessorDiagnostic("construct_states largest_new_successor", self.variables, diagnostic);
+        }
+        if (largest_reused_successor) |diagnostic| {
+            logSuccessorDiagnostic("construct_states largest_reused_successor", self.variables, diagnostic);
+        }
+    }
+};
+
+const StateConstructionEngine = struct {
+    allocator: std.mem.Allocator,
+    variables: []const syntax_ir.SyntaxVariable,
+    productions: []const ProductionInfo,
+    first_sets: first.FirstSets,
+    item_set_builder: ParseItemSetBuilder,
+    state_registry: *StateRegistry,
+    action_states: *std.array_list.Managed(actions.StateActions),
+    closure_result_cache: *ClosureResultCache,
+    largest_new_successor: *?SuccessorDiagnostic,
+    largest_reused_successor: *?SuccessorDiagnostic,
+    options: BuildOptions,
+
+    fn processState(
+        self: *@This(),
+        reporter: *ConstructStatesReporter,
+        state_index: usize,
+    ) BuildError!void {
+        reporter.logStateBegin(
+            state_index,
+            self.state_registry.items()[state_index],
+            self.state_registry.items().len,
+        );
+
+        var transition_stats = TransitionBuildStats{};
+        const transitions = try self.collectTransitionsForState(
+            self.state_registry.items()[state_index].items,
+            self.state_registry.items()[state_index].id,
+            &transition_stats,
+        );
+        reporter.logStateAfterTransitions(state_index, transitions.len, self.state_registry.items().len);
+
+        const mutable_states = self.state_registry.items();
+        mutable_states[state_index].transitions = transitions;
+
+        const state_actions = try actions.buildActionsForState(
+            self.allocator,
+            self.productions,
+            mutable_states[state_index],
+        );
+        const detected_conflicts = try conflicts.detectConflictsFromActions(
+            self.allocator,
+            mutable_states[state_index],
+            state_actions,
+        );
+        mutable_states[state_index].conflicts = detected_conflicts;
+        try self.action_states.append(.{
+            .state_id = mutable_states[state_index].id,
+            .entries = state_actions,
+        });
+
+        reporter.logStateDone(
+            state_index,
+            mutable_states[state_index],
+            state_actions.len,
+            self.state_registry.items().len,
+            detected_conflicts.len,
+            transition_stats,
+            self.closure_result_cache.*,
+        );
+    }
+
+    fn collectTransitionsForState(
+        self: *@This(),
+        state_items: []const item.ParseItemSetEntry,
+        source_state_id: state.StateId,
+        stats: *TransitionBuildStats,
+    ) BuildError![]const state.Transition {
+        const reporter = TransitionReporter.init(self.variables);
+        reporter.logCollectEnter(source_state_id, state_items.len);
+
+        var transitions = std.array_list.Managed(state.Transition).init(self.allocator);
+        defer transitions.deinit();
+        var successor_groups = SuccessorGroups.init(self.allocator);
+        defer successor_groups.deinit();
+        try successor_groups.buildFromStateItems(state_items, self.productions);
+        reporter.logGrouped(source_state_id, successor_groups.groups.items.len);
+
+        for (successor_groups.groups.items, 0..) |*group, group_index| {
+            const symbol = group.symbol;
+            reporter.logTransitionBegin(
+                source_state_id,
+                group_index,
+                successor_groups.groups.items.len,
+                symbol,
+                group.items.items.len,
+            );
+
+            const advanced_item_set = blk: {
+                const prior_transition_context = current_transition_context;
+                setCurrentTransitionContext(.{
+                    .source_state_id = source_state_id,
+                    .symbol = symbol,
+                });
+                defer setCurrentTransitionContext(prior_transition_context);
+                var transition_options = self.options;
+                if (shouldUseCoarseTransition(self.options, source_state_id, symbol)) {
+                    transition_options.closure_lookahead_mode = .none;
+                    if (reporter.progress_log) {
+                        var coarse_symbol_buf: [128]u8 = undefined;
+                        const coarse_symbol_text = symbolDisplayText(&coarse_symbol_buf, self.variables, symbol);
+                        logBuildSummary(
+                            "construct_states applying coarse_transition source_state={d} symbol={s}",
+                            .{ source_state_id, coarse_symbol_text },
+                        );
+                    }
+                }
+                break :blk try self.closure_result_cache.getOrBuild(
+                    self.variables,
+                    self.item_set_builder,
+                    group.items.items,
+                    transition_options,
+                );
+            };
+            reporter.logTransitionClosed(
+                source_state_id,
+                group_index,
+                successor_groups.groups.items.len,
+                symbol,
+                advanced_item_set.entries.len,
+            );
+            stats.transition_count += 1;
+            const interned = try self.state_registry.intern(advanced_item_set);
+            if (interned.reused) {
+                stats.reused_state_count += 1;
+                if (advanced_item_set.entries.len > stats.largest_reused_state_items) {
+                    stats.largest_reused_state_items = advanced_item_set.entries.len;
+                    stats.largest_reused_state_symbol = symbol;
+                }
+                if (self.largest_reused_successor.* == null or advanced_item_set.entries.len > self.largest_reused_successor.*.?.item_count) {
+                    self.largest_reused_successor.* = .{
+                        .source_state_id = source_state_id,
+                        .symbol = symbol,
+                        .item_count = advanced_item_set.entries.len,
+                        .reused = true,
+                    };
+                    reporter.maybeLogLargestSuccessor("construct_states update largest_reused_successor", self.largest_reused_successor.*.?);
+                }
+                try transitions.append(.{ .symbol = symbol, .state = interned.state_id });
+                continue;
+            }
+
+            stats.new_state_count += 1;
+            if (advanced_item_set.entries.len > stats.largest_new_state_items) {
+                stats.largest_new_state_items = advanced_item_set.entries.len;
+                stats.largest_new_state_symbol = symbol;
+            }
+            if (self.largest_new_successor.* == null or advanced_item_set.entries.len > self.largest_new_successor.*.?.item_count) {
+                self.largest_new_successor.* = .{
+                    .source_state_id = source_state_id,
+                    .symbol = symbol,
+                    .item_count = advanced_item_set.entries.len,
+                    .reused = false,
+                };
+                reporter.maybeLogLargestSuccessor("construct_states update largest_new_successor", self.largest_new_successor.*.?);
+            }
+            try transitions.append(.{ .symbol = symbol, .state = interned.state_id });
+        }
+
+        state.sortTransitions(transitions.items);
+        return try transitions.toOwnedSlice();
+    }
+};
+
 const ClosureStats = struct {
     allocator: std.mem.Allocator,
     progress_log: bool,
@@ -1925,8 +2306,8 @@ fn constructStates(
     item_set_builder: ParseItemSetBuilder,
     options: BuildOptions,
 ) BuildError!ConstructedStates {
-    const progress_log = shouldLogBuildProgress();
-    std.debug.print("[parse_table/build] constructStates enter\n", .{});
+    var reporter = ConstructStatesReporter.init(variables);
+    reporter.logEnter();
     var state_registry = StateRegistry.init(allocator);
     defer state_registry.deinit();
     var action_states = std.array_list.Managed(actions.StateActions).init(allocator);
@@ -1936,8 +2317,7 @@ fn constructStates(
     var largest_new_successor: ?SuccessorDiagnostic = null;
     var largest_reused_successor: ?SuccessorDiagnostic = null;
 
-    var start_timer = maybeStartTimer(progress_log);
-    if (progress_log) logBuildStart("construct_states.initial_closure");
+    var start_timer = reporter.startInitialClosure();
     const start_seed = [_]item.ParseItemSetEntry{
         try item.ParseItemSetEntry.initEmpty(allocator, first_sets.terminals_len, first_sets.externals_len, item.ParseItem.init(0, 0)),
     };
@@ -1947,257 +2327,41 @@ fn constructStates(
         .{ .entries = start_seed[0..] },
         options,
     );
-    std.debug.print("[parse_table/build] constructStates initial_closure_done items={d}\n", .{start_item_set.entries.len});
-    if (progress_log) {
-        maybeLogBuildDone("construct_states.initial_closure", if (start_timer) |*value| value else null);
-        logBuildSummary("construct_states initial_closure items={d}", .{start_item_set.entries.len});
-    }
+    reporter.logInitialClosureDone(if (start_timer) |*value| value else null, start_item_set.entries.len);
     try state_registry.appendInitialState(start_item_set);
 
+    var state_engine = StateConstructionEngine{
+        .allocator = allocator,
+        .variables = variables,
+        .productions = productions,
+        .first_sets = first_sets,
+        .item_set_builder = item_set_builder,
+        .state_registry = &state_registry,
+        .action_states = &action_states,
+        .closure_result_cache = &closure_result_cache,
+        .largest_new_successor = &largest_new_successor,
+        .largest_reused_successor = &largest_reused_successor,
+        .options = options,
+    };
+
     var next_state_index: usize = 0;
-    var next_progress_report: usize = 10;
     while (next_state_index < state_registry.items().len) : (next_state_index += 1) {
-        if (next_state_index < 5 or (next_state_index + 1) % 100 == 0) {
-            std.debug.print(
-                "[parse_table/build] constructStates state_begin index={d} state_id={d} items={d} discovered={d}\n",
-                .{
-                    next_state_index,
-                    state_registry.items()[next_state_index].id,
-                    state_registry.items()[next_state_index].items.len,
-                    state_registry.items().len,
-                },
-            );
-        }
-        if (progress_log and (next_state_index < 5 or next_state_index + 1 == next_progress_report)) {
-            logBuildSummary(
-                "construct_states entering state_index={d} state_id={d} items={d} discovered={d}",
-                .{
-                    next_state_index,
-                    state_registry.items()[next_state_index].id,
-                    state_registry.items()[next_state_index].items.len,
-                    state_registry.items().len,
-                },
-            );
-        }
-        var transition_stats = TransitionBuildStats{};
-        const transitions = try collectTransitionsForState(
-            allocator,
-            variables,
-            productions,
-            first_sets,
-            item_set_builder,
-            &state_registry,
-            &closure_result_cache,
-            state_registry.items()[next_state_index].items,
-            state_registry.items()[next_state_index].id,
-            &largest_new_successor,
-            &largest_reused_successor,
-            &transition_stats,
-            options,
-        );
-        if (next_state_index < 5 or (next_state_index + 1) % 100 == 0) {
-            std.debug.print(
-                "[parse_table/build] constructStates state_after_transitions index={d} transitions={d} discovered={d}\n",
-                .{ next_state_index, transitions.len, state_registry.items().len },
-            );
-        }
-        const mutable_states = state_registry.items();
-        mutable_states[next_state_index].transitions = transitions;
-
-        const state_actions = try actions.buildActionsForState(allocator, productions, mutable_states[next_state_index]);
-        const detected_conflicts = try conflicts.detectConflictsFromActions(
-            allocator,
-            mutable_states[next_state_index],
-            state_actions,
-        );
-        mutable_states[next_state_index].conflicts = detected_conflicts;
-        try action_states.append(.{
-            .state_id = mutable_states[next_state_index].id,
-            .entries = state_actions,
-        });
-        if (next_state_index < 5 or (next_state_index + 1) % 100 == 0) {
-            std.debug.print(
-                "[parse_table/build] constructStates state_done index={d} conflicts={d} action_entries={d} discovered={d}\n",
-                .{ next_state_index, detected_conflicts.len, state_actions.len, state_registry.items().len },
-            );
-        }
-
-        if (progress_log and next_state_index + 1 >= next_progress_report) {
-            logBuildSummary(
-                "construct_states progress processed={d} discovered={d} closure_cache_hits={d} closure_cache_misses={d} core_match_misses={d}",
-                .{ next_state_index + 1, state_registry.items().len, closure_result_cache.hits, closure_result_cache.misses, closure_result_cache.core_match_misses },
-            );
-            next_progress_report += if (next_progress_report < 100) 10 else 100;
-        }
-
-        if (progress_log and (transition_stats.new_state_count > 0 or transition_stats.transition_count >= 16)) {
-            var largest_new_symbol_buf: [64]u8 = undefined;
-            var largest_reused_symbol_buf: [64]u8 = undefined;
-            const largest_new_symbol = optionalSymbolRefText(&largest_new_symbol_buf, transition_stats.largest_new_state_symbol);
-            const largest_reused_symbol = optionalSymbolRefText(&largest_reused_symbol_buf, transition_stats.largest_reused_state_symbol);
-            logBuildSummary(
-                "construct_states state_id={d} transitions={d} new_states={d} reused_states={d} largest_new_items={d} largest_new_symbol={s} largest_reused_items={d} largest_reused_symbol={s}",
-                .{
-                    mutable_states[next_state_index].id,
-                    transition_stats.transition_count,
-                    transition_stats.new_state_count,
-                    transition_stats.reused_state_count,
-                    transition_stats.largest_new_state_items,
-                    largest_new_symbol,
-                    transition_stats.largest_reused_state_items,
-                    largest_reused_symbol,
-                },
-            );
-        }
+        try state_engine.processState(&reporter, next_state_index);
     }
 
     state.sortStates(state_registry.items());
-    std.debug.print("[parse_table/build] constructStates complete states={d}\n", .{state_registry.items().len});
-    if (progress_log) {
-        logBuildSummary(
-            "construct_states closure_cache summary hits={d} misses={d} core_match_misses={d} entries={d}",
-            .{ closure_result_cache.hits, closure_result_cache.misses, closure_result_cache.core_match_misses, closure_result_cache.len() },
-        );
-        if (largest_new_successor) |diagnostic| {
-            logSuccessorDiagnostic("construct_states largest_new_successor", variables, diagnostic);
-        }
-        if (largest_reused_successor) |diagnostic| {
-            logSuccessorDiagnostic("construct_states largest_reused_successor", variables, diagnostic);
-        }
-    }
+    reporter.logComplete(
+        state_registry.items().len,
+        closure_result_cache,
+        largest_new_successor,
+        largest_reused_successor,
+    );
     return .{
         .states = try state_registry.intoOwnedSlice(),
         .actions = .{
             .states = try action_states.toOwnedSlice(),
         },
     };
-}
-
-fn collectTransitionsForState(
-    allocator: std.mem.Allocator,
-    variables: []const syntax_ir.SyntaxVariable,
-    productions: []const ProductionInfo,
-    _: first.FirstSets,
-    item_set_builder: ParseItemSetBuilder,
-    state_registry: *StateRegistry,
-    closure_result_cache: *ClosureResultCache,
-    state_items: []const item.ParseItemSetEntry,
-    source_state_id: state.StateId,
-    largest_new_successor: *?SuccessorDiagnostic,
-    largest_reused_successor: *?SuccessorDiagnostic,
-    stats: *TransitionBuildStats,
-    options: BuildOptions,
-) BuildError![]const state.Transition {
-    const progress_log = shouldLogBuildProgress();
-    if (progress_log) {
-        std.debug.print(
-            "[parse_table/build] collectTransitionsForState enter source_state={d} state_items={d}\n",
-            .{ source_state_id, state_items.len },
-        );
-    }
-    var transitions = std.array_list.Managed(state.Transition).init(allocator);
-    defer transitions.deinit();
-    var successor_groups = SuccessorGroups.init(allocator);
-    defer successor_groups.deinit();
-    try successor_groups.buildFromStateItems(state_items, productions);
-
-    if (progress_log) {
-        std.debug.print(
-            "[parse_table/build] collectTransitionsForState grouped source_state={d} successor_groups={d}\n",
-            .{ source_state_id, successor_groups.groups.items.len },
-        );
-    }
-
-    for (successor_groups.groups.items, 0..) |*group, group_index| {
-        const symbol = group.symbol;
-        const trace_transition = shouldTraceTransition(source_state_id, symbol);
-        if (progress_log or trace_transition) {
-            var symbol_buf: [128]u8 = undefined;
-            const symbol_text = symbolDisplayText(&symbol_buf, variables, symbol);
-            std.debug.print(
-                "[parse_table/build] construct_states transition_begin source_state={d} group={d}/{d} symbol={s} seed_items={d}\n",
-                .{ source_state_id, group_index + 1, successor_groups.groups.items.len, symbol_text, group.items.items.len },
-            );
-        }
-
-        const advanced_item_set = blk: {
-            const prior_transition_context = current_transition_context;
-            setCurrentTransitionContext(.{
-                .source_state_id = source_state_id,
-                .symbol = symbol,
-            });
-            defer setCurrentTransitionContext(prior_transition_context);
-            var transition_options = options;
-            if (shouldUseCoarseTransition(options, source_state_id, symbol)) {
-                transition_options.closure_lookahead_mode = .none;
-                if (shouldLogBuildProgress()) {
-                    var coarse_symbol_buf: [128]u8 = undefined;
-                    const coarse_symbol_text = symbolDisplayText(&coarse_symbol_buf, variables, symbol);
-                    logBuildSummary(
-                        "construct_states applying coarse_transition source_state={d} symbol={s}",
-                        .{ source_state_id, coarse_symbol_text },
-                    );
-                }
-            }
-            break :blk try closure_result_cache.getOrBuild(
-                variables,
-                item_set_builder,
-                group.items.items,
-                transition_options,
-            );
-        };
-        if (progress_log or trace_transition) {
-            var symbol_buf: [128]u8 = undefined;
-            const symbol_text = symbolDisplayText(&symbol_buf, variables, symbol);
-            std.debug.print(
-                "[parse_table/build] construct_states transition_closed source_state={d} group={d}/{d} symbol={s} advanced_items={d}\n",
-                .{ source_state_id, group_index + 1, successor_groups.groups.items.len, symbol_text, advanced_item_set.entries.len },
-            );
-        }
-        stats.transition_count += 1;
-        const interned = try state_registry.intern(advanced_item_set);
-        if (interned.reused) {
-            stats.reused_state_count += 1;
-            if (advanced_item_set.entries.len > stats.largest_reused_state_items) {
-                stats.largest_reused_state_items = advanced_item_set.entries.len;
-                stats.largest_reused_state_symbol = symbol;
-            }
-            if (largest_reused_successor.* == null or advanced_item_set.entries.len > largest_reused_successor.*.?.item_count) {
-                largest_reused_successor.* = .{
-                    .source_state_id = source_state_id,
-                    .symbol = symbol,
-                    .item_count = advanced_item_set.entries.len,
-                    .reused = true,
-                };
-                if (shouldLogBuildProgress()) {
-                    logSuccessorDiagnostic("construct_states update largest_reused_successor", variables, largest_reused_successor.*.?);
-                }
-            }
-            try transitions.append(.{ .symbol = symbol, .state = interned.state_id });
-            continue;
-        }
-
-        stats.new_state_count += 1;
-        if (advanced_item_set.entries.len > stats.largest_new_state_items) {
-            stats.largest_new_state_items = advanced_item_set.entries.len;
-            stats.largest_new_state_symbol = symbol;
-        }
-        if (largest_new_successor.* == null or advanced_item_set.entries.len > largest_new_successor.*.?.item_count) {
-            largest_new_successor.* = .{
-                .source_state_id = source_state_id,
-                .symbol = symbol,
-                .item_count = advanced_item_set.entries.len,
-                .reused = false,
-            };
-            if (shouldLogBuildProgress()) {
-                logSuccessorDiagnostic("construct_states update largest_new_successor", variables, largest_new_successor.*.?);
-            }
-        }
-        try transitions.append(.{ .symbol = symbol, .state = interned.state_id });
-    }
-
-    state.sortTransitions(transitions.items);
-    return try transitions.toOwnedSlice();
 }
 
 test "buildStates records LR(0)-style conflicts for an ambiguous expression grammar" {
