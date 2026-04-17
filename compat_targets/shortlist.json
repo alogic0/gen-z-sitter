@@ -112,8 +112,8 @@
       "upstream_repository": "tree-sitter-c",
       "upstream_revision": "ae19b676b13bdcc13b7665397e6d9b14975473dd",
       "upstream_grammar_path": "src/grammar.json",
-      "why": "real external parser-only grammar snapshot from the local tree-sitter-c repo, added in M33 as a deferred parser-boundary target because the current stable shortlist does not yet prove the full emitted and compiled surface for grammars of this size",
-      "success_means": "load and prepare the snapshotted upstream grammar.json cleanly, and keep the deferred parser-boundary rationale explicit until a later milestone proves a broader emitted surface"
+      "why": "real external parser-only grammar snapshot from the local tree-sitter-c repo, kept at a prepare-only parser boundary while M34 evaluates serialize-only as the next stable proof layer for grammars of this size",
+      "success_means": "load and prepare the snapshotted upstream grammar.json cleanly, and keep the next serialize-only parser-boundary step explicit until a later milestone proves a broader emitted surface"
     },
     {
       "id": "tree_sitter_haskell_json",

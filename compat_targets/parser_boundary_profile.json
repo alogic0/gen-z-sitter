@@ -8,6 +8,7 @@
       "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
       "family": "c",
       "parser_boundary_check_mode": "prepare_only",
+      "next_parser_boundary_check_mode": "serialize_only",
       "candidate_status": "deferred_parser_wave",
       "final_classification": "deferred_for_parser_boundary",
       "mismatch_category": "parser_external_boundary_gap",

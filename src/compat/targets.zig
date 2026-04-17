@@ -13,6 +13,7 @@ pub const BoundaryKind = enum {
 pub const ParserBoundaryCheckMode = enum {
     full_pipeline,
     prepare_only,
+    serialize_only,
 };
 
 pub const ScannerBoundaryCheckMode = enum {
@@ -173,8 +174,8 @@ pub const shortlist_targets = [_]Target{
         },
         .candidate_status = .deferred_parser_wave,
         .expected_blocked = false,
-        .notes = "real external parser-only grammar snapshot from the local tree-sitter-c repo, added in M33 as a deferred parser-boundary target because the current stable shortlist does not yet prove the full emitted and compiled surface for grammars of this size",
-        .success_criteria = "load and prepare the snapshotted upstream grammar.json cleanly, and keep the deferred parser-boundary rationale explicit until a later milestone proves a broader emitted surface",
+        .notes = "real external parser-only grammar snapshot from the local tree-sitter-c repo, kept at a prepare-only parser boundary while M34 evaluates serialize-only as the next stable proof layer for grammars of this size",
+        .success_criteria = "load and prepare the snapshotted upstream grammar.json cleanly, and keep the next serialize-only parser-boundary step explicit until a later milestone proves a broader emitted surface",
     },
     .{
         .id = "tree_sitter_haskell_json",

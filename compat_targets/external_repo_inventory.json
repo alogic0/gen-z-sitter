@@ -96,7 +96,7 @@
       "upstream_grammar_path": "src/grammar.json",
       "final_classification": "deferred_for_parser_boundary",
       "mismatch_category": "parser_external_boundary_gap",
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, added in M33 as a deferred parser-boundary target because the current stable shortlist does not yet prove the full emitted and compiled surface for grammars of this size"
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, kept at a prepare-only parser boundary while M34 evaluates serialize-only as the next stable proof layer for grammars of this size"
     },
     {
       "id": "tree_sitter_haskell_json",

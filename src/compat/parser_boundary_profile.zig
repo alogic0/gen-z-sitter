@@ -23,6 +23,7 @@ pub const ParserBoundaryProfileEntry = struct {
     grammar_path: []const u8,
     family: targets.TargetFamily,
     parser_boundary_check_mode: targets.ParserBoundaryCheckMode,
+    next_parser_boundary_check_mode: targets.ParserBoundaryCheckMode,
     candidate_status: targets.CandidateStatus,
     final_classification: result_model.FinalClassification,
     mismatch_category: result_model.MismatchCategory,
@@ -111,6 +112,10 @@ fn buildEntryAlloc(
         .grammar_path = try allocator.dupe(u8, run.grammar_path),
         .family = run.family,
         .parser_boundary_check_mode = run.parser_boundary_check_mode,
+        .next_parser_boundary_check_mode = switch (run.parser_boundary_check_mode) {
+            .prepare_only => .serialize_only,
+            else => run.parser_boundary_check_mode,
+        },
         .candidate_status = run.candidate_status,
         .final_classification = run.final_classification,
         .mismatch_category = run.mismatch_category,
@@ -197,6 +202,8 @@ test "buildParserBoundaryProfileAlloc summarizes deferred parser-only targets" {
     try std.testing.expectEqualStrings("tree_sitter_c_json", report.entries[0].id);
     try std.testing.expectEqual(targets.CandidateStatus.deferred_parser_wave, report.entries[0].candidate_status);
     try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, report.entries[0].final_classification);
+    try std.testing.expectEqual(targets.ParserBoundaryCheckMode.prepare_only, report.entries[0].parser_boundary_check_mode);
+    try std.testing.expectEqual(targets.ParserBoundaryCheckMode.serialize_only, report.entries[0].next_parser_boundary_check_mode);
     try std.testing.expectEqual(result_model.StepName.serialize, report.entries[0].deferred_from_step);
     try std.testing.expectEqual(@as(usize, 2), report.entries[0].current_proven_steps.len);
     try std.testing.expectEqual(result_model.StepName.load, report.entries[0].current_proven_steps[0]);
