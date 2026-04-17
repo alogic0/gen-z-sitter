@@ -39,6 +39,12 @@ pub fn setScopedProgressEnabled(enabled: bool) void {
     scoped_progress_enabled = enabled;
 }
 
+fn shouldTraceHotspot() bool {
+    if (!envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_TRACE_TOP_COMMENT")) return false;
+    if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
+    return true;
+}
+
 fn shouldLogBuildProgress() bool {
     const requested =
         envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_BUILD_PROGRESS") or
@@ -145,6 +151,7 @@ fn setCurrentTransitionContext(context: ?TransitionContext) void {
 }
 
 fn shouldTraceCurrentClosure() bool {
+    if (!shouldTraceHotspot()) return false;
     const context = current_transition_context orelse return false;
     return context.source_state_id == 0 and switch (context.symbol) {
         .non_terminal => |index| index == 23,
@@ -153,6 +160,7 @@ fn shouldTraceCurrentClosure() bool {
 }
 
 fn shouldTraceTransition(source_state_id: state.StateId, symbol: syntax_ir.SymbolRef) bool {
+    if (!shouldTraceHotspot()) return false;
     return source_state_id == 0 and switch (symbol) {
         .non_terminal => |index| index == 23,
         else => false,
@@ -1052,17 +1060,17 @@ pub fn buildStatesWithOptions(
     options: BuildOptions,
 ) BuildError!BuildResult {
     const progress_log = shouldLogBuildProgress();
-    std.debug.print("[parse_table/build] buildStatesWithOptions enter\n", .{});
+    if (progress_log) std.debug.print("[parse_table/build] buildStatesWithOptions enter\n", .{});
     try validateSupportedSubset(grammar);
 
     var timer = maybeStartTimer(progress_log);
-    std.debug.print("[parse_table/build] stage compute_first_sets\n", .{});
+    if (progress_log) std.debug.print("[parse_table/build] stage compute_first_sets\n", .{});
     if (progress_log) logBuildStart("compute_first_sets");
     const first_sets = try first.computeFirstSets(allocator, grammar);
     if (progress_log) maybeLogBuildDone("compute_first_sets", if (timer) |*value| value else null);
 
     timer = maybeStartTimer(progress_log);
-    std.debug.print("[parse_table/build] stage collect_productions\n", .{});
+    if (progress_log) std.debug.print("[parse_table/build] stage collect_productions\n", .{});
     if (progress_log) logBuildStart("collect_productions");
     const productions = try collectProductions(allocator, grammar);
     if (progress_log) {
@@ -1074,7 +1082,7 @@ pub fn buildStatesWithOptions(
     defer item_set_builder.deinit();
 
     timer = maybeStartTimer(progress_log);
-    std.debug.print("[parse_table/build] stage construct_states\n", .{});
+    if (progress_log) std.debug.print("[parse_table/build] stage construct_states\n", .{});
     if (progress_log) logBuildStart("construct_states");
     const constructed = try constructStates(allocator, grammar.variables, productions, first_sets, item_set_builder, options);
     if (progress_log) {
@@ -1086,13 +1094,13 @@ pub fn buildStatesWithOptions(
     }
 
     timer = maybeStartTimer(progress_log);
-    std.debug.print("[parse_table/build] stage group_action_table\n", .{});
+    if (progress_log) std.debug.print("[parse_table/build] stage group_action_table\n", .{});
     if (progress_log) logBuildStart("group_action_table");
     const grouped_actions = try actions.groupActionTable(allocator, constructed.actions);
     if (progress_log) maybeLogBuildDone("group_action_table", if (timer) |*value| value else null);
 
     timer = maybeStartTimer(progress_log);
-    std.debug.print("[parse_table/build] stage resolve_action_table\n", .{});
+    if (progress_log) std.debug.print("[parse_table/build] stage resolve_action_table\n", .{});
     if (progress_log) logBuildStart("resolve_action_table");
     const resolved_actions = try resolution.resolveActionTableWithContext(
         allocator,
@@ -1333,7 +1341,7 @@ const ConstructStatesReporter = struct {
     }
 
     fn logEnter(self: @This()) void {
-        _ = self;
+        if (!self.progress_log) return;
         std.debug.print("[parse_table/build] constructStates enter\n", .{});
     }
 
@@ -1344,6 +1352,7 @@ const ConstructStatesReporter = struct {
     }
 
     fn logInitialClosureDone(self: @This(), start_timer: ?*std.time.Timer, item_count: usize) void {
+        if (!self.progress_log) return;
         std.debug.print("[parse_table/build] constructStates initial_closure_done items={d}\n", .{item_count});
         if (self.progress_log) {
             maybeLogBuildDone("construct_states.initial_closure", start_timer);
@@ -1352,6 +1361,7 @@ const ConstructStatesReporter = struct {
     }
 
     fn logStateBegin(self: *@This(), state_index: usize, parse_state: state.ParseState, discovered_count: usize) void {
+        if (!self.progress_log) return;
         if (state_index < 5 or (state_index + 1) % 100 == 0) {
             std.debug.print(
                 "[parse_table/build] constructStates state_begin index={d} state_id={d} items={d} discovered={d}\n",
@@ -1377,7 +1387,7 @@ const ConstructStatesReporter = struct {
     }
 
     fn logStateAfterTransitions(self: @This(), state_index: usize, transition_count: usize, discovered_count: usize) void {
-        _ = self;
+        if (!self.progress_log) return;
         if (state_index < 5 or (state_index + 1) % 100 == 0) {
             std.debug.print(
                 "[parse_table/build] constructStates state_after_transitions index={d} transitions={d} discovered={d}\n",
@@ -1396,6 +1406,7 @@ const ConstructStatesReporter = struct {
         transition_stats: TransitionBuildStats,
         closure_result_cache: ClosureResultCache,
     ) void {
+        if (!self.progress_log) return;
         if (state_index < 5 or (state_index + 1) % 100 == 0) {
             std.debug.print(
                 "[parse_table/build] constructStates state_done index={d} conflicts={d} action_entries={d} discovered={d}\n",
@@ -1445,6 +1456,7 @@ const ConstructStatesReporter = struct {
         largest_new_successor: ?SuccessorDiagnostic,
         largest_reused_successor: ?SuccessorDiagnostic,
     ) void {
+        if (!self.progress_log) return;
         std.debug.print("[parse_table/build] constructStates complete states={d}\n", .{state_count});
         if (!self.progress_log) return;
 
