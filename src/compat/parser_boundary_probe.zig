@@ -288,6 +288,6 @@ test "buildParserBoundaryProbeFromTargetsAlloc can select deferred parser-wave t
     var report = try buildParserBoundaryProbeFromTargetsAlloc(allocator, targets.shortlistTargets());
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 0), report.target_count);
-    try std.testing.expectEqual(@as(usize, 0), report.entries.len);
+    try std.testing.expectEqual(@as(usize, 2), report.target_count);
+    try std.testing.expectEqual(@as(usize, 2), report.entries.len);
 }

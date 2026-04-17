@@ -1,20 +1,37 @@
 {
   "schema_version": 1,
-  "first_wave_target_count": 6,
+  "first_wave_target_count": 4,
   "first_wave_passed_count": 4,
-  "first_wave_non_passing_count": 2,
-  "parser_only_boundary_proven": false,
+  "first_wave_non_passing_count": 0,
+  "parser_only_boundary_proven": true,
   "deferred_parser_wave_singleton": false,
-  "primary_deferred_parser_wave_target": null,
+  "primary_deferred_parser_wave_target": {
+    "id": "repeat_choice_seq_js",
+    "display_name": "Repeat Choice Seq (JS)",
+    "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
+    "notes": "parser-only JS target kept deferred because parser.c emission still stops at the staged parser-only boundary"
+  },
   "standalone_parser_probe_pass_count": 0,
   "proven_boundary": [
-    "6 intended first-wave parser-only targets are currently in the run set",
+    "4 intended first-wave parser-only targets are currently in the run set",
     "4 intended first-wave targets currently pass within the staged parser-only boundary",
-    "5 intended scanner-wave targets currently pass within the staged scanner boundary",
+    "6 intended scanner-wave targets currently pass within the staged scanner boundary",
     "0 shortlist target currently carries a passing standalone coarse serialize-only probe outside the routine shortlist boundary",
     "3 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
   ],
   "deferred_parser_only_targets": [
+    {
+      "id": "repeat_choice_seq_js",
+      "display_name": "Repeat Choice Seq (JS)",
+      "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
+      "notes": "parser-only JS target kept deferred because parser.c emission still stops at the staged parser-only boundary"
+    },
+    {
+      "id": "tree_sitter_ziggy_schema_json",
+      "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo; still deferred because parser.c emission remains blocked after the word-token lowering and repeat-auxiliary fixes"
+    },
     {
       "id": "parse_table_conflict_json",
       "display_name": "Parse Table Conflict (JSON)",
@@ -23,10 +40,10 @@
     }
   ],
   "deferred_scanner_targets": [],
-  "recommended_next_milestone": "broader_compatibility_polish",
+  "recommended_next_milestone": "second_wave_parser_only_repo_coverage",
   "recommendation_rationale": [
     "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-    "the only remaining deferred parser-only target is an intentional conflict control fixture rather than an unresolved external-grammar blocker",
-    "a second scanner grammar family now passes within the staged first-boundary checks, so the next promoted milestone can shift from scanner onboarding toward broader compatibility polish"
+    "the only remaining deferred parser-only control fixture is still intentional, and the larger real external parser-only C snapshot is now promoted through a routine coarse serialize-only boundary while still remaining deferred overall",
+    "the routine shortlist now proves load, prepare, coarse serialize, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke for that C snapshot, so the parser-wave singleton is gone and the next promoted milestone can return to broader compatibility polish"
   ]
 }

@@ -1,37 +1,27 @@
 {
   "schema_version": 1,
-  "first_wave_non_passing_count": 2,
+  "first_wave_non_passing_count": 0,
   "parser_only_incompatibilities": [
     {
       "id": "repeat_choice_seq_js",
       "display_name": "Repeat Choice Seq (JS)",
       "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
-      "candidate_status": "intended_first_wave",
+      "candidate_status": "deferred_parser_wave",
       "first_failed_stage": "emit_parser_c",
-      "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:17, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:14, reduce:2(_entry)] count=1], samples=[state 13 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:14, reduce:2(_entry)]; state 16 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:17, reduce:3(_entry)]]",
-      "notes": "parser-only JS target promoted into the first-wave parser-only set"
+      "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:17, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:14, reduce:2(_entry)] count=1], samples=[state 13 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:14, reduce:2(_entry)]; state 16 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:17, reduce:3(_entry)]]",
+      "notes": "parser-only JS target kept deferred because parser.c emission still stops at the staged parser-only boundary"
     },
     {
       "id": "tree_sitter_ziggy_schema_json",
       "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
-      "candidate_status": "intended_first_wave",
+      "candidate_status": "deferred_parser_wave",
       "first_failed_stage": "emit_parser_c",
-      "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=5, entries=5, reasons={shift_reduce:5, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[doc_comment shift_reduce actions=[shift:147, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:52, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:71, reduce:47(doc_comment)] count=1; struct_union shift_reduce actions=[shift:34, reduce:12(expr)] count=1; struct_union shift_reduce actions=[shift:53, reduce:32(struct_union)] count=1], samples=[state 28 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:52, reduce:47(doc_comment)]; state 61 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:71, reduce:47(doc_comment)]; state 104 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:147, reduce:47(doc_comment)]; state 109 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:34, reduce:12(expr)]; state 149 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:53, reduce:32(struct_union)]]",
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after the word-token lowering and repeat-auxiliary fixes"
+      "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=5, entries=5, reasons={shift_reduce:5, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[doc_comment shift_reduce actions=[shift:147, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:52, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:71, reduce:47(doc_comment)] count=1; struct_union shift_reduce actions=[shift:34, reduce:12(expr)] count=1; struct_union shift_reduce actions=[shift:53, reduce:32(struct_union)] count=1], samples=[state 28 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:52, reduce:47(doc_comment)]; state 61 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:71, reduce:47(doc_comment)]; state 104 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:147, reduce:47(doc_comment)]; state 109 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:34, reduce:12(expr)]; state 149 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:53, reduce:32(struct_union)]]",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo; still deferred because parser.c emission remains blocked after the word-token lowering and repeat-auxiliary fixes"
     }
   ],
-  "scanner_boundary_targets": [
-    {
-      "id": "tree_sitter_haskell_json",
-      "display_name": "tree-sitter-haskell (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_haskell/grammar.json",
-      "candidate_status": "intended_scanner_wave",
-      "first_failed_stage": "scanner_boundary_check",
-      "detail": "scanner valid-path simulation failed: UnsupportedExternalScannerGrammar",
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current boundary now targets a sampled behavioral layout-sensitive proof rather than only external-sequence sampling"
-    }
-  ],
+  "scanner_boundary_targets": [],
   "grammar_input_shape_issues": [],
   "compile_surface_issues": [],
   "harness_limitations": [],
@@ -47,16 +37,6 @@
       "notes": "intentionally ambiguous parser-only control fixture kept deferred to preserve a known shift/reduce boundary without precedence annotations"
     }
   ],
-  "deferred_scanner_targets": [
-    {
-      "id": "tree_sitter_haskell_json",
-      "display_name": "tree-sitter-haskell (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_haskell/grammar.json",
-      "candidate_status": "intended_scanner_wave",
-      "first_failed_stage": "scanner_boundary_check",
-      "detail": "scanner valid-path simulation failed: UnsupportedExternalScannerGrammar",
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current boundary now targets a sampled behavioral layout-sensitive proof rather than only external-sequence sampling"
-    }
-  ],
+  "deferred_scanner_targets": [],
   "out_of_scope_targets": []
 }

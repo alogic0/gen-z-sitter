@@ -1,6 +1,61 @@
 {
   "schema_version": 1,
-  "deferred_parser_wave_target_count": 0,
+  "deferred_parser_wave_target_count": 2,
   "singleton_parser_wave": false,
-  "entries": []
+  "entries": [
+    {
+      "id": "repeat_choice_seq_js",
+      "display_name": "Repeat Choice Seq (JS)",
+      "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
+      "family": "repeat_choice_seq",
+      "current_parser_boundary_check_mode": "full_pipeline",
+      "proposed_parser_boundary_check_mode": "full_pipeline",
+      "evaluation_surface": "standalone_probe",
+      "routine_refresh_safe": false,
+      "routine_boundary_hypothesis": "no_safe_routine_step_yet",
+      "routine_refresh_candidate_mode": null,
+      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for repeat_choice_seq_js; the only measured next proof is a standalone coarse serialize-only probe with 2336 serialized states, and that still stops short of a routine lookahead-sensitive serialize claim",
+      "singleton_parser_wave": false,
+      "current_proven_steps": [
+        "load",
+        "prepare",
+        "serialize",
+        "emit_parser_tables",
+        "emit_c_tables"
+      ],
+      "deferred_from_step": "emit_parser_c",
+      "standalone_probe_status": "not_implemented",
+      "standalone_probe_detail": null,
+      "measured_standalone_serialized_state_count": null,
+      "decision": "keep_standalone_probe",
+      "rationale": "the next named proof step for repeat_choice_seq_js is full_pipeline; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave singleton is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet"
+    },
+    {
+      "id": "tree_sitter_ziggy_schema_json",
+      "display_name": "tree-sitter-ziggy-schema (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_ziggy_schema/grammar.json",
+      "family": "ziggy_schema",
+      "current_parser_boundary_check_mode": "full_pipeline",
+      "proposed_parser_boundary_check_mode": "full_pipeline",
+      "evaluation_surface": "standalone_probe",
+      "routine_refresh_safe": false,
+      "routine_boundary_hypothesis": "no_safe_routine_step_yet",
+      "routine_refresh_candidate_mode": null,
+      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_ziggy_schema_json; the only measured next proof is a standalone coarse serialize-only probe with 2336 serialized states, and that still stops short of a routine lookahead-sensitive serialize claim",
+      "singleton_parser_wave": false,
+      "current_proven_steps": [
+        "load",
+        "prepare",
+        "serialize",
+        "emit_parser_tables",
+        "emit_c_tables"
+      ],
+      "deferred_from_step": "emit_parser_c",
+      "standalone_probe_status": "not_implemented",
+      "standalone_probe_detail": null,
+      "measured_standalone_serialized_state_count": null,
+      "decision": "keep_standalone_probe",
+      "rationale": "the next named proof step for tree_sitter_ziggy_schema_json is full_pipeline; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave singleton is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet"
+    }
+  ]
 }

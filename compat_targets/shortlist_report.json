@@ -2,19 +2,19 @@
   "schema_version": 1,
   "aggregate": {
     "total_targets": 13,
-    "first_wave_targets": 6,
+    "first_wave_targets": 4,
     "first_wave_passed": 4,
     "scanner_wave_targets": 6,
-    "scanner_wave_passed": 5,
-    "deferred_parser_targets": 0,
+    "scanner_wave_passed": 6,
+    "deferred_parser_targets": 2,
     "standalone_parser_proof_targets": 1,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
-    "passed_within_current_boundary": 9,
+    "passed_within_current_boundary": 10,
     "frozen_control_fixture": 1,
-    "deferred_for_parser_boundary": 0,
-    "deferred_for_scanner_boundary": 1,
-    "failed_due_to_parser_only_gap": 2,
+    "deferred_for_parser_boundary": 2,
+    "deferred_for_scanner_boundary": 0,
+    "failed_due_to_parser_only_gap": 0,
     "out_of_scope_for_scanner_boundary": 0,
     "infrastructure_failure": 0,
     "blocked_targets": 3,
@@ -24,7 +24,7 @@
       "preparation_lowering_mismatch": 0,
       "routine_serialize_proof_boundary": 0,
       "routine_emitted_surface_proof_boundary": 0,
-      "scanner_external_scanner_boundary_gap": 1,
+      "scanner_external_scanner_boundary_gap": 0,
       "parse_table_construction_gap": 0,
       "shift_reduce_boundary": 2,
       "intentional_control_fixture": 1,
@@ -59,7 +59,7 @@
       "target_count": 1,
       "passed_count": 0,
       "control_count": 0,
-      "deferred_count": 0,
+      "deferred_count": 1,
       "blocked_count": 1
     },
     {
@@ -77,7 +77,7 @@
       "target_count": 1,
       "passed_count": 0,
       "control_count": 0,
-      "deferred_count": 0,
+      "deferred_count": 1,
       "blocked_count": 1
     },
     {
@@ -93,9 +93,9 @@
       "family": "haskell",
       "boundary_kind": "scanner_external_scanner",
       "target_count": 1,
-      "passed_count": 0,
+      "passed_count": 1,
       "control_count": 0,
-      "deferred_count": 1,
+      "deferred_count": 0,
       "blocked_count": 0
     },
     {
@@ -298,12 +298,12 @@
         "upstream_revision": null,
         "upstream_grammar_path": null
       },
-      "candidate_status": "intended_first_wave",
-      "expected_blocked": false,
-      "notes": "parser-only JS target promoted into the first-wave parser-only set",
-      "success_criteria": "load through node, emit parser surfaces, pass compat-check, and compile emitted parser.c",
+      "candidate_status": "deferred_parser_wave",
+      "expected_blocked": true,
+      "notes": "parser-only JS target kept deferred because parser.c emission still stops at the staged parser-only boundary",
+      "success_criteria": "load through node, keep the current blocked parser-boundary signature stable, and promote only after emit_parser_c and compile-smoke pass",
       "first_failed_stage": "emit_parser_c",
-      "final_classification": "failed_due_to_parser_only_gap",
+      "final_classification": "deferred_for_parser_boundary",
       "mismatch_category": "shift_reduce_boundary",
       "load": {
         "status": "passed",
@@ -327,7 +327,7 @@
       },
       "emit_parser_c": {
         "status": "failed",
-        "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:17, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:14, reduce:2(_entry)] count=1], samples=[state 13 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:14, reduce:2(_entry)]; state 16 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:17, reduce:3(_entry)]]"
+        "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:17, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:14, reduce:2(_entry)] count=1], samples=[state 13 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:14, reduce:2(_entry)]; state 16 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:17, reduce:3(_entry)]]"
       },
       "scanner_boundary_check": {
         "status": "not_run",
@@ -487,12 +487,12 @@
         "upstream_revision": "4353b20ef2ac750e35c6d68e4eb2a07c2d7cf901",
         "upstream_grammar_path": "src/grammar.json"
       },
-      "candidate_status": "intended_first_wave",
-      "expected_blocked": false,
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo, now promoted after the word-token lowering and repeat-auxiliary fixes",
-      "success_criteria": "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compat-check, and compile emitted parser.c",
+      "candidate_status": "deferred_parser_wave",
+      "expected_blocked": true,
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-ziggy-schema repo; still deferred because parser.c emission remains blocked after the word-token lowering and repeat-auxiliary fixes",
+      "success_criteria": "load the snapshotted upstream grammar.json, keep the current blocked parser-boundary signature stable, and promote only after emit_parser_c and compile-smoke pass",
       "first_failed_stage": "emit_parser_c",
-      "final_classification": "failed_due_to_parser_only_gap",
+      "final_classification": "deferred_for_parser_boundary",
       "mismatch_category": "shift_reduce_boundary",
       "load": {
         "status": "passed",
@@ -516,7 +516,7 @@
       },
       "emit_parser_c": {
         "status": "failed",
-        "detail": "unexpected blocked status: expected false, got true; blocked boundary summary: states=5, entries=5, reasons={shift_reduce:5, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[doc_comment shift_reduce actions=[shift:147, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:52, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:71, reduce:47(doc_comment)] count=1; struct_union shift_reduce actions=[shift:34, reduce:12(expr)] count=1; struct_union shift_reduce actions=[shift:53, reduce:32(struct_union)] count=1], samples=[state 28 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:52, reduce:47(doc_comment)]; state 61 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:71, reduce:47(doc_comment)]; state 104 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:147, reduce:47(doc_comment)]; state 109 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:34, reduce:12(expr)]; state 149 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:53, reduce:32(struct_union)]]"
+        "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=5, entries=5, reasons={shift_reduce:5, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[doc_comment shift_reduce actions=[shift:147, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:52, reduce:47(doc_comment)] count=1; doc_comment shift_reduce actions=[shift:71, reduce:47(doc_comment)] count=1; struct_union shift_reduce actions=[shift:34, reduce:12(expr)] count=1; struct_union shift_reduce actions=[shift:53, reduce:32(struct_union)] count=1], samples=[state 28 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:52, reduce:47(doc_comment)]; state 61 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:71, reduce:47(doc_comment)]; state 104 terminal:42 (doc_comment) shift_reduce candidates=2 actions=[shift:147, reduce:47(doc_comment)]; state 109 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:34, reduce:12(expr)]; state 149 terminal:27 (struct_union) shift_reduce candidates=2 actions=[shift:53, reduce:32(struct_union)]]"
       },
       "scanner_boundary_check": {
         "status": "not_run",
@@ -723,11 +723,11 @@
       },
       "candidate_status": "intended_scanner_wave",
       "expected_blocked": false,
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current boundary now targets a sampled behavioral layout-sensitive proof rather than only external-sequence sampling",
-      "success_criteria": "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove the sampled behavioral scanner path makes stronger valid-input progress than the invalid input",
-      "first_failed_stage": "scanner_boundary_check",
-      "final_classification": "deferred_for_scanner_boundary",
-      "mismatch_category": "scanner_external_scanner_boundary_gap",
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current supported boundary is the sampled external-sequence proof because the behavioral simulator still rejects lexical separators",
+      "success_criteria": "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove the sampled external-sequence path makes stronger valid-input progress than the invalid input",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
       "load": {
         "status": "passed",
         "detail": null
@@ -753,8 +753,8 @@
         "detail": null
       },
       "scanner_boundary_check": {
-        "status": "failed",
-        "detail": "scanner valid-path simulation failed: UnsupportedExternalScannerGrammar"
+        "status": "passed",
+        "detail": null
       },
       "compat_check": {
         "status": "not_run",

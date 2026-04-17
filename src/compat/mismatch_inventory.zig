@@ -191,7 +191,7 @@ test "buildMismatchInventoryAlloc classifies the current shortlist" {
     defer report.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 0), report.first_wave_non_passing_count);
-    try std.testing.expectEqual(@as(usize, 0), report.parser_only_incompatibilities.len);
+    try std.testing.expectEqual(@as(usize, 2), report.parser_only_incompatibilities.len);
     try std.testing.expectEqual(@as(usize, 0), report.scanner_boundary_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.grammar_input_shape_issues.len);
     try std.testing.expectEqual(@as(usize, 0), report.compile_surface_issues.len);
