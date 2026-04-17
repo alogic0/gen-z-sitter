@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "routine_refresh_script": "update_compat_artifacts.zig",
+  "standalone_probe_scripts": [
+    "update_parser_boundary_probe.zig"
+  ],
+  "artifacts": [
+    {
+      "path": "compat_targets/shortlist.json",
+      "refresh_kind": "routine_refresh",
+      "generator": "update_compat_artifacts.zig",
+      "description": "versioned shortlist and target metadata"
+    },
+    {
+      "path": "compat_targets/shortlist_inventory.json",
+      "refresh_kind": "routine_refresh",
+      "generator": "update_compat_artifacts.zig",
+      "description": "aggregate shortlist boundary summary and family coverage"
+    },
+    {
+      "path": "compat_targets/shortlist_report.json",
+      "refresh_kind": "routine_refresh",
+      "generator": "update_compat_artifacts.zig",
+      "description": "full machine-readable shortlist run report"
+    },
+    {
+      "path": "compat_targets/shortlist_mismatch_inventory.json",
+      "refresh_kind": "routine_refresh",
+      "generator": "update_compat_artifacts.zig",
+      "description": "classified mismatch inventory for the current shortlist"
+    },
+    {
+      "path": "compat_targets/parser_boundary_profile.json",
+      "refresh_kind": "routine_refresh",
+      "generator": "update_compat_artifacts.zig",
+      "description": "machine-readable profile for deferred parser-only targets"
+    },
+    {
+      "path": "compat_targets/coverage_decision.json",
+      "refresh_kind": "routine_refresh",
+      "generator": "update_compat_artifacts.zig",
+      "description": "current recommended next milestone and rationale"
+    },
+    {
+      "path": "compat_targets/shortlist_shift_reduce_profile.json",
+      "refresh_kind": "routine_refresh",
+      "generator": "update_compat_artifacts.zig",
+      "description": "focused shift-reduce blocker profile for deferred parser targets"
+    },
+    {
+      "path": "compat_targets/external_repo_inventory.json",
+      "refresh_kind": "routine_refresh",
+      "generator": "update_compat_artifacts.zig",
+      "description": "inventory of real external snapshot evidence"
+    },
+    {
+      "path": "compat_targets/external_scanner_repo_inventory.json",
+      "refresh_kind": "routine_refresh",
+      "generator": "update_compat_artifacts.zig",
+      "description": "inventory of real external scanner proof surfaces"
+    },
+    {
+      "path": "compat_targets/artifact_manifest.json",
+      "refresh_kind": "routine_refresh",
+      "generator": "update_compat_artifacts.zig",
+      "description": "machine-readable index of routine artifacts and standalone probes"
+    },
+    {
+      "path": "compat_targets/parser_boundary_probe.json",
+      "refresh_kind": "standalone_probe",
+      "generator": "update_parser_boundary_probe.zig",
+      "description": "isolated parser-boundary probe output for heavier deferred parser experiments"
+    }
+  ]
+}

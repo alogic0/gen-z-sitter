@@ -34,6 +34,12 @@ Current represented families:
 
 Versioned artifacts:
 
+- `artifact_manifest.json`
+  - machine-readable index of compatibility artifacts and their refresh mode
+  - distinguishes:
+    - routine refresh artifacts produced by `../update_compat_artifacts.zig`
+    - standalone probe artifacts produced outside the default refresh path
+  - this is the canonical place to see which checked-in compatibility surfaces are expected to refresh routinely versus only during targeted deeper investigation
 - `shortlist.json`
   - target selection policy, family, boundary kind, candidate classification, and success criteria
 - `external_repo_inventory.json`
@@ -59,8 +65,13 @@ Versioned artifacts:
   - focused machine-readable profile for deferred targets currently blocked only by unresolved `shift_reduce` decisions, including readable symbol names, candidate-action summaries, and dominant repeated signatures
 - `coverage_decision.json`
   - current closeout decision and recommended next promoted milestone
+  - now also records whether the deferred parser-wave set is currently a singleton and, when it is, which target owns that deferred slot
 - `../update_compat_artifacts.zig`
   - rewrites the checked-in shortlist and derived report artifacts from the current code and target snapshots
+- `../update_parser_boundary_probe.zig`
+  - standalone probe runner for heavier deferred parser-only experiments
+  - intentionally kept out of the routine compatibility refresh path
+  - currently owns `parser_boundary_probe.json` when that deeper probe is run on purpose
 
 Current staged boundary summary:
 
@@ -104,3 +115,4 @@ Recommended next step after this staged boundary:
 
 - keep the parser-only, staged scanner, and sampled real external scanner boundaries stable while narrowing or promoting the deferred `tree_sitter_c_json` parser-boundary target
 - only after that should the roadmap shift back toward broader compatibility polish or another widened real external wave
+- the current low-risk evidence decision is to keep `tree_sitter_c_json` as the only deferred parser-wave target until a narrower promotion hypothesis exists

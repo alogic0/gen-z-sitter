@@ -4,6 +4,13 @@
   "first_wave_passed_count": 5,
   "first_wave_non_passing_count": 0,
   "parser_only_boundary_proven": true,
+  "deferred_parser_wave_singleton": true,
+  "primary_deferred_parser_wave_target": {
+    "id": "tree_sitter_c_json",
+    "display_name": "tree-sitter-c (JSON snapshot)",
+    "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
+    "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, kept at a prepare-only parser boundary while M34 evaluates serialize-only as the next stable proof layer for grammars of this size"
+  },
   "proven_boundary": [
     "5 intended first-wave parser-only targets are currently in the run set",
     "5 intended first-wave targets currently pass within the staged parser-only boundary",

@@ -168,6 +168,12 @@ Current staged compatibility boundary:
     - sampled real external scanner proof for the real external Haskell and Bash snapshots
   - `mixed_semantics` specifically keeps extras elsewhere in the grammar while proving a narrower first-boundary path that does not depend on them
 - the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
+- routine compatibility artifacts are now indexed machine-readably in `compat_targets/artifact_manifest.json`
+  - routine refreshes come from `update_compat_artifacts.zig`
+  - heavier deferred parser-boundary probing remains separate in `update_parser_boundary_probe.zig`
+- the current coverage decision also now makes the deferred parser-wave singleton explicit:
+  - `tree_sitter_c_json` is the only active deferred parser-wave target
+  - the current low-risk boundary decision is to keep that singleton unchanged unless a narrower promotion hypothesis appears
 - the current supported behavioral subset is still staged:
   - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
   - `hidden_external_fields` also proves that the invalid path makes less progress than the valid path through the first staged scanner boundary

@@ -23,6 +23,8 @@ pub const CoverageDecisionReport = struct {
     first_wave_passed_count: usize,
     first_wave_non_passing_count: usize,
     parser_only_boundary_proven: bool,
+    deferred_parser_wave_singleton: bool,
+    primary_deferred_parser_wave_target: ?TargetSummary,
     proven_boundary: []const []const u8,
     deferred_parser_only_targets: []TargetSummary,
     deferred_scanner_targets: []TargetSummary,
@@ -30,6 +32,9 @@ pub const CoverageDecisionReport = struct {
     recommendation_rationale: []const []const u8,
 
     pub fn deinit(self: *CoverageDecisionReport, allocator: std.mem.Allocator) void {
+        if (self.primary_deferred_parser_wave_target) |*target| {
+            deinitTargetSummary(allocator, target.*);
+        }
         deinitStringSlice(allocator, self.proven_boundary);
         deinitTargetSummaries(allocator, self.deferred_parser_only_targets);
         deinitTargetSummaries(allocator, self.deferred_scanner_targets);
@@ -48,6 +53,8 @@ pub fn buildCoverageDecisionAlloc(
 
     const deferred_parser_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_parser_wave);
     defer deinitTargetSummaries(allocator, deferred_parser_targets);
+    const deferred_parser_wave_singleton = deferredParserWaveTargetCount(runs) == 1;
+    const primary_deferred_parser_wave_target = try collectPrimaryDeferredParserWaveTargetAlloc(allocator, runs);
     const deferred_scanner_targets = try collectTargetSummariesAlloc(allocator, runs, .deferred_scanner_wave);
     const recommended_next_milestone: NextMilestone = if (deferred_parser_targets.len != 0)
         .second_wave_parser_only_repo_coverage
@@ -80,6 +87,8 @@ pub fn buildCoverageDecisionAlloc(
         .first_wave_passed_count = first_wave_passed_count,
         .first_wave_non_passing_count = first_wave_non_passing_count,
         .parser_only_boundary_proven = first_wave_non_passing_count == 0,
+        .deferred_parser_wave_singleton = deferred_parser_wave_singleton,
+        .primary_deferred_parser_wave_target = primary_deferred_parser_wave_target,
         .proven_boundary = try collectProvenBoundaryAlloc(allocator, runs),
         .deferred_parser_only_targets = try collectTargetSummariesAllocForStatuses(allocator, runs, &.{ .deferred_control_fixture, .deferred_parser_wave }),
         .deferred_scanner_targets = deferred_scanner_targets,
@@ -123,6 +132,10 @@ fn countScannerWavePassed(runs: []const result_model.TargetRunResult) usize {
     return count;
 }
 
+fn deferredParserWaveTargetCount(runs: []const result_model.TargetRunResult) usize {
+    return countByStatus(runs, .deferred_parser_wave);
+}
+
 fn collectProvenBoundaryAlloc(
     allocator: std.mem.Allocator,
     runs: []const result_model.TargetRunResult,
@@ -157,6 +170,22 @@ fn collectTargetSummariesAlloc(
     return collectTargetSummariesAllocForStatuses(allocator, runs, &.{status});
 }
 
+fn collectPrimaryDeferredParserWaveTargetAlloc(
+    allocator: std.mem.Allocator,
+    runs: []const result_model.TargetRunResult,
+) !?TargetSummary {
+    for (runs) |run| {
+        if (run.candidate_status != .deferred_parser_wave) continue;
+        return TargetSummary{
+            .id = try allocator.dupe(u8, run.id),
+            .display_name = try allocator.dupe(u8, run.display_name),
+            .grammar_path = try allocator.dupe(u8, run.grammar_path),
+            .notes = try allocator.dupe(u8, run.notes),
+        };
+    }
+    return null;
+}
+
 fn collectTargetSummariesAllocForStatuses(
     allocator: std.mem.Allocator,
     runs: []const result_model.TargetRunResult,
@@ -187,12 +216,16 @@ fn collectTargetSummariesAllocForStatuses(
 
 fn deinitTargetSummaries(allocator: std.mem.Allocator, items: []TargetSummary) void {
     for (items) |item| {
-        allocator.free(item.id);
-        allocator.free(item.display_name);
-        allocator.free(item.grammar_path);
-        allocator.free(item.notes);
+        deinitTargetSummary(allocator, item);
     }
     allocator.free(items);
+}
+
+fn deinitTargetSummary(allocator: std.mem.Allocator, item: TargetSummary) void {
+    allocator.free(item.id);
+    allocator.free(item.display_name);
+    allocator.free(item.grammar_path);
+    allocator.free(item.notes);
 }
 
 fn deinitStringSlice(allocator: std.mem.Allocator, items: []const []const u8) void {

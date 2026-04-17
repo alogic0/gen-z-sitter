@@ -2,6 +2,7 @@ const std = @import("std");
 const fs_support = @import("src/support/fs.zig");
 const harness = @import("src/compat/harness.zig");
 const result_model = @import("src/compat/result.zig");
+const artifact_manifest = @import("src/compat/artifact_manifest.zig");
 const shortlist_json = @import("src/compat/shortlist_json.zig");
 const inventory = @import("src/compat/inventory.zig");
 const report_json = @import("src/compat/report_json.zig");
@@ -35,6 +36,12 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     var timer = try std.time.Timer.start();
+    logStepStart("artifact_manifest");
+    const manifest = try artifact_manifest.renderArtifactManifestAlloc(allocator);
+    logStepDone("artifact_manifest", &timer);
+    defer allocator.free(manifest);
+
+    timer = try std.time.Timer.start();
     logStepStart("shortlist");
     const shortlist = try shortlist_json.renderShortlistArtifactAlloc(allocator);
     logStepDone("shortlist", &timer);
@@ -94,6 +101,7 @@ pub fn main() !void {
     logStepDone("external_scanner_repo_inventory", &timer);
     defer allocator.free(external_scanner_repo);
 
+    try writeArtifact("compat_targets/artifact_manifest.json", manifest);
     try writeArtifact("compat_targets/shortlist.json", shortlist);
     try writeArtifact("compat_targets/shortlist_inventory.json", inventory_json);
     try writeArtifact("compat_targets/shortlist_report.json", report);

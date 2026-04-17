@@ -45,6 +45,7 @@ pub fn main() !void {
 }
 
 test {
+    _ = @import("compat/artifact_manifest.zig");
     _ = @import("compat/targets.zig");
     _ = @import("compat/result.zig");
     _ = @import("compat/compile_smoke.zig");

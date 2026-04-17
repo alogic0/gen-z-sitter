@@ -151,6 +151,10 @@ What the repo can credibly claim today:
 - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but now rejects on the staged blocked path as `missing_action`
 - the top-level `generate` CLI does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
 - the current checked-in coverage decision now recommends second-wave parser-only repo coverage because the larger real external `tree_sitter_c_json` snapshot is explicitly deferred at a parser proof boundary rather than already promoted
+- the routine compatibility refresh and the heavier deferred parser probe are now separated explicitly:
+  - `update_compat_artifacts.zig` owns the routine checked-in compatibility surfaces
+  - `update_parser_boundary_probe.zig` is reserved for standalone deeper parser-boundary investigation
+  - `compat_targets/artifact_manifest.json` records that split machine-readably
 
 ## Milestone Compatibility Targets
 
