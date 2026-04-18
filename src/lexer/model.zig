@@ -294,6 +294,145 @@ const TransitionCollection = struct {
     has_separator_transitions: bool,
 };
 
+const CombinedLexTransition = struct {
+    chars: CharacterSet,
+    next_state_id: usize,
+    is_separator: bool,
+    precedence: i32,
+};
+
+const CombinedLexState = struct {
+    nfa_states: []const u32,
+    completion: ?ConflictCompletion,
+    transitions: []CombinedLexTransition,
+    has_separator_transitions: bool,
+};
+
+const CombinedLexStateMachine = struct {
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    allowed_tokens: TokenIndexSet,
+    states: std.ArrayListUnmanaged(CombinedLexState) = .empty,
+
+    fn deinit(self: *CombinedLexStateMachine) void {
+        for (self.states.items) |*state| {
+            self.allocator.free(state.nfa_states);
+            for (state.transitions) |*transition| transition.chars.deinit(self.allocator);
+            self.allocator.free(state.transitions);
+        }
+        self.states.deinit(self.allocator);
+        self.* = undefined;
+    }
+
+    fn internState(self: *CombinedLexStateMachine, nfa_states: []const u32) !usize {
+        for (self.states.items, 0..) |state, index| {
+            if (std.mem.eql(u32, state.nfa_states, nfa_states)) return index;
+        }
+
+        const owned_states = try self.allocator.dupe(u32, nfa_states);
+        errdefer self.allocator.free(owned_states);
+
+        const completion = bestCompletionForAllowed(owned_states, self.grammar, self.allowed_tokens);
+        try self.states.append(self.allocator, .{
+            .nfa_states = owned_states,
+            .completion = completion,
+            .transitions = &.{},
+            .has_separator_transitions = false,
+        });
+        const state_id = self.states.items.len - 1;
+
+        const transition_collection = try collectTransitionsAlloc(self.allocator, self.grammar, owned_states);
+        errdefer {
+            _ = self.states.pop();
+            freeTransitions(self.allocator, transition_collection.transitions);
+        }
+
+        var transitions = try self.allocator.alloc(CombinedLexTransition, transition_collection.transitions.len);
+        errdefer {
+            _ = self.states.pop();
+            self.allocator.free(transitions);
+        }
+
+        for (transition_collection.transitions, 0..) |transition, index| {
+            const next_states = try epsilonClosureAlloc(self.allocator, self.grammar, &.{transition.target_state});
+            defer self.allocator.free(next_states);
+            const next_state_id = try self.internState(next_states);
+            transitions[index] = .{
+                .chars = transition.chars,
+                .next_state_id = next_state_id,
+                .is_separator = transition.is_separator,
+                .precedence = transition.precedence,
+            };
+        }
+        self.allocator.free(transition_collection.transitions);
+        self.states.items[state_id].transitions = transitions;
+        self.states.items[state_id].has_separator_transitions = transition_collection.has_separator_transitions;
+        return state_id;
+    }
+
+    fn stateContainsCompletion(self: *const CombinedLexStateMachine, state_id: usize, variable_index: usize) bool {
+        for (self.states.items[state_id].nfa_states) |nfa_state_id| {
+            switch (self.grammar.nfa.states.items[nfa_state_id]) {
+                .accept => |accept| if (accept.variable_index == variable_index) return true,
+                else => {},
+            }
+        }
+        return false;
+    }
+
+    fn bestToken(self: *const CombinedLexStateMachine, state_id: usize, input: []const u8, offset: usize) !?TokenMatch {
+        const state = self.states.items[state_id];
+        const completion_match: ?TokenMatch = if (state.completion) |value|
+            tokenMatchFromCompletion(self.grammar, value, offset)
+        else
+            null;
+
+        const cursor = decodeNextCodepoint(input, offset) orelse return completion_match;
+
+        var best_continuation: ?TokenMatch = null;
+        for (state.transitions) |transition| {
+            if (!transition.chars.contains(cursor.codepoint)) continue;
+
+            const successor_contains_completed = if (state.completion) |value|
+                self.stateContainsCompletion(transition.next_state_id, value.variable_index)
+            else
+                false;
+
+            if (state.completion) |value| {
+                if (!preferAdvanceOverCompletion(
+                    self.grammar,
+                    value,
+                    .{
+                        .chars = transition.chars,
+                        .target_state = 0,
+                        .is_separator = transition.is_separator,
+                        .precedence = transition.precedence,
+                    },
+                    successor_contains_completed,
+                    state.has_separator_transitions,
+                )) continue;
+            }
+
+            const candidate = try self.bestToken(
+                transition.next_state_id,
+                input,
+                offset + cursor.byte_len,
+            ) orelse continue;
+
+            if (best_continuation == null or tokenMatchLessThan(best_continuation.?, candidate)) {
+                best_continuation = candidate;
+            }
+        }
+
+        if (completion_match == null) return best_continuation;
+        if (best_continuation == null) return completion_match;
+        return if (tokenMatchLessThan(completion_match.?, best_continuation.?))
+            best_continuation
+        else
+            completion_match;
+    }
+};
+
 const ConflictCompletion = struct {
     variable_index: usize,
     precedence: i32,
@@ -994,7 +1133,15 @@ pub fn selectBestTokenForSet(
     const closure = try epsilonClosureAlloc(allocator, grammar, start_states.items);
     defer allocator.free(closure);
 
-    return bestTokenFromStates(allocator, grammar, closure, input, 0, allowed_tokens);
+    var machine = CombinedLexStateMachine{
+        .allocator = allocator,
+        .grammar = grammar,
+        .allowed_tokens = allowed_tokens,
+    };
+    defer machine.deinit();
+
+    const start_state_id = try machine.internState(closure);
+    return try machine.bestToken(start_state_id, input, 0);
 }
 
 pub fn selectBestTokenDetailed(
@@ -1340,68 +1487,6 @@ fn tokenMatchDominatesByConflict(
     }
 
     return false;
-}
-
-fn bestTokenFromStates(
-    allocator: std.mem.Allocator,
-    grammar: ExpandedLexicalGrammar,
-    states: []const u32,
-    input: []const u8,
-    offset: usize,
-    allowed_tokens: TokenIndexSet,
-) std.mem.Allocator.Error!?TokenMatch {
-    const completion = bestCompletionForAllowed(states, grammar, allowed_tokens);
-    const completion_match: ?TokenMatch = if (completion) |value|
-        tokenMatchFromCompletion(grammar, value, offset)
-    else
-        null;
-
-    const cursor = decodeNextCodepoint(input, offset) orelse return completion_match;
-    const transitions = try collectTransitionsAlloc(allocator, grammar, states);
-    defer freeTransitions(allocator, transitions.transitions);
-
-    var best_continuation: ?TokenMatch = null;
-    for (transitions.transitions) |transition| {
-        if (!transition.chars.contains(cursor.codepoint)) continue;
-
-        const successor_contains_completed = if (completion) |value|
-            try transitionCanReachVariable(allocator, grammar, transition.target_state, value.variable_index)
-        else
-            false;
-
-        if (completion) |value| {
-            if (!preferAdvanceOverCompletion(
-                grammar,
-                value,
-                transition,
-                successor_contains_completed,
-                transitions.has_separator_transitions,
-            )) continue;
-        }
-
-        const next_states = try epsilonClosureAlloc(allocator, grammar, &.{transition.target_state});
-        defer allocator.free(next_states);
-
-        const candidate = try bestTokenFromStates(
-            allocator,
-            grammar,
-            next_states,
-            input,
-            offset + cursor.byte_len,
-            allowed_tokens,
-        ) orelse continue;
-
-        if (best_continuation == null or tokenMatchLessThan(best_continuation.?, candidate)) {
-            best_continuation = candidate;
-        }
-    }
-
-    if (completion_match == null) return best_continuation;
-    if (best_continuation == null) return completion_match;
-    return if (tokenMatchLessThan(completion_match.?, best_continuation.?))
-        best_continuation
-    else
-        completion_match;
 }
 
 fn tokenMatchFromCompletion(
