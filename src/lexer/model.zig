@@ -184,6 +184,15 @@ pub const TokenMatch = struct {
     kind: lexical_ir.VariableKind,
 };
 
+pub const DetailedTokenMatch = struct {
+    variable_index: usize,
+    len: usize,
+    leading_separator_len: usize,
+    completion_precedence: i32,
+    implicit_precedence: i32,
+    kind: lexical_ir.VariableKind,
+};
+
 pub const TokenConflictStatus = packed struct(u8) {
     matches_prefix: bool = false,
     does_match_continuation: bool = false,
@@ -218,6 +227,13 @@ const MatchCursor = struct {
 const VisitedState = struct {
     state_id: u32,
     offset: usize,
+    leading_separator_len: usize,
+    has_seen_non_separator: bool,
+};
+
+const MatchResult = struct {
+    end_offset: usize,
+    leading_separator_len: usize,
 };
 
 const AdvanceTransition = struct {
@@ -819,6 +835,30 @@ pub fn matchVariable(
     return if (end_offset) |offset| offset else null;
 }
 
+pub fn matchVariableDetailed(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    variable_index: usize,
+    input: []const u8,
+) std.mem.Allocator.Error!?MatchResult {
+    std.debug.assert(variable_index < grammar.variables.len);
+
+    var visited = std.ArrayListUnmanaged(VisitedState).empty;
+    defer visited.deinit(allocator);
+
+    const variable = grammar.variables[variable_index];
+    return try matchStateDetailed(
+        allocator,
+        grammar,
+        variable.start_state,
+        input,
+        0,
+        0,
+        false,
+        &visited,
+    );
+}
+
 pub fn selectBestToken(
     allocator: std.mem.Allocator,
     grammar: ExpandedLexicalGrammar,
@@ -835,6 +875,27 @@ pub fn selectBestToken(
             .kind = variable.kind,
         };
         if (best == null or tokenMatchLessThan(best.?, candidate)) best = candidate;
+    }
+    return best;
+}
+
+pub fn selectBestTokenDetailed(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    input: []const u8,
+) std.mem.Allocator.Error!?DetailedTokenMatch {
+    var best: ?DetailedTokenMatch = null;
+    for (grammar.variables, 0..) |variable, index| {
+        const match_result = try matchVariableDetailed(allocator, grammar, index, input) orelse continue;
+        const candidate: DetailedTokenMatch = .{
+            .variable_index = index,
+            .len = match_result.end_offset,
+            .leading_separator_len = match_result.leading_separator_len,
+            .completion_precedence = variable.completion_precedence,
+            .implicit_precedence = variable.implicit_precedence,
+            .kind = variable.kind,
+        };
+        if (best == null or detailedTokenMatchLessThan(best.?, candidate)) best = candidate;
     }
     return best;
 }
@@ -966,6 +1027,25 @@ fn tokenMatchLessThan(current: TokenMatch, candidate: TokenMatch) bool {
     return candidate.variable_index < current.variable_index;
 }
 
+fn detailedTokenMatchLessThan(current: DetailedTokenMatch, candidate: DetailedTokenMatch) bool {
+    return tokenMatchLessThan(
+        .{
+            .variable_index = current.variable_index,
+            .len = current.len,
+            .completion_precedence = current.completion_precedence,
+            .implicit_precedence = current.implicit_precedence,
+            .kind = current.kind,
+        },
+        .{
+            .variable_index = candidate.variable_index,
+            .len = candidate.len,
+            .completion_precedence = candidate.completion_precedence,
+            .implicit_precedence = candidate.implicit_precedence,
+            .kind = candidate.kind,
+        },
+    );
+}
+
 fn tokenMatchPreferredByConflict(
     conflict_map: TokenConflictMap,
     current: TokenMatch,
@@ -1013,7 +1093,12 @@ fn matchState(
     for (visited.items) |entry| {
         if (entry.state_id == state_id and entry.offset == offset) return null;
     }
-    try visited.append(allocator, .{ .state_id = state_id, .offset = offset });
+    try visited.append(allocator, .{
+        .state_id = state_id,
+        .offset = offset,
+        .leading_separator_len = 0,
+        .has_seen_non_separator = false,
+    });
     defer _ = visited.pop();
 
     const state = grammar.nfa.states.items[state_id];
@@ -1039,10 +1124,99 @@ fn matchState(
     };
 }
 
+fn matchStateDetailed(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    state_id: u32,
+    input: []const u8,
+    offset: usize,
+    leading_separator_len: usize,
+    has_seen_non_separator: bool,
+    visited: *std.ArrayListUnmanaged(VisitedState),
+) std.mem.Allocator.Error!?MatchResult {
+    for (visited.items) |entry| {
+        if (entry.state_id == state_id and
+            entry.offset == offset and
+            entry.leading_separator_len == leading_separator_len and
+            entry.has_seen_non_separator == has_seen_non_separator) return null;
+    }
+    try visited.append(allocator, .{
+        .state_id = state_id,
+        .offset = offset,
+        .leading_separator_len = leading_separator_len,
+        .has_seen_non_separator = has_seen_non_separator,
+    });
+    defer _ = visited.pop();
+
+    const state = grammar.nfa.states.items[state_id];
+    return switch (state) {
+        .accept => .{
+            .end_offset = offset,
+            .leading_separator_len = leading_separator_len,
+        },
+        .split => |split| blk: {
+            const left = try matchStateDetailed(
+                allocator,
+                grammar,
+                split.left,
+                input,
+                offset,
+                leading_separator_len,
+                has_seen_non_separator,
+                visited,
+            );
+            const right = try matchStateDetailed(
+                allocator,
+                grammar,
+                split.right,
+                input,
+                offset,
+                leading_separator_len,
+                has_seen_non_separator,
+                visited,
+            );
+            break :blk maxOptionalMatchResult(left, right);
+        },
+        .advance => |advance| blk: {
+            const cursor = decodeNextCodepoint(input, offset) orelse break :blk null;
+            if (!advance.chars.contains(cursor.codepoint)) break :blk null;
+
+            const next_has_seen_non_separator = has_seen_non_separator or !advance.is_separator;
+            const next_leading_separator_len = if (has_seen_non_separator or !advance.is_separator)
+                leading_separator_len
+            else
+                leading_separator_len + cursor.byte_len;
+
+            break :blk try matchStateDetailed(
+                allocator,
+                grammar,
+                advance.state_id,
+                input,
+                offset + cursor.byte_len,
+                next_leading_separator_len,
+                next_has_seen_non_separator,
+                visited,
+            );
+        },
+    };
+}
+
 fn maxOptionalOffset(left: ?usize, right: ?usize) ?usize {
     if (left == null) return right;
     if (right == null) return left;
     return @max(left.?, right.?);
+}
+
+fn maxOptionalMatchResult(left: ?MatchResult, right: ?MatchResult) ?MatchResult {
+    if (left == null) return right;
+    if (right == null) return left;
+    if (left.?.end_offset != right.?.end_offset) {
+        return if (left.?.end_offset > right.?.end_offset) left else right;
+    }
+    if (left.?.leading_separator_len != right.?.leading_separator_len) {
+        return if (left.?.leading_separator_len < right.?.leading_separator_len) left else right;
+    }
+    return left;
 }
 
 fn matrixIndex(variable_count: usize, left: usize, right: usize) usize {
@@ -1424,6 +1598,26 @@ test "matchVariable does not consume leading separators for immediate tokens" {
 
     try std.testing.expectEqual(@as(?usize, null), try matchVariable(std.testing.allocator, expanded, 0, "  let"));
     try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 0, "let"));
+}
+
+test "selectBestTokenDetailed reports leading separator prefix separately" {
+    const all_rules = [_]rules.Rule{
+        .{ .string = "let" },
+        .{ .pattern = .{ .value = "[ ]+", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "keyword", .kind = .named, .rule = 0 },
+        },
+        .separators = &.{1},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    const match = (try selectBestTokenDetailed(std.testing.allocator, expanded, "  let")).?;
+    try std.testing.expectEqual(@as(usize, 5), match.len);
+    try std.testing.expectEqual(@as(usize, 2), match.leading_separator_len);
 }
 
 test "expandExtractedLexicalGrammar supports token seq patterns used by Haskell-style identifiers" {
