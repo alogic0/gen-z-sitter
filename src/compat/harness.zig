@@ -631,6 +631,7 @@ pub fn runTarget(
             const valid_sample = behavioral_harness.sampleExtractedExternalBoundaryOnly(
                 arena.allocator(),
                 prepared,
+                extracted.syntax,
                 extracted.lexical,
                 serialized_boundary,
                 valid_input,
@@ -675,6 +676,7 @@ pub fn runTarget(
             const invalid_sample = behavioral_harness.sampleExtractedExternalBoundaryOnly(
                 arena.allocator(),
                 prepared,
+                extracted.syntax,
                 extracted.lexical,
                 serialized_boundary,
                 invalid_input,

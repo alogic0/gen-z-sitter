@@ -156,7 +156,7 @@ pub fn simulatePreparedScannerFree(
     const extracted = try extract_tokens.extractTokens(allocator, prepared);
     const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
     const result = try build.buildStates(allocator, flattened);
-    return simulateBuiltScannerFree(allocator, result, prepared, extracted.lexical, input);
+    return simulateBuiltScannerFree(allocator, result, prepared, flattened, extracted.lexical, input);
 }
 
 pub fn simulatePreparedWithFirstExternalBoundary(
@@ -172,6 +172,7 @@ pub fn simulatePreparedWithFirstExternalBoundary(
         allocator,
         result,
         prepared,
+        flattened,
         extracted.lexical,
         external_boundary,
         input,
@@ -190,6 +191,7 @@ pub fn simulateBuiltWithSerializedExternalBoundary(
         allocator,
         result,
         prepared,
+        null,
         lexical,
         external_boundary,
         input,
@@ -199,12 +201,13 @@ pub fn simulateBuiltWithSerializedExternalBoundary(
 pub fn sampleExtractedExternalBoundaryOnly(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
+    syntax: ?syntax_ir.SyntaxGrammar,
     lexical: lexical_ir.LexicalGrammar,
     external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
     input: []const u8,
 ) BehavioralError!ExternalBoundarySample {
     if (!external_boundary.isReady()) return error.UnsupportedExternalScannerGrammar;
-    var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical);
+    var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical, syntax);
     defer expanded_lexical.deinit(allocator);
     const progress = shouldLogBehavioralProgress();
 
@@ -283,10 +286,11 @@ fn simulateBuiltScannerFree(
     allocator: std.mem.Allocator,
     result: build.BuildResult,
     prepared: grammar_ir.PreparedGrammar,
+    syntax: syntax_ir.SyntaxGrammar,
     lexical: lexical_ir.LexicalGrammar,
     input: []const u8,
 ) BehavioralError!SimulationResult {
-    var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical);
+    var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical, syntax);
     defer expanded_lexical.deinit(allocator);
 
     var stack = std.array_list.Managed(u32).init(allocator);
@@ -427,13 +431,14 @@ fn simulateBuiltWithFirstExternalBoundary(
     allocator: std.mem.Allocator,
     result: build.BuildResult,
     prepared: grammar_ir.PreparedGrammar,
+    syntax: ?syntax_ir.SyntaxGrammar,
     lexical: lexical_ir.LexicalGrammar,
     external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
     input: []const u8,
 ) BehavioralError!SimulationResult {
     if (lexical.separators.len != 0) return error.UnsupportedExternalScannerGrammar;
     if (!external_boundary.isReady()) return error.UnsupportedExternalScannerGrammar;
-    var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical);
+    var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical, syntax);
     defer expanded_lexical.deinit(allocator);
     const progress = shouldLogBehavioralProgress();
 
@@ -948,6 +953,7 @@ fn prepareExpandedLexicalGrammar(
     allocator: std.mem.Allocator,
     all_rules: []const rules.Rule,
     lexical: lexical_ir.LexicalGrammar,
+    syntax: ?syntax_ir.SyntaxGrammar,
 ) BehavioralError!PreparedExpandedLexical {
     var grammar = blk: {
         break :blk lexer_model.expandExtractedLexicalGrammar(allocator, all_rules, lexical) catch |err| switch (err) {
@@ -957,7 +963,19 @@ fn prepareExpandedLexicalGrammar(
     };
     errdefer grammar.deinit(allocator);
 
-    const conflict_map = try lexer_model.buildTokenConflictMapAlloc(allocator, grammar);
+    const conflict_map = if (syntax) |syntax_grammar| blk: {
+        const following_tokens = try lexer_model.computeFollowingTokensAlloc(
+            allocator,
+            syntax_grammar,
+            grammar.variables.len,
+        );
+        defer lexer_model.deinitTokenIndexSets(allocator, following_tokens);
+        break :blk try lexer_model.buildTokenConflictMapWithFollowingTokensAlloc(
+            allocator,
+            grammar,
+            following_tokens,
+        );
+    } else try lexer_model.buildTokenConflictMapAlloc(allocator, grammar);
     return .{
         .grammar = grammar,
         .conflict_map = conflict_map,
@@ -1454,6 +1472,7 @@ test "sampleExtractedExternalBoundaryOnly samples the Haskell real external scan
     const valid = try sampleExtractedExternalBoundaryOnly(
         arena.allocator(),
         prepared,
+        extracted.syntax,
         extracted.lexical,
         serialized,
         valid_input,
@@ -1461,6 +1480,7 @@ test "sampleExtractedExternalBoundaryOnly samples the Haskell real external scan
     const invalid = try sampleExtractedExternalBoundaryOnly(
         arena.allocator(),
         prepared,
+        extracted.syntax,
         extracted.lexical,
         serialized,
         invalid_input,
@@ -1498,6 +1518,7 @@ test "sampleExtractedExternalBoundaryOnly samples the Bash expansion path" {
     const valid = try sampleExtractedExternalBoundaryOnly(
         arena.allocator(),
         prepared,
+        extracted.syntax,
         extracted.lexical,
         serialized,
         valid_input,
@@ -1505,6 +1526,7 @@ test "sampleExtractedExternalBoundaryOnly samples the Bash expansion path" {
     const invalid = try sampleExtractedExternalBoundaryOnly(
         arena.allocator(),
         prepared,
+        extracted.syntax,
         extracted.lexical,
         serialized,
         invalid_input,

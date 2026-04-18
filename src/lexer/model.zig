@@ -1,6 +1,8 @@
 const std = @import("std");
 const lexical_ir = @import("../ir/lexical_grammar.zig");
 const rules = @import("../ir/rules.zig");
+const syntax_ir = @import("../ir/syntax_grammar.zig");
+const first_sets = @import("../parse_table/first.zig");
 
 pub const ExpandError = std.mem.Allocator.Error || error{
     UnsupportedRule,
@@ -193,22 +195,66 @@ pub const DetailedTokenMatch = struct {
     kind: lexical_ir.VariableKind,
 };
 
-pub const TokenConflictStatus = packed struct(u8) {
+pub const TokenIndexSet = struct {
+    values: []bool,
+
+    pub fn initEmpty(allocator: std.mem.Allocator, count: usize) !TokenIndexSet {
+        const values = try allocator.alloc(bool, count);
+        @memset(values, false);
+        return .{ .values = values };
+    }
+
+    pub fn deinit(self: *TokenIndexSet, allocator: std.mem.Allocator) void {
+        allocator.free(self.values);
+        self.* = undefined;
+    }
+
+    pub fn clone(self: TokenIndexSet, allocator: std.mem.Allocator) !TokenIndexSet {
+        return .{ .values = try allocator.dupe(bool, self.values) };
+    }
+
+    pub fn insert(self: *TokenIndexSet, index: usize) void {
+        self.values[index] = true;
+    }
+
+    pub fn contains(self: TokenIndexSet, index: usize) bool {
+        return self.values[index];
+    }
+
+    pub fn fill(self: *TokenIndexSet) void {
+        @memset(self.values, true);
+    }
+};
+
+pub fn deinitTokenIndexSets(allocator: std.mem.Allocator, sets: []TokenIndexSet) void {
+    for (sets) |*set| set.deinit(allocator);
+    allocator.free(sets);
+}
+
+pub const TokenConflictStatus = packed struct(u16) {
     matches_prefix: bool = false,
     does_match_continuation: bool = false,
+    does_match_valid_continuation: bool = false,
+    does_match_separators: bool = false,
     matches_same_string: bool = false,
     matches_different_string: bool = false,
     starting_overlap: bool = false,
-    _padding: u3 = 0,
+    _padding: u9 = 0,
 };
 
 pub const TokenConflictMap = struct {
     variable_count: usize,
     status_matrix: []TokenConflictStatus,
+    following_tokens_by_index: []TokenIndexSet,
     starting_chars_by_index: []CharacterSet,
+    following_chars_by_index: []CharacterSet,
 
     pub fn deinit(self: *TokenConflictMap, allocator: std.mem.Allocator) void {
+        for (self.following_tokens_by_index) |*set| set.deinit(allocator);
+        allocator.free(self.following_tokens_by_index);
         for (self.starting_chars_by_index) |*chars| chars.deinit(allocator);
+        for (self.following_chars_by_index) |*chars| chars.deinit(allocator);
+        allocator.free(self.following_chars_by_index);
         allocator.free(self.starting_chars_by_index);
         allocator.free(self.status_matrix);
         self.* = undefined;
@@ -241,6 +287,11 @@ const AdvanceTransition = struct {
     target_state: u32,
     is_separator: bool,
     precedence: i32,
+};
+
+const TransitionCollection = struct {
+    transitions: []AdvanceTransition,
+    has_separator_transitions: bool,
 };
 
 const ConflictCompletion = struct {
@@ -551,6 +602,52 @@ fn cloneCharacterSet(allocator: std.mem.Allocator, chars: CharacterSet) !Charact
     var result = CharacterSet.empty();
     try result.addSet(allocator, chars);
     return result;
+}
+
+fn followingCharsForTokenSetAlloc(
+    allocator: std.mem.Allocator,
+    starting_chars_by_index: []const CharacterSet,
+    following_tokens: TokenIndexSet,
+) !CharacterSet {
+    var result = CharacterSet.empty();
+    for (starting_chars_by_index, 0..) |chars, index| {
+        if (!following_tokens.contains(index)) continue;
+        try result.addSet(allocator, chars);
+    }
+    return result;
+}
+
+fn mergeTokenIndexSet(target: *TokenIndexSet, incoming: TokenIndexSet) bool {
+    var changed = false;
+    for (incoming.values, 0..) |present, index| {
+        if (!present or target.values[index]) continue;
+        target.values[index] = true;
+        changed = true;
+    }
+    return changed;
+}
+
+fn mergeTokenIndexSetFromSymbolSet(target: *TokenIndexSet, incoming: first_sets.SymbolSet) bool {
+    var changed = false;
+    const len = @min(target.values.len, incoming.terminals.len);
+    for (incoming.terminals[0..len], 0..) |present, index| {
+        if (!present or target.values[index]) continue;
+        target.values[index] = true;
+        changed = true;
+    }
+    return changed;
+}
+
+fn deinitSymbolSet(allocator: std.mem.Allocator, set: first_sets.SymbolSet) void {
+    allocator.free(set.terminals);
+    allocator.free(set.externals);
+}
+
+fn deinitFirstSets(allocator: std.mem.Allocator, sets: first_sets.FirstSets) void {
+    for (sets.per_variable) |set| {
+        deinitSymbolSet(allocator, set);
+    }
+    allocator.free(sets.per_variable);
 }
 
 fn parsePatternAtoms(
@@ -973,9 +1070,113 @@ pub fn buildTokenConflictMapAlloc(
     grammar: ExpandedLexicalGrammar,
 ) std.mem.Allocator.Error!TokenConflictMap {
     const variable_count = grammar.variables.len;
+    const following_tokens = try allocator.alloc(TokenIndexSet, variable_count);
+    defer {
+        for (following_tokens[0..variable_count]) |*set| set.deinit(allocator);
+        allocator.free(following_tokens);
+    }
+
+    for (0..variable_count) |index| {
+        following_tokens[index] = try TokenIndexSet.initEmpty(allocator, variable_count);
+        following_tokens[index].fill();
+    }
+
+    return buildTokenConflictMapWithFollowingTokensAlloc(allocator, grammar, following_tokens);
+}
+
+pub fn computeFollowingTokensAlloc(
+    allocator: std.mem.Allocator,
+    grammar: syntax_ir.SyntaxGrammar,
+    terminal_count: usize,
+) (std.mem.Allocator.Error || first_sets.FirstError)![]TokenIndexSet {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    const computed_first_sets = try first_sets.computeFirstSets(arena_allocator, grammar);
+
+    const variable_follow = try allocator.alloc(TokenIndexSet, grammar.variables.len);
+    defer deinitTokenIndexSets(allocator, variable_follow);
+    for (0..grammar.variables.len) |index| {
+        variable_follow[index] = try TokenIndexSet.initEmpty(allocator, terminal_count);
+    }
+
+    var changed = true;
+    while (changed) {
+        changed = false;
+        for (grammar.variables, 0..) |variable, lhs_index| {
+            for (variable.productions) |production| {
+                for (production.steps, 0..) |step, step_index| {
+                    switch (step.symbol) {
+                        .non_terminal => |rhs_index| {
+                            const suffix_first = try computed_first_sets.firstOfSequence(
+                                arena_allocator,
+                                production.steps[step_index + 1 ..],
+                            );
+
+                            if (mergeTokenIndexSetFromSymbolSet(&variable_follow[rhs_index], suffix_first)) {
+                                changed = true;
+                            }
+                            if (suffix_first.includes_epsilon) {
+                                if (mergeTokenIndexSet(&variable_follow[rhs_index], variable_follow[lhs_index])) {
+                                    changed = true;
+                                }
+                            }
+                        },
+                        else => {},
+                    }
+                }
+            }
+        }
+    }
+
+    const following_tokens = try allocator.alloc(TokenIndexSet, terminal_count);
+    errdefer deinitTokenIndexSets(allocator, following_tokens);
+    for (0..terminal_count) |index| {
+        following_tokens[index] = try TokenIndexSet.initEmpty(allocator, terminal_count);
+    }
+
+    for (grammar.variables, 0..) |variable, lhs_index| {
+        for (variable.productions) |production| {
+            for (production.steps, 0..) |step, step_index| {
+                const terminal_index = switch (step.symbol) {
+                    .terminal => |index| index,
+                    else => continue,
+                };
+
+                const suffix_first = try computed_first_sets.firstOfSequence(
+                    arena_allocator,
+                    production.steps[step_index + 1 ..],
+                );
+
+                _ = mergeTokenIndexSetFromSymbolSet(&following_tokens[terminal_index], suffix_first);
+                if (suffix_first.includes_epsilon) {
+                    _ = mergeTokenIndexSet(&following_tokens[terminal_index], variable_follow[lhs_index]);
+                }
+            }
+        }
+    }
+
+    return following_tokens;
+}
+
+pub fn buildTokenConflictMapWithFollowingTokensAlloc(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    following_tokens: []const TokenIndexSet,
+) std.mem.Allocator.Error!TokenConflictMap {
+    const variable_count = grammar.variables.len;
+    std.debug.assert(following_tokens.len == variable_count);
+
     const status_matrix = try allocator.alloc(TokenConflictStatus, variable_count * variable_count);
     @memset(status_matrix, .{});
     errdefer allocator.free(status_matrix);
+
+    const following_tokens_by_index = try allocator.alloc(TokenIndexSet, variable_count);
+    errdefer {
+        for (following_tokens_by_index[0..variable_count]) |*set| set.deinit(allocator);
+        allocator.free(following_tokens_by_index);
+    }
 
     const starting_chars_by_index = try allocator.alloc(CharacterSet, variable_count);
     errdefer {
@@ -983,8 +1184,23 @@ pub fn buildTokenConflictMapAlloc(
         allocator.free(starting_chars_by_index);
     }
 
+    const following_chars_by_index = try allocator.alloc(CharacterSet, variable_count);
+    errdefer {
+        for (following_chars_by_index[0..variable_count]) |*chars| chars.deinit(allocator);
+        allocator.free(following_chars_by_index);
+    }
+
     for (grammar.variables, 0..) |variable, index| {
         starting_chars_by_index[index] = try startingCharsForVariable(allocator, grammar, variable.start_state);
+    }
+
+    for (0..variable_count) |index| {
+        following_tokens_by_index[index] = try following_tokens[index].clone(allocator);
+        following_chars_by_index[index] = try followingCharsForTokenSetAlloc(
+            allocator,
+            starting_chars_by_index,
+            following_tokens_by_index[index],
+        );
     }
 
     for (0..variable_count) |left| {
@@ -998,7 +1214,14 @@ pub fn buildTokenConflictMapAlloc(
 
     for (0..variable_count) |left| {
         for (0..left) |right| {
-            const pair_status = try computeConflictStatusPair(allocator, grammar, left, right);
+            var pair_status = try computeConflictStatusPair(allocator, grammar, left, right);
+            annotateSeparatorAndFollowingStatuses(
+                starting_chars_by_index[left],
+                starting_chars_by_index[right],
+                following_chars_by_index[left],
+                following_chars_by_index[right],
+                &pair_status,
+            );
             status_matrix[matrixIndex(variable_count, left, right)] = pair_status[0];
             status_matrix[matrixIndex(variable_count, right, left)] = pair_status[1];
             if (characterSetsIntersect(starting_chars_by_index[left], starting_chars_by_index[right])) {
@@ -1011,7 +1234,9 @@ pub fn buildTokenConflictMapAlloc(
     return .{
         .variable_count = variable_count,
         .status_matrix = status_matrix,
+        .following_tokens_by_index = following_tokens_by_index,
         .starting_chars_by_index = starting_chars_by_index,
+        .following_chars_by_index = following_chars_by_index,
     };
 }
 
@@ -1057,6 +1282,12 @@ fn tokenMatchPreferredByConflict(
     if (candidate_status.matches_same_string and !current_status.matches_same_string) return true;
     if (current_status.matches_same_string and !candidate_status.matches_same_string) return false;
 
+    if (candidate_status.does_match_separators and !current_status.does_match_separators) return true;
+    if (current_status.does_match_separators and !candidate_status.does_match_separators) return false;
+
+    if (candidate_status.does_match_valid_continuation and !current_status.does_match_valid_continuation) return true;
+    if (current_status.does_match_valid_continuation and !candidate_status.does_match_valid_continuation) return false;
+
     if (candidate.len > current.len and current_status.does_match_continuation) return true;
     if (current.len > candidate.len and candidate_status.does_match_continuation) return false;
 
@@ -1073,6 +1304,14 @@ fn tokenMatchDominatesByConflict(
 
     if (dominator_status.matches_same_string and !candidate_status.matches_same_string) {
         return tokenMatchLessThan(candidate, dominator);
+    }
+
+    if (dominator_status.does_match_separators and !candidate_status.does_match_separators) {
+        return true;
+    }
+
+    if (dominator_status.does_match_valid_continuation and !candidate_status.does_match_valid_continuation) {
+        return true;
     }
 
     if (dominator.len > candidate.len and dominator_status.does_match_continuation) {
@@ -1283,16 +1522,16 @@ fn computeConflictStatusPair(
         }
 
         const left_transitions = try collectTransitionsAlloc(allocator, grammar, pair_state.left);
-        defer freeTransitions(allocator, left_transitions);
+        defer freeTransitions(allocator, left_transitions.transitions);
         const right_transitions = try collectTransitionsAlloc(allocator, grammar, pair_state.right);
-        defer freeTransitions(allocator, right_transitions);
+        defer freeTransitions(allocator, right_transitions.transitions);
 
-        if (left_transitions.len == 0 and right_transitions.len == 0) continue;
+        if (left_transitions.transitions.len == 0 and right_transitions.transitions.len == 0) continue;
 
         var left_overlap = false;
         var right_overlap = false;
-        for (left_transitions) |left_transition| {
-            for (right_transitions) |right_transition| {
+        for (left_transitions.transitions) |left_transition| {
+            for (right_transitions.transitions) |right_transition| {
                 if (!characterSetsIntersect(left_transition.chars, right_transition.chars)) continue;
                 left_overlap = true;
                 right_overlap = true;
@@ -1310,12 +1549,25 @@ fn computeConflictStatusPair(
             }
         }
 
-        if (!left_overlap and left_transitions.len != 0) result[0].matches_different_string = true;
-        if (!right_overlap and right_transitions.len != 0) result[1].matches_different_string = true;
+        if (!left_overlap and left_transitions.transitions.len != 0) result[0].matches_different_string = true;
+        if (!right_overlap and right_transitions.transitions.len != 0) result[1].matches_different_string = true;
 
         if (left_completion) |completion| {
-            for (right_transitions) |transition| {
-                if (preferAdvanceOverCompletion(grammar, completion, transition)) {
+            for (right_transitions.transitions) |transition| {
+                const successor_contains_completed = transitionCanReachVariable(
+                    allocator,
+                    grammar,
+                    transition.target_state,
+                    completion.variable_index,
+                ) catch false;
+                if (successor_contains_completed) continue;
+                if (preferAdvanceOverCompletion(
+                    grammar,
+                    completion,
+                    transition,
+                    successor_contains_completed,
+                    right_transitions.has_separator_transitions,
+                )) {
                     result[1].does_match_continuation = true;
                 } else {
                     result[0].matches_prefix = true;
@@ -1323,8 +1575,21 @@ fn computeConflictStatusPair(
             }
         }
         if (right_completion) |completion| {
-            for (left_transitions) |transition| {
-                if (preferAdvanceOverCompletion(grammar, completion, transition)) {
+            for (left_transitions.transitions) |transition| {
+                const successor_contains_completed = transitionCanReachVariable(
+                    allocator,
+                    grammar,
+                    transition.target_state,
+                    completion.variable_index,
+                ) catch false;
+                if (successor_contains_completed) continue;
+                if (preferAdvanceOverCompletion(
+                    grammar,
+                    completion,
+                    transition,
+                    successor_contains_completed,
+                    left_transitions.has_separator_transitions,
+                )) {
                     result[0].does_match_continuation = true;
                 } else {
                     result[1].matches_prefix = true;
@@ -1334,6 +1599,28 @@ fn computeConflictStatusPair(
     }
 
     return result;
+}
+
+fn annotateSeparatorAndFollowingStatuses(
+    left_starting_chars: CharacterSet,
+    right_starting_chars: CharacterSet,
+    left_following_chars: CharacterSet,
+    right_following_chars: CharacterSet,
+    result: *[2]TokenConflictStatus,
+) void {
+    if (result[0].does_match_continuation and characterSetsIntersect(left_following_chars, right_starting_chars)) {
+        result[0].does_match_valid_continuation = true;
+    }
+    if (result[1].does_match_continuation and characterSetsIntersect(right_following_chars, left_starting_chars)) {
+        result[1].does_match_valid_continuation = true;
+    }
+
+    if (result[0].does_match_continuation and result[0].matches_prefix) {
+        result[0].does_match_separators = true;
+    }
+    if (result[1].does_match_continuation and result[1].matches_prefix) {
+        result[1].does_match_separators = true;
+    }
 }
 
 fn epsilonClosureAlloc(
@@ -1385,26 +1672,33 @@ fn collectTransitionsAlloc(
     allocator: std.mem.Allocator,
     grammar: ExpandedLexicalGrammar,
     states: []const u32,
-) std.mem.Allocator.Error![]AdvanceTransition {
+) std.mem.Allocator.Error!TransitionCollection {
     var transitions = std.ArrayListUnmanaged(AdvanceTransition).empty;
     errdefer {
         for (transitions.items) |*transition| transition.chars.deinit(allocator);
         transitions.deinit(allocator);
     }
+    var has_separator_transitions = false;
 
     for (states) |state_id| {
         switch (grammar.nfa.states.items[state_id]) {
-            .advance => |advance| try transitions.append(allocator, .{
-                .chars = try cloneCharacterSet(allocator, advance.chars),
-                .target_state = advance.state_id,
-                .is_separator = advance.is_separator,
-                .precedence = advance.precedence,
-            }),
+            .advance => |advance| {
+                if (advance.is_separator) has_separator_transitions = true;
+                try transitions.append(allocator, .{
+                    .chars = try cloneCharacterSet(allocator, advance.chars),
+                    .target_state = advance.state_id,
+                    .is_separator = advance.is_separator,
+                    .precedence = advance.precedence,
+                });
+            },
             else => {},
         }
     }
 
-    return transitions.toOwnedSlice(allocator);
+    return .{
+        .transitions = try transitions.toOwnedSlice(allocator),
+        .has_separator_transitions = has_separator_transitions,
+    };
 }
 
 fn freeTransitions(allocator: std.mem.Allocator, transitions: []AdvanceTransition) void {
@@ -1431,6 +1725,24 @@ fn firstCompletion(states: []const u32, grammar: ExpandedLexicalGrammar) ?Confli
     return completion;
 }
 
+fn transitionCanReachVariable(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    target_state: u32,
+    variable_index: usize,
+) std.mem.Allocator.Error!bool {
+    const closure = try epsilonClosureAlloc(allocator, grammar, &.{target_state});
+    defer allocator.free(closure);
+
+    for (closure) |state_id| {
+        switch (grammar.nfa.states.items[state_id]) {
+            .accept => |accept| if (accept.variable_index == variable_index) return true,
+            else => {},
+        }
+    }
+    return false;
+}
+
 fn preferCompletedToken(
     grammar: ExpandedLexicalGrammar,
     left: ConflictCompletion,
@@ -1449,11 +1761,15 @@ fn preferAdvanceOverCompletion(
     grammar: ExpandedLexicalGrammar,
     completion: ConflictCompletion,
     transition: AdvanceTransition,
+    successor_contains_completed: bool,
+    has_separator_transitions: bool,
 ) bool {
     if (transition.precedence != completion.precedence) {
         return transition.precedence > completion.precedence;
     }
     if (transition.is_separator) return false;
+    if (successor_contains_completed) return true;
+    if (has_separator_transitions) return false;
     _ = grammar;
     return true;
 }
@@ -1847,6 +2163,157 @@ test "buildTokenConflictMapAlloc marks literal prefix and identifier continuatio
     try std.testing.expect(conflict_map.status(0, 1).matches_same_string);
     try std.testing.expect(!conflict_map.status(0, 1).matches_prefix);
     try std.testing.expect(conflict_map.status(1, 0).does_match_continuation);
+    try std.testing.expect(conflict_map.status(1, 0).does_match_valid_continuation);
+}
+
+test "buildTokenConflictMapWithFollowingTokensAlloc derives following chars from token sets" {
+    const all_rules = [_]rules.Rule{
+        .{ .string = "let" },
+        .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
+        .{ .string = "(" },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "keyword", .kind = .named, .rule = 0 },
+            .{ .name = "identifier", .kind = .named, .rule = 1 },
+            .{ .name = "lparen", .kind = .named, .rule = 2 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var following_tokens = [_]TokenIndexSet{
+        try TokenIndexSet.initEmpty(std.testing.allocator, expanded.variables.len),
+        try TokenIndexSet.initEmpty(std.testing.allocator, expanded.variables.len),
+        try TokenIndexSet.initEmpty(std.testing.allocator, expanded.variables.len),
+    };
+    defer {
+        for (&following_tokens) |*set| set.deinit(std.testing.allocator);
+    }
+
+    following_tokens[0].insert(1);
+    following_tokens[1].insert(2);
+    following_tokens[2].insert(0);
+
+    var conflict_map = try buildTokenConflictMapWithFollowingTokensAlloc(
+        std.testing.allocator,
+        expanded,
+        &following_tokens,
+    );
+    defer conflict_map.deinit(std.testing.allocator);
+
+    try std.testing.expect(conflict_map.following_tokens_by_index[0].contains(1));
+    try std.testing.expect(!conflict_map.following_tokens_by_index[0].contains(2));
+    try std.testing.expect(conflict_map.following_chars_by_index[0].contains('l'));
+    try std.testing.expect(!conflict_map.following_chars_by_index[0].contains('('));
+    try std.testing.expect(conflict_map.following_chars_by_index[1].contains('('));
+    try std.testing.expect(!conflict_map.following_chars_by_index[1].contains('l'));
+    try std.testing.expect(conflict_map.following_chars_by_index[2].contains('l'));
+}
+
+test "buildTokenConflictMapAlloc marks separator-sensitive conflicts" {
+    const all_rules = [_]rules.Rule{
+        .{ .string = "let" },
+        .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
+        .{ .pattern = .{ .value = "[ ]+", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "keyword", .kind = .named, .rule = 0 },
+            .{ .name = "identifier", .kind = .named, .rule = 1 },
+        },
+        .separators = &.{2},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var conflict_map = try buildTokenConflictMapAlloc(std.testing.allocator, expanded);
+    defer conflict_map.deinit(std.testing.allocator);
+
+    try std.testing.expect(conflict_map.status(1, 0).does_match_separators);
+}
+
+test "computeFollowingTokensAlloc derives grammar-based token follow sets" {
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+        .{ .symbol = .{ .non_terminal = 2 } },
+    };
+    var lhs_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    var rhs_token_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+    var rhs_tail_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 3 } },
+    };
+    var tail_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 2 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .kind = .named,
+                .productions = &.{
+                    .{
+                        .steps = source_steps[0..],
+                    },
+                },
+            },
+            .{
+                .name = "lhs",
+                .kind = .named,
+                .productions = &.{
+                    .{
+                        .steps = lhs_steps[0..],
+                    },
+                },
+            },
+            .{
+                .name = "rhs",
+                .kind = .named,
+                .productions = &.{
+                    .{
+                        .steps = rhs_token_steps[0..],
+                    },
+                    .{
+                        .steps = rhs_tail_steps[0..],
+                    },
+                },
+            },
+            .{
+                .name = "tail",
+                .kind = .named,
+                .productions = &.{
+                    .{
+                        .steps = tail_steps[0..],
+                    },
+                },
+            },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const following = try computeFollowingTokensAlloc(std.testing.allocator, grammar, 3);
+    defer deinitTokenIndexSets(std.testing.allocator, following);
+
+    try std.testing.expect(following[0].contains(1));
+    try std.testing.expect(following[0].contains(2));
+    try std.testing.expect(!following[1].contains(0));
+    try std.testing.expect(!following[1].contains(2));
+    try std.testing.expect(!following[2].contains(0));
+    try std.testing.expect(!following[2].contains(1));
 }
 
 test "selectPreferredMatch uses conflict map for same-string lexical conflicts" {
