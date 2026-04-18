@@ -286,7 +286,6 @@ fn simulateBuiltScannerFree(
     lexical: lexical_ir.LexicalGrammar,
     input: []const u8,
 ) BehavioralError!SimulationResult {
-    if (lexical.separators.len != 0) return error.UnsupportedScannerFreeGrammar;
     var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical);
     defer expanded_lexical.deinit(allocator);
 
@@ -726,6 +725,8 @@ fn selectMatchingTerminal(
 
     if (valid_matches.items.len == 0) return null;
 
+    lexer_model.pruneConflictingMatches(&valid_matches, expanded_lexical.conflict_map);
+
     const best = lexer_model.selectPreferredMatch(valid_matches.items, expanded_lexical.conflict_map) orelse return null;
     return .{
         .symbol = .{ .terminal = @intCast(best.variable_index) },
@@ -770,6 +771,7 @@ fn selectMatchingSymbolWithExternalBoundary(
     }
 
     if (valid_matches.items.len != 0) {
+        lexer_model.pruneConflictingMatches(&valid_matches, expanded_lexical.conflict_map);
         const lexical_best = lexer_model.selectPreferredMatch(valid_matches.items, expanded_lexical.conflict_map).?;
         if (best == null or lexicalExternalMatchBetter(best.?, lexical_best.len)) {
             best = .{
