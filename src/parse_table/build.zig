@@ -252,12 +252,25 @@ const ParseItemSetCoreContext = struct {
     }
 };
 
+const BoolSliceContext = struct {
+    pub fn hash(_: @This(), values: []const bool) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        hasher.update(std.mem.sliceAsBytes(values));
+        return hasher.final();
+    }
+
+    pub fn eql(_: @This(), a: []const bool, b: []const bool) bool {
+        return std.mem.eql(bool, a, b);
+    }
+};
+
 const StateIdByItemSet = std.HashMap(item.ParseItemSet, state.StateId, ParseItemSetContext, std.hash_map.default_max_load_percentage);
 const ClosedItemsBySeed = std.HashMap(item.ParseItemSet, item.ParseItemSet, ParseItemSetContext, std.hash_map.default_max_load_percentage);
 const CoreIdByItemSetCore = std.HashMap(item.ParseItemSetCore, usize, ParseItemSetCoreContext, std.hash_map.default_max_load_percentage);
 const SymbolIndexMap = std.HashMap(syntax_ir.SymbolRef, usize, SymbolRefContext, std.hash_map.default_max_load_percentage);
 const SuccessorItemIndexMap = std.HashMap(item.ParseItem, usize, ParseItemCoreContext, std.hash_map.default_max_load_percentage);
 const ClosureItemIndexMap = std.HashMap(item.ParseItem, usize, ParseItemCoreContext, std.hash_map.default_max_load_percentage);
+const LexStateIdByTerminalSet = std.HashMap([]const bool, state.LexStateId, BoolSliceContext, std.hash_map.default_max_load_percentage);
 
 const SuccessorGroup = struct {
     symbol: syntax_ir.SymbolRef,
@@ -1107,6 +1120,7 @@ pub const BuildResult = struct {
     productions: []const ProductionInfo,
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
     states: []const state.ParseState,
+    lex_state_count: usize,
     actions: actions.ActionTable,
     resolved_actions: resolution.ResolvedActionTable,
 
@@ -1139,6 +1153,79 @@ pub const BuildResult = struct {
         return self.resolved_actions.snapshotAlloc(allocator);
     }
 };
+
+const AssignedLexStates = struct {
+    states: []const state.ParseState,
+    count: usize,
+};
+
+fn terminalCountForResolvedActions(resolved_actions: resolution.ResolvedActionTable) usize {
+    var count: usize = 0;
+    for (resolved_actions.states) |resolved_state| {
+        for (resolved_state.groups) |group| {
+            switch (group.symbol) {
+                .terminal => |index| count = @max(count, index + 1),
+                .non_terminal, .external => {},
+            }
+        }
+    }
+    return count;
+}
+
+fn assignLexStateIdsAlloc(
+    allocator: std.mem.Allocator,
+    parse_states: []const state.ParseState,
+    resolved_actions: resolution.ResolvedActionTable,
+) std.mem.Allocator.Error!AssignedLexStates {
+    if (parse_states.len == 0) {
+        return .{
+            .states = &.{},
+            .count = 0,
+        };
+    }
+
+    const terminal_count = terminalCountForResolvedActions(resolved_actions);
+    const assigned_states = try allocator.dupe(state.ParseState, parse_states);
+    var lex_state_ids = LexStateIdByTerminalSet.init(allocator);
+    defer {
+        var iterator = lex_state_ids.iterator();
+        while (iterator.next()) |entry| {
+            allocator.free(entry.key_ptr.*);
+        }
+        lex_state_ids.deinit();
+    }
+
+    var next_id: state.LexStateId = 0;
+    for (assigned_states) |*parse_state| {
+        const terminal_set = try allocator.alloc(bool, terminal_count);
+        @memset(terminal_set, false);
+        errdefer allocator.free(terminal_set);
+
+        for (resolved_actions.groupsForState(parse_state.id)) |group| {
+            switch (group.symbol) {
+                .terminal => |index| terminal_set[index] = true,
+                .non_terminal, .external => {},
+            }
+        }
+
+        const gop = try lex_state_ids.getOrPut(terminal_set);
+        if (gop.found_existing) {
+            allocator.free(terminal_set);
+            parse_state.lex_state_id = gop.value_ptr.*;
+            continue;
+        }
+
+        gop.key_ptr.* = terminal_set;
+        gop.value_ptr.* = next_id;
+        parse_state.lex_state_id = next_id;
+        next_id += 1;
+    }
+
+    return .{
+        .states = assigned_states,
+        .count = next_id,
+    };
+}
 
 pub fn buildStates(
     allocator: std.mem.Allocator,
@@ -1209,10 +1296,12 @@ pub fn buildStatesWithOptions(
             .{ resolved_actions.hasUnresolvedDecisions(), resolved_actions.isSerializationReady() },
         );
     }
+    const lex_states = try assignLexStateIdsAlloc(allocator, constructed.states, resolved_actions);
     return .{
         .productions = productions,
         .precedence_orderings = grammar.precedence_orderings,
-        .states = constructed.states,
+        .states = lex_states.states,
+        .lex_state_count = lex_states.count,
         .actions = constructed.actions,
         .resolved_actions = resolved_actions,
     };
@@ -3175,4 +3264,67 @@ test "buildStates keeps named-precedence reductions on the suffix symbol, not th
 
     try std.testing.expect(saw_reduce_on_suffix_symbol);
     try std.testing.expect(!saw_reduce_on_inherited_terminal);
+}
+
+test "assignLexStateIdsAlloc reuses ids for equivalent terminal sets deterministically" {
+    const allocator = std.testing.allocator;
+
+    const parse_states = [_]state.ParseState{
+        .{ .id = 0, .items = &.{}, .transitions = &.{} },
+        .{ .id = 1, .items = &.{}, .transitions = &.{} },
+        .{ .id = 2, .items = &.{}, .transitions = &.{} },
+    };
+
+    const resolved_actions = resolution.ResolvedActionTable{
+        .states = &[_]resolution.ResolvedStateActions{
+            .{
+                .state_id = 0,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &[_]actions.ParseAction{.{ .shift = 1 }},
+                        .decision = .{ .chosen = .{ .shift = 1 } },
+                    },
+                    .{
+                        .symbol = .{ .terminal = 1 },
+                        .candidate_actions = &[_]actions.ParseAction{.{ .shift = 2 }},
+                        .decision = .{ .chosen = .{ .shift = 2 } },
+                    },
+                },
+            },
+            .{
+                .state_id = 1,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &[_]actions.ParseAction{.{ .shift = 3 }},
+                        .decision = .{ .chosen = .{ .shift = 3 } },
+                    },
+                },
+            },
+            .{
+                .state_id = 2,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &[_]actions.ParseAction{.{ .shift = 4 }},
+                        .decision = .{ .chosen = .{ .shift = 4 } },
+                    },
+                    .{
+                        .symbol = .{ .terminal = 1 },
+                        .candidate_actions = &[_]actions.ParseAction{.{ .shift = 5 }},
+                        .decision = .{ .chosen = .{ .shift = 5 } },
+                    },
+                },
+            },
+        },
+    };
+
+    const assigned = try assignLexStateIdsAlloc(allocator, parse_states[0..], resolved_actions);
+    defer allocator.free(assigned.states);
+
+    try std.testing.expectEqual(@as(usize, 2), assigned.count);
+    try std.testing.expectEqual(@as(state.LexStateId, 0), assigned.states[0].lex_state_id);
+    try std.testing.expectEqual(@as(state.LexStateId, 1), assigned.states[1].lex_state_id);
+    try std.testing.expectEqual(assigned.states[0].lex_state_id, assigned.states[2].lex_state_id);
 }

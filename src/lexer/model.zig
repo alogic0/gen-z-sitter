@@ -3,6 +3,7 @@ const lexical_ir = @import("../ir/lexical_grammar.zig");
 const rules = @import("../ir/rules.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 const first_sets = @import("../parse_table/first.zig");
+const lexer_table = @import("table.zig");
 
 pub const ExpandError = std.mem.Allocator.Error || error{
     UnsupportedRule,
@@ -1121,27 +1122,7 @@ pub fn selectBestTokenForSet(
     allowed_tokens: TokenIndexSet,
     input: []const u8,
 ) std.mem.Allocator.Error!?TokenMatch {
-    var start_states = std.ArrayListUnmanaged(u32).empty;
-    defer start_states.deinit(allocator);
-
-    for (grammar.variables, 0..) |variable, index| {
-        if (!allowed_tokens.contains(index)) continue;
-        try start_states.append(allocator, variable.start_state);
-    }
-    if (start_states.items.len == 0) return null;
-
-    const closure = try epsilonClosureAlloc(allocator, grammar, start_states.items);
-    defer allocator.free(closure);
-
-    var machine = CombinedLexStateMachine{
-        .allocator = allocator,
-        .grammar = grammar,
-        .allowed_tokens = allowed_tokens,
-    };
-    defer machine.deinit();
-
-    const start_state_id = try machine.internState(closure);
-    return try machine.bestToken(start_state_id, input, 0);
+    return lexer_table.selectBestTokenForSet(allocator, grammar, allowed_tokens, input);
 }
 
 pub fn selectBestTokenDetailed(

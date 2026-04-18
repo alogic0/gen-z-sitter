@@ -3,6 +3,7 @@ const item = @import("item.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const StateId = u32;
+pub const LexStateId = u32;
 
 pub const Transition = struct {
     symbol: syntax_ir.SymbolRef,
@@ -22,6 +23,7 @@ pub const Conflict = struct {
 
 pub const ParseState = struct {
     id: StateId,
+    lex_state_id: LexStateId = 0,
     items: []const item.ParseItemSetEntry,
     transitions: []const Transition,
     conflicts: []const Conflict = &.{},

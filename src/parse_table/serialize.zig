@@ -199,6 +199,7 @@ test "serializeBuildResult rejects blocked snapshots in strict mode" {
         .productions = &.{},
         .precedence_orderings = &.{},
         .states = parse_states[0..],
+        .lex_state_count = 1,
         .actions = .{ .states = &.{} },
         .resolved_actions = resolved_actions,
     };
@@ -245,6 +246,7 @@ test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {
         .productions = &.{},
         .precedence_orderings = &.{},
         .states = parse_states[0..],
+        .lex_state_count = 1,
         .actions = .{ .states = &.{} },
         .resolved_actions = resolved_actions,
     };

@@ -10,6 +10,7 @@ const build = @import("../parse_table/build.zig");
 const actions = @import("../parse_table/actions.zig");
 const rules = @import("../ir/rules.zig");
 const lexer_model = @import("../lexer/model.zig");
+const lexer_table = @import("../lexer/table.zig");
 const scanner_serialize = @import("../scanner/serialize.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
@@ -725,7 +726,7 @@ fn selectMatchingTerminal(
         allowed.insert(index);
     }
 
-    const best = try lexer_model.selectBestTokenForSet(
+    const best = try lexer_table.selectBestTokenForSet(
         allocator,
         expanded_lexical.grammar,
         allowed,
@@ -770,7 +771,7 @@ fn selectMatchingSymbolWithExternalBoundary(
         allowed.insert(index);
     }
 
-    if (try lexer_model.selectBestTokenForSet(
+    if (try lexer_table.selectBestTokenForSet(
         allocator,
         expanded_lexical.grammar,
         allowed,
