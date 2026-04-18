@@ -716,23 +716,21 @@ fn selectMatchingTerminal(
     expanded_lexical: PreparedExpandedLexical,
     remaining: []const u8,
 ) std.mem.Allocator.Error!?MatchedTerminal {
-    const matches = try lexer_model.collectTokenMatchesAlloc(allocator, expanded_lexical.grammar, remaining);
-    defer allocator.free(matches);
+    var allowed = try lexer_model.TokenIndexSet.initEmpty(allocator, expanded_lexical.grammar.variables.len);
+    defer allowed.deinit(allocator);
 
-    var valid_matches = std.ArrayListUnmanaged(lexer_model.TokenMatch).empty;
-    defer valid_matches.deinit(allocator);
-
-    for (matches) |match| {
-        const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(match.variable_index) };
+    for (expanded_lexical.grammar.variables, 0..) |_, index| {
+        const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
         if (result.resolved_actions.decisionFor(state_id, symbol) == null) continue;
-        try valid_matches.append(allocator, match);
+        allowed.insert(index);
     }
 
-    if (valid_matches.items.len == 0) return null;
-
-    lexer_model.pruneConflictingMatches(&valid_matches, expanded_lexical.conflict_map);
-
-    const best = lexer_model.selectPreferredMatch(valid_matches.items, expanded_lexical.conflict_map) orelse return null;
+    const best = try lexer_model.selectBestTokenForSet(
+        allocator,
+        expanded_lexical.grammar,
+        allowed,
+        remaining,
+    ) orelse return null;
     return .{
         .symbol = .{ .terminal = @intCast(best.variable_index) },
         .len = best.len,
@@ -763,21 +761,21 @@ fn selectMatchingSymbolWithExternalBoundary(
         }
     }
 
-    const matches = try lexer_model.collectTokenMatchesAlloc(allocator, expanded_lexical.grammar, remaining);
-    defer allocator.free(matches);
+    var allowed = try lexer_model.TokenIndexSet.initEmpty(allocator, expanded_lexical.grammar.variables.len);
+    defer allowed.deinit(allocator);
 
-    var valid_matches = std.ArrayListUnmanaged(lexer_model.TokenMatch).empty;
-    defer valid_matches.deinit(allocator);
-
-    for (matches) |match| {
-        const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(match.variable_index) };
+    for (expanded_lexical.grammar.variables, 0..) |_, index| {
+        const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
         if (result.resolved_actions.decisionFor(state_id, symbol) == null) continue;
-        try valid_matches.append(allocator, match);
+        allowed.insert(index);
     }
 
-    if (valid_matches.items.len != 0) {
-        lexer_model.pruneConflictingMatches(&valid_matches, expanded_lexical.conflict_map);
-        const lexical_best = lexer_model.selectPreferredMatch(valid_matches.items, expanded_lexical.conflict_map).?;
+    if (try lexer_model.selectBestTokenForSet(
+        allocator,
+        expanded_lexical.grammar,
+        allowed,
+        remaining,
+    )) |lexical_best| {
         if (best == null or lexicalExternalMatchBetter(best.?, lexical_best.len)) {
             best = .{
                 .symbol = .{ .terminal = @intCast(lexical_best.variable_index) },

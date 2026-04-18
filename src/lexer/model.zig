@@ -976,6 +976,27 @@ pub fn selectBestToken(
     return best;
 }
 
+pub fn selectBestTokenForSet(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    allowed_tokens: TokenIndexSet,
+    input: []const u8,
+) std.mem.Allocator.Error!?TokenMatch {
+    var start_states = std.ArrayListUnmanaged(u32).empty;
+    defer start_states.deinit(allocator);
+
+    for (grammar.variables, 0..) |variable, index| {
+        if (!allowed_tokens.contains(index)) continue;
+        try start_states.append(allocator, variable.start_state);
+    }
+    if (start_states.items.len == 0) return null;
+
+    const closure = try epsilonClosureAlloc(allocator, grammar, start_states.items);
+    defer allocator.free(closure);
+
+    return bestTokenFromStates(allocator, grammar, closure, input, 0, allowed_tokens);
+}
+
 pub fn selectBestTokenDetailed(
     allocator: std.mem.Allocator,
     grammar: ExpandedLexicalGrammar,
@@ -1319,6 +1340,107 @@ fn tokenMatchDominatesByConflict(
     }
 
     return false;
+}
+
+fn bestTokenFromStates(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    states: []const u32,
+    input: []const u8,
+    offset: usize,
+    allowed_tokens: TokenIndexSet,
+) std.mem.Allocator.Error!?TokenMatch {
+    const completion = bestCompletionForAllowed(states, grammar, allowed_tokens);
+    const completion_match: ?TokenMatch = if (completion) |value|
+        tokenMatchFromCompletion(grammar, value, offset)
+    else
+        null;
+
+    const cursor = decodeNextCodepoint(input, offset) orelse return completion_match;
+    const transitions = try collectTransitionsAlloc(allocator, grammar, states);
+    defer freeTransitions(allocator, transitions.transitions);
+
+    var best_continuation: ?TokenMatch = null;
+    for (transitions.transitions) |transition| {
+        if (!transition.chars.contains(cursor.codepoint)) continue;
+
+        const successor_contains_completed = if (completion) |value|
+            try transitionCanReachVariable(allocator, grammar, transition.target_state, value.variable_index)
+        else
+            false;
+
+        if (completion) |value| {
+            if (!preferAdvanceOverCompletion(
+                grammar,
+                value,
+                transition,
+                successor_contains_completed,
+                transitions.has_separator_transitions,
+            )) continue;
+        }
+
+        const next_states = try epsilonClosureAlloc(allocator, grammar, &.{transition.target_state});
+        defer allocator.free(next_states);
+
+        const candidate = try bestTokenFromStates(
+            allocator,
+            grammar,
+            next_states,
+            input,
+            offset + cursor.byte_len,
+            allowed_tokens,
+        ) orelse continue;
+
+        if (best_continuation == null or tokenMatchLessThan(best_continuation.?, candidate)) {
+            best_continuation = candidate;
+        }
+    }
+
+    if (completion_match == null) return best_continuation;
+    if (best_continuation == null) return completion_match;
+    return if (tokenMatchLessThan(completion_match.?, best_continuation.?))
+        best_continuation
+    else
+        completion_match;
+}
+
+fn tokenMatchFromCompletion(
+    grammar: ExpandedLexicalGrammar,
+    completion: ConflictCompletion,
+    end_offset: usize,
+) TokenMatch {
+    const variable = grammar.variables[completion.variable_index];
+    return .{
+        .variable_index = completion.variable_index,
+        .len = end_offset,
+        .completion_precedence = variable.completion_precedence,
+        .implicit_precedence = variable.implicit_precedence,
+        .kind = variable.kind,
+    };
+}
+
+fn bestCompletionForAllowed(
+    states: []const u32,
+    grammar: ExpandedLexicalGrammar,
+    allowed_tokens: TokenIndexSet,
+) ?ConflictCompletion {
+    var completion: ?ConflictCompletion = null;
+    for (states) |state_id| {
+        switch (grammar.nfa.states.items[state_id]) {
+            .accept => |accept| {
+                if (!allowed_tokens.contains(accept.variable_index)) continue;
+                const candidate: ConflictCompletion = .{
+                    .variable_index = accept.variable_index,
+                    .precedence = accept.precedence,
+                };
+                if (completion == null or preferCompletedToken(grammar, candidate, completion.?)) {
+                    completion = candidate;
+                }
+            },
+            else => {},
+        }
+    }
+    return completion;
 }
 
 fn matchState(
@@ -1986,6 +2108,40 @@ test "selectBestToken matches through the expanded lexical model" {
     const identifier = (try selectBestToken(std.testing.allocator, expanded, "alpha")).?;
     try std.testing.expectEqual(@as(usize, 0), identifier.variable_index);
     try std.testing.expectEqual(@as(usize, 5), identifier.len);
+}
+
+test "selectBestTokenForSet matches through combined valid-token traversal" {
+    const all_rules = [_]rules.Rule{
+        .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
+        .{ .string = "let" },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "identifier", .kind = .named, .rule = 0 },
+            .{ .name = "keyword", .kind = .named, .rule = 1 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var both = try TokenIndexSet.initEmpty(std.testing.allocator, expanded.variables.len);
+    defer both.deinit(std.testing.allocator);
+    both.insert(0);
+    both.insert(1);
+
+    const keyword = (try selectBestTokenForSet(std.testing.allocator, expanded, both, "let x")).?;
+    try std.testing.expectEqual(@as(usize, 1), keyword.variable_index);
+    try std.testing.expectEqual(@as(usize, 3), keyword.len);
+
+    var identifier_only = try TokenIndexSet.initEmpty(std.testing.allocator, expanded.variables.len);
+    defer identifier_only.deinit(std.testing.allocator);
+    identifier_only.insert(0);
+
+    const identifier = (try selectBestTokenForSet(std.testing.allocator, expanded, identifier_only, "let x")).?;
+    try std.testing.expectEqual(@as(usize, 0), identifier.variable_index);
+    try std.testing.expectEqual(@as(usize, 3), identifier.len);
 }
 
 test "matchVariable handles mixed pattern and string lexical variables" {
