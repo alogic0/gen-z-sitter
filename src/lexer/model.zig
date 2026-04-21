@@ -1361,15 +1361,19 @@ pub fn buildTokenConflictMapWithFollowingTokensAlloc(
         }
     }
 
+    const owner_by_state = try computeStateOwnersAlloc(allocator, grammar);
+    defer allocator.free(owner_by_state);
+
     for (0..variable_count) |left| {
         for (0..left) |right| {
-            var pair_status = try computeConflictStatusPair(allocator, grammar, left, right);
-            annotateSeparatorAndFollowingStatuses(
-                starting_chars_by_index[left],
-                starting_chars_by_index[right],
+            const pair_status = try computeConflictStatusPair(
+                allocator,
+                grammar,
+                owner_by_state,
+                left,
+                right,
                 following_chars_by_index[left],
                 following_chars_by_index[right],
-                &pair_status,
             );
             status_matrix[matrixIndex(variable_count, left, right)] = pair_status[0];
             status_matrix[matrixIndex(variable_count, right, left)] = pair_status[1];
@@ -1671,8 +1675,11 @@ fn startingCharsForVariable(
 fn computeConflictStatusPair(
     allocator: std.mem.Allocator,
     grammar: ExpandedLexicalGrammar,
+    owner_by_state: []const usize,
     left_index: usize,
     right_index: usize,
+    left_following_chars: CharacterSet,
+    right_following_chars: CharacterSet,
 ) std.mem.Allocator.Error![2]TokenConflictStatus {
     var queue = std.ArrayListUnmanaged(TokenConflictPairState).empty;
     defer {
@@ -1698,8 +1705,27 @@ fn computeConflictStatusPair(
         defer allocator.free(pair_state.left);
         defer allocator.free(pair_state.right);
 
+        const live_owner = singleLiveOwner(owner_by_state, pair_state.left, pair_state.right);
+        if (live_owner) |owner| {
+            if (owner == left_index) {
+                result[0].matches_different_string = true;
+            } else if (owner == right_index) {
+                result[1].matches_different_string = true;
+            }
+            continue;
+        }
+
         const left_completion = firstCompletion(pair_state.left, grammar);
         const right_completion = firstCompletion(pair_state.right, grammar);
+        const left_transitions = try collectTransitionsAlloc(allocator, grammar, pair_state.left);
+        defer freeTransitions(allocator, left_transitions.transitions);
+        const right_transitions = try collectTransitionsAlloc(allocator, grammar, pair_state.right);
+        defer freeTransitions(allocator, right_transitions.transitions);
+        const within_separator = left_transitions.has_separator_transitions or right_transitions.has_separator_transitions;
+
+        if (left_completion != null and within_separator) result[0].does_match_separators = true;
+        if (right_completion != null and within_separator) result[1].does_match_separators = true;
+
         if (left_completion != null and right_completion != null) {
             const preferred_left = preferCompletedToken(grammar, left_completion.?, right_completion.?);
             if (preferred_left) {
@@ -1708,11 +1734,6 @@ fn computeConflictStatusPair(
                 result[1].matches_same_string = true;
             }
         }
-
-        const left_transitions = try collectTransitionsAlloc(allocator, grammar, pair_state.left);
-        defer freeTransitions(allocator, left_transitions.transitions);
-        const right_transitions = try collectTransitionsAlloc(allocator, grammar, pair_state.right);
-        defer freeTransitions(allocator, right_transitions.transitions);
 
         if (left_transitions.transitions.len == 0 and right_transitions.transitions.len == 0) continue;
 
@@ -1757,6 +1778,9 @@ fn computeConflictStatusPair(
                     right_transitions.has_separator_transitions,
                 )) {
                     result[1].does_match_continuation = true;
+                    if (characterSetsIntersect(transition.chars, left_following_chars)) {
+                        result[1].does_match_valid_continuation = true;
+                    }
                 } else {
                     result[0].matches_prefix = true;
                 }
@@ -1779,6 +1803,9 @@ fn computeConflictStatusPair(
                     left_transitions.has_separator_transitions,
                 )) {
                     result[0].does_match_continuation = true;
+                    if (characterSetsIntersect(transition.chars, right_following_chars)) {
+                        result[0].does_match_valid_continuation = true;
+                    }
                 } else {
                     result[1].matches_prefix = true;
                 }
@@ -1789,26 +1816,59 @@ fn computeConflictStatusPair(
     return result;
 }
 
-fn annotateSeparatorAndFollowingStatuses(
-    left_starting_chars: CharacterSet,
-    right_starting_chars: CharacterSet,
-    left_following_chars: CharacterSet,
-    right_following_chars: CharacterSet,
-    result: *[2]TokenConflictStatus,
-) void {
-    if (result[0].does_match_continuation and characterSetsIntersect(left_following_chars, right_starting_chars)) {
-        result[0].does_match_valid_continuation = true;
-    }
-    if (result[1].does_match_continuation and characterSetsIntersect(right_following_chars, left_starting_chars)) {
-        result[1].does_match_valid_continuation = true;
+fn computeStateOwnersAlloc(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+) std.mem.Allocator.Error![]usize {
+    const unset = std.math.maxInt(usize);
+    const owners = try allocator.alloc(usize, grammar.nfa.states.items.len);
+    @memset(owners, unset);
+
+    for (grammar.variables, 0..) |variable, variable_index| {
+        var stack = std.ArrayListUnmanaged(u32).empty;
+        defer stack.deinit(allocator);
+        try stack.append(allocator, variable.start_state);
+        while (stack.items.len != 0) {
+            const state_id = stack.pop().?;
+            const owner = &owners[state_id];
+            if (owner.* != unset) {
+                std.debug.assert(owner.* == variable_index);
+                continue;
+            }
+            owner.* = variable_index;
+            switch (grammar.nfa.states.items[state_id]) {
+                .split => |split| {
+                    try stack.append(allocator, split.left);
+                    try stack.append(allocator, split.right);
+                },
+                .advance => |advance| try stack.append(allocator, advance.state_id),
+                .accept => {},
+            }
+        }
     }
 
-    if (result[0].does_match_continuation and result[0].matches_prefix) {
-        result[0].does_match_separators = true;
+    return owners;
+}
+
+fn singleLiveOwner(owner_by_state: []const usize, left: []const u32, right: []const u32) ?usize {
+    var owner: ?usize = null;
+    for (left) |state_id| {
+        const current = owner_by_state[state_id];
+        if (owner == null) {
+            owner = current;
+        } else if (owner.? != current) {
+            return null;
+        }
     }
-    if (result[1].does_match_continuation and result[1].matches_prefix) {
-        result[1].does_match_separators = true;
+    for (right) |state_id| {
+        const current = owner_by_state[state_id];
+        if (owner == null) {
+            owner = current;
+        } else if (owner.? != current) {
+            return null;
+        }
     }
+    return owner;
 }
 
 fn epsilonClosureAlloc(
