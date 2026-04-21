@@ -18,11 +18,12 @@ const grammar_loader = @import("../grammar/loader.zig");
 const json_loader = @import("../grammar/json_loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const emit_optimize = @import("../parser_emit/optimize.zig");
+const runtime_io = @import("../support/runtime_io.zig");
 
 threadlocal var scoped_progress_enabled: bool = false;
 
 fn envFlagEnabled(name: []const u8) bool {
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, name) catch return false;
+    const value = std.process.Environ.getAlloc(runtime_io.environ(), std.heap.page_allocator, name) catch return false;
     defer std.heap.page_allocator.free(value);
 
     if (value.len == 0) return false;
@@ -31,7 +32,11 @@ fn envFlagEnabled(name: []const u8) bool {
 }
 
 fn hasProgressTargetFilter() bool {
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_PARSE_TABLE_TARGET_FILTER") catch return false;
+    const value = std.process.Environ.getAlloc(
+        runtime_io.environ(),
+        std.heap.page_allocator,
+        "GEN_Z_SITTER_PARSE_TABLE_TARGET_FILTER",
+    ) catch return false;
     defer std.heap.page_allocator.free(value);
     return value.len != 0;
 }
@@ -53,18 +58,16 @@ fn logPipelineStart(step: []const u8) void {
     std.debug.print("[parse_table_pipeline] start {s}\n", .{step});
 }
 
-fn logPipelineDone(step: []const u8, timer: *std.time.Timer) void {
-    const elapsed_ms = @as(f64, @floatFromInt(timer.read())) / @as(f64, std.time.ns_per_ms);
-    std.debug.print("[parse_table_pipeline] done  {s} ({d:.2} ms)\n", .{ step, elapsed_ms });
+fn logPipelineDone(step: []const u8) void {
+    std.debug.print("[parse_table_pipeline] done  {s}\n", .{step});
 }
 
-fn maybeStartTimer(enabled: bool) ?std.time.Timer {
-    if (!enabled) return null;
-    return std.time.Timer.start() catch null;
+fn maybeStartTimer(enabled: bool) bool {
+    return enabled;
 }
 
-fn maybeLogPipelineDone(step: []const u8, timer: ?*std.time.Timer) void {
-    if (timer) |value| logPipelineDone(step, value);
+fn maybeLogPipelineDone(step: []const u8, enabled: bool) void {
+    if (enabled) logPipelineDone(step);
 }
 
 fn logPipelineSummary(comptime format: []const u8, args: anytype) void {
@@ -112,20 +115,20 @@ pub fn buildStatesFromPreparedWithOptions(
     std.debug.print("[parse_table/pipeline] stage extract_tokens\n", .{});
     if (progress_log) logPipelineStart("extract_tokens");
     const extracted = try extract_tokens.extractTokens(allocator, prepared);
-    if (progress_log) maybeLogPipelineDone("extract_tokens", if (timer) |*value| value else null);
+    if (progress_log) maybeLogPipelineDone("extract_tokens", timer);
 
     timer = maybeStartTimer(progress_log);
     std.debug.print("[parse_table/pipeline] stage flatten_grammar\n", .{});
     if (progress_log) logPipelineStart("flatten_grammar");
     const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
-    if (progress_log) maybeLogPipelineDone("flatten_grammar", if (timer) |*value| value else null);
+    if (progress_log) maybeLogPipelineDone("flatten_grammar", timer);
 
     timer = maybeStartTimer(progress_log);
     std.debug.print("[parse_table/pipeline] stage build_states\n", .{});
     if (progress_log) logPipelineStart("build_states");
     const result = try build.buildStatesWithOptions(allocator, flattened, build_options);
     if (progress_log) {
-        maybeLogPipelineDone("build_states", if (timer) |*value| value else null);
+        maybeLogPipelineDone("build_states", timer);
         logPipelineSummary(
             "build_states summary states={d} unresolved_decisions={} serialization_ready={}",
             .{ result.states.len, result.hasUnresolvedDecisions(), result.isSerializationReady() },
@@ -250,12 +253,12 @@ pub fn serializeTableFromPreparedWithBuildOptions(
     const progress_log = shouldLogPipelineProgress();
     std.debug.print("[parse_table/pipeline] serializeTableFromPreparedWithBuildOptions enter mode={s}\n", .{@tagName(mode)});
     const result = try buildStatesFromPreparedWithOptions(allocator, prepared, build_options);
-    var timer = maybeStartTimer(progress_log);
+    const timer = maybeStartTimer(progress_log);
     std.debug.print("[parse_table/pipeline] stage serialize_build_result\n", .{});
     if (progress_log) logPipelineStart("serialize_build_result");
     const serialized = try serialize.serializeBuildResult(allocator, result, mode);
     if (progress_log) {
-        maybeLogPipelineDone("serialize_build_result", if (timer) |*value| value else null);
+        maybeLogPipelineDone("serialize_build_result", timer);
         logPipelineSummary(
             "serialize_build_result summary mode={s} serialized_states={d} blocked={}",
             .{ @tagName(mode), serialized.states.len, serialized.blocked },

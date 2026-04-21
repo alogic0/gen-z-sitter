@@ -7,6 +7,7 @@ const state = @import("state.zig");
 const conflicts = @import("conflicts.zig");
 const resolution = @import("resolution.zig");
 const rules = @import("../ir/rules.zig");
+const runtime_io = @import("../support/runtime_io.zig");
 
 threadlocal var scoped_progress_enabled: bool = false;
 threadlocal var current_transition_context: ?TransitionContext = null;
@@ -21,7 +22,7 @@ const TransitionContext = struct {
 };
 
 fn envFlagEnabled(name: []const u8) bool {
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, name) catch return false;
+    const value = std.process.Environ.getAlloc(runtime_io.environ(), std.heap.page_allocator, name) catch return false;
     defer std.heap.page_allocator.free(value);
 
     if (value.len == 0) return false;
@@ -30,7 +31,11 @@ fn envFlagEnabled(name: []const u8) bool {
 }
 
 fn hasProgressTargetFilter() bool {
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_PARSE_TABLE_TARGET_FILTER") catch return false;
+    const value = std.process.Environ.getAlloc(
+        runtime_io.environ(),
+        std.heap.page_allocator,
+        "GEN_Z_SITTER_PARSE_TABLE_TARGET_FILTER",
+    ) catch return false;
     defer std.heap.page_allocator.free(value);
     return value.len != 0;
 }
@@ -65,18 +70,16 @@ fn logBuildStart(step: []const u8) void {
     std.debug.print("[parse_table_build] start {s}\n", .{step});
 }
 
-fn logBuildDone(step: []const u8, timer: *std.time.Timer) void {
-    const elapsed_ms = @as(f64, @floatFromInt(timer.read())) / @as(f64, std.time.ns_per_ms);
-    std.debug.print("[parse_table_build] done  {s} ({d:.2} ms)\n", .{ step, elapsed_ms });
+fn logBuildDone(step: []const u8) void {
+    std.debug.print("[parse_table_build] done  {s}\n", .{step});
 }
 
-fn maybeStartTimer(enabled: bool) ?std.time.Timer {
-    if (!enabled) return null;
-    return std.time.Timer.start() catch null;
+fn maybeStartTimer(enabled: bool) bool {
+    return enabled;
 }
 
-fn maybeLogBuildDone(step: []const u8, timer: ?*std.time.Timer) void {
-    if (timer) |value| logBuildDone(step, value);
+fn maybeLogBuildDone(step: []const u8, enabled: bool) void {
+    if (enabled) logBuildDone(step);
 }
 
 fn logBuildSummary(comptime format: []const u8, args: anytype) void {
@@ -104,9 +107,14 @@ fn optionalSymbolRefFormat(value: ?syntax_ir.SymbolRef, writer: anytype) !void {
 }
 
 fn optionalSymbolRefText(buf: []u8, value: ?syntax_ir.SymbolRef) []const u8 {
-    var stream = std.io.fixedBufferStream(buf);
-    optionalSymbolRefFormat(value, stream.writer()) catch return "format_error";
-    return stream.getWritten();
+    if (value) |symbol| {
+        return switch (symbol) {
+            .non_terminal => |index| std.fmt.bufPrint(buf, "non_terminal:{d}", .{index}) catch "format_error",
+            .terminal => |index| std.fmt.bufPrint(buf, "terminal:{d}", .{index}) catch "format_error",
+            .external => |index| std.fmt.bufPrint(buf, "external:{d}", .{index}) catch "format_error",
+        };
+    }
+    return "none";
 }
 
 fn singleLookahead(lookaheads: first.SymbolSet) ?syntax_ir.SymbolRef {
@@ -129,21 +137,19 @@ fn symbolDisplayText(
     variables: []const syntax_ir.SyntaxVariable,
     symbol: syntax_ir.SymbolRef,
 ) []const u8 {
-    var stream = std.io.fixedBufferStream(buf);
     switch (symbol) {
         .non_terminal => |index| {
             const name = if (index < variables.len) variables[index].name else "<unknown>";
-            stream.writer().print("non_terminal:{d}({s})", .{ index, name }) catch return "format_error";
+            return std.fmt.bufPrint(buf, "non_terminal:{d}({s})", .{ index, name }) catch "format_error";
         },
         .terminal => |index| {
             const name = if (index < variables.len) variables[index].name else "<unknown>";
-            stream.writer().print("terminal:{d}({s})", .{ index, name }) catch return "format_error";
+            return std.fmt.bufPrint(buf, "terminal:{d}({s})", .{ index, name }) catch "format_error";
         },
         .external => |index| {
-            stream.writer().print("external:{d}", .{index}) catch return "format_error";
+            return std.fmt.bufPrint(buf, "external:{d}", .{index}) catch "format_error";
         },
     }
-    return stream.getWritten();
 }
 
 fn setCurrentTransitionContext(context: ?TransitionContext) void {
@@ -1247,14 +1253,14 @@ pub fn buildStatesWithOptions(
     if (progress_log) std.debug.print("[parse_table/build] stage compute_first_sets\n", .{});
     if (progress_log) logBuildStart("compute_first_sets");
     const first_sets = try first.computeFirstSets(allocator, grammar);
-    if (progress_log) maybeLogBuildDone("compute_first_sets", if (timer) |*value| value else null);
+    if (progress_log) maybeLogBuildDone("compute_first_sets", timer);
 
     timer = maybeStartTimer(progress_log);
     if (progress_log) std.debug.print("[parse_table/build] stage collect_productions\n", .{});
     if (progress_log) logBuildStart("collect_productions");
     const productions = try collectProductions(allocator, grammar);
     if (progress_log) {
-        maybeLogBuildDone("collect_productions", if (timer) |*value| value else null);
+        maybeLogBuildDone("collect_productions", timer);
         logBuildSummary("collect_productions summary productions={d}", .{productions.len});
     }
 
@@ -1266,7 +1272,7 @@ pub fn buildStatesWithOptions(
     if (progress_log) logBuildStart("construct_states");
     const constructed = try constructStates(allocator, grammar.variables, productions, first_sets, item_set_builder, options);
     if (progress_log) {
-        maybeLogBuildDone("construct_states", if (timer) |*value| value else null);
+        maybeLogBuildDone("construct_states", timer);
         logBuildSummary(
             "construct_states summary states={d} action_states={d}",
             .{ constructed.states.len, constructed.actions.states.len },
@@ -1277,7 +1283,7 @@ pub fn buildStatesWithOptions(
     if (progress_log) std.debug.print("[parse_table/build] stage group_action_table\n", .{});
     if (progress_log) logBuildStart("group_action_table");
     const grouped_actions = try actions.groupActionTable(allocator, constructed.actions);
-    if (progress_log) maybeLogBuildDone("group_action_table", if (timer) |*value| value else null);
+    if (progress_log) maybeLogBuildDone("group_action_table", timer);
 
     timer = maybeStartTimer(progress_log);
     if (progress_log) std.debug.print("[parse_table/build] stage resolve_action_table\n", .{});
@@ -1290,7 +1296,7 @@ pub fn buildStatesWithOptions(
         grouped_actions,
     );
     if (progress_log) {
-        maybeLogBuildDone("resolve_action_table", if (timer) |*value| value else null);
+        maybeLogBuildDone("resolve_action_table", timer);
         logBuildSummary(
             "resolve_action_table summary unresolved_decisions={} serialization_ready={}",
             .{ resolved_actions.hasUnresolvedDecisions(), resolved_actions.isSerializationReady() },
@@ -1527,13 +1533,13 @@ const ConstructStatesReporter = struct {
         std.debug.print("[parse_table/build] constructStates enter\n", .{});
     }
 
-    fn startInitialClosure(self: @This()) ?std.time.Timer {
+    fn startInitialClosure(self: @This()) bool {
         const timer = maybeStartTimer(self.progress_log);
         if (self.progress_log) logBuildStart("construct_states.initial_closure");
         return timer;
     }
 
-    fn logInitialClosureDone(self: @This(), start_timer: ?*std.time.Timer, item_count: usize) void {
+    fn logInitialClosureDone(self: @This(), start_timer: bool, item_count: usize) void {
         if (!self.progress_log) return;
         std.debug.print("[parse_table/build] constructStates initial_closure_done items={d}\n", .{item_count});
         if (self.progress_log) {
@@ -2099,25 +2105,19 @@ const ClosureRun = struct {
                         },
                     );
                 }
-                if (append_timer) |timer_snapshot| {
-                    var timer_value = timer_snapshot;
-                    const append_ns = timer_value.read();
-                    if (append_ns >= 100 * std.time.ns_per_ms) {
-                        const append_ms = @as(f64, @floatFromInt(append_ns)) / @as(f64, std.time.ns_per_ms);
-                        logBuildSummary(
-                            "closure slow_append non_terminal={d} name={s} generated_items={d} existing_items={d} added={d} duplicate_checks={d} duplicate_hits={d} ({d:.2} ms)",
-                            .{
-                                non_terminal,
-                                if (non_terminal < self.variables.len) self.variables[non_terminal].name else "<unknown>",
-                                generated_items.len,
-                                self.items.items.len,
-                                append_stats.added,
-                                append_stats.duplicate_checks,
-                                append_stats.duplicate_hits,
-                                append_ms,
-                            },
-                        );
-                    }
+                if (append_timer) {
+                    logBuildSummary(
+                        "closure append non_terminal={d} name={s} generated_items={d} existing_items={d} added={d} duplicate_checks={d} duplicate_hits={d}",
+                        .{
+                            non_terminal,
+                            if (non_terminal < self.variables.len) self.variables[non_terminal].name else "<unknown>",
+                            generated_items.len,
+                            self.items.items.len,
+                            append_stats.added,
+                            append_stats.duplicate_checks,
+                            append_stats.duplicate_hits,
+                        },
+                    );
                 }
                 if (self.progress_log and non_terminal < stats.added_items.len) {
                     stats.added_items[non_terminal] += append_stats.added;
@@ -2796,7 +2796,7 @@ fn constructStates(
     var largest_new_successor: ?SuccessorDiagnostic = null;
     var largest_reused_successor: ?SuccessorDiagnostic = null;
 
-    var start_timer = reporter.startInitialClosure();
+    const start_timer = reporter.startInitialClosure();
     const start_seed = [_]item.ParseItemSetEntry{
         try item.ParseItemSetEntry.initEmpty(allocator, first_sets.terminals_len, first_sets.externals_len, item.ParseItem.init(0, 0)),
     };
@@ -2806,7 +2806,7 @@ fn constructStates(
         .{ .entries = start_seed[0..] },
         options,
     );
-    reporter.logInitialClosureDone(if (start_timer) |*value| value else null, start_item_set.entries.len);
+    reporter.logInitialClosureDone(start_timer, start_item_set.entries.len);
     try state_registry.appendInitialState(start_item_set);
 
     var state_engine = StateConstructionEngine{

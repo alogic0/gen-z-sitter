@@ -25,7 +25,7 @@ const EmittedSizeStats = struct {
     parser_c_emitted_bytes: usize,
 };
 
-pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !void {
+pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.GenerateOptions) !void {
     if (opts.grammar_path.len == 0) {
         return error.InvalidArguments;
     }
@@ -33,7 +33,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
     var loaded = grammar_loader.loadGrammarFile(allocator, opts.grammar_path) catch |err| {
         switch (err) {
             error.OutOfMemory => {
-                try diag.printStderr(.{
+                try diag.printStderr(io, .{
                     .kind = .internal,
                     .message = grammar_loader.errorMessage(err),
                     .path = opts.grammar_path,
@@ -41,7 +41,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
                 return err;
             },
             else => {
-                try diag.printStderr(.{
+                try diag.printStderr(io, .{
                     .kind = if (err == error.IoFailure or err == error.ProcessFailure) .io else .usage,
                     .message = grammar_loader.errorMessage(err),
                     .path = opts.grammar_path,
@@ -57,7 +57,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
 
     const prepared = parse_grammar.parseRawGrammar(parse_arena.allocator(), &loaded.json.grammar) catch |err| {
         const diagnostic = parse_grammar.errorDiagnostic(err);
-        try diag.printStderr(.{
+        try diag.printStderr(io, .{
             .kind = .usage,
             .message = diagnostic.summary,
             .note = diagnostic.note,
@@ -70,7 +70,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
         const dump = try debug_dump.dumpPreparedGrammar(allocator, prepared);
         defer allocator.free(dump);
         if (!builtin.is_test) {
-            try std.fs.File.stdout().writeAll(dump);
+            try std.Io.File.stdout().writeStreamingAll(io, dump);
         }
         return;
     }
@@ -81,7 +81,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
 
         const json = node_type_pipeline.generateNodeTypesJsonFromPrepared(pipeline_arena.allocator(), prepared) catch |err| switch (err) {
             error.InvalidSupertype => {
-                try diag.printStderr(.{
+                try diag.printStderr(io, .{
                     .kind = .usage,
                     .message = "invalid supertype for node-types computation",
                     .path = opts.grammar_path,
@@ -92,7 +92,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
         };
 
         if (!builtin.is_test) {
-            try std.fs.File.stdout().writeAll(json);
+            try std.Io.File.stdout().writeStreamingAll(io, json);
         }
         return;
     }
@@ -105,7 +105,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
 
         const json = node_type_pipeline.generateNodeTypesJsonFromPrepared(pipeline_arena.allocator(), prepared) catch |err| switch (err) {
             error.InvalidSupertype => {
-                try diag.printStderr(.{
+                try diag.printStderr(io, .{
                     .kind = .usage,
                     .message = "invalid supertype for node-types computation",
                     .path = opts.grammar_path,
@@ -120,7 +120,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
         try fs_support.writeFile(output_path, json);
 
         if (!opts.json_summary) {
-            try diag.printStdout(.{
+            try diag.printStdout(io, .{
                 .kind = .info,
                 .message = "wrote node-types.json",
                 .path = output_path,
@@ -139,17 +139,17 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
             .{ .compact_duplicate_states = opts.optimize_merge_states },
         );
         if (!builtin.is_test) {
-            try std.fs.File.stdout().writeAll(summary);
+            try std.Io.File.stdout().writeStreamingAll(io, summary);
         }
         return;
     }
 
-    try diag.printStdout(.{
+    try diag.printStdout(io, .{
         .kind = .info,
         .message = "loaded grammar successfully",
         .path = opts.grammar_path,
     });
-    try diag.printStdout(.{
+    try diag.printStdout(io, .{
         .kind = .info,
         .message = "grammar",
         .note = loaded.json.grammar.name,
@@ -157,25 +157,25 @@ pub fn runGenerate(allocator: std.mem.Allocator, opts: args.GenerateOptions) !vo
 
     var counts_buffer: [64]u8 = undefined;
     const rule_count = try std.fmt.bufPrint(&counts_buffer, "rules: {}", .{loaded.json.grammar.ruleCount()});
-    try diag.printStdout(.{
+    try diag.printStdout(io, .{
         .kind = .info,
         .message = rule_count,
     });
 
     const external_count = try std.fmt.bufPrint(&counts_buffer, "externals: {}", .{loaded.json.grammar.externals.len});
-    try diag.printStdout(.{
+    try diag.printStdout(io, .{
         .kind = .info,
         .message = external_count,
     });
 
     const extras_count = try std.fmt.bufPrint(&counts_buffer, "extras: {}", .{loaded.json.grammar.extras.len});
-    try diag.printStdout(.{
+    try diag.printStdout(io, .{
         .kind = .info,
         .message = extras_count,
     });
 
     const symbol_count = try std.fmt.bufPrint(&counts_buffer, "symbols: {}", .{prepared.symbols.len});
-    try diag.printStdout(.{
+    try diag.printStdout(io, .{
         .kind = .info,
         .message = symbol_count,
     });
@@ -195,9 +195,9 @@ fn generateJsonSummaryAlloc(
     const serialized_state_count = serialized.states.len;
     const emitted_size_stats = try collectEmittedSizeStats(allocator, serialized, options);
 
-    var out = std.array_list.Managed(u8).init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
-    const writer = out.writer();
+    const writer = &out.writer;
 
     try writer.writeAll("{\n");
     try writer.print("  \"blocked\": {s},\n", .{if (parser_stats.blocked) "true" else "false"});

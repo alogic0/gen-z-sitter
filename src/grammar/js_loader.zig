@@ -1,6 +1,7 @@
 const std = @import("std");
 const json_loader = @import("json_loader.zig");
 const process_support = @import("../support/process.zig");
+const runtime_io = @import("../support/runtime_io.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
 pub const LoadError = json_loader.LoadError || error{
@@ -29,7 +30,7 @@ pub fn emitGrammarJsonFromJsAlloc(gpa: std.mem.Allocator, path: []const u8) Load
     defer result.deinit(gpa);
 
     switch (result.term) {
-        .Exited => |code| if (code != 0) return error.ProcessFailure,
+        .exited => |code| if (code != 0) return error.ProcessFailure,
         else => return error.ProcessFailure,
     }
 
@@ -43,13 +44,13 @@ pub fn loadGrammarJs(gpa: std.mem.Allocator, path: []const u8) LoadError!json_lo
 }
 
 fn isDirectory(path: []const u8) bool {
+    const io = runtime_io.get();
     const dir = if (std.fs.path.isAbsolute(path))
-        std.fs.openDirAbsolute(path, .{})
+        std.Io.Dir.openDirAbsolute(io, path, .{})
     else
-        std.fs.cwd().openDir(path, .{});
+        std.Io.Dir.cwd().openDir(io, path, .{});
     if (dir) |opened_dir| {
-        var opened = opened_dir;
-        opened.close();
+        opened_dir.close(io);
         return true;
     } else |_| {
         return false;

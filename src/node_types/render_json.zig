@@ -3,7 +3,7 @@ const compute = @import("compute.zig");
 
 pub const RenderJsonError = error{
     OutOfMemory,
-} || std.fs.File.WriteError;
+} || std.Io.Writer.Error;
 
 pub fn renderNodeTypesJson(
     writer: anytype,
@@ -59,10 +59,10 @@ pub fn renderNodeTypesJsonAlloc(
     allocator: std.mem.Allocator,
     nodes: []const compute.NodeType,
 ) RenderJsonError![]const u8 {
-    var list = std.array_list.Managed(u8).init(allocator);
-    defer list.deinit();
-    try renderNodeTypesJson(list.writer(), nodes);
-    return try list.toOwnedSlice();
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    try renderNodeTypesJson(&out.writer, nodes);
+    return try out.toOwnedSlice();
 }
 
 fn renderFields(writer: anytype, fields: []const compute.Field) RenderJsonError!void {

@@ -1,4 +1,5 @@
 const std = @import("std");
+const runtime_io = @import("runtime_io.zig");
 
 pub const RunResult = struct {
     stdout: []u8,
@@ -12,8 +13,7 @@ pub const RunResult = struct {
 };
 
 pub fn runCapture(allocator: std.mem.Allocator, argv: []const []const u8) !RunResult {
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
+    const result = try std.process.run(allocator, runtime_io.get(), .{
         .argv = argv,
     });
 

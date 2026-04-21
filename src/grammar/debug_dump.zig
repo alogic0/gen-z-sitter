@@ -8,11 +8,11 @@ const json_loader = @import("json_loader.zig");
 const parse_grammar = @import("parse_grammar.zig");
 
 pub fn dumpPreparedGrammar(allocator: std.mem.Allocator, prepared: ir.PreparedGrammar) ![]u8 {
-    var list = std.array_list.Managed(u8).init(allocator);
-    errdefer list.deinit();
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
 
-    try writePreparedGrammar(list.writer(), prepared);
-    return try list.toOwnedSlice();
+    try writePreparedGrammar(&out.writer, prepared);
+    return try out.toOwnedSlice();
 }
 
 pub fn writePreparedGrammar(writer: anytype, prepared: ir.PreparedGrammar) !void {

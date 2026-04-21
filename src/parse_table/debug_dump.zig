@@ -9,15 +9,15 @@ fn testLog(name: []const u8) void {
     std.debug.print("[parse_table/debug_dump] {s}\n", .{name});
 }
 
-pub const DebugDumpError = std.mem.Allocator.Error || std.fs.File.WriteError;
+pub const DebugDumpError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
 pub fn dumpStatesAlloc(
     allocator: std.mem.Allocator,
     states: []const state.ParseState,
 ) DebugDumpError![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     defer out.deinit();
-    try writeStates(out.writer(), states);
+    try writeStates(&out.writer, states);
     return try out.toOwnedSlice();
 }
 
@@ -26,9 +26,9 @@ pub fn dumpStatesWithActionsAlloc(
     states: []const state.ParseState,
     action_table: actions.ActionTable,
 ) DebugDumpError![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     defer out.deinit();
-    try writeStatesWithActions(out.writer(), states, action_table);
+    try writeStatesWithActions(&out.writer, states, action_table);
     return try out.toOwnedSlice();
 }
 
@@ -37,9 +37,9 @@ pub fn dumpActionTableAlloc(
     states: []const state.ParseState,
     action_table: actions.ActionTable,
 ) DebugDumpError![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     defer out.deinit();
-    try writeActionTable(out.writer(), states, action_table);
+    try writeActionTable(&out.writer, states, action_table);
     return try out.toOwnedSlice();
 }
 
@@ -48,9 +48,9 @@ pub fn dumpGroupedActionTableAlloc(
     states: []const state.ParseState,
     action_table: actions.ActionTable,
 ) DebugDumpError![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     defer out.deinit();
-    try writeGroupedActionTableAlloc(allocator, out.writer(), states, action_table);
+    try writeGroupedActionTableAlloc(allocator, &out.writer, states, action_table);
     return try out.toOwnedSlice();
 }
 
@@ -58,9 +58,9 @@ pub fn dumpResolvedActionTableAlloc(
     allocator: std.mem.Allocator,
     resolved_table: resolution.ResolvedActionTable,
 ) DebugDumpError![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     defer out.deinit();
-    try writeResolvedActionTable(out.writer(), resolved_table);
+    try writeResolvedActionTable(&out.writer, resolved_table);
     return try out.toOwnedSlice();
 }
 
@@ -68,9 +68,9 @@ pub fn dumpSerializedTableAlloc(
     allocator: std.mem.Allocator,
     serialized_table: serialize.SerializedTable,
 ) DebugDumpError![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     defer out.deinit();
-    try writeSerializedTable(out.writer(), serialized_table);
+    try writeSerializedTable(&out.writer, serialized_table);
     return try out.toOwnedSlice();
 }
 

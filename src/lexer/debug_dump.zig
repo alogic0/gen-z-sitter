@@ -1,15 +1,15 @@
 const std = @import("std");
 const lexical_serialize = @import("serialize.zig");
 
-pub const DebugDumpError = std.mem.Allocator.Error || std.fs.File.WriteError;
+pub const DebugDumpError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
 pub fn dumpSerializedLexicalGrammarAlloc(
     allocator: std.mem.Allocator,
     serialized: lexical_serialize.SerializedLexicalGrammar,
 ) DebugDumpError![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
-    try writeSerializedLexicalGrammar(out.writer(), serialized);
+    try writeSerializedLexicalGrammar(&out.writer, serialized);
     return try out.toOwnedSlice();
 }
 

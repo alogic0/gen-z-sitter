@@ -6,7 +6,7 @@ const common = @import("common.zig");
 const compat = @import("compat.zig");
 const optimize = @import("optimize.zig");
 
-pub const EmitError = std.mem.Allocator.Error || std.fs.File.WriteError;
+pub const EmitError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
 pub const RowSharingStats = struct {
     total_rows: usize,
@@ -40,9 +40,9 @@ pub fn emitParserCAllocWithOptions(
     serialized: serialize.SerializedTable,
     options: optimize.Options,
 ) EmitError![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     defer out.deinit();
-    try writeParserCWithOptions(out.writer(), allocator, serialized, options);
+    try writeParserCWithOptions(&out.writer, allocator, serialized, options);
     return try out.toOwnedSlice();
 }
 
@@ -566,7 +566,7 @@ const EmittedSymbol = struct {
 fn collectEmittedSymbols(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
-) std.mem.Allocator.Error![]EmittedSymbol {
+) EmitError![]EmittedSymbol {
     var symbols = std.array_list.Managed(EmittedSymbol).init(allocator);
     defer symbols.deinit();
 
@@ -590,14 +590,14 @@ fn appendUniqueEmittedSymbol(
     allocator: std.mem.Allocator,
     symbols: *std.array_list.Managed(EmittedSymbol),
     symbol: syntax_grammar.SymbolRef,
-) std.mem.Allocator.Error!void {
+) EmitError!void {
     for (symbols.items) |existing| {
         if (symbolRefEql(existing.ref, symbol)) return;
     }
 
-    var buffer = std.array_list.Managed(u8).init(allocator);
+    var buffer: std.Io.Writer.Allocating = .init(allocator);
     defer buffer.deinit();
-    try common.writeSymbol(buffer.writer(), symbol);
+    try common.writeSymbol(&buffer.writer, symbol);
 
     try symbols.append(.{
         .ref = symbol,

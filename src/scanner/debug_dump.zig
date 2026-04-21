@@ -1,15 +1,15 @@
 const std = @import("std");
 const scanner_serialize = @import("serialize.zig");
 
-pub const DebugDumpError = std.mem.Allocator.Error || std.fs.File.WriteError;
+pub const DebugDumpError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
 pub fn dumpSerializedExternalScannerAlloc(
     allocator: std.mem.Allocator,
     serialized: scanner_serialize.SerializedExternalScannerBoundary,
 ) DebugDumpError![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
-    try writeSerializedExternalScanner(out.writer(), serialized);
+    try writeSerializedExternalScanner(&out.writer, serialized);
     return try out.toOwnedSlice();
 }
 

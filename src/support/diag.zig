@@ -16,14 +16,14 @@ pub const Diagnostic = struct {
     note: ?[]const u8 = null,
 };
 
-pub fn printStdout(d: Diagnostic) !void {
+pub fn printStdout(io: std.Io, d: Diagnostic) !void {
     if (builtin.is_test) return;
-    try printToFile(std.fs.File.stdout(), d);
+    try printToFile(std.Io.File.stdout(), io, d);
 }
 
-pub fn printStderr(d: Diagnostic) !void {
+pub fn printStderr(io: std.Io, d: Diagnostic) !void {
     if (builtin.is_test) return;
-    try printToFile(std.fs.File.stderr(), d);
+    try printToFile(std.Io.File.stderr(), io, d);
 }
 
 pub fn print(writer: anytype, d: Diagnostic) !void {
@@ -36,21 +36,11 @@ pub fn print(writer: anytype, d: Diagnostic) !void {
     }
 }
 
-fn printToFile(file: std.fs.File, d: Diagnostic) !void {
-    try file.writeAll(kindLabel(d.kind));
-    try file.writeAll(": ");
-    try file.writeAll(d.message);
-    try file.writeAll("\n");
-    if (d.path) |path| {
-        try file.writeAll("path: ");
-        try file.writeAll(path);
-        try file.writeAll("\n");
-    }
-    if (d.note) |note| {
-        try file.writeAll("note: ");
-        try file.writeAll(note);
-        try file.writeAll("\n");
-    }
+fn printToFile(file: std.Io.File, io: std.Io, d: Diagnostic) !void {
+    var buffer: [256]u8 = undefined;
+    var file_writer = file.writer(io, &buffer);
+    try print(&file_writer.interface, d);
+    try file_writer.interface.flush();
 }
 
 fn kindLabel(kind: Kind) []const u8 {

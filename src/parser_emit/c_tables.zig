@@ -3,7 +3,7 @@ const serialize = @import("../parse_table/serialize.zig");
 const common = @import("common.zig");
 const optimize = @import("optimize.zig");
 
-pub const EmitError = std.mem.Allocator.Error || std.fs.File.WriteError;
+pub const EmitError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
 pub fn emitCTableSkeletonAlloc(
     allocator: std.mem.Allocator,
@@ -17,12 +17,12 @@ pub fn emitCTableSkeletonAllocWithOptions(
     serialized: serialize.SerializedTable,
     options: optimize.Options,
 ) EmitError![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     defer out.deinit();
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const compacted = try optimize.prepareSerializedTableAlloc(arena.allocator(), serialized, options);
-    try writeCTableSkeleton(out.writer(), compacted);
+    try writeCTableSkeleton(&out.writer, compacted);
     return try out.toOwnedSlice();
 }
 

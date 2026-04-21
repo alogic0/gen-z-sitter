@@ -261,7 +261,7 @@ const SummaryContext = struct {
         self.summaries[index] = .{};
 
         const variable = self.syntax.variables[index];
-        var field_map = std.StringArrayHashMap(FieldAccumulator).init(self.allocator);
+        var field_map = std.StringHashMap(FieldAccumulator).init(self.allocator);
         var child_types = std.array_list.Managed(NodeTypeRef).init(self.allocator);
         var children_quantity: ?ChildQuantity = null;
         var child_types_without_fields = std.array_list.Managed(NodeTypeRef).init(self.allocator);
@@ -269,7 +269,7 @@ const SummaryContext = struct {
         var has_multi_step = false;
 
         for (variable.productions, 0..) |production, production_index| {
-            var production_field_quantities = std.StringArrayHashMap(ChildQuantity).init(self.allocator);
+            var production_field_quantities = std.StringHashMap(ChildQuantity).init(self.allocator);
             defer production_field_quantities.deinit();
             var production_children_quantity = ChildQuantity.zero();
             var production_children_without_fields_quantity = ChildQuantity.zero();
@@ -415,7 +415,7 @@ const SummaryContext = struct {
 
 fn getFieldAccumulator(
     allocator: std.mem.Allocator,
-    map: *std.StringArrayHashMap(FieldAccumulator),
+    map: *std.StringHashMap(FieldAccumulator),
     field_name: []const u8,
     prior_production_count: usize,
 ) ComputeNodeTypesError!*FieldAccumulator {
@@ -430,7 +430,7 @@ fn getFieldAccumulator(
 }
 
 fn getProductionFieldQuantity(
-    map: *std.StringArrayHashMap(ChildQuantity),
+    map: *std.StringHashMap(ChildQuantity),
     field_name: []const u8,
 ) ComputeNodeTypesError!*ChildQuantity {
     const gop = try map.getOrPut(field_name);
