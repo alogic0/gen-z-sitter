@@ -2,64 +2,134 @@
 
 This file records the Zig 0.16 changes that showed up while fixing `zig build` in this repository.
 
-## Main / Process Startup
+It is split into:
 
-- `std.heap.GeneralPurposeAllocator` is gone from the old call sites we had. For this codebase, the simpler migration was to use `pub fn main(init: std.process.Init) !void` and take the allocator from `init.gpa`.
-- `std.process.argsAlloc` / `std.process.argsFree` are no longer the right entrypoint helpers here. Zig 0.16 exposes process args through `init.minimal.args`, and the portable way we used was `try init.minimal.args.toSlice(arena)`.
-- Child process termination tags are now lowercase. Example: `.Exited` became `.exited`.
+- official migration themes from Zig 0.16 release notes
+- local repository choices made to get this codebase building
 
-## I/O and Filesystem
+## Official 0.16 Themes
 
-- `std.fs.File` call sites used by this repo had to move to `std.Io.File`.
-- Direct writes like `std.fs.File.stdout().writeAll(...)` were replaced with Zig 0.16 patterns such as:
-  - `std.Io.File.stdout().writeStreamingAll(io, bytes)`
-  - `file.writer(io, &buffer)` for buffered writer-based output
-- Filesystem helpers that previously lived under `std.fs.cwd()` now come from `std.Io.Dir.cwd()` in the code we touched.
-- Absolute/open dir helpers moved to `std.Io.Dir.openDirAbsolute(...)` and `std.Io.Dir.cwd().openDir(...)`.
-- Directory creation and file read/write helpers in this repo now use:
-  - `std.Io.Dir.cwd().createDirPath(io, path)`
-  - `std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(max_bytes))`
-  - `std.Io.Dir.cwd().writeFile(io, .{ ... })`
+### I/O as an Interface
 
-## Diagnostics and Writers
+Zig 0.16 moves a large part of filesystem and process work behind `std.Io`.
 
-- Error unions that previously referenced `std.fs.File.WriteError` had to be updated. In the writer-based code paths we fixed, `std.Io.Writer.Error` was the relevant replacement.
-- `std.array_list.Managed(...).writer()` is not the pattern to rely on anymore in Zig 0.16 for this repo. The compatible replacement we used was `std.Io.Writer.Allocating`.
-- Typical migration:
-  - before: build bytes into `std.array_list.Managed(u8)` and call `.writer()`
-  - after: use `var out: std.Io.Writer.Allocating = .init(allocator)` and pass `&out.writer`
+In practice, this means code that used to call old `std.fs.*` and process helpers directly often now needs an explicit `std.Io` value.
 
-## Maps and String-Keyed Collections
+Examples relevant to this repo:
 
-- `std.StringArrayHashMap(...)` is no longer available as it used to be referenced here.
-- For the code we updated, `std.StringHashMap(...)` was the direct replacement that compiled cleanly.
+- `std.fs.File`-style usage becomes `std.Io.File`
+- `std.fs.cwd()`-style usage becomes `std.Io.Dir.cwd()`
+- file reading/writing helpers now take `io`
+- process helpers now take `io`
 
-## Environment Variables
+### "Juicy Main"
 
-- `std.process.getEnvVarOwned(...)` is not available in the old form we used.
-- The replacement we adopted was `std.process.Environ.getAlloc(runtime_environ, allocator, key)`.
-- Because several deep helpers in this repo needed environment access, we added a tiny runtime holder so `main` can provide the current `std.process.Environ`.
+Zig 0.16 supports `pub fn main(init: std.process.Init) !void`.
 
-## Process Execution
+This is the preferred migration path when a program needs:
 
-- `std.process.Child.run(...)` was replaced in the touched code with `std.process.run(allocator, io, .{ ... })`.
-- This means helper code that runs subprocesses now also needs access to a `std.Io` value.
+- allocator access via `init.gpa`
+- an arena via `init.arena`
+- process args via `init.minimal.args`
+- environment access via `init.minimal.environ`
+- an I/O implementation via `init.io`
 
-## Formatting Helpers
+For this repo, switching `main` to `std.process.Init` was the cleanest way to adapt several removed helpers at once.
 
-- `std.io.fixedBufferStream(...)` is not available under that old path.
-- For small formatting helpers, replacing it with `std.fmt.bufPrint(...)` was the simplest fix.
+### Environment Variables and Process Arguments Are Non-Global
 
-## Timers / Timing
+One of the important Zig 0.16 changes is that process args and environment variables are no longer treated as globally available in the old style.
 
-- `std.time.Timer` is not available under the old API this repo used.
-- For the build fix, I removed the elapsed-time measurement from the affected parse-table logging helpers and kept the progress logs themselves.
-- If timing is needed again, it should be reintroduced against the current Zig 0.16 timing API rather than restoring the old calls.
+The release-note direction is to pass what you need down from `main`, or to use the process environment objects made available there.
 
-## Practical Advice For This Repo
+This matters because old patterns such as ad hoc global env access and convenience argument helpers do not map cleanly to 0.16.
 
-- Prefer `std.process.Init` in `main` instead of manually reconstructing allocators and argv.
-- Prefer `std.Io.*` APIs over older `std.fs.*` / direct file-handle assumptions.
-- Prefer `std.Io.Writer.Allocating` when generating strings or file contents in memory.
-- Expect older helper names in `std.process`, `std.time`, and `std.fs` to have moved or been removed.
+## Concrete API Changes Hit In This Repo
 
+### Main / Startup
+
+- old manual allocator startup was replaced with `pub fn main(init: std.process.Init) !void`
+- `std.process.argsAlloc` / `std.process.argsFree` were replaced with `init.minimal.args.toSlice(...)`
+- child process termination tags are lowercase now, for example `.Exited` became `.exited`
+
+### Filesystem / Process
+
+- `std.fs.File.stdout().writeAll(...)` was replaced with `std.Io.File.stdout().writeStreamingAll(io, ...)`
+- buffered file output now uses `file.writer(io, &buffer)`
+- `std.fs.cwd().readFileAlloc(...)`-style code became `std.Io.Dir.cwd().readFileAlloc(io, ..., .limited(...))`
+- directory creation moved to `std.Io.Dir.cwd().createDirPath(io, path)`
+- subprocess execution moved from `std.process.Child.run(...)` to `std.process.run(allocator, io, .{ ... })`
+
+### In-Memory Writers
+
+- older `ArrayList` writer usage was not a good fit anymore in the touched code
+- `std.Io.Writer.Allocating` worked well as the replacement when building strings or generated files in memory
+
+Typical migration in this repo:
+
+- before: `std.array_list.Managed(u8)` plus `.writer()`
+- after: `var out: std.Io.Writer.Allocating = .init(allocator)` plus `&out.writer`
+
+### Other Renames / Removals
+
+- `std.fs.File.WriteError` references were updated to `std.Io.Writer.Error` in writer-oriented code paths
+- `std.StringArrayHashMap(...)` references were replaced with `std.StringHashMap(...)` where that was sufficient
+- `std.io.fixedBufferStream(...)` was replaced with `std.fmt.bufPrint(...)` in the small formatting helpers we touched
+
+### Timing
+
+Zig 0.16 timing is part of the newer `std.Io` model rather than the older runtime-style `std.time` helpers.
+
+The important types called out by the release notes are:
+
+- `std.Io.Clock`
+- `std.Io.Duration`
+- `std.Io.Timestamp`
+- `std.Io.Timeout`
+
+Useful migration intuition:
+
+- old `std.time.Instant`-style ideas map to `std.Io.Timestamp`
+- old timer-style elapsed-time measurement also maps toward `std.Io.Timestamp`
+- sleeping and timeout work is now expressed through `io` plus typed durations/timeouts
+
+The release notes also mention improved clock-resolution handling, so timing code should be written against the new `Clock` / `Timestamp` / `Timeout` APIs instead of restoring old `std.time.Timer` assumptions.
+
+## Local Repo Choices
+
+### Runtime I/O Holder
+
+The Zig 0.16 release-note direction is to pass `io`, args, and environment data down from `main`.
+
+This repo mostly follows that at the top level:
+
+- `main` now takes `std.process.Init`
+- `runGenerate` now takes `io`
+
+However, to keep the patch smaller while fixing the build, I also added a tiny runtime holder in `src/support/runtime_io.zig` for:
+
+- `std.Io`
+- `std.process.Environ`
+
+This was a pragmatic compatibility shortcut for deep helper layers such as:
+
+- filesystem wrappers
+- process wrappers
+- parse-table progress/env checks
+
+It is acceptable as a local transition aid, but it is not the ideal long-term 0.16 style.
+
+### Timers
+
+The old `std.time.Timer` usage in parse-table logging no longer compiled as written.
+
+For the build fix, I removed elapsed-time measurement from those progress logs and kept the progress messages themselves.
+
+If detailed timing is needed again, it should be reintroduced against the current Zig 0.16 timing API rather than by restoring the old calls.
+
+## Recommended Follow-Up For This Repo
+
+- Prefer threading `io` and environment data explicitly from `main` rather than relying on the runtime holder in deeper modules.
+- Prefer `std.Io.*` APIs when touching filesystem or process code.
+- Prefer `std.process.Init`-based startup for new command entrypoints.
+- Treat old `std.fs`, `std.process`, and `std.time` helper names with suspicion when upgrading code to Zig 0.16.
