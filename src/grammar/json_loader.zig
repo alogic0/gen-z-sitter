@@ -376,12 +376,12 @@ test "loadGrammarJson loads a minimal valid grammar file" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.validBlankGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     var loaded = try loadGrammarJson(std.testing.allocator, path);
@@ -395,12 +395,12 @@ test "loadGrammarJson rejects invalid precedence value type" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.invalidPrecedenceGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     var loaded = try loadGrammarJson(std.testing.allocator, path);
@@ -413,12 +413,12 @@ test "loadGrammarJson rejects malformed json" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.malformedGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.JsonParseFailure, loadGrammarJson(std.testing.allocator, path));
@@ -428,8 +428,8 @@ test "loadGrammarJson rejects an actual directory path" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.makePath("grammar.json");
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    try tmp.dir.createDirPath(std.testing.io, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.InvalidPath, loadGrammarJson(std.testing.allocator, path));

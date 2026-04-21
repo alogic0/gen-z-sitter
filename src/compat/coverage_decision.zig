@@ -290,10 +290,10 @@ test "renderCoverageDecisionAlloc matches the checked-in coverage decision artif
     const rendered = try renderCoverageDecisionAlloc(allocator, runs);
     defer allocator.free(rendered);
 
-    const expected = try std.fs.cwd().readFileAlloc(allocator, "compat_targets/coverage_decision.json", 1024 * 1024);
+    const expected = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "compat_targets/coverage_decision.json", allocator, .limited(1024 * 1024));
     defer allocator.free(expected);
 
-    const normalized_expected = std.mem.trimRight(u8, expected, "\n");
-    const normalized_rendered = std.mem.trimRight(u8, rendered, "\n");
+    const normalized_expected = std.mem.trimEnd(u8, expected, "\n");
+    const normalized_rendered = std.mem.trimEnd(u8, rendered, "\n");
     try std.testing.expectEqualStrings(normalized_expected, normalized_rendered);
 }

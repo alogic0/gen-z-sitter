@@ -20,15 +20,15 @@ pub fn compileParserC(allocator: std.mem.Allocator, contents: []const u8) Compil
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "parser.c",
         .data = contents,
     });
 
-    const source_path = try tmp.dir.realpathAlloc(allocator, "parser.c");
+    const source_path = try tmp.dir.realPathFileAlloc(std.testing.io, "parser.c", allocator);
     defer allocator.free(source_path);
 
-    const dir_path = try tmp.dir.realpathAlloc(allocator, ".");
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(dir_path);
 
     const object_path = try std.fs.path.join(allocator, &.{ dir_path, "parser.o" });
@@ -41,7 +41,7 @@ pub fn compileParserC(allocator: std.mem.Allocator, contents: []const u8) Compil
     defer child_result.deinit(allocator);
 
     return switch (child_result.term) {
-        .Exited => |code| if (code == 0)
+        .exited => |code| if (code == 0)
             .success
         else
             .{ .compiler_error = try allocator.dupe(u8, child_result.stderr) },

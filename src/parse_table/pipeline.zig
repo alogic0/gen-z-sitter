@@ -267,10 +267,10 @@ pub fn serializeTableFromPreparedWithBuildOptions(
     return serialized;
 }
 
-fn writeModuleExportsJsonFile(dir: std.fs.Dir, sub_path: []const u8, json_contents: []const u8) !void {
+fn writeModuleExportsJsonFile(dir: std.Io.Dir, sub_path: []const u8, json_contents: []const u8) !void {
     const js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{json_contents});
     defer std.testing.allocator.free(js);
-    try dir.writeFile(.{
+    try dir.writeFile(std.testing.io, .{
         .sub_path = sub_path,
         .data = js,
     });
@@ -280,15 +280,15 @@ fn expectParserCDumpCompiles(contents: []const u8) !void {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "parser.c",
         .data = contents,
     });
 
-    const source_path = try tmp.dir.realpathAlloc(std.testing.allocator, "parser.c");
+    const source_path = try tmp.dir.realPathFileAlloc(std.testing.io, "parser.c", std.testing.allocator);
     defer std.testing.allocator.free(source_path);
 
-    const dir_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
     defer std.testing.allocator.free(dir_path);
 
     const object_path = try std.fs.path.join(std.testing.allocator, &.{ dir_path, "parser.o" });
@@ -301,7 +301,7 @@ fn expectParserCDumpCompiles(contents: []const u8) !void {
     defer result.deinit(std.testing.allocator);
 
     switch (result.term) {
-        .Exited => |code| {
+        .exited => |code| {
             if (code != 0) {
                 std.debug.print("zig cc stderr:\n{s}\n", .{result.stderr});
                 try std.testing.expectEqual(@as(u8, 0), code);
@@ -1264,7 +1264,7 @@ test "generateParserCEmitterDumpFromPrepared matches the metadata-rich parser.c-
 
     try writeModuleExportsJsonFile(tmp.dir, "grammar.js", fixtures.parseTableMetadataGrammarJson().contents);
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
 
     var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
@@ -1312,12 +1312,12 @@ test "generateParserCEmitterDumpFromPrepared keeps behavioral config parser outp
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data = fixtures.behavioralConfigGrammarJs().contents,
     });
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
 
     var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);

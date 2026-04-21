@@ -61,12 +61,12 @@ test "loadGrammarJs loads a minimal grammar.js through node" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data = fixtures.validBlankGrammarJs().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     var loaded = try loadGrammarJs(std.testing.allocator, path);
@@ -80,14 +80,14 @@ test "loadGrammarJs rejects malformed emitted json" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data =
             \\module.exports = "{";
         ,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.JsonParseFailure, loadGrammarJs(std.testing.allocator, path));
@@ -97,12 +97,12 @@ test "emitGrammarJsonFromJsAlloc produces deterministic compact json" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data = fixtures.validResolvedGrammarJs().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     const emitted = try emitGrammarJsonFromJsAlloc(std.testing.allocator, path);

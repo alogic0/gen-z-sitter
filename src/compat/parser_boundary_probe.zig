@@ -1,4 +1,5 @@
 const std = @import("std");
+const runtime_io = @import("../support/runtime_io.zig");
 const json_support = @import("../support/json.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
@@ -10,8 +11,8 @@ fn logProbeStart(target_id: []const u8, step: []const u8) void {
     std.debug.print("[parser_boundary_probe] start {s} {s}\n", .{ target_id, step });
 }
 
-fn logProbeDone(target_id: []const u8, step: []const u8, timer: *std.time.Timer) void {
-    const elapsed_ms = @as(f64, @floatFromInt(timer.read())) / @as(f64, std.time.ns_per_ms);
+fn logProbeDone(target_id: []const u8, step: []const u8, start_ts: std.Io.Timestamp) void {
+    const elapsed_ms = @as(f64, @floatFromInt(start_ts.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake)).nanoseconds)) / @as(f64, std.time.ns_per_ms);
     std.debug.print("[parser_boundary_probe] done  {s} {s} ({d:.2} ms)\n", .{ target_id, step, elapsed_ms });
 }
 
@@ -164,7 +165,7 @@ fn probeSerializeOnlyAlloc(
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var timer = try std.time.Timer.start();
+    var timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     logProbeStart(target.id, "load");
     var loaded = grammar_loader.loadGrammarFile(arena.allocator(), target.grammar_path) catch |err| {
         return .{
@@ -182,10 +183,10 @@ fn probeSerializeOnlyAlloc(
             .serialized_blocked = null,
         };
     };
-    logProbeDone(target.id, "load", &timer);
+    logProbeDone(target.id, "load", timer);
     defer loaded.deinit();
 
-    timer = try std.time.Timer.start();
+    timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     logProbeStart(target.id, "prepare");
     const prepared = parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar) catch |err| {
         const diagnostic = parse_grammar.errorDiagnostic(err);
@@ -204,9 +205,9 @@ fn probeSerializeOnlyAlloc(
             .serialized_blocked = null,
         };
     };
-    logProbeDone(target.id, "prepare", &timer);
+    logProbeDone(target.id, "prepare", timer);
 
-    timer = try std.time.Timer.start();
+    timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     logProbeStart(target.id, "serialize");
     const serialized = parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
         arena.allocator(),
@@ -229,7 +230,7 @@ fn probeSerializeOnlyAlloc(
             .serialized_blocked = null,
         };
     };
-    logProbeDone(target.id, "serialize", &timer);
+    logProbeDone(target.id, "serialize", timer);
     std.debug.print(
         "[parser_boundary_probe] summary {s} serialized_states={d} blocked={}\n",
         .{ target.id, serialized.states.len, serialized.blocked },

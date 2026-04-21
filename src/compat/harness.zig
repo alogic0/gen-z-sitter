@@ -1,4 +1,5 @@
 const std = @import("std");
+const runtime_io = @import("../support/runtime_io.zig");
 const targets = @import("targets.zig");
 const result_model = @import("result.zig");
 const compile_smoke = @import("compile_smoke.zig");
@@ -23,7 +24,6 @@ pub const RunOptions = struct {
 };
 
 var cached_shortlist_runs_for_tests: ?[]result_model.TargetRunResult = null;
-var cached_shortlist_runs_mutex: std.Thread.Mutex = .{};
 
 pub fn runShortlistTargetsAlloc(
     allocator: std.mem.Allocator,
@@ -49,8 +49,6 @@ pub fn runShortlistTargetsAlloc(
 
 pub fn cachedShortlistTargetsForTests() ![]const result_model.TargetRunResult {
     std.debug.print("[compat/harness] cachedShortlistTargetsForTests enter\n", .{});
-    cached_shortlist_runs_mutex.lock();
-    defer cached_shortlist_runs_mutex.unlock();
 
     if (cached_shortlist_runs_for_tests) |runs| {
         std.debug.print("[compat/harness] cachedShortlistTargetsForTests cache_hit len={d}\n", .{runs.len});
@@ -82,23 +80,20 @@ pub fn runTargetsAlloc(
 
     for (target_list, 0..) |target, index| {
         std.debug.print("[compat/harness] target_start {d}/{d} {s}\n", .{ index + 1, target_list.len, target.id });
-        var timer = try std.time.Timer.start();
         if (progress_log) {
             std.debug.print("[compat_harness] start {d}/{d} {s}\n", .{ index + 1, target_list.len, target.id });
         }
         runs[index] = try runTarget(allocator, target, options);
         std.debug.print("[compat/harness] target_done {d}/{d} {s}\n", .{ index + 1, target_list.len, target.id });
         if (progress_log) {
-            const elapsed_ms = @as(f64, @floatFromInt(timer.read())) / @as(f64, std.time.ns_per_ms);
             std.debug.print(
-                "[compat_harness] done  {d}/{d} {s} classification={s} first_failed_stage={s} ({d:.2} ms)\n",
+                "[compat_harness] done  {d}/{d} {s} classification={s} first_failed_stage={s}\n",
                 .{
                     index + 1,
                     target_list.len,
                     target.id,
                     @tagName(runs[index].final_classification),
                     if (runs[index].first_failed_stage) |stage| @tagName(stage) else "none",
-                    elapsed_ms,
                 },
             );
         }
@@ -110,9 +105,7 @@ pub fn runTargetsAlloc(
 fn shouldLogProgress(options: RunOptions) bool {
     if (options.progress_log) return true;
 
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_PROGRESS") catch return false;
-    defer std.heap.page_allocator.free(value);
-
+    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_PROGRESS") orelse return false;
     if (value.len == 0) return false;
     if (std.mem.eql(u8, value, "0")) return false;
     return true;
@@ -121,17 +114,14 @@ fn shouldLogProgress(options: RunOptions) bool {
 fn shouldLogDetailProgress(options: RunOptions) bool {
     if (shouldLogProgress(options)) return true;
 
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_COMPAT_DETAIL_PROGRESS") catch return false;
-    defer std.heap.page_allocator.free(value);
-
+    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_COMPAT_DETAIL_PROGRESS") orelse return false;
     if (value.len == 0) return false;
     if (std.mem.eql(u8, value, "0")) return false;
     return true;
 }
 
 fn loadExcludedTargetsEnv(allocator: std.mem.Allocator) !?[][]const u8 {
-    const raw = std.process.getEnvVarOwned(allocator, "GEN_Z_SITTER_COMPAT_EXCLUDE_TARGETS") catch return null;
-    defer allocator.free(raw);
+    const raw = runtime_io.environ().getPosix("GEN_Z_SITTER_COMPAT_EXCLUDE_TARGETS") orelse return null;
 
     if (raw.len == 0) return null;
 
@@ -183,8 +173,8 @@ fn logDetailStart(target_id: []const u8, step: []const u8) void {
     std.debug.print("[compat_harness_detail] start {s} {s}\n", .{ target_id, step });
 }
 
-fn logDetailDone(target_id: []const u8, step: []const u8, timer: *std.time.Timer) void {
-    const elapsed_ms = @as(f64, @floatFromInt(timer.read())) / @as(f64, std.time.ns_per_ms);
+fn logDetailDone(target_id: []const u8, step: []const u8, start_ts: std.Io.Timestamp) void {
+    const elapsed_ms = @as(f64, @floatFromInt(start_ts.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake)).nanoseconds)) / @as(f64, std.time.ns_per_ms);
     std.debug.print("[compat_harness_detail] done  {s} {s} ({d:.2} ms)\n", .{ target_id, step, elapsed_ms });
 }
 
@@ -213,8 +203,7 @@ fn logExternalSampleSummary(target_id: []const u8, label: []const u8, sample: be
 }
 
 fn shouldEnableParseTableScopedProgress(target_id: []const u8) bool {
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_PARSE_TABLE_TARGET_FILTER") catch return false;
-    defer std.heap.page_allocator.free(value);
+    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_PARSE_TABLE_TARGET_FILTER") orelse return false;
 
     if (value.len == 0) return false;
     return std.mem.eql(u8, value, target_id);
@@ -223,8 +212,7 @@ fn shouldEnableParseTableScopedProgress(target_id: []const u8) bool {
 fn shouldEnableHaskellStartLayoutExperiment(target_id: []const u8) bool {
     if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
 
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_COARSE_START_LAYOUT") catch return false;
-    defer std.heap.page_allocator.free(value);
+    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_COARSE_START_LAYOUT") orelse return false;
 
     if (value.len == 0) return false;
     if (std.mem.eql(u8, value, "0")) return false;
@@ -234,8 +222,7 @@ fn shouldEnableHaskellStartLayoutExperiment(target_id: []const u8) bool {
 fn shouldEnableHaskellModifierExperiment(target_id: []const u8) bool {
     if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
 
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_COARSE_MODIFIER") catch return false;
-    defer std.heap.page_allocator.free(value);
+    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_COARSE_MODIFIER") orelse return false;
 
     if (value.len == 0) return false;
     if (std.mem.eql(u8, value, "0")) return false;
@@ -245,8 +232,7 @@ fn shouldEnableHaskellModifierExperiment(target_id: []const u8) bool {
 fn shouldEnableHaskellState5NonTerminal386Experiment(target_id: []const u8) bool {
     if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
 
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_COARSE_STATE5_NONTERMINAL386") catch return false;
-    defer std.heap.page_allocator.free(value);
+    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_COARSE_STATE5_NONTERMINAL386") orelse return false;
 
     if (value.len == 0) return false;
     if (std.mem.eql(u8, value, "0")) return false;
@@ -256,8 +242,7 @@ fn shouldEnableHaskellState5NonTerminal386Experiment(target_id: []const u8) bool
 fn shouldEnableHaskellState5NonTerminal390Experiment(target_id: []const u8) bool {
     if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
 
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_COARSE_STATE5_NONTERMINAL390") catch return false;
-    defer std.heap.page_allocator.free(value);
+    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_COARSE_STATE5_NONTERMINAL390") orelse return false;
 
     if (value.len == 0) return false;
     if (std.mem.eql(u8, value, "0")) return false;
@@ -267,8 +252,7 @@ fn shouldEnableHaskellState5NonTerminal390Experiment(target_id: []const u8) bool
 fn shouldEnableHaskellState5OpenerFamilyExperiment(target_id: []const u8) bool {
     if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
 
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_COARSE_STATE5_OPENERS") catch return false;
-    defer std.heap.page_allocator.free(value);
+    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_COARSE_STATE5_OPENERS") orelse return false;
 
     if (value.len == 0) return false;
     if (std.mem.eql(u8, value, "0")) return false;
@@ -278,8 +262,7 @@ fn shouldEnableHaskellState5OpenerFamilyExperiment(target_id: []const u8) bool {
 fn shouldEnableHaskellThresholdedClosureExperiment(target_id: []const u8) bool {
     if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
 
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_HASKELL_THRESHOLD_LR0") catch return false;
-    defer std.heap.page_allocator.free(value);
+    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_THRESHOLD_LR0") orelse return false;
 
     if (value.len == 0) return false;
     if (std.mem.eql(u8, value, "0")) return false;
@@ -350,8 +333,7 @@ pub fn runTarget(
     defer arena.deinit();
 
     std.debug.print("[compat/harness] stage load {s}\n", .{target.id});
-    var load_timer = try std.time.Timer.start();
-    if (detail_progress) logDetailStart(target.id, "load");
+    const load_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "load");
     var loaded = grammar_loader.loadGrammarFile(arena.allocator(), target.grammar_path) catch |err| {
         return failRun(
             &run,
@@ -361,13 +343,12 @@ pub fn runTarget(
             try std.fmt.allocPrint(allocator, "{s}: {s}", .{ target.grammar_path, grammar_loader.errorMessage(err) }),
         );
     };
-    if (detail_progress) logDetailDone(target.id, "load", &load_timer);
+    if (detail_progress) logDetailDone(target.id, "load", load_timer);
     run.load.status = .passed;
     defer loaded.deinit();
 
     std.debug.print("[compat/harness] stage prepare {s}\n", .{target.id});
-    var prepare_timer = try std.time.Timer.start();
-    if (detail_progress) logDetailStart(target.id, "prepare");
+    const prepare_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "prepare");
     const prepared = parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar) catch |err| {
         const diagnostic = parse_grammar.errorDiagnostic(err);
         return failRun(
@@ -378,7 +359,7 @@ pub fn runTarget(
             try std.fmt.allocPrint(allocator, "{s}: {s}", .{ target.grammar_path, diagnostic.summary }),
         );
     };
-    if (detail_progress) logDetailDone(target.id, "prepare", &prepare_timer);
+    if (detail_progress) logDetailDone(target.id, "prepare", prepare_timer);
     run.prepare.status = .passed;
 
     if (target.boundary_kind == .parser_only and target.parser_boundary_check_mode == .prepare_only) {
@@ -397,8 +378,7 @@ pub fn runTarget(
 
     if (target.boundary_kind == .parser_only and target.parser_boundary_check_mode == .serialize_only) {
         std.debug.print("[compat/harness] stage serialize {s}\n", .{target.id});
-        var serialize_timer = try std.time.Timer.start();
-        if (detail_progress) logDetailStart(target.id, "routine_coarse_serialize_only");
+            const serialize_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "routine_coarse_serialize_only");
         const serialized = parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
             arena.allocator(),
             prepared,
@@ -414,7 +394,7 @@ pub fn runTarget(
             );
         };
         if (detail_progress) {
-            logDetailDone(target.id, "routine_coarse_serialize_only", &serialize_timer);
+            logDetailDone(target.id, "routine_coarse_serialize_only", serialize_timer);
             logDetailSummary(
                 "{s} routine_coarse_serialize_only serialized_states={d} blocked={}",
                 .{ target.id, serialized.states.len, serialized.blocked },
@@ -422,9 +402,8 @@ pub fn runTarget(
         }
         run.serialize.status = .passed;
         std.debug.print("[compat/harness] stage emit_parser_tables {s}\n", .{target.id});
-        if (detail_progress) logDetailStart(target.id, "emit_parser_tables");
-        var parser_tables_timer = try std.time.Timer.start();
-        const parser_tables = parser_tables_emit.emitSerializedTableAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
+        const parser_tables_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "emit_parser_tables");
+            const parser_tables = parser_tables_emit.emitSerializedTableAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
             return failRun(
                 &run,
                 .emit_parser_tables,
@@ -434,7 +413,7 @@ pub fn runTarget(
             );
         };
         if (detail_progress) {
-            logDetailDone(target.id, "emit_parser_tables", &parser_tables_timer);
+            logDetailDone(target.id, "emit_parser_tables", parser_tables_timer);
             logDetailSummary(
                 "{s} emit_parser_tables bytes={d}",
                 .{ target.id, parser_tables.len },
@@ -442,9 +421,8 @@ pub fn runTarget(
         }
         run.emit_parser_tables.status = .passed;
         std.debug.print("[compat/harness] stage emit_c_tables {s}\n", .{target.id});
-        if (detail_progress) logDetailStart(target.id, "emit_c_tables");
-        var c_tables_timer = try std.time.Timer.start();
-        const c_tables = c_tables_emit.emitCTableSkeletonAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
+        const c_tables_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "emit_c_tables");
+            const c_tables = c_tables_emit.emitCTableSkeletonAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
             return failRun(
                 &run,
                 .emit_c_tables,
@@ -454,7 +432,7 @@ pub fn runTarget(
             );
         };
         if (detail_progress) {
-            logDetailDone(target.id, "emit_c_tables", &c_tables_timer);
+            logDetailDone(target.id, "emit_c_tables", c_tables_timer);
             logDetailSummary(
                 "{s} emit_c_tables bytes={d}",
                 .{ target.id, c_tables.len },
@@ -462,9 +440,8 @@ pub fn runTarget(
         }
         run.emit_c_tables.status = .passed;
         std.debug.print("[compat/harness] stage emit_parser_c {s}\n", .{target.id});
-        if (detail_progress) logDetailStart(target.id, "emit_parser_c");
-        var parser_c_timer = try std.time.Timer.start();
-        const parser_c = parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
+        const parser_c_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "emit_parser_c");
+            const parser_c = parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
             return failRun(
                 &run,
                 .emit_parser_c,
@@ -474,7 +451,7 @@ pub fn runTarget(
             );
         };
         if (detail_progress) {
-            logDetailDone(target.id, "emit_parser_c", &parser_c_timer);
+            logDetailDone(target.id, "emit_parser_c", parser_c_timer);
             logDetailSummary(
                 "{s} emit_parser_c bytes={d}",
                 .{ target.id, parser_c.len },
@@ -482,9 +459,8 @@ pub fn runTarget(
         }
         run.emit_parser_c.status = .passed;
         std.debug.print("[compat/harness] stage compat_check {s}\n", .{target.id});
-        if (detail_progress) logDetailStart(target.id, "compat_check");
-        var compat_timer = try std.time.Timer.start();
-        compat_checks.validateParserCCompatibilitySurface(parser_c) catch |err| {
+        const compat_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "compat_check");
+            compat_checks.validateParserCCompatibilitySurface(parser_c) catch |err| {
             return failRun(
                 &run,
                 .compat_check,
@@ -493,12 +469,11 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "routine compatibility check failed: {s}", .{@errorName(err)}),
             );
         };
-        if (detail_progress) logDetailDone(target.id, "compat_check", &compat_timer);
+        if (detail_progress) logDetailDone(target.id, "compat_check", compat_timer);
         run.compat_check.status = .passed;
         std.debug.print("[compat/harness] stage compile_smoke {s}\n", .{target.id});
-        if (detail_progress) logDetailStart(target.id, "compile_smoke");
-        var compile_timer = try std.time.Timer.start();
-        var compile_result = compile_smoke.compileParserC(allocator, parser_c) catch |err| {
+        const compile_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "compile_smoke");
+            var compile_result = compile_smoke.compileParserC(allocator, parser_c) catch |err| {
             return failRun(
                 &run,
                 .compile_smoke,
@@ -510,7 +485,7 @@ pub fn runTarget(
         defer compile_result.deinit(allocator);
         switch (compile_result) {
             .success => {
-                if (detail_progress) logDetailDone(target.id, "compile_smoke", &compile_timer);
+                if (detail_progress) logDetailDone(target.id, "compile_smoke", compile_timer);
                 run.compile_smoke.status = .passed;
             },
             .compiler_error => |stderr| {
@@ -540,9 +515,8 @@ pub fn runTarget(
     }
 
     if (target.boundary_kind == .scanner_external_scanner) {
-        if (detail_progress) logDetailStart(target.id, "scanner_extract_tokens");
-        var scanner_extract_timer = try std.time.Timer.start();
-        const extracted = extract_tokens.extractTokens(arena.allocator(), prepared) catch |err| {
+        const scanner_extract_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "scanner_extract_tokens");
+            const extracted = extract_tokens.extractTokens(arena.allocator(), prepared) catch |err| {
             return failRun(
                 &run,
                 .serialize,
@@ -552,16 +526,15 @@ pub fn runTarget(
             );
         };
         if (detail_progress) {
-            logDetailDone(target.id, "scanner_extract_tokens", &scanner_extract_timer);
+            logDetailDone(target.id, "scanner_extract_tokens", scanner_extract_timer);
             logDetailSummary(
                 "{s} scanner_extract_tokens syntax_variables={d} lexical_variables={d} external_tokens={d}",
                 .{ target.id, extracted.syntax.variables.len, extracted.lexical.variables.len, extracted.syntax.external_tokens.len },
             );
         }
 
-        if (detail_progress) logDetailStart(target.id, "scanner_serialize_boundary");
-        var scanner_serialize_timer = try std.time.Timer.start();
-        const serialized_boundary = scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax) catch |err| {
+        const scanner_serialize_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "scanner_serialize_boundary");
+            const serialized_boundary = scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax) catch |err| {
             return failRun(
                 &run,
                 .serialize,
@@ -571,7 +544,7 @@ pub fn runTarget(
             );
         };
         if (detail_progress) {
-            logDetailDone(target.id, "scanner_serialize_boundary", &scanner_serialize_timer);
+            logDetailDone(target.id, "scanner_serialize_boundary", scanner_serialize_timer);
             logDetailSummary(
                 "{s} scanner_serialize_boundary ready={} tokens={d} unsupported_features={d}",
                 .{ target.id, serialized_boundary.isReady(), serialized_boundary.tokens.len, serialized_boundary.unsupported_features.len },
@@ -612,7 +585,7 @@ pub fn runTarget(
                     .scanner_external_scanner_boundary_gap,
                     try std.fmt.allocPrint(allocator, "scanner target is missing a valid input path: {s}", .{target.id}),
                 );
-            const valid_input = std.fs.cwd().readFileAlloc(arena.allocator(), valid_input_path, 64 * 1024) catch |err| {
+            const valid_input = std.Io.Dir.cwd().readFileAlloc(runtime_io.get(), valid_input_path, arena.allocator(), .limited(64 * 1024)) catch |err| {
                 return failRun(
                     &run,
                     .scanner_boundary_check,
@@ -622,11 +595,10 @@ pub fn runTarget(
                 );
             };
 
-            if (detail_progress) {
+            const sampled_external_valid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);            if (detail_progress) {
                 logDetailSummary("{s} scanner_valid_input bytes={d} path={s}", .{ target.id, valid_input.len, valid_input_path });
                 logDetailStart(target.id, "sampled_external_only_valid");
             }
-            var valid_sample_timer = try std.time.Timer.start();
 
             const valid_sample = behavioral_harness.sampleExtractedExternalBoundaryOnly(
                 arena.allocator(),
@@ -645,7 +617,7 @@ pub fn runTarget(
                 );
             };
             if (detail_progress) {
-                logDetailDone(target.id, "sampled_external_only_valid", &valid_sample_timer);
+                logDetailDone(target.id, "sampled_external_only_valid", sampled_external_valid_timer);
                 logExternalSampleSummary(target.id, "sampled_external_only_valid", valid_sample);
             }
 
@@ -657,7 +629,7 @@ pub fn runTarget(
                     .scanner_external_scanner_boundary_gap,
                     try std.fmt.allocPrint(allocator, "scanner target is missing an invalid input path: {s}", .{target.id}),
                 );
-            const invalid_input = std.fs.cwd().readFileAlloc(arena.allocator(), invalid_input_path, 64 * 1024) catch |err| {
+            const invalid_input = std.Io.Dir.cwd().readFileAlloc(runtime_io.get(), invalid_input_path, arena.allocator(), .limited(64 * 1024)) catch |err| {
                 return failRun(
                     &run,
                     .scanner_boundary_check,
@@ -667,11 +639,10 @@ pub fn runTarget(
                 );
             };
 
-            if (detail_progress) {
+            const sampled_external_invalid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);            if (detail_progress) {
                 logDetailSummary("{s} scanner_invalid_input bytes={d} path={s}", .{ target.id, invalid_input.len, invalid_input_path });
                 logDetailStart(target.id, "sampled_external_only_invalid");
             }
-            var invalid_sample_timer = try std.time.Timer.start();
 
             const invalid_sample = behavioral_harness.sampleExtractedExternalBoundaryOnly(
                 arena.allocator(),
@@ -690,7 +661,7 @@ pub fn runTarget(
                 );
             };
             if (detail_progress) {
-                logDetailDone(target.id, "sampled_external_only_invalid", &invalid_sample_timer);
+                logDetailDone(target.id, "sampled_external_only_invalid", sampled_external_invalid_timer);
                 logExternalSampleSummary(target.id, "sampled_external_only_invalid", invalid_sample);
             }
 
@@ -732,9 +703,8 @@ pub fn runTarget(
             );
         }
 
-        if (detail_progress) logDetailStart(target.id, "scanner_flatten");
-        var scanner_flatten_timer = try std.time.Timer.start();
-        const flattened = flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax) catch |err| {
+        const scanner_flatten_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "scanner_flatten");
+            const flattened = flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax) catch |err| {
             return failRun(
                 &run,
                 .scanner_boundary_check,
@@ -744,7 +714,7 @@ pub fn runTarget(
             );
         };
         if (detail_progress) {
-            logDetailDone(target.id, "scanner_flatten", &scanner_flatten_timer);
+            logDetailDone(target.id, "scanner_flatten", scanner_flatten_timer);
             logDetailSummary("{s} scanner_flatten variables={d}", .{ target.id, flattened.variables.len });
         }
 
@@ -758,9 +728,8 @@ pub fn runTarget(
             parse_table_pipeline.setScopedProgressEnabled(false);
         };
 
-        if (detail_progress) logDetailStart(target.id, "scanner_build_states");
-        var scanner_build_timer = try std.time.Timer.start();
-        var coarse_transitions_buf: [11]parse_table_build.CoarseTransitionSpec = undefined;
+        const scanner_build_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "scanner_build_states");
+            var coarse_transitions_buf: [11]parse_table_build.CoarseTransitionSpec = undefined;
         var coarse_transition_count: usize = 0;
         const enable_haskell_start_layout = shouldEnableHaskellStartLayoutExperiment(target.id);
         const enable_haskell_state5_opener_family = shouldEnableHaskellState5OpenerFamilyExperiment(target.id);
@@ -856,7 +825,7 @@ pub fn runTarget(
             );
         };
         if (detail_progress) {
-            logDetailDone(target.id, "scanner_build_states", &scanner_build_timer);
+            logDetailDone(target.id, "scanner_build_states", scanner_build_timer);
             logDetailSummary(
                 "{s} scanner_build_states states={d} productions={d}",
                 .{ target.id, build_result.states.len, build_result.productions.len },
@@ -871,7 +840,7 @@ pub fn runTarget(
                 .scanner_external_scanner_boundary_gap,
                 try std.fmt.allocPrint(allocator, "scanner target is missing a valid input path: {s}", .{target.id}),
             );
-        const valid_input = std.fs.cwd().readFileAlloc(arena.allocator(), valid_input_path, 64 * 1024) catch |err| {
+        const valid_input = std.Io.Dir.cwd().readFileAlloc(runtime_io.get(), valid_input_path, arena.allocator(), .limited(64 * 1024)) catch |err| {
             return failRun(
                 &run,
                 .scanner_boundary_check,
@@ -880,11 +849,10 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "failed to read scanner valid input {s}: {s}", .{ valid_input_path, @errorName(err) }),
             );
         };
-        if (detail_progress) {
+        const sampled_behavioral_valid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);        if (detail_progress) {
             logDetailSummary("{s} scanner_valid_input bytes={d} path={s}", .{ target.id, valid_input.len, valid_input_path });
             logDetailStart(target.id, "sampled_behavioral_valid");
         }
-        var valid_simulation_timer = try std.time.Timer.start();
 
         const simulation = behavioral_harness.simulateBuiltWithSerializedExternalBoundary(
             arena.allocator(),
@@ -903,7 +871,7 @@ pub fn runTarget(
             );
         };
         if (detail_progress) {
-            logDetailDone(target.id, "sampled_behavioral_valid", &valid_simulation_timer);
+            logDetailDone(target.id, "sampled_behavioral_valid", sampled_behavioral_valid_timer);
             logSimulationSummary(target.id, "sampled_behavioral_valid", simulation);
         }
 
@@ -925,7 +893,7 @@ pub fn runTarget(
                 .scanner_external_scanner_boundary_gap,
                 try std.fmt.allocPrint(allocator, "scanner target is missing an invalid input path: {s}", .{target.id}),
             );
-        const invalid_input = std.fs.cwd().readFileAlloc(arena.allocator(), invalid_input_path, 64 * 1024) catch |err| {
+        const invalid_input = std.Io.Dir.cwd().readFileAlloc(runtime_io.get(), invalid_input_path, arena.allocator(), .limited(64 * 1024)) catch |err| {
             return failRun(
                 &run,
                 .scanner_boundary_check,
@@ -934,11 +902,10 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "failed to read scanner invalid input {s}: {s}", .{ invalid_input_path, @errorName(err) }),
             );
         };
-        if (detail_progress) {
+        const sampled_behavioral_invalid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);        if (detail_progress) {
             logDetailSummary("{s} scanner_invalid_input bytes={d} path={s}", .{ target.id, invalid_input.len, invalid_input_path });
             logDetailStart(target.id, "sampled_behavioral_invalid");
         }
-        var invalid_simulation_timer = try std.time.Timer.start();
 
         const invalid_simulation = behavioral_harness.simulateBuiltWithSerializedExternalBoundary(
             arena.allocator(),
@@ -957,7 +924,7 @@ pub fn runTarget(
             );
         };
         if (detail_progress) {
-            logDetailDone(target.id, "sampled_behavioral_invalid", &invalid_simulation_timer);
+            logDetailDone(target.id, "sampled_behavioral_invalid", sampled_behavioral_invalid_timer);
             logSimulationSummary(target.id, "sampled_behavioral_invalid", invalid_simulation);
         }
 
@@ -1231,12 +1198,11 @@ fn summarizeBlockedBoundaryAlloc(
         ));
     }
 
-    var sample_text = std.array_list.Managed(u8).init(allocator);
+    var sample_text: std.Io.Writer.Allocating = .init(allocator);
     defer sample_text.deinit();
-    const sample_writer = sample_text.writer();
     for (samples.items, 0..) |sample, index| {
-        if (index > 0) try sample_writer.writeAll("; ");
-        try sample_writer.writeAll(sample);
+        if (index > 0) try sample_text.writer.writeAll("; ");
+        try sample_text.writer.writeAll(sample);
     }
 
     const dominant_text = try formatDominantSignaturesAlloc(allocator, snapshot.dominant_signatures);
@@ -1253,7 +1219,7 @@ fn summarizeBlockedBoundaryAlloc(
             snapshot.reasons.multiple_candidates,
             snapshot.reasons.unsupported_action_mix,
             dominant_text,
-            sample_text.items,
+            sample_text.writer.buffered(),
         },
     );
 }
@@ -1276,13 +1242,12 @@ fn formatUnsupportedExternalFeaturesAlloc(
         try parts.append(part);
     }
 
-    var text = std.array_list.Managed(u8).init(allocator);
-    defer text.deinit();
-    const writer = text.writer();
-    try writer.writeAll("external-scanner boundary remains blocked by unsupported features: ");
+    var text: std.Io.Writer.Allocating = .init(allocator);
+    errdefer text.deinit();
+    try text.writer.writeAll("external-scanner boundary remains blocked by unsupported features: ");
     for (parts.items, 0..) |part, index| {
-        if (index > 0) try writer.writeAll(", ");
-        try writer.writeAll(part);
+        if (index > 0) try text.writer.writeAll(", ");
+        try text.writer.writeAll(part);
     }
     return try text.toOwnedSlice();
 }
@@ -1399,19 +1364,18 @@ fn formatCandidateActionsAlloc(
     build_result: parse_table_build.BuildResult,
     candidate_actions: []const @import("../parse_table/actions.zig").ParseAction,
 ) ![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
-    defer out.deinit();
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
 
-    const writer = out.writer();
     for (candidate_actions, 0..) |action, index| {
-        if (index > 0) try writer.writeAll(", ");
+        if (index > 0) try out.writer.writeAll(", ");
         switch (action) {
-            .shift => |state_id| try writer.print("shift:{d}", .{state_id}),
+            .shift => |state_id| try out.writer.print("shift:{d}", .{state_id}),
             .reduce => |production_id| {
                 const label = productionLabelFor(extracted, build_result, production_id);
-                try writer.print("reduce:{d}({s})", .{ production_id, label });
+                try out.writer.print("reduce:{d}({s})", .{ production_id, label });
             },
-            .accept => try writer.writeAll("accept"),
+            .accept => try out.writer.writeAll("accept"),
         }
     }
 
@@ -1470,13 +1434,12 @@ fn formatDominantSignaturesAlloc(
     allocator: std.mem.Allocator,
     signatures: []const result_model.BlockedBoundarySignature,
 ) ![]const u8 {
-    var out = std.array_list.Managed(u8).init(allocator);
-    defer out.deinit();
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
 
-    const writer = out.writer();
     for (signatures, 0..) |signature, index| {
-        if (index > 0) try writer.writeAll("; ");
-        try writer.print(
+        if (index > 0) try out.writer.writeAll("; ");
+        try out.writer.print(
             "{s} {s} actions=[{s}] count={d}",
             .{ signature.symbol_name, signature.reason, signature.candidate_actions_summary, signature.count },
         );

@@ -1,4 +1,5 @@
 const std = @import("std");
+const runtime_io = @import("../support/runtime_io.zig");
 const grammar_ir = @import("../ir/grammar_ir.zig");
 const lexical_ir = @import("../ir/lexical_grammar.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
@@ -135,17 +136,14 @@ const SampledExternalState = struct {
 };
 
 fn shouldLogBehavioralProgress() bool {
-    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_BEHAVIORAL_PROGRESS") catch {
-        const fallback = std.process.getEnvVarOwned(std.heap.page_allocator, "GEN_Z_SITTER_PROGRESS") catch return false;
-        defer std.heap.page_allocator.free(fallback);
-        if (fallback.len == 0) return false;
-        if (std.mem.eql(u8, fallback, "0")) return false;
+    if (runtime_io.environ().getPosix("GEN_Z_SITTER_BEHAVIORAL_PROGRESS")) |value| {
+        if (value.len == 0) return false;
+        if (std.mem.eql(u8, value, "0")) return false;
         return true;
-    };
-    defer std.heap.page_allocator.free(value);
-
-    if (value.len == 0) return false;
-    if (std.mem.eql(u8, value, "0")) return false;
+    }
+    const fallback = runtime_io.environ().getPosix("GEN_Z_SITTER_PROGRESS") orelse return false;
+    if (fallback.len == 0) return false;
+    if (std.mem.eql(u8, fallback, "0")) return false;
     return true;
 }
 
@@ -1468,12 +1466,12 @@ test "simulatePreparedScannerFree preserves behavioral config outcomes through g
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data = fixtures.behavioralConfigGrammarJs().contents,
     });
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
 
     var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
@@ -1539,12 +1537,12 @@ test "simulatePreparedScannerFree preserves repeat choice seq outcomes through g
 
     const js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{fixtures.repeatChoiceSeqGrammarJson().contents});
     defer std.testing.allocator.free(js);
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data = js,
     });
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
 
     var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
@@ -1609,12 +1607,12 @@ test "simulatePreparedWithFirstExternalBoundary preserves hidden external fields
 
     const js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{fixtures.hiddenExternalFieldsGrammarJson().contents});
     defer std.testing.allocator.free(js);
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data = js,
     });
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
 
     var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
@@ -1679,12 +1677,12 @@ test "simulatePreparedWithFirstExternalBoundary preserves mixed semantics outcom
 
     const js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{fixtures.mixedSemanticsGrammarJson().contents});
     defer std.testing.allocator.free(js);
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data = js,
     });
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
 
     var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
@@ -1772,20 +1770,23 @@ test "sampleExtractedExternalBoundaryOnly samples the Haskell real external scan
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    const grammar = try std.fs.cwd().readFileAlloc(
-        arena.allocator(),
+    const grammar = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
         "compat_targets/tree_sitter_haskell/grammar.json",
-        1024 * 1024,
-    );
-    const valid_input = try std.fs.cwd().readFileAlloc(
         arena.allocator(),
+        .limited(1024 * 1024),
+    );
+    const valid_input = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
         "compat_targets/tree_sitter_haskell/valid.txt",
-        64 * 1024,
-    );
-    const invalid_input = try std.fs.cwd().readFileAlloc(
         arena.allocator(),
+        .limited(64 * 1024),
+    );
+    const invalid_input = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
         "compat_targets/tree_sitter_haskell/invalid.txt",
-        64 * 1024,
+        arena.allocator(),
+        .limited(64 * 1024),
     );
 
     const prepared = try parsePreparedFromJsonFixture(arena.allocator(), grammar);
@@ -1818,20 +1819,23 @@ test "sampleExtractedExternalBoundaryOnly samples the Bash expansion path" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    const grammar = try std.fs.cwd().readFileAlloc(
-        arena.allocator(),
+    const grammar = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
         "compat_targets/tree_sitter_bash/grammar.json",
-        1024 * 1024,
-    );
-    const valid_input = try std.fs.cwd().readFileAlloc(
         arena.allocator(),
+        .limited(1024 * 1024),
+    );
+    const valid_input = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
         "compat_targets/tree_sitter_bash/valid.txt",
-        64 * 1024,
-    );
-    const invalid_input = try std.fs.cwd().readFileAlloc(
         arena.allocator(),
+        .limited(64 * 1024),
+    );
+    const invalid_input = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
         "compat_targets/tree_sitter_bash/invalid.txt",
-        64 * 1024,
+        arena.allocator(),
+        .limited(64 * 1024),
     );
 
     const prepared = try parsePreparedFromJsonFixture(arena.allocator(), grammar);
@@ -1885,20 +1889,20 @@ test "supported compatibility boundary preserves compatibility-safe valid config
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "behavioral_config.js",
         .data = fixtures.behavioralConfigGrammarJs().contents,
     });
     const external_js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{fixtures.hiddenExternalFieldsGrammarJson().contents});
     defer std.testing.allocator.free(external_js);
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "hidden_external_fields.js",
         .data = external_js,
     });
 
-    const behavioral_path = try tmp.dir.realpathAlloc(std.testing.allocator, "behavioral_config.js");
+    const behavioral_path = try tmp.dir.realPathFileAlloc(std.testing.io, "behavioral_config.js", std.testing.allocator);
     defer std.testing.allocator.free(behavioral_path);
-    const external_path = try tmp.dir.realpathAlloc(std.testing.allocator, "hidden_external_fields.js");
+    const external_path = try tmp.dir.realPathFileAlloc(std.testing.io, "hidden_external_fields.js", std.testing.allocator);
     defer std.testing.allocator.free(external_path);
 
     const behavioral_valid = try simulateValidGrammarJsPath(
@@ -1937,7 +1941,7 @@ test "expanded lexer model covers the current behavioral and compat grammar set"
 
     for (cases) |case| {
         const json_contents = if (case.from_file)
-            try std.fs.cwd().readFileAlloc(arena.allocator(), case.source, 8 * 1024 * 1024)
+            try std.Io.Dir.cwd().readFileAlloc(std.testing.io, case.source, arena.allocator(), .limited(8 * 1024 * 1024))
         else
             case.source;
 
@@ -1980,11 +1984,11 @@ test "repeat choice seq valid path remains parity-safe but still rejects on the 
 
     const repeat_js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{fixtures.repeatChoiceSeqGrammarJson().contents});
     defer std.testing.allocator.free(repeat_js);
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "repeat_choice_seq.js",
         .data = repeat_js,
     });
-    const repeat_path = try tmp.dir.realpathAlloc(std.testing.allocator, "repeat_choice_seq.js");
+    const repeat_path = try tmp.dir.realPathFileAlloc(std.testing.io, "repeat_choice_seq.js", std.testing.allocator);
     defer std.testing.allocator.free(repeat_path);
 
     const js_valid = try simulateValidGrammarJsPath(

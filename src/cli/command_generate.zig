@@ -311,7 +311,7 @@ fn writeRowSharingStats(writer: anytype, stats: parser_c_emit.RowSharingStats) !
 }
 
 test "runGenerate rejects empty grammar path" {
-    try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, .{
+    try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = "",
     }));
 }
@@ -320,15 +320,15 @@ test "runGenerate succeeds for a valid grammar.json file" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.validBlankGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
-    try runGenerate(std.testing.allocator, .{
+    try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = path,
     });
 }
@@ -467,15 +467,15 @@ test "runGenerate supports debug prepared output mode" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.validResolvedGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
-    try runGenerate(std.testing.allocator, .{
+    try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = path,
         .debug_prepared = true,
     });
@@ -485,15 +485,15 @@ test "runGenerate supports debug node types output mode" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.validResolvedGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
-    try runGenerate(std.testing.allocator, .{
+    try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = path,
         .debug_node_types = true,
     });
@@ -503,18 +503,18 @@ test "runGenerate writes node-types.json when output directory is provided" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.validResolvedGrammarJson().contents,
     });
-    try tmp.dir.makePath("out");
+    try tmp.dir.createDirPath(std.testing.io, "out");
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
-    const output_dir = try tmp.dir.realpathAlloc(std.testing.allocator, "out");
+    const output_dir = try tmp.dir.realPathFileAlloc(std.testing.io, "out", std.testing.allocator);
     defer std.testing.allocator.free(output_dir);
 
-    try runGenerate(std.testing.allocator, .{
+    try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = grammar_path,
         .output_dir = output_dir,
     });
@@ -522,7 +522,7 @@ test "runGenerate writes node-types.json when output directory is provided" {
     const node_types_path = try std.fs.path.join(std.testing.allocator, &.{ output_dir, "node-types.json" });
     defer std.testing.allocator.free(node_types_path);
 
-    const written = try std.fs.cwd().readFileAlloc(std.testing.allocator, node_types_path, 1024 * 1024);
+    const written = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, node_types_path, std.testing.allocator, .limited(1024 * 1024));
     defer std.testing.allocator.free(written);
 
     try std.testing.expectEqualStrings(fixtures.validResolvedNodeTypesJson().contents, written);
@@ -532,18 +532,18 @@ test "runGenerate writes field and children node-types.json when output director
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.fieldChildrenGrammarJson().contents,
     });
-    try tmp.dir.makePath("out");
+    try tmp.dir.createDirPath(std.testing.io, "out");
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
-    const output_dir = try tmp.dir.realpathAlloc(std.testing.allocator, "out");
+    const output_dir = try tmp.dir.realPathFileAlloc(std.testing.io, "out", std.testing.allocator);
     defer std.testing.allocator.free(output_dir);
 
-    try runGenerate(std.testing.allocator, .{
+    try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = grammar_path,
         .output_dir = output_dir,
     });
@@ -551,7 +551,7 @@ test "runGenerate writes field and children node-types.json when output director
     const node_types_path = try std.fs.path.join(std.testing.allocator, &.{ output_dir, "node-types.json" });
     defer std.testing.allocator.free(node_types_path);
 
-    const written = try std.fs.cwd().readFileAlloc(std.testing.allocator, node_types_path, 1024 * 1024);
+    const written = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, node_types_path, std.testing.allocator, .limited(1024 * 1024));
     defer std.testing.allocator.free(written);
 
     try std.testing.expectEqualStrings(fixtures.fieldChildrenNodeTypesJson().contents, written);
@@ -561,18 +561,18 @@ test "runGenerate writes hidden wrapper node-types.json when output directory is
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.hiddenWrapperGrammarJson().contents,
     });
-    try tmp.dir.makePath("out");
+    try tmp.dir.createDirPath(std.testing.io, "out");
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
-    const output_dir = try tmp.dir.realpathAlloc(std.testing.allocator, "out");
+    const output_dir = try tmp.dir.realPathFileAlloc(std.testing.io, "out", std.testing.allocator);
     defer std.testing.allocator.free(output_dir);
 
-    try runGenerate(std.testing.allocator, .{
+    try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = grammar_path,
         .output_dir = output_dir,
     });
@@ -580,7 +580,7 @@ test "runGenerate writes hidden wrapper node-types.json when output directory is
     const node_types_path = try std.fs.path.join(std.testing.allocator, &.{ output_dir, "node-types.json" });
     defer std.testing.allocator.free(node_types_path);
 
-    const written = try std.fs.cwd().readFileAlloc(std.testing.allocator, node_types_path, 1024 * 1024);
+    const written = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, node_types_path, std.testing.allocator, .limited(1024 * 1024));
     defer std.testing.allocator.free(written);
 
     try std.testing.expectEqualStrings(fixtures.hiddenWrapperNodeTypesJson().contents, written);
@@ -590,18 +590,18 @@ test "runGenerate writes extra aliased body node-types.json when output director
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.extraAliasedBodyGrammarJson().contents,
     });
-    try tmp.dir.makePath("out");
+    try tmp.dir.createDirPath(std.testing.io, "out");
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
-    const output_dir = try tmp.dir.realpathAlloc(std.testing.allocator, "out");
+    const output_dir = try tmp.dir.realPathFileAlloc(std.testing.io, "out", std.testing.allocator);
     defer std.testing.allocator.free(output_dir);
 
-    try runGenerate(std.testing.allocator, .{
+    try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = grammar_path,
         .output_dir = output_dir,
     });
@@ -609,7 +609,7 @@ test "runGenerate writes extra aliased body node-types.json when output director
     const node_types_path = try std.fs.path.join(std.testing.allocator, &.{ output_dir, "node-types.json" });
     defer std.testing.allocator.free(node_types_path);
 
-    const written = try std.fs.cwd().readFileAlloc(std.testing.allocator, node_types_path, 1024 * 1024);
+    const written = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, node_types_path, std.testing.allocator, .limited(1024 * 1024));
     defer std.testing.allocator.free(written);
 
     try std.testing.expectEqualStrings(fixtures.extraAliasedBodyNodeTypesJson().contents, written);
@@ -619,18 +619,18 @@ test "runGenerate writes external collision node-types.json when output director
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.externalCollisionGrammarJson().contents,
     });
-    try tmp.dir.makePath("out");
+    try tmp.dir.createDirPath(std.testing.io, "out");
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
-    const output_dir = try tmp.dir.realpathAlloc(std.testing.allocator, "out");
+    const output_dir = try tmp.dir.realPathFileAlloc(std.testing.io, "out", std.testing.allocator);
     defer std.testing.allocator.free(output_dir);
 
-    try runGenerate(std.testing.allocator, .{
+    try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = grammar_path,
         .output_dir = output_dir,
     });
@@ -638,7 +638,7 @@ test "runGenerate writes external collision node-types.json when output director
     const node_types_path = try std.fs.path.join(std.testing.allocator, &.{ output_dir, "node-types.json" });
     defer std.testing.allocator.free(node_types_path);
 
-    const written = try std.fs.cwd().readFileAlloc(std.testing.allocator, node_types_path, 1024 * 1024);
+    const written = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, node_types_path, std.testing.allocator, .limited(1024 * 1024));
     defer std.testing.allocator.free(written);
 
     try std.testing.expectEqualStrings(fixtures.externalCollisionNodeTypesJson().contents, written);
@@ -648,15 +648,15 @@ test "runGenerate succeeds for a valid grammar.js file" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data = fixtures.validBlankGrammarJs().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
-    try runGenerate(std.testing.allocator, .{
+    try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = path,
     });
 }
@@ -665,18 +665,18 @@ test "runGenerate writes node-types.json from grammar.js when output directory i
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data = fixtures.validResolvedGrammarJs().contents,
     });
-    try tmp.dir.makePath("out");
+    try tmp.dir.createDirPath(std.testing.io, "out");
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
-    const output_dir = try tmp.dir.realpathAlloc(std.testing.allocator, "out");
+    const output_dir = try tmp.dir.realPathFileAlloc(std.testing.io, "out", std.testing.allocator);
     defer std.testing.allocator.free(output_dir);
 
-    try runGenerate(std.testing.allocator, .{
+    try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = grammar_path,
         .output_dir = output_dir,
     });
@@ -684,14 +684,14 @@ test "runGenerate writes node-types.json from grammar.js when output directory i
     const node_types_path = try std.fs.path.join(std.testing.allocator, &.{ output_dir, "node-types.json" });
     defer std.testing.allocator.free(node_types_path);
 
-    const written = try std.fs.cwd().readFileAlloc(std.testing.allocator, node_types_path, 1024 * 1024);
+    const written = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, node_types_path, std.testing.allocator, .limited(1024 * 1024));
     defer std.testing.allocator.free(written);
 
     try std.testing.expectEqualStrings(fixtures.validResolvedNodeTypesJson().contents, written);
 }
 
 test "runGenerate maps unsupported extension to InvalidArguments" {
-    try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, .{
+    try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = "grammar.txt",
     }));
 }
@@ -700,15 +700,15 @@ test "runGenerate maps semantic parse errors to InvalidArguments" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.undefinedSymbolGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
-    try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, .{
+    try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = path,
     }));
 }

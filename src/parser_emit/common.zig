@@ -49,20 +49,20 @@ pub fn writeUnresolvedReason(writer: anytype, reason: resolution.UnresolvedReaso
 }
 
 test "common emitter helpers format symbols and actions deterministically" {
-    var buffer = std.array_list.Managed(u8).init(std.testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer buffer.deinit();
 
-    try writeSymbol(buffer.writer(), .{ .external = 2 });
-    try buffer.writer().writeByte('\n');
-    try writeQuotedSymbol(buffer.writer(), .{ .terminal = 1 });
-    try buffer.writer().writeByte('\n');
-    try writeActionKind(buffer.writer(), .{ .reduce = 7 });
-    try buffer.writer().writeByte('\n');
-    try writeActionWithValue(buffer.writer(), .{ .shift = 4 });
-    try buffer.writer().writeByte('\n');
-    try writeActionWithValue(buffer.writer(), .accept);
-    try buffer.writer().writeByte('\n');
-    try writeUnresolvedReason(buffer.writer(), .reduce_reduce_deferred);
+    try writeSymbol(&buffer.writer, .{ .external = 2 });
+    try buffer.writer.writeByte('\n');
+    try writeQuotedSymbol(&buffer.writer, .{ .terminal = 1 });
+    try buffer.writer.writeByte('\n');
+    try writeActionKind(&buffer.writer, .{ .reduce = 7 });
+    try buffer.writer.writeByte('\n');
+    try writeActionWithValue(&buffer.writer, .{ .shift = 4 });
+    try buffer.writer.writeByte('\n');
+    try writeActionWithValue(&buffer.writer, .accept);
+    try buffer.writer.writeByte('\n');
+    try writeUnresolvedReason(&buffer.writer, .reduce_reduce_deferred);
 
     try std.testing.expectEqualStrings(
         \\external:2
@@ -71,5 +71,5 @@ test "common emitter helpers format symbols and actions deterministically" {
         \\shift 4
         \\accept
         \\reduce_reduce_deferred
-    , buffer.items);
+    , buffer.writer.buffered());
 }

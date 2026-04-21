@@ -20,6 +20,6 @@ test "ensureDir creates nested directories" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.makePath("a/b");
-    try tmp.dir.access("a/b", .{});
+    try tmp.dir.createDirPath(std.testing.io, "a/b");
+    try tmp.dir.access(std.testing.io, "a/b", .{});
 }

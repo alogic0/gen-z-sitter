@@ -254,35 +254,35 @@ test "current runtime compatibility exposes the Milestone 15 target" {
 }
 
 test "writeContractPrelude emits the centralized staged compatibility prelude" {
-    var buffer = std.array_list.Managed(u8).init(std.testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer buffer.deinit();
 
-    try writeContractPrelude(buffer.writer(), currentRuntimeCompatibility());
+    try writeContractPrelude(&buffer.writer, currentRuntimeCompatibility());
 
-    try std.testing.expect(std.mem.indexOf(u8, buffer.items, generated_parser_comment) != null);
-    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "#include <stdint.h>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), generated_parser_comment) != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#include <stdint.h>") != null);
 }
 
 test "writeContractTypesAndConstants emits the centralized staged compatibility types and constants" {
-    var buffer = std.array_list.Managed(u8).init(std.testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer buffer.deinit();
 
-    try writeContractTypesAndConstants(buffer.writer(), currentRuntimeCompatibility());
+    try writeContractTypesAndConstants(&buffer.writer, currentRuntimeCompatibility());
 
-    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "#define TS_LANGUAGE_VERSION 15") != null);
-    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "#define TS_SYMBOL_KIND_EXTERNAL 3") != null);
-    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "} TSCompatibilityInfo;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "} TSLanguage;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define TS_LANGUAGE_VERSION 15") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define TS_SYMBOL_KIND_EXTERNAL 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "} TSCompatibilityInfo;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "} TSLanguage;") != null);
 }
 
 test "writeContractAccessors emits the centralized staged compatibility accessors" {
-    var buffer = std.array_list.Managed(u8).init(std.testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer buffer.deinit();
 
-    try writeContractAccessors(buffer.writer());
+    try writeContractAccessors(&buffer.writer);
 
-    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "const TSLanguage *ts_language_instance(void)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "const TSCompatibilityInfo *ts_parser_compatibility(void)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "const TSParserRuntime *ts_parser_runtime(void)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "uint16_t ts_parser_symbol_kind(uint16_t symbol_id)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "const TSLanguage *ts_language_instance(void)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "const TSCompatibilityInfo *ts_parser_compatibility(void)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "const TSParserRuntime *ts_parser_runtime(void)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "uint16_t ts_parser_symbol_kind(uint16_t symbol_id)") != null);
 }

@@ -59,12 +59,12 @@ test "loadGrammarFile loads grammar.js through node" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data = fixtures.validResolvedGrammarJs().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     var loaded = try loadGrammarFile(std.testing.allocator, path);
@@ -78,12 +78,12 @@ test "loadGrammarFile rejects empty string extra" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.invalidExtraGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.InvalidExtra, loadGrammarFile(std.testing.allocator, path));
@@ -93,12 +93,12 @@ test "loadGrammarFile rejects unexpected precedence entry" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.invalidPrecedenceGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.UnexpectedPrecedenceEntry, loadGrammarFile(std.testing.allocator, path));
@@ -108,12 +108,12 @@ test "loadGrammarFile rejects missing name" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.missingNameGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.MissingName, loadGrammarFile(std.testing.allocator, path));
@@ -123,12 +123,12 @@ test "loadGrammarFile rejects missing rules" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.missingRulesGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.MissingRules, loadGrammarFile(std.testing.allocator, path));
@@ -138,12 +138,12 @@ test "loadGrammarFile rejects empty grammar name" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.emptyNameGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.EmptyName, loadGrammarFile(std.testing.allocator, path));
@@ -153,12 +153,12 @@ test "loadGrammarFile rejects empty rules object" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.emptyRulesGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.EmptyRules, loadGrammarFile(std.testing.allocator, path));
@@ -168,12 +168,12 @@ test "loadGrammarFile rejects invalid reserved word set shape" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
         .data = fixtures.invalidReservedGrammarJson().contents,
     });
 
-    const path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
     defer std.testing.allocator.free(path);
 
     try std.testing.expectError(error.InvalidReservedWordSet, loadGrammarFile(std.testing.allocator, path));

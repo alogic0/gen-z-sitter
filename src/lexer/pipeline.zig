@@ -32,10 +32,10 @@ pub fn generateSerializedLexicalDumpFromPrepared(
     return try lexical_dump.dumpSerializedLexicalGrammarAlloc(allocator, serialized);
 }
 
-fn writeModuleExportsJsonFile(dir: std.fs.Dir, sub_path: []const u8, json_contents: []const u8) !void {
+fn writeModuleExportsJsonFile(dir: std.Io.Dir, sub_path: []const u8, json_contents: []const u8) !void {
     const js = try std.fmt.allocPrint(std.testing.allocator, "module.exports = {s};", .{json_contents});
     defer std.testing.allocator.free(js);
-    try dir.writeFile(.{
+    try dir.writeFile(std.testing.io, .{
         .sub_path = sub_path,
         .data = js,
     });
@@ -128,7 +128,7 @@ test "generateSerializedLexicalDumpFromPrepared keeps repeat choice seq lexical 
 
     try writeModuleExportsJsonFile(tmp.dir, "grammar.js", fixtures.repeatChoiceSeqGrammarJson().contents);
 
-    const grammar_path = try tmp.dir.realpathAlloc(std.testing.allocator, "grammar.js");
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
     defer std.testing.allocator.free(grammar_path);
 
     var loaded = try grammar_loader.loadGrammarFile(std.testing.allocator, grammar_path);
