@@ -34,7 +34,13 @@ pub const LexTable = struct {
     }
 
     pub fn selectBestToken(self: LexTable, input: []const u8) !?lexer_model.TokenMatch {
+        if (self.states.len == 0) return null;
         return self.bestToken(self.start_state_id, input, 0);
+    }
+
+    pub fn selectBestTokenDetailed(self: LexTable, input: []const u8) !?lexer_model.DetailedTokenMatch {
+        if (self.states.len == 0) return null;
+        return self.bestTokenDetailed(self.start_state_id, input, 0, 0, false);
     }
 
     fn stateContainsCompletion(self: LexTable, state_id: usize, variable_index: usize) bool {
@@ -98,6 +104,73 @@ pub const LexTable = struct {
         else
             completion_match;
     }
+
+    fn bestTokenDetailed(
+        self: LexTable,
+        state_id: usize,
+        input: []const u8,
+        offset: usize,
+        leading_separator_len: usize,
+        has_seen_non_separator: bool,
+    ) !?lexer_model.DetailedTokenMatch {
+        const state = self.states[state_id];
+        const completion_match: ?lexer_model.DetailedTokenMatch = if (state.completion) |value|
+            detailedTokenMatchFromCompletion(self.grammar, value, offset, leading_separator_len)
+        else
+            null;
+
+        const cursor = decodeNextCodepoint(input, offset) orelse return completion_match;
+
+        var best_continuation: ?lexer_model.DetailedTokenMatch = null;
+        for (state.transitions) |transition| {
+            if (!transition.chars.contains(cursor.codepoint)) continue;
+
+            const successor_contains_completed = if (state.completion) |value|
+                self.stateContainsCompletion(transition.next_state_id, value.variable_index)
+            else
+                false;
+
+            if (state.completion) |value| {
+                if (!preferAdvanceOverCompletion(
+                    self.grammar,
+                    value,
+                    .{
+                        .chars = transition.chars,
+                        .target_state = 0,
+                        .is_separator = transition.is_separator,
+                        .precedence = transition.precedence,
+                    },
+                    successor_contains_completed,
+                    state.has_separator_transitions,
+                )) continue;
+            }
+
+            const next_has_seen_non_separator = has_seen_non_separator or !transition.is_separator;
+            const next_leading_separator_len = if (has_seen_non_separator or !transition.is_separator)
+                leading_separator_len
+            else
+                leading_separator_len + cursor.byte_len;
+
+            const candidate = try self.bestTokenDetailed(
+                transition.next_state_id,
+                input,
+                offset + cursor.byte_len,
+                next_leading_separator_len,
+                next_has_seen_non_separator,
+            ) orelse continue;
+
+            if (best_continuation == null or detailedTokenMatchLessThan(best_continuation.?, candidate)) {
+                best_continuation = candidate;
+            }
+        }
+
+        if (completion_match == null) return best_continuation;
+        if (best_continuation == null) return completion_match;
+        return if (detailedTokenMatchLessThan(completion_match.?, best_continuation.?))
+            best_continuation
+        else
+            completion_match;
+    }
 };
 
 pub fn buildLexTableForSet(
@@ -133,13 +206,16 @@ pub fn buildLexTableForSet(
     errdefer builder.deinit();
 
     const start_state_id = try builder.internState(closure);
-    return .{
+    var table: LexTable = .{
         .allocator = allocator,
         .grammar = grammar,
         .allowed_tokens = allowed_tokens,
         .start_state_id = start_state_id,
         .states = try builder.states.toOwnedSlice(allocator),
     };
+    try minimizeLexTable(&table);
+    try sortLexTable(&table);
+    return table;
 }
 
 pub fn selectBestTokenForSet(
@@ -264,6 +340,45 @@ fn tokenMatchFromCompletion(
         .implicit_precedence = variable.implicit_precedence,
         .kind = variable.kind,
     };
+}
+
+fn detailedTokenMatchFromCompletion(
+    grammar: lexer_model.ExpandedLexicalGrammar,
+    completion: ConflictCompletion,
+    end_offset: usize,
+    leading_separator_len: usize,
+) lexer_model.DetailedTokenMatch {
+    const variable = grammar.variables[completion.variable_index];
+    return .{
+        .variable_index = completion.variable_index,
+        .len = end_offset,
+        .leading_separator_len = leading_separator_len,
+        .completion_precedence = variable.completion_precedence,
+        .implicit_precedence = variable.implicit_precedence,
+        .kind = variable.kind,
+    };
+}
+
+fn detailedTokenMatchLessThan(
+    current: lexer_model.DetailedTokenMatch,
+    candidate: lexer_model.DetailedTokenMatch,
+) bool {
+    return tokenMatchLessThan(
+        .{
+            .variable_index = current.variable_index,
+            .len = current.len,
+            .completion_precedence = current.completion_precedence,
+            .implicit_precedence = current.implicit_precedence,
+            .kind = current.kind,
+        },
+        .{
+            .variable_index = candidate.variable_index,
+            .len = candidate.len,
+            .completion_precedence = candidate.completion_precedence,
+            .implicit_precedence = candidate.implicit_precedence,
+            .kind = candidate.kind,
+        },
+    );
 }
 
 fn bestCompletionForAllowed(
@@ -432,6 +547,191 @@ fn cloneCharacterSet(
     return result;
 }
 
+fn minimizeLexTable(table: *LexTable) !void {
+    if (table.states.len <= 1) return;
+
+    const group_ids = try table.allocator.alloc(usize, table.states.len);
+    defer table.allocator.free(group_ids);
+    var changed = true;
+
+    while (changed) {
+        changed = false;
+        var next_group_id: usize = 0;
+        var new_group_ids = try table.allocator.alloc(usize, table.states.len);
+        defer table.allocator.free(new_group_ids);
+
+        var state_index: usize = 0;
+        while (state_index < table.states.len) : (state_index += 1) {
+            var matched_group: ?usize = null;
+            var prior_index: usize = 0;
+            while (prior_index < state_index) : (prior_index += 1) {
+                if (lexStatesEquivalent(table, state_index, prior_index, group_ids)) {
+                    matched_group = new_group_ids[prior_index];
+                    break;
+                }
+            }
+            if (matched_group) |group_id| {
+                new_group_ids[state_index] = group_id;
+            } else {
+                new_group_ids[state_index] = next_group_id;
+                next_group_id += 1;
+            }
+        }
+
+        if (!std.mem.eql(usize, group_ids, new_group_ids)) {
+            @memcpy(group_ids, new_group_ids);
+            changed = true;
+        }
+    }
+
+    const new_state_count = countDistinctGroups(group_ids);
+    if (new_state_count == table.states.len) return;
+
+    const old_states = table.states;
+    const new_states = try table.allocator.alloc(LexState, new_state_count);
+
+    var representative_by_group = try table.allocator.alloc(usize, new_state_count);
+    defer table.allocator.free(representative_by_group);
+    @memset(representative_by_group, std.math.maxInt(usize));
+
+    for (group_ids, 0..) |group_id, state_index| {
+        if (representative_by_group[group_id] == std.math.maxInt(usize)) {
+            representative_by_group[group_id] = state_index;
+        }
+    }
+
+    for (0..new_state_count) |group_id| {
+        const rep = representative_by_group[group_id];
+        new_states[group_id] = old_states[rep];
+        for (new_states[group_id].transitions) |*transition| {
+            transition.next_state_id = group_ids[transition.next_state_id];
+        }
+    }
+
+    table.start_state_id = group_ids[table.start_state_id];
+    table.allocator.free(old_states);
+    table.states = new_states;
+}
+
+fn sortLexTable(table: *LexTable) !void {
+    if (table.states.len <= 1) return;
+
+    const order = try table.allocator.alloc(usize, table.states.len);
+    defer table.allocator.free(order);
+    for (0..table.states.len) |index| order[index] = index;
+
+    const start_id = table.start_state_id;
+    std.mem.sort(usize, order, SortContext{ .table = table.*, .start_state_id = start_id }, lessThanStateId);
+
+    const remap = try table.allocator.alloc(usize, table.states.len);
+    defer table.allocator.free(remap);
+    for (order, 0..) |old_id, new_id| remap[old_id] = new_id;
+
+    const old_states = table.states;
+    const new_states = try table.allocator.alloc(LexState, table.states.len);
+    for (order, 0..) |old_id, new_id| {
+        new_states[new_id] = old_states[old_id];
+        for (new_states[new_id].transitions) |*transition| {
+            transition.next_state_id = remap[transition.next_state_id];
+        }
+    }
+
+    table.start_state_id = remap[start_id];
+    table.allocator.free(old_states);
+    table.states = new_states;
+}
+
+const SortContext = struct {
+    table: LexTable,
+    start_state_id: usize,
+};
+
+fn lessThanStateId(context: SortContext, left_id: usize, right_id: usize) bool {
+    if (left_id == context.start_state_id) return right_id != context.start_state_id;
+    if (right_id == context.start_state_id) return false;
+    return lexStateLessThan(context.table.states[left_id], context.table.states[right_id]);
+}
+
+fn lexStatesEquivalent(table: *const LexTable, left_id: usize, right_id: usize, group_ids: []const usize) bool {
+    const left = table.states[left_id];
+    const right = table.states[right_id];
+    if ((left_id == table.start_state_id) != (right_id == table.start_state_id)) return false;
+    if (!conflictCompletionEql(left.completion, right.completion)) return false;
+    if (left.has_separator_transitions != right.has_separator_transitions) return false;
+    if (left.transitions.len != right.transitions.len) return false;
+    for (left.transitions, right.transitions) |left_transition, right_transition| {
+        if (group_ids[left_transition.next_state_id] != group_ids[right_transition.next_state_id]) return false;
+        if (left_transition.is_separator != right_transition.is_separator) return false;
+        if (left_transition.precedence != right_transition.precedence) return false;
+        if (!characterSetEql(left_transition.chars, right_transition.chars)) return false;
+    }
+    return true;
+}
+
+fn lexStateLessThan(left: LexState, right: LexState) bool {
+    if (!conflictCompletionEql(left.completion, right.completion)) {
+        return conflictCompletionLessThan(left.completion, right.completion);
+    }
+    if (left.has_separator_transitions != right.has_separator_transitions) {
+        return !left.has_separator_transitions and right.has_separator_transitions;
+    }
+    if (left.transitions.len != right.transitions.len) return left.transitions.len < right.transitions.len;
+    for (left.transitions, right.transitions) |left_transition, right_transition| {
+        if (!characterSetEql(left_transition.chars, right_transition.chars)) {
+            return characterSetLessThan(left_transition.chars, right_transition.chars);
+        }
+        if (left_transition.is_separator != right_transition.is_separator) {
+            return !left_transition.is_separator and right_transition.is_separator;
+        }
+        if (left_transition.precedence != right_transition.precedence) {
+            return left_transition.precedence < right_transition.precedence;
+        }
+        if (left_transition.next_state_id != right_transition.next_state_id) {
+            return left_transition.next_state_id < right_transition.next_state_id;
+        }
+    }
+    return false;
+}
+
+fn conflictCompletionEql(left: ?ConflictCompletion, right: ?ConflictCompletion) bool {
+    if (left == null or right == null) return left == null and right == null;
+    return left.?.variable_index == right.?.variable_index and left.?.precedence == right.?.precedence;
+}
+
+fn conflictCompletionLessThan(left: ?ConflictCompletion, right: ?ConflictCompletion) bool {
+    if (left == null) return right != null;
+    if (right == null) return false;
+    if (left.?.variable_index != right.?.variable_index) return left.?.variable_index < right.?.variable_index;
+    return left.?.precedence < right.?.precedence;
+}
+
+fn characterSetEql(left: lexer_model.CharacterSet, right: lexer_model.CharacterSet) bool {
+    if (left.ranges.items.len != right.ranges.items.len) return false;
+    for (left.ranges.items, right.ranges.items) |left_range, right_range| {
+        if (left_range.start != right_range.start or left_range.end != right_range.end) return false;
+    }
+    return true;
+}
+
+fn characterSetLessThan(left: lexer_model.CharacterSet, right: lexer_model.CharacterSet) bool {
+    const len = @min(left.ranges.items.len, right.ranges.items.len);
+    for (0..len) |index| {
+        const left_range = left.ranges.items[index];
+        const right_range = right.ranges.items[index];
+        if (left_range.start != right_range.start) return left_range.start < right_range.start;
+        if (left_range.end != right_range.end) return left_range.end < right_range.end;
+    }
+    return left.ranges.items.len < right.ranges.items.len;
+}
+
+fn countDistinctGroups(group_ids: []const usize) usize {
+    var max_group: usize = 0;
+    for (group_ids, 0..) |group_id, index| {
+        if (index == 0 or group_id > max_group) max_group = group_id;
+    }
+    return if (group_ids.len == 0) 0 else max_group + 1;
+}
+
 test "buildLexTableForSet interns reusable lexer states" {
     const rules = [_]@import("../ir/rules.zig").Rule{
         .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
@@ -459,4 +759,65 @@ test "buildLexTableForSet interns reusable lexer states" {
     try std.testing.expect(table.start_state_id < table.states.len);
     const best = (try table.selectBestToken("let x")).?;
     try std.testing.expectEqual(@as(usize, 1), best.variable_index);
+}
+
+test "buildLexTableForSet reports leading separator prefix in detailed matches" {
+    const rules = [_]@import("../ir/rules.zig").Rule{
+        .{ .string = "let" },
+        .{ .pattern = .{ .value = "[ ]+", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "keyword", .kind = .named, .rule = 0 },
+        },
+        .separators = &.{1},
+    };
+
+    var expanded = try lexer_model.expandExtractedLexicalGrammar(std.testing.allocator, rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var allowed = try lexer_model.TokenIndexSet.initEmpty(std.testing.allocator, expanded.variables.len);
+    defer allowed.deinit(std.testing.allocator);
+    allowed.fill();
+
+    var table = try buildLexTableForSet(std.testing.allocator, expanded, allowed);
+    defer table.deinit();
+
+    const best = (try table.selectBestTokenDetailed("  let")).?;
+    try std.testing.expectEqual(@as(usize, 5), best.len);
+    try std.testing.expectEqual(@as(usize, 2), best.leading_separator_len);
+}
+
+test "buildLexTableForSet sorts lexer states deterministically with start state first" {
+    const rules = [_]@import("../ir/rules.zig").Rule{
+        .{ .string = "a" },
+        .{ .string = "b" },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "a_tok", .kind = .named, .rule = 0 },
+            .{ .name = "b_tok", .kind = .named, .rule = 1 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try lexer_model.expandExtractedLexicalGrammar(std.testing.allocator, rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var allowed = try lexer_model.TokenIndexSet.initEmpty(std.testing.allocator, expanded.variables.len);
+    defer allowed.deinit(std.testing.allocator);
+    allowed.fill();
+
+    var table = try buildLexTableForSet(std.testing.allocator, expanded, allowed);
+    defer table.deinit();
+
+    try std.testing.expectEqual(@as(usize, 3), table.states.len);
+    try std.testing.expectEqual(@as(usize, 0), table.start_state_id);
+    try std.testing.expectEqual(@as(usize, 2), table.states[0].transitions.len);
+    try std.testing.expect(table.states[0].transitions[0].next_state_id < table.states.len);
+    try std.testing.expect(table.states[0].transitions[1].next_state_id < table.states.len);
+    try std.testing.expect(characterSetLessThan(
+        table.states[0].transitions[0].chars,
+        table.states[0].transitions[1].chars,
+    ));
 }

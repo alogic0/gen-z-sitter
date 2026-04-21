@@ -64,6 +64,36 @@ const PreparedExpandedLexical = struct {
     }
 };
 
+const PreparedLexStateTables = struct {
+    grammar: lexer_model.ExpandedLexicalGrammar,
+    conflict_map: lexer_model.TokenConflictMap,
+    merged_lex_state_ids: []usize,
+    lex_tables: []lexer_table.LexTable,
+
+    fn deinit(self: *PreparedLexStateTables, allocator: std.mem.Allocator) void {
+        for (self.lex_tables) |*table| table.deinit();
+        allocator.free(self.lex_tables);
+        allocator.free(self.merged_lex_state_ids);
+        self.conflict_map.deinit(allocator);
+        self.grammar.deinit(allocator);
+        self.* = undefined;
+    }
+};
+
+const PreparedSampledLexTables = struct {
+    grammar: lexer_model.ExpandedLexicalGrammar,
+    conflict_map: lexer_model.TokenConflictMap,
+    lex_tables: []lexer_table.LexTable,
+
+    fn deinit(self: *PreparedSampledLexTables, allocator: std.mem.Allocator) void {
+        for (self.lex_tables) |*table| table.deinit();
+        allocator.free(self.lex_tables);
+        self.conflict_map.deinit(allocator);
+        self.grammar.deinit(allocator);
+        self.* = undefined;
+    }
+};
+
 const SampledExternalEffect = union(enum) {
     none,
     push_layout: usize,
@@ -208,8 +238,20 @@ pub fn sampleExtractedExternalBoundaryOnly(
     input: []const u8,
 ) BehavioralError!ExternalBoundarySample {
     if (!external_boundary.isReady()) return error.UnsupportedExternalScannerGrammar;
-    var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical, syntax);
-    defer expanded_lexical.deinit(allocator);
+    const sampled = if (syntax) |syntax_grammar| blk: {
+        const prepared_lex_tables = try prepareSampledLexTablesFromSyntax(
+            allocator,
+            prepared.rules,
+            lexical,
+            syntax_grammar,
+        );
+        break :blk SampledLexical{ .syntax = prepared_lex_tables };
+    } else blk: {
+        const expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical, null);
+        break :blk SampledLexical{ .syntaxless = expanded_lexical };
+    };
+    var prepared_sampled = sampled;
+    defer prepared_sampled.deinit(allocator);
     const progress = shouldLogBehavioralProgress();
 
     var external_state = SampledExternalState.init(allocator);
@@ -253,13 +295,20 @@ pub fn sampleExtractedExternalBoundaryOnly(
             continue;
         }
 
-        if (skipSupportedExtraPrefix(input[cursor..])) |skip_len| {
-            cursor += skip_len;
-            continue;
+        if (syntax == null) {
+            if (skipSupportedExtraPrefix(input[cursor..])) |skip_len| {
+                cursor += skip_len;
+                continue;
+            }
         }
 
-        if (try matchLexicalPrefix(allocator, expanded_lexical.grammar, input[cursor..])) |len| {
-            cursor += len;
+        if (try matchLexicalPrefix(allocator, prepared_sampled, input[cursor..])) |match| {
+            if (match.leading_separator_len > 0) {
+                cursor += nextInputCharLen(input[cursor..]);
+                continue;
+            }
+
+            cursor += match.len;
             lexical_matches += 1;
             continue;
         }
@@ -291,8 +340,8 @@ fn simulateBuiltScannerFree(
     lexical: lexical_ir.LexicalGrammar,
     input: []const u8,
 ) BehavioralError!SimulationResult {
-    var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical, syntax);
-    defer expanded_lexical.deinit(allocator);
+    var prepared_lex_tables = try prepareLexStateTables(allocator, result, prepared.rules, lexical, syntax);
+    defer prepared_lex_tables.deinit(allocator);
 
     var stack = std.array_list.Managed(u32).init(allocator);
     defer stack.deinit();
@@ -344,10 +393,9 @@ fn simulateBuiltScannerFree(
         }
 
         const matched = try selectMatchingTerminal(
-            allocator,
             result,
             state_id,
-            expanded_lexical,
+            prepared_lex_tables,
             input[cursor..],
         ) orelse {
             if (selectFallbackAction(result, state_id)) |action| switch (action) {
@@ -439,8 +487,8 @@ fn simulateBuiltWithFirstExternalBoundary(
 ) BehavioralError!SimulationResult {
     if (lexical.separators.len != 0) return error.UnsupportedExternalScannerGrammar;
     if (!external_boundary.isReady()) return error.UnsupportedExternalScannerGrammar;
-    var expanded_lexical = try prepareExpandedLexicalGrammar(allocator, prepared.rules, lexical, syntax);
-    defer expanded_lexical.deinit(allocator);
+    var prepared_lex_tables = try prepareLexStateTables(allocator, result, prepared.rules, lexical, syntax);
+    defer prepared_lex_tables.deinit(allocator);
     const progress = shouldLogBehavioralProgress();
 
     var stack = std.array_list.Managed(u32).init(allocator);
@@ -581,10 +629,9 @@ fn simulateBuiltWithFirstExternalBoundary(
         }
 
         const matched = try selectMatchingSymbolWithExternalBoundary(
-            allocator,
             result,
             state_id,
-            expanded_lexical,
+            prepared_lex_tables,
             external_boundary,
             &external_state,
             input[cursor..],
@@ -711,27 +758,13 @@ const MatchedTerminal = struct {
 };
 
 fn selectMatchingTerminal(
-    allocator: std.mem.Allocator,
     result: build.BuildResult,
     state_id: u32,
-    expanded_lexical: PreparedExpandedLexical,
+    prepared_lex_tables: PreparedLexStateTables,
     remaining: []const u8,
 ) std.mem.Allocator.Error!?MatchedTerminal {
-    var allowed = try lexer_model.TokenIndexSet.initEmpty(allocator, expanded_lexical.grammar.variables.len);
-    defer allowed.deinit(allocator);
-
-    for (expanded_lexical.grammar.variables, 0..) |_, index| {
-        const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
-        if (result.resolved_actions.decisionFor(state_id, symbol) == null) continue;
-        allowed.insert(index);
-    }
-
-    const best = try lexer_table.selectBestTokenForSet(
-        allocator,
-        expanded_lexical.grammar,
-        allowed,
-        remaining,
-    ) orelse return null;
+    const table = lexTableForState(result.states, prepared_lex_tables, state_id) orelse return null;
+    const best = try table.selectBestToken(remaining) orelse return null;
     return .{
         .symbol = .{ .terminal = @intCast(best.variable_index) },
         .len = best.len,
@@ -739,10 +772,9 @@ fn selectMatchingTerminal(
 }
 
 fn selectMatchingSymbolWithExternalBoundary(
-    allocator: std.mem.Allocator,
     result: build.BuildResult,
     state_id: u32,
-    expanded_lexical: PreparedExpandedLexical,
+    prepared_lex_tables: PreparedLexStateTables,
     external_boundary: scanner_serialize.SerializedExternalScannerBoundary,
     external_state: *const SampledExternalState,
     remaining: []const u8,
@@ -762,26 +794,14 @@ fn selectMatchingSymbolWithExternalBoundary(
         }
     }
 
-    var allowed = try lexer_model.TokenIndexSet.initEmpty(allocator, expanded_lexical.grammar.variables.len);
-    defer allowed.deinit(allocator);
-
-    for (expanded_lexical.grammar.variables, 0..) |_, index| {
-        const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
-        if (result.resolved_actions.decisionFor(state_id, symbol) == null) continue;
-        allowed.insert(index);
-    }
-
-    if (try lexer_table.selectBestTokenForSet(
-        allocator,
-        expanded_lexical.grammar,
-        allowed,
-        remaining,
-    )) |lexical_best| {
-        if (best == null or lexicalExternalMatchBetter(best.?, lexical_best.len)) {
-            best = .{
-                .symbol = .{ .terminal = @intCast(lexical_best.variable_index) },
-                .len = lexical_best.len,
-            };
+    if (lexTableForState(result.states, prepared_lex_tables, state_id)) |table| {
+        if (try table.selectBestToken(remaining)) |lexical_best| {
+            if (best == null or lexicalExternalMatchBetter(best.?, lexical_best.len)) {
+                best = .{
+                    .symbol = .{ .terminal = @intCast(lexical_best.variable_index) },
+                    .len = lexical_best.len,
+                };
+            }
         }
     }
 
@@ -932,11 +952,28 @@ fn ruleLiteralText(all_rules: []const rules.Rule, rule_id: rules.RuleId) ?[]cons
 
 fn matchLexicalPrefix(
     allocator: std.mem.Allocator,
-    expanded_lexical: lexer_model.ExpandedLexicalGrammar,
+    prepared_lexical: SampledLexical,
     input: []const u8,
-) std.mem.Allocator.Error!?usize {
-    if (try lexer_model.selectBestToken(allocator, expanded_lexical, input)) |match| return match.len;
-    return matchSampledLexicalFallback(input);
+) std.mem.Allocator.Error!?lexer_model.DetailedTokenMatch {
+    return switch (prepared_lexical) {
+        .syntax => |prepared| matchLexicalPrefixFromLexTables(prepared, input),
+        .syntaxless => |prepared| blk: {
+            if (try lexer_model.selectBestTokenDetailed(allocator, prepared.grammar, input)) |match| {
+                if (match.len > 0) break :blk match;
+            }
+            if (matchSampledLexicalFallback(input)) |len| {
+                break :blk .{
+                    .variable_index = 0,
+                    .len = len,
+                    .leading_separator_len = 0,
+                    .completion_precedence = 0,
+                    .implicit_precedence = 0,
+                    .kind = .anonymous,
+                };
+            }
+            break :blk null;
+        },
+    };
 }
 
 fn lexicalExternalMatchBetter(current: MatchedTerminal, candidate_len: usize) bool {
@@ -981,12 +1018,299 @@ fn prepareExpandedLexicalGrammar(
     };
 }
 
+fn prepareLexStateTables(
+    allocator: std.mem.Allocator,
+    result: build.BuildResult,
+    all_rules: []const rules.Rule,
+    lexical: lexical_ir.LexicalGrammar,
+    syntax: ?syntax_ir.SyntaxGrammar,
+) BehavioralError!PreparedLexStateTables {
+    var prepared = try prepareExpandedLexicalGrammar(allocator, all_rules, lexical, syntax);
+    errdefer prepared.deinit(allocator);
+
+    const merged_lex_state_ids = try allocator.alloc(usize, result.lex_state_count);
+    errdefer allocator.free(merged_lex_state_ids);
+
+    if (result.lex_state_count == 0) {
+        return .{
+            .grammar = prepared.grammar,
+            .conflict_map = prepared.conflict_map,
+            .merged_lex_state_ids = merged_lex_state_ids,
+            .lex_tables = try allocator.alloc(lexer_table.LexTable, 0),
+        };
+    }
+    @memset(merged_lex_state_ids, 0);
+
+    const raw_sets = try allocator.alloc(lexer_model.TokenIndexSet, result.lex_state_count);
+    defer {
+        for (0..result.lex_state_count) |index| raw_sets[index].deinit(allocator);
+        allocator.free(raw_sets);
+    }
+    const raw_present = try allocator.alloc(bool, result.lex_state_count);
+    defer allocator.free(raw_present);
+    @memset(raw_present, false);
+
+    for (0..result.lex_state_count) |index| {
+        raw_sets[index] = try lexer_model.TokenIndexSet.initEmpty(allocator, prepared.grammar.variables.len);
+    }
+
+    for (result.states) |parse_state| {
+        const lex_state_id: usize = @intCast(parse_state.lex_state_id);
+        raw_present[lex_state_id] = true;
+        for (result.resolved_actions.groupsForState(parse_state.id)) |group| {
+            switch (group.symbol) {
+                .terminal => |index| raw_sets[lex_state_id].insert(index),
+                .non_terminal, .external => {},
+            }
+        }
+    }
+
+    var merged_sets = std.ArrayListUnmanaged(lexer_model.TokenIndexSet).empty;
+    defer {
+        for (merged_sets.items) |*set| set.deinit(allocator);
+        merged_sets.deinit(allocator);
+    }
+
+    for (0..result.lex_state_count) |raw_id| {
+        if (!raw_present[raw_id]) continue;
+        var merged_target: ?usize = null;
+        var merged_index: usize = 0;
+        while (merged_index < merged_sets.items.len) : (merged_index += 1) {
+            if (canMergeLexTokenSets(raw_sets[raw_id], merged_sets.items[merged_index], prepared.conflict_map)) {
+                merged_target = merged_index;
+                break;
+            }
+        }
+
+        if (merged_target) |target| {
+            mergeTokenSetInto(&merged_sets.items[target], raw_sets[raw_id]);
+            merged_lex_state_ids[raw_id] = target;
+        } else {
+            try merged_sets.append(allocator, try raw_sets[raw_id].clone(allocator));
+            merged_lex_state_ids[raw_id] = merged_sets.items.len - 1;
+        }
+    }
+
+    const lex_tables = try allocator.alloc(lexer_table.LexTable, merged_sets.items.len);
+    errdefer allocator.free(lex_tables);
+    for (merged_sets.items, 0..) |allowed, merged_index| {
+        lex_tables[merged_index] = try lexer_table.buildLexTableForSet(
+            allocator,
+            prepared.grammar,
+            allowed,
+        );
+    }
+
+    return .{
+        .grammar = prepared.grammar,
+        .conflict_map = prepared.conflict_map,
+        .merged_lex_state_ids = merged_lex_state_ids,
+        .lex_tables = lex_tables,
+    };
+}
+
+const SampledLexical = union(enum) {
+    syntax: PreparedSampledLexTables,
+    syntaxless: PreparedExpandedLexical,
+
+    fn deinit(self: *SampledLexical, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .syntax => |*prepared| prepared.deinit(allocator),
+            .syntaxless => |*prepared| prepared.deinit(allocator),
+        }
+    }
+};
+
+fn matchLexicalPrefixFromLexTables(
+    prepared_lexical: PreparedSampledLexTables,
+    input: []const u8,
+) std.mem.Allocator.Error!?lexer_model.DetailedTokenMatch {
+    var best: ?lexer_model.DetailedTokenMatch = null;
+    for (prepared_lexical.lex_tables) |table| {
+        if (try table.selectBestTokenDetailed(input)) |match| {
+            if (match.len == 0) continue;
+            if (best == null or detailedTokenMatchLessThan(best.?, match)) {
+                best = match;
+            }
+        }
+    }
+    return best;
+}
+
+fn prepareSampledLexTablesFromSyntax(
+    allocator: std.mem.Allocator,
+    all_rules: []const rules.Rule,
+    lexical: lexical_ir.LexicalGrammar,
+    syntax: syntax_ir.SyntaxGrammar,
+) BehavioralError!PreparedSampledLexTables {
+    var prepared = try prepareExpandedLexicalGrammar(allocator, all_rules, lexical, syntax);
+    errdefer prepared.deinit(allocator);
+
+    const following_tokens = try lexer_model.computeFollowingTokensAlloc(
+        allocator,
+        syntax,
+        prepared.grammar.variables.len,
+    );
+    defer lexer_model.deinitTokenIndexSets(allocator, following_tokens);
+
+    var token_sets = std.ArrayListUnmanaged(lexer_model.TokenIndexSet).empty;
+    defer {
+        for (token_sets.items) |*set| set.deinit(allocator);
+        token_sets.deinit(allocator);
+    }
+
+    var initial_tokens = try collectSyntaxTerminalSet(allocator, syntax, prepared.grammar.variables.len);
+    defer initial_tokens.deinit(allocator);
+    try appendUniqueTokenSet(allocator, &token_sets, initial_tokens);
+
+    for (following_tokens) |set| {
+        if (tokenSetIsEmpty(set)) continue;
+        try appendUniqueTokenSet(allocator, &token_sets, set);
+    }
+
+    const lex_tables = try allocator.alloc(lexer_table.LexTable, token_sets.items.len);
+    errdefer allocator.free(lex_tables);
+
+    for (token_sets.items, 0..) |set, index| {
+        lex_tables[index] = try lexer_table.buildLexTableForSet(
+            allocator,
+            prepared.grammar,
+            set,
+        );
+    }
+
+    return .{
+        .grammar = prepared.grammar,
+        .conflict_map = prepared.conflict_map,
+        .lex_tables = lex_tables,
+    };
+}
+
+fn collectSyntaxTerminalSet(
+    allocator: std.mem.Allocator,
+    syntax: syntax_ir.SyntaxGrammar,
+    terminal_count: usize,
+) std.mem.Allocator.Error!lexer_model.TokenIndexSet {
+    var set = try lexer_model.TokenIndexSet.initEmpty(allocator, terminal_count);
+    for (syntax.variables) |variable| {
+        for (variable.productions) |production| {
+            for (production.steps) |step| {
+                switch (step.symbol) {
+                    .terminal => |index| set.insert(index),
+                    else => {},
+                }
+            }
+        }
+    }
+    return set;
+}
+
+fn appendUniqueTokenSet(
+    allocator: std.mem.Allocator,
+    token_sets: *std.ArrayListUnmanaged(lexer_model.TokenIndexSet),
+    candidate: lexer_model.TokenIndexSet,
+) std.mem.Allocator.Error!void {
+    for (token_sets.items) |existing| {
+        if (std.mem.eql(bool, existing.values, candidate.values)) return;
+    }
+    try token_sets.append(allocator, try candidate.clone(allocator));
+}
+
+fn tokenSetIsEmpty(set: lexer_model.TokenIndexSet) bool {
+    for (set.values) |value| {
+        if (value) return false;
+    }
+    return true;
+}
+
+fn detailedTokenMatchLessThan(
+    current: lexer_model.DetailedTokenMatch,
+    candidate: lexer_model.DetailedTokenMatch,
+) bool {
+    if (candidate.len != current.len) return candidate.len > current.len;
+    if (candidate.completion_precedence != current.completion_precedence) {
+        return candidate.completion_precedence > current.completion_precedence;
+    }
+    if (candidate.implicit_precedence != current.implicit_precedence) {
+        return candidate.implicit_precedence > current.implicit_precedence;
+    }
+    if (candidate.kind != current.kind) return candidate.kind == .named;
+    return candidate.variable_index < current.variable_index;
+}
+
+fn lexTableForState(
+    states: []const @import("../parse_table/state.zig").ParseState,
+    prepared_lex_tables: PreparedLexStateTables,
+    state_id: u32,
+) ?lexer_table.LexTable {
+    const parse_state = findState(states, state_id) orelse return null;
+    const raw_lex_state_id: usize = @intCast(parse_state.lex_state_id);
+    if (raw_lex_state_id >= prepared_lex_tables.merged_lex_state_ids.len) return null;
+    const lex_state_id = prepared_lex_tables.merged_lex_state_ids[raw_lex_state_id];
+    if (lex_state_id >= prepared_lex_tables.lex_tables.len) return null;
+    return prepared_lex_tables.lex_tables[lex_state_id];
+}
+
+fn mergeTokenSetInto(target: *lexer_model.TokenIndexSet, incoming: lexer_model.TokenIndexSet) void {
+    for (incoming.values, 0..) |present, index| {
+        if (present) target.insert(index);
+    }
+}
+
+fn tokenSetHasConflictWithSet(
+    token_index: usize,
+    other: lexer_model.TokenIndexSet,
+    conflict_map: lexer_model.TokenConflictMap,
+) bool {
+    for (other.values, 0..) |present, other_index| {
+        if (!present or other_index == token_index) continue;
+        const status = conflict_map.status(token_index, other_index);
+        const reverse = conflict_map.status(other_index, token_index);
+        if (status.matches_same_string or
+            status.matches_prefix or
+            reverse.matches_prefix or
+            status.does_match_valid_continuation or
+            reverse.does_match_valid_continuation or
+            status.does_match_separators or
+            reverse.does_match_separators or
+            status.does_match_continuation or
+            reverse.does_match_continuation or
+            status.starting_overlap or
+            reverse.starting_overlap)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn canMergeLexTokenSets(
+    left: lexer_model.TokenIndexSet,
+    right: lexer_model.TokenIndexSet,
+    conflict_map: lexer_model.TokenConflictMap,
+) bool {
+    for (left.values, 0..) |present, token_index| {
+        if (!present or right.contains(token_index)) continue;
+        if (tokenSetHasConflictWithSet(token_index, right, conflict_map)) return false;
+    }
+    for (right.values, 0..) |present, token_index| {
+        if (!present or left.contains(token_index)) continue;
+        if (tokenSetHasConflictWithSet(token_index, left, conflict_map)) return false;
+    }
+    return true;
+}
+
 fn skipSupportedExtraPrefix(input: []const u8) ?usize {
     if (input.len == 0) return null;
     return switch (input[0]) {
         ' ', '\t', '\r', '\n' => 1,
         else => null,
     };
+}
+
+fn nextInputCharLen(input: []const u8) usize {
+    if (input.len == 0) return 0;
+    return std.unicode.utf8ByteSequenceLength(input[0]) catch 1;
 }
 
 fn matchSampledLexicalFallback(input: []const u8) ?usize {
