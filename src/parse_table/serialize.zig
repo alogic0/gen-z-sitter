@@ -52,7 +52,7 @@ pub fn serializeBuildResult(
     mode: SerializeMode,
 ) SerializeError!SerializedTable {
     std.debug.print("[parse_table/serialize] serializeBuildResult enter mode={s} states={d}\n", .{ @tagName(mode), result.states.len });
-    if (mode == .strict and result.hasUnresolvedDecisions()) {
+    if (mode == .strict and result.hasBlockingUnresolvedDecisions()) {
         return error.UnresolvedDecisions;
     }
 
@@ -80,10 +80,11 @@ pub fn serializeBuildResult(
         };
     }
 
-    std.debug.print("[parse_table/serialize] serializeBuildResult done blocked={}\n", .{snapshot.unresolved.len > 0});
+    const blocked = result.hasBlockingUnresolvedDecisions();
+    std.debug.print("[parse_table/serialize] serializeBuildResult done blocked={}\n", .{blocked});
     return .{
         .states = serialized_states,
-        .blocked = snapshot.unresolved.len > 0,
+        .blocked = blocked,
     };
 }
 

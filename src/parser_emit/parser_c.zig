@@ -635,6 +635,7 @@ fn unresolvedReasonCode(reason: @import("../parse_table/resolution.zig").Unresol
     return switch (reason) {
         .shift_reduce => 1,
         .reduce_reduce_deferred => 2,
+        .reduce_reduce_expected => 2,
         .multiple_candidates => 3,
         .unsupported_action_mix => 4,
     };

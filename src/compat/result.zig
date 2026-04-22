@@ -77,6 +77,7 @@ pub const BlockedSymbolKind = enum {
 pub const BlockedBoundaryReasonCounts = struct {
     shift_reduce: usize = 0,
     reduce_reduce_deferred: usize = 0,
+    reduce_reduce_expected: usize = 0,
     multiple_candidates: usize = 0,
     unsupported_action_mix: usize = 0,
 };

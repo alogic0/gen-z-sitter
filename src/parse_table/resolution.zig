@@ -12,6 +12,7 @@ pub const UnresolvedReason = enum {
     multiple_candidates,
     shift_reduce,
     reduce_reduce_deferred,
+    reduce_reduce_expected,
     unsupported_action_mix,
 };
 
@@ -131,8 +132,22 @@ pub const ResolvedActionTable = struct {
         return false;
     }
 
+    pub fn hasBlockingUnresolvedDecisions(self: ResolvedActionTable) bool {
+        for (self.states) |resolved| {
+            for (resolved.groups) |group| {
+                switch (group.decision) {
+                    .chosen => {},
+                    .unresolved => |reason| {
+                        if (reason != .reduce_reduce_expected) return true;
+                    },
+                }
+            }
+        }
+        return false;
+    }
+
     pub fn isSerializationReady(self: ResolvedActionTable) bool {
-        return !self.hasUnresolvedDecisions();
+        return !self.hasBlockingUnresolvedDecisions();
     }
 
     pub fn countUnresolvedDecisions(self: ResolvedActionTable) usize {
@@ -246,7 +261,7 @@ pub fn resolveActionTable(
     productions: anytype,
     grouped_table: actions.GroupedActionTable,
 ) std.mem.Allocator.Error!ResolvedActionTable {
-    return try resolveActionTableWithContext(allocator, productions, &.{}, &.{}, grouped_table);
+    return try resolveActionTableWithContext(allocator, productions, &.{}, &.{}, &.{}, grouped_table);
 }
 
 pub fn resolveActionTableWithPrecedence(
@@ -255,13 +270,14 @@ pub fn resolveActionTableWithPrecedence(
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
     grouped_table: actions.GroupedActionTable,
 ) std.mem.Allocator.Error!ResolvedActionTable {
-    return try resolveActionTableWithContext(allocator, productions, precedence_orderings, &.{}, grouped_table);
+    return try resolveActionTableWithContext(allocator, productions, precedence_orderings, &.{}, &.{}, grouped_table);
 }
 
 pub fn resolveActionTableWithContext(
     allocator: std.mem.Allocator,
     productions: anytype,
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    expected_conflicts: []const []const syntax_ir.SymbolRef,
     parse_states: []const state.ParseState,
     grouped_table: actions.GroupedActionTable,
 ) std.mem.Allocator.Error!ResolvedActionTable {
@@ -270,7 +286,7 @@ pub fn resolveActionTableWithContext(
         const groups = try allocator.alloc(ResolvedActionGroup, grouped_state.groups.len);
         const parse_state = findState(parse_states, grouped_state.state_id);
         for (grouped_state.groups, 0..) |group, group_index| {
-            const decision = chooseResolvedAction(productions, precedence_orderings, parse_state, group.entries);
+            const decision = chooseResolvedAction(productions, precedence_orderings, expected_conflicts, parse_state, group.entries);
             groups[group_index] = .{
                 .symbol = group.symbol,
                 .candidate_actions = try dupActions(allocator, group.entries),
@@ -307,6 +323,7 @@ const ResolutionDecision = struct {
 fn chooseResolvedAction(
     productions: anytype,
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    expected_conflicts: []const []const syntax_ir.SymbolRef,
     parse_state: ?state.ParseState,
     candidates: []const actions.ActionEntry,
 ) ResolutionDecision {
@@ -329,10 +346,11 @@ fn chooseResolvedAction(
             };
         }
         if (isReduce(first) and isReduce(second)) {
-            return .{
-                .chosen = null,
-                .reason = .reduce_reduce_deferred,
-            };
+            const reason: UnresolvedReason = if (reduceReduceIsExpected(productions, expected_conflicts, first, second))
+                .reduce_reduce_expected
+            else
+                .reduce_reduce_deferred;
+            return .{ .chosen = null, .reason = reason };
         }
     }
 
@@ -340,6 +358,49 @@ fn chooseResolvedAction(
         .chosen = null,
         .reason = if (candidates.len > 1) .multiple_candidates else .unsupported_action_mix,
     };
+}
+
+fn reduceReduceIsExpected(
+    productions: anytype,
+    expected_conflicts: []const []const syntax_ir.SymbolRef,
+    a: actions.ParseAction,
+    b: actions.ParseAction,
+) bool {
+    if (expected_conflicts.len == 0) return false;
+    const prod_id_a = switch (a) {
+        .reduce => |id| id,
+        else => return false,
+    };
+    const prod_id_b = switch (b) {
+        .reduce => |id| id,
+        else => return false,
+    };
+    if (prod_id_a >= productions.len or prod_id_b >= productions.len) return false;
+    const lhs_a = productions[prod_id_a].lhs;
+    const lhs_b = productions[prod_id_b].lhs;
+    for (expected_conflicts) |conflict_set| {
+        if (conflictSetContainsBoth(conflict_set, lhs_a, lhs_b)) return true;
+    }
+    return false;
+}
+
+fn conflictSetContainsBoth(
+    conflict_set: []const syntax_ir.SymbolRef,
+    lhs_a: u32,
+    lhs_b: u32,
+) bool {
+    var found_a = false;
+    var found_b = false;
+    for (conflict_set) |sym| {
+        switch (sym) {
+            .non_terminal => |index| {
+                if (index == lhs_a) found_a = true;
+                if (index == lhs_b) found_b = true;
+            },
+            else => {},
+        }
+    }
+    return found_a and found_b;
 }
 
 fn resolveShiftReduce(

@@ -1134,6 +1134,10 @@ pub const BuildResult = struct {
         return self.resolved_actions.hasUnresolvedDecisions();
     }
 
+    pub fn hasBlockingUnresolvedDecisions(self: BuildResult) bool {
+        return self.resolved_actions.hasBlockingUnresolvedDecisions();
+    }
+
     pub fn isSerializationReady(self: BuildResult) bool {
         return self.resolved_actions.isSerializationReady();
     }
@@ -1292,6 +1296,7 @@ pub fn buildStatesWithOptions(
         allocator,
         productions,
         grammar.precedence_orderings,
+        grammar.expected_conflicts,
         constructed.states,
         grouped_actions,
     );
@@ -1592,7 +1597,6 @@ const ConstructStatesReporter = struct {
         discovered_count: usize,
         detected_conflict_count: usize,
         transition_stats: TransitionBuildStats,
-        closure_result_cache: ClosureResultCache,
     ) void {
         if (!self.progress_log) return;
         if (state_index < 5 or (state_index + 1) % 100 == 0) {
@@ -1604,13 +1608,10 @@ const ConstructStatesReporter = struct {
 
         if (self.progress_log and state_index + 1 >= self.next_progress_report) {
             logBuildSummary(
-                "construct_states progress processed={d} discovered={d} closure_cache_hits={d} closure_cache_misses={d} core_match_misses={d}",
+                "construct_states progress processed={d} discovered={d}",
                 .{
                     state_index + 1,
                     discovered_count,
-                    closure_result_cache.hits,
-                    closure_result_cache.misses,
-                    closure_result_cache.core_match_misses,
                 },
             );
             self.next_progress_report += if (self.next_progress_report < 100) 10 else 100;
@@ -1640,7 +1641,6 @@ const ConstructStatesReporter = struct {
     fn logComplete(
         self: @This(),
         state_count: usize,
-        closure_result_cache: ClosureResultCache,
         largest_new_successor: ?SuccessorDiagnostic,
         largest_reused_successor: ?SuccessorDiagnostic,
     ) void {
@@ -1648,15 +1648,6 @@ const ConstructStatesReporter = struct {
         std.debug.print("[parse_table/build] constructStates complete states={d}\n", .{state_count});
         if (!self.progress_log) return;
 
-        logBuildSummary(
-            "construct_states closure_cache summary hits={d} misses={d} core_match_misses={d} entries={d}",
-            .{
-                closure_result_cache.hits,
-                closure_result_cache.misses,
-                closure_result_cache.core_match_misses,
-                closure_result_cache.len(),
-            },
-        );
         if (largest_new_successor) |diagnostic| {
             logSuccessorDiagnostic("construct_states largest_new_successor", self.variables, diagnostic);
         }
@@ -1674,7 +1665,6 @@ const StateConstructionEngine = struct {
     item_set_builder: ParseItemSetBuilder,
     state_registry: *StateRegistry,
     action_states: *std.array_list.Managed(actions.StateActions),
-    closure_result_cache: *ClosureResultCache,
     largest_new_successor: *?SuccessorDiagnostic,
     largest_reused_successor: *?SuccessorDiagnostic,
     options: BuildOptions,
@@ -1724,7 +1714,6 @@ const StateConstructionEngine = struct {
             self.state_registry.items().len,
             detected_conflicts.len,
             transition_stats,
-            self.closure_result_cache.*,
         );
     }
 
@@ -1773,10 +1762,10 @@ const StateConstructionEngine = struct {
                         );
                     }
                 }
-                break :blk try self.closure_result_cache.getOrBuild(
+                break :blk try self.item_set_builder.transitiveClosure(
+                    self.allocator,
                     self.variables,
-                    self.item_set_builder,
-                    group.items.items,
+                    .{ .entries = group.items.items },
                     transition_options,
                 );
             };
@@ -2791,8 +2780,6 @@ fn constructStates(
     defer state_registry.deinit();
     var action_states = std.array_list.Managed(actions.StateActions).init(allocator);
     defer action_states.deinit();
-    var closure_result_cache = ClosureResultCache.init(allocator);
-    defer closure_result_cache.deinit();
     var largest_new_successor: ?SuccessorDiagnostic = null;
     var largest_reused_successor: ?SuccessorDiagnostic = null;
 
@@ -2817,7 +2804,6 @@ fn constructStates(
         .item_set_builder = item_set_builder,
         .state_registry = &state_registry,
         .action_states = &action_states,
-        .closure_result_cache = &closure_result_cache,
         .largest_new_successor = &largest_new_successor,
         .largest_reused_successor = &largest_reused_successor,
         .options = options,
@@ -2831,7 +2817,6 @@ fn constructStates(
     state.sortStates(state_registry.items());
     reporter.logComplete(
         state_registry.items().len,
-        closure_result_cache,
         largest_new_successor,
         largest_reused_successor,
     );

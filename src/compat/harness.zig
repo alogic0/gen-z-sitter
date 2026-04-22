@@ -79,12 +79,14 @@ pub fn runTargetsAlloc(
     errdefer allocator.free(runs);
 
     for (target_list, 0..) |target, index| {
+        const target_start_ts = std.Io.Timestamp.now(runtime_io.get(), .awake);
         std.debug.print("[compat/harness] target_start {d}/{d} {s}\n", .{ index + 1, target_list.len, target.id });
         if (progress_log) {
             std.debug.print("[compat_harness] start {d}/{d} {s}\n", .{ index + 1, target_list.len, target.id });
         }
         runs[index] = try runTarget(allocator, target, options);
-        std.debug.print("[compat/harness] target_done {d}/{d} {s}\n", .{ index + 1, target_list.len, target.id });
+        const target_elapsed_ms = @as(f64, @floatFromInt(target_start_ts.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake)).nanoseconds)) / @as(f64, std.time.ns_per_ms);
+        std.debug.print("[compat/harness] target_done {d}/{d} {s} ({d:.0} ms)\n", .{ index + 1, target_list.len, target.id, target_elapsed_ms });
         if (progress_log) {
             std.debug.print(
                 "[compat_harness] done  {d}/{d} {s} classification={s} first_failed_stage={s}\n",
@@ -1296,6 +1298,7 @@ fn buildBlockedBoundarySnapshotAlloc(
             switch (entry.reason) {
                 .shift_reduce => reasons.shift_reduce += 1,
                 .reduce_reduce_deferred => reasons.reduce_reduce_deferred += 1,
+                .reduce_reduce_expected => reasons.reduce_reduce_expected += 1,
                 .multiple_candidates => reasons.multiple_candidates += 1,
                 .unsupported_action_mix => reasons.unsupported_action_mix += 1,
             }
