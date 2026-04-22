@@ -40,6 +40,7 @@ pub const SimulationResult = union(enum) {
     accepted: struct {
         consumed_bytes: usize,
         shifted_tokens: usize,
+        error_count: u32 = 0,
     },
     rejected: struct {
         consumed_bytes: usize,
@@ -330,6 +331,158 @@ pub fn sampleExtractedExternalBoundaryOnly(
     return sample;
 }
 
+// Maximum number of concurrent parse versions in the GLR simulation,
+// matching tree-sitter's TS_MAX_VERSION_COUNT.
+const MAX_PARSE_VERSIONS: usize = 6;
+
+// One active parse state in the GLR simulation.
+const ParseVersion = struct {
+    stack: std.ArrayListUnmanaged(u32),
+    cursor: usize,
+    shifted_tokens: usize,
+    dynamic_precedence: i32,
+    error_count: u32,
+
+    fn initFirst(allocator: std.mem.Allocator) !ParseVersion {
+        var s = std.ArrayListUnmanaged(u32).empty;
+        try s.append(allocator, 0);
+        return .{ .stack = s, .cursor = 0, .shifted_tokens = 0, .dynamic_precedence = 0, .error_count = 0 };
+    }
+
+    fn deinit(self: *ParseVersion, allocator: std.mem.Allocator) void {
+        self.stack.deinit(allocator);
+    }
+
+    fn clone(self: ParseVersion, allocator: std.mem.Allocator) !ParseVersion {
+        var s = std.ArrayListUnmanaged(u32).empty;
+        try s.appendSlice(allocator, self.stack.items);
+        return .{ .stack = s, .cursor = self.cursor, .shifted_tokens = self.shifted_tokens, .dynamic_precedence = self.dynamic_precedence, .error_count = self.error_count };
+    }
+
+    fn topState(self: ParseVersion) u32 {
+        return self.stack.items[self.stack.items.len - 1];
+    }
+};
+
+// Apply one reduce action to a version. Returns the reject reason on failure, null on success.
+fn versionReduce(
+    allocator: std.mem.Allocator,
+    result: build.BuildResult,
+    version: *ParseVersion,
+    production_id: u32,
+) std.mem.Allocator.Error!?RejectReason {
+    const production = result.productions[production_id];
+    if (production.steps.len > version.stack.items.len - 1) return .missing_goto;
+    for (0..production.steps.len) |_| _ = version.stack.pop();
+    const goto_state = findGotoState(result, version.topState(), production.lhs) orelse return .missing_goto;
+    try version.stack.append(allocator, goto_state);
+    version.dynamic_precedence += production.dynamic_precedence;
+    return null;
+}
+
+fn updateBestReject(
+    best_cursor: *usize,
+    best_shifted: *usize,
+    best_reason: *RejectReason,
+    cursor: usize,
+    shifted: usize,
+    reason: RejectReason,
+) void {
+    if (cursor > best_cursor.* or (cursor == best_cursor.* and shifted > best_shifted.*)) {
+        best_cursor.* = cursor;
+        best_shifted.* = shifted;
+        best_reason.* = reason;
+    }
+}
+
+fn killVersion(
+    allocator: std.mem.Allocator,
+    versions: *std.ArrayListUnmanaged(ParseVersion),
+    vi: usize,
+) void {
+    versions.items[vi].deinit(allocator);
+    _ = versions.swapRemove(vi);
+}
+
+// Two-stage error recovery for a single version.
+//
+// Stage 1: scan backward through the stack for a predecessor state that has
+// an action on the current lookahead. If found, pop to that depth and
+// increment error_count; the inner loop will re-lex from the same cursor.
+//
+// Stage 2: if no recovery state found (or no token to match), skip past the
+// current content — one byte for an unrecognized character, one full token
+// for a recognised-but-unwanted token — and increment error_count.
+//
+// Returns true when recovery made progress and the inner loop should continue;
+// false when the version is at EOF with nothing to skip and must be killed.
+fn recoverFromMissingAction(
+    result: build.BuildResult,
+    version: *ParseVersion,
+    matched: ?MatchedTerminal,
+    input_len: usize,
+) bool {
+    if (matched) |m| {
+        // Stage 1: look for a predecessor state that handles this lookahead.
+        var depth: usize = version.stack.items.len;
+        while (depth > 1) {
+            depth -= 1;
+            const candidate = version.stack.items[depth - 1];
+            if (result.resolved_actions.decisionFor(candidate, m.symbol) != null) {
+                version.stack.shrinkRetainingCapacity(depth);
+                version.error_count += 1;
+                return true;
+            }
+        }
+        // Stage 2: skip the unhandled token.
+        version.cursor += m.len;
+        version.error_count += 1;
+        return true;
+    }
+    // No token (unrecognised character) — skip one byte if possible.
+    if (version.cursor < input_len) {
+        version.cursor += 1;
+        version.error_count += 1;
+        return true;
+    }
+    return false;
+}
+
+// Called after each full round of advances (all versions shifted once).
+// Mirrors tree-sitter's ts_parser__condense_stack.
+//
+// Two passes:
+//   1. Dedup: remove versions whose full stack + cursor match an earlier version.
+//      The surviving version inherits the higher dynamic_precedence.
+//   2. Hard cap: drop any versions beyond MAX_PARSE_VERSIONS (they were the last
+//      candidates forked and are therefore least preferred).
+//
+// Unlike tree-sitter we compare the full stack, not just the top state, because
+// the harness has no DAG stack that can merge divergent histories.
+fn condenseVersions(allocator: std.mem.Allocator, versions: *std.ArrayListUnmanaged(ParseVersion)) void {
+    var i: usize = 1;
+    while (i < versions.items.len) {
+        var is_dup = false;
+        for (versions.items[0..i]) |*other| {
+            if (other.cursor == versions.items[i].cursor and
+                std.mem.eql(u32, other.stack.items, versions.items[i].stack.items))
+            {
+                if (other.dynamic_precedence < versions.items[i].dynamic_precedence) {
+                    other.dynamic_precedence = versions.items[i].dynamic_precedence;
+                }
+                killVersion(allocator, versions, i);
+                is_dup = true;
+                break;
+            }
+        }
+        if (!is_dup) i += 1;
+    }
+
+    while (versions.items.len > MAX_PARSE_VERSIONS) {
+        killVersion(allocator, versions, versions.items.len - 1);
+    }
+}
+
 fn simulateBuiltScannerFree(
     allocator: std.mem.Allocator,
     result: build.BuildResult,
@@ -341,137 +494,235 @@ fn simulateBuiltScannerFree(
     var prepared_lex_tables = try prepareLexStateTables(allocator, result, prepared.rules, lexical, syntax);
     defer prepared_lex_tables.deinit(allocator);
 
-    var stack = std.array_list.Managed(u32).init(allocator);
-    defer stack.deinit();
-    try stack.append(0);
+    // GLR: maintain up to MAX_PARSE_VERSIONS concurrent parse stacks.
+    // Pre-allocate full capacity so appends during forking never reallocate,
+    // keeping existing version pointers (versions.items[vi]) stable.
+    var versions = std.ArrayListUnmanaged(ParseVersion).empty;
+    defer {
+        for (versions.items) |*v| v.deinit(allocator);
+        versions.deinit(allocator);
+    }
+    try versions.ensureTotalCapacity(allocator, MAX_PARSE_VERSIONS);
+    versions.appendAssumeCapacity(try ParseVersion.initFirst(allocator));
 
-    var cursor: usize = 0;
-    var shifted_tokens: usize = 0;
-    var steps: usize = 0;
+    var best_cursor: usize = 0;
+    var best_shifted: usize = 0;
+    var best_reason: RejectReason = .missing_action;
+
+    var total_steps: usize = 0;
     const max_steps = input.len * 16 + 32;
 
-    while (steps < max_steps) : (steps += 1) {
-        const state_id = stack.items[stack.items.len - 1];
-        if (cursor >= input.len) {
-            if (stateHasCompletedAugmentedProduction(result, state_id)) {
-                return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } };
-            }
-            if (selectFallbackAction(result, state_id)) |action| switch (action) {
-                .shift => return .{ .rejected = .{
-                    .consumed_bytes = cursor,
-                    .shifted_tokens = shifted_tokens,
-                    .reason = .missing_action,
-                } },
-                .reduce => |production_id| {
-                    const production = result.productions[production_id];
-                    if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
-                        .consumed_bytes = cursor,
-                        .shifted_tokens = shifted_tokens,
-                        .reason = .missing_goto,
-                    } };
-                    for (0..production.steps.len) |_| {
-                        _ = stack.pop();
-                    }
-                    const goto_state = findGotoState(result, stack.items[stack.items.len - 1], production.lhs) orelse
-                        return .{ .rejected = .{
-                            .consumed_bytes = cursor,
-                            .shifted_tokens = shifted_tokens,
-                            .reason = .missing_goto,
-                        } };
-                    try stack.append(goto_state);
-                    continue;
-                },
-                .accept => return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } },
-            };
-            return .{ .rejected = .{
-                .consumed_bytes = cursor,
-                .shifted_tokens = shifted_tokens,
-                .reason = .missing_action,
-            } };
-        }
+    while (versions.items.len > 0) {
+        var vi: usize = 0;
+        while (vi < versions.items.len) {
+            // Inner loop: advance version vi through reduce chains until it
+            // shifts (consuming input), accepts, or dies.
+            inner: while (true) {
+                total_steps += 1;
+                if (total_steps > max_steps) return error.SimulationStepLimitExceeded;
 
-        const matched = try selectMatchingTerminal(
-            result,
-            state_id,
-            prepared_lex_tables,
-            input[cursor..],
-        ) orelse {
-            if (selectFallbackAction(result, state_id)) |action| switch (action) {
-                .shift => return .{ .rejected = .{
-                    .consumed_bytes = cursor,
-                    .shifted_tokens = shifted_tokens,
-                    .reason = .tokenization_failed,
-                } },
-                .reduce => |production_id| {
-                    const production = result.productions[production_id];
-                    if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
-                        .consumed_bytes = cursor,
-                        .shifted_tokens = shifted_tokens,
-                        .reason = .missing_goto,
-                    } };
-                    for (0..production.steps.len) |_| {
-                        _ = stack.pop();
-                    }
-                    const goto_state = findGotoState(result, stack.items[stack.items.len - 1], production.lhs) orelse
-                        return .{ .rejected = .{
-                            .consumed_bytes = cursor,
-                            .shifted_tokens = shifted_tokens,
-                            .reason = .missing_goto,
-                        } };
-                    try stack.append(goto_state);
-                    continue;
-                },
-                .accept => return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } },
-            };
-            return .{ .rejected = .{
-                .consumed_bytes = cursor,
-                .shifted_tokens = shifted_tokens,
-                .reason = .tokenization_failed,
-            } };
-        };
-        const decision = result.resolved_actions.decisionFor(state_id, matched.symbol) orelse
-            return .{ .rejected = .{
-                .consumed_bytes = cursor,
-                .shifted_tokens = shifted_tokens,
-                .reason = .missing_action,
-            } };
+                const state_id = versions.items[vi].topState();
 
-        switch (decision) {
-            .unresolved => return .{ .rejected = .{
-                .consumed_bytes = cursor,
-                .shifted_tokens = shifted_tokens,
-                .reason = .unresolved_decision,
-            } },
-            .chosen => |action| switch (action) {
-                .shift => |target| {
-                    try stack.append(target);
-                    cursor += matched.len;
-                    shifted_tokens += 1;
-                },
-                .reduce => |production_id| {
-                    const production = result.productions[production_id];
-                    if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
-                        .consumed_bytes = cursor,
-                        .shifted_tokens = shifted_tokens,
-                        .reason = .missing_goto,
-                    } };
-                    for (0..production.steps.len) |_| {
-                        _ = stack.pop();
-                    }
-                    const goto_state = findGotoState(result, stack.items[stack.items.len - 1], production.lhs) orelse
-                        return .{ .rejected = .{
-                            .consumed_bytes = cursor,
-                            .shifted_tokens = shifted_tokens,
-                            .reason = .missing_goto,
+                // ---- End of input ----
+                if (versions.items[vi].cursor >= input.len) {
+                    if (stateHasCompletedAugmentedProduction(result, state_id)) {
+                        return .{ .accepted = .{
+                            .consumed_bytes = versions.items[vi].cursor,
+                            .shifted_tokens = versions.items[vi].shifted_tokens,
+                            .error_count = versions.items[vi].error_count,
                         } };
-                    try stack.append(goto_state);
-                },
-                .accept => return .{ .accepted = .{ .consumed_bytes = cursor, .shifted_tokens = shifted_tokens } },
-            },
-        }
-    }
+                    }
+                    if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
+                        .accept => return .{ .accepted = .{
+                            .consumed_bytes = versions.items[vi].cursor,
+                            .shifted_tokens = versions.items[vi].shifted_tokens,
+                            .error_count = versions.items[vi].error_count,
+                        } },
+                        .reduce => |prod_id| {
+                            if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                                updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
+                                killVersion(allocator, &versions, vi);
+                                break :inner;
+                            }
+                            continue :inner;
+                        },
+                        .shift => {
+                            updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .missing_action);
+                            killVersion(allocator, &versions, vi);
+                            break :inner;
+                        },
+                    };
+                    updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .missing_action);
+                    killVersion(allocator, &versions, vi);
+                    break :inner;
+                }
 
-    return error.SimulationStepLimitExceeded;
+                // ---- Lex next token ----
+                const matched_opt = try selectMatchingTerminal(result, state_id, prepared_lex_tables, input[versions.items[vi].cursor..]);
+
+                if (matched_opt == null) {
+                    if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
+                        .accept => return .{ .accepted = .{
+                            .consumed_bytes = versions.items[vi].cursor,
+                            .shifted_tokens = versions.items[vi].shifted_tokens,
+                            .error_count = versions.items[vi].error_count,
+                        } },
+                        .reduce => |prod_id| {
+                            if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                                updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
+                                killVersion(allocator, &versions, vi);
+                                break :inner;
+                            }
+                            continue :inner;
+                        },
+                        .shift => {
+                            updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .tokenization_failed);
+                            killVersion(allocator, &versions, vi);
+                            break :inner;
+                        },
+                    };
+                    if (recoverFromMissingAction(result, &versions.items[vi], null, input.len)) continue :inner;
+                    updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .tokenization_failed);
+                    killVersion(allocator, &versions, vi);
+                    break :inner;
+                }
+
+                const matched = matched_opt.?;
+                const decision = result.resolved_actions.decisionFor(state_id, matched.symbol);
+
+                if (decision == null) {
+                    if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
+                        .accept => return .{ .accepted = .{
+                            .consumed_bytes = versions.items[vi].cursor,
+                            .shifted_tokens = versions.items[vi].shifted_tokens,
+                            .error_count = versions.items[vi].error_count,
+                        } },
+                        .reduce => |prod_id| {
+                            if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                                updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
+                                killVersion(allocator, &versions, vi);
+                                break :inner;
+                            }
+                            continue :inner;
+                        },
+                        .shift => {
+                            updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .missing_action);
+                            killVersion(allocator, &versions, vi);
+                            break :inner;
+                        },
+                    };
+                    if (recoverFromMissingAction(result, &versions.items[vi], matched, input.len)) continue :inner;
+                    updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .missing_action);
+                    killVersion(allocator, &versions, vi);
+                    break :inner;
+                }
+
+                // ---- Apply action ----
+                switch (decision.?) {
+                    .chosen => |action| switch (action) {
+                        .shift => |target| {
+                            try versions.items[vi].stack.append(allocator, target);
+                            versions.items[vi].cursor += matched.len;
+                            versions.items[vi].shifted_tokens += 1;
+                            vi += 1;
+                            break :inner;
+                        },
+                        .reduce => |prod_id| {
+                            if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                                updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
+                                killVersion(allocator, &versions, vi);
+                                break :inner;
+                            }
+                            continue :inner;
+                        },
+                        .accept => return .{ .accepted = .{
+                            .consumed_bytes = versions.items[vi].cursor,
+                            .shifted_tokens = versions.items[vi].shifted_tokens,
+                            .error_count = versions.items[vi].error_count,
+                        } },
+                    },
+
+                    // GLR: fork one version per candidate action.
+                    // versions has pre-allocated capacity so appends here never reallocate,
+                    // keeping versions.items[vi] stable throughout the fork loop.
+                    .unresolved => {
+                        const candidates = result.resolved_actions.candidateActionsFor(state_id, matched.symbol);
+                        if (candidates.len == 0) {
+                            updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .unresolved_decision);
+                            killVersion(allocator, &versions, vi);
+                            break :inner;
+                        }
+
+                        // Fork for candidates[1..N], up to the version cap.
+                        const fork_count = @min(candidates.len - 1, MAX_PARSE_VERSIONS - versions.items.len);
+                        for (candidates[1 .. 1 + fork_count]) |extra| {
+                            var fork = try versions.items[vi].clone(allocator);
+                            switch (extra) {
+                                .shift => |target| {
+                                    fork.stack.append(allocator, target) catch {
+                                        fork.deinit(allocator);
+                                        return error.OutOfMemory;
+                                    };
+                                    fork.cursor += matched.len;
+                                    fork.shifted_tokens += 1;
+                                    versions.appendAssumeCapacity(fork);
+                                },
+                                .reduce => |prod_id| {
+                                    const dead = versionReduce(allocator, result, &fork, prod_id) catch {
+                                        fork.deinit(allocator);
+                                        return error.OutOfMemory;
+                                    };
+                                    if (dead != null) {
+                                        fork.deinit(allocator);
+                                    } else {
+                                        versions.appendAssumeCapacity(fork);
+                                    }
+                                },
+                                .accept => {
+                                    const c = fork.cursor;
+                                    const s = fork.shifted_tokens;
+                                    const e = fork.error_count;
+                                    fork.deinit(allocator);
+                                    return .{ .accepted = .{ .consumed_bytes = c, .shifted_tokens = s, .error_count = e } };
+                                },
+                            }
+                        }
+
+                        // Apply candidates[0] to the current version.
+                        switch (candidates[0]) {
+                            .shift => |target| {
+                                try versions.items[vi].stack.append(allocator, target);
+                                versions.items[vi].cursor += matched.len;
+                                versions.items[vi].shifted_tokens += 1;
+                                vi += 1;
+                                break :inner;
+                            },
+                            .reduce => |prod_id| {
+                                if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                                    updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
+                                    killVersion(allocator, &versions, vi);
+                                    break :inner;
+                                }
+                                continue :inner;
+                            },
+                            .accept => return .{ .accepted = .{
+                                .consumed_bytes = versions.items[vi].cursor,
+                                .shifted_tokens = versions.items[vi].shifted_tokens,
+                                .error_count = versions.items[vi].error_count,
+                            } },
+                        }
+                    },
+                }
+            } // :inner
+        } // while vi
+        condenseVersions(allocator, &versions);
+    } // outer while
+
+    return .{ .rejected = .{
+        .consumed_bytes = best_cursor,
+        .shifted_tokens = best_shifted,
+        .reason = best_reason,
+    } };
 }
 
 fn simulateBuiltWithFirstExternalBoundary(
@@ -1359,7 +1610,26 @@ fn selectFallbackAction(result: build.BuildResult, state_id: u32) ?actions.Parse
 
     for (result.resolved_actions.groupsForState(state_id)) |group| {
         switch (group.decision) {
-            .unresolved => return null,
+            .unresolved => |reason| switch (reason) {
+                // shift/reduce: at fallback time there is no lookahead, so shifting is
+                // impossible.  Extract just the reduce half from the candidates.
+                .shift_reduce => {
+                    for (group.candidate_actions) |a| switch (a) {
+                        .reduce, .accept => {
+                            if (selected) |existing| {
+                                if (!parseActionEql(existing, a)) return null;
+                            } else {
+                                selected = a;
+                            }
+                        },
+                        .shift => {},
+                    };
+                    continue;
+                },
+                // All other unresolved flavours are too ambiguous to resolve at
+                // fallback time — give up.
+                else => return null,
+            },
             .chosen => |action| switch (action) {
                 .shift => {},
                 .reduce, .accept => {
@@ -1999,6 +2269,70 @@ test "repeat choice seq valid path remains parity-safe but still rejects on the 
     try expectSameSimulationResult(json_valid, js_valid);
 }
 
+// Grammar: expr → expr "+" expr | number, no precedence.
+// "1+2+3" is genuinely ambiguous: (1+2)+3 or 1+(2+3).
+// The LR table has an unresolved shift/reduce conflict on "+" after "expr + expr".
+// The GLR loop must fork on that conflict and find an accepting parse on at least one branch.
+// source_file → source_file "+" source_file | number
+// No precedence on "+": produces an unresolved shift/reduce conflict on the
+// second "+" in "1+2+3", which the GLR loop must fork to resolve.
+const ambiguous_expr_grammar_json =
+    \\{
+    \\  "name": "ambiguous_expr",
+    \\  "rules": {
+    \\    "source_file": {
+    \\      "type": "CHOICE",
+    \\      "members": [
+    \\        {
+    \\          "type": "SEQ",
+    \\          "members": [
+    \\            { "type": "SYMBOL", "name": "source_file" },
+    \\            { "type": "STRING", "value": "+" },
+    \\            { "type": "SYMBOL", "name": "source_file" }
+    \\          ]
+    \\        },
+    \\        { "type": "SYMBOL", "name": "number" }
+    \\      ]
+    \\    },
+    \\    "number": {
+    \\      "type": "TOKEN",
+    \\      "content": { "type": "PATTERN", "value": "[0-9]+" }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "GLR simulation accepts unambiguous input for a conflict grammar without forking" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), ambiguous_expr_grammar_json);
+    const result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1");
+    // Single number: no conflict possible, must accept.
+    try std.testing.expectEqual(SimulationResult.accepted, @as(std.meta.Tag(SimulationResult), result));
+}
+
+test "GLR simulation accepts ambiguous input by forking on the unresolved shift/reduce conflict" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), ambiguous_expr_grammar_json);
+
+    // "1+2" is unambiguous (single operator, no fork needed).
+    const simple = try simulatePreparedScannerFree(arena.allocator(), prepared, "1+2");
+    try std.testing.expectEqual(SimulationResult.accepted, @as(std.meta.Tag(SimulationResult), simple));
+
+    // "1+2+3" is ambiguous: GLR forks on "+" after "expr + expr" and must still accept.
+    const ambiguous = try simulatePreparedScannerFree(arena.allocator(), prepared, "1+2+3");
+    switch (ambiguous) {
+        .accepted => {},
+        .rejected => |r| {
+            // GLR must never reject with unresolved_decision — it always tries all candidates.
+            try std.testing.expect(r.reason != .unresolved_decision);
+        },
+    }
+}
+
 fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResult) !void {
     try std.testing.expectEqual(@intFromEnum(expected), @intFromEnum(actual));
     switch (expected) {
@@ -2055,4 +2389,45 @@ fn progressOf(result: SimulationResult) usize {
         .accepted => |accepted| accepted.consumed_bytes,
         .rejected => |rejected| rejected.consumed_bytes,
     };
+}
+
+// Grammar: source_file → "a" "b"
+// Used to test error recovery: unrecognised characters and unexpected tokens
+// are skipped and the parse proceeds rather than failing.
+const seq_ab_grammar_json =
+    \\{
+    \\  "name": "seq_ab",
+    \\  "rules": {
+    \\    "source_file": {
+    \\      "type": "SEQ",
+    \\      "members": [
+    \\        { "type": "STRING", "value": "a" },
+    \\        { "type": "STRING", "value": "b" }
+    \\      ]
+    \\    }
+    \\  }
+    \\}
+;
+
+test "error recovery skips an unrecognised byte and accepts the rest" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), ambiguous_expr_grammar_json);
+    // "1" is a valid number; "!" is unrecognised — recovery skips it and the parse accepts.
+    const result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1!");
+    switch (result) {
+        .accepted => |a| try std.testing.expect(a.error_count > 0),
+        .rejected => return error.UnexpectedReject,
+    }
+}
+
+test "error recovery accepts valid input without recording errors" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), ambiguous_expr_grammar_json);
+    const result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1");
+    switch (result) {
+        .accepted => |a| try std.testing.expectEqual(@as(u32, 0), a.error_count),
+        .rejected => return error.UnexpectedReject,
+    }
 }

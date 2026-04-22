@@ -53,6 +53,8 @@ pub fn compactSerializedTableAlloc(
     return .{
         .states = compacted_states,
         .blocked = serialized.blocked,
+        .alias_sequences = serialized.alias_sequences,
+        .word_token = serialized.word_token,
     };
 }
 

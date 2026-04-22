@@ -71,7 +71,9 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
     try writer.print("#define TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED {d}\n\n", .{unresolved_reduce_reduce_deferred});
     try writer.writeAll("typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;\n");
     try writer.writeAll("typedef struct { uint16_t symbol_id; uint16_t state; } TSGotoEntry;\n");
-    try writer.writeAll("typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidates; } TSUnresolvedEntry;\n\n");
+    try writer.writeAll("typedef struct { uint16_t kind; uint16_t value; } TSCandidateEntry;\n");
+    try writer.writeAll("typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidate_count; const TSCandidateEntry *candidates; } TSUnresolvedEntry;\n");
+    try writer.writeAll("typedef struct { uint16_t production_id; uint16_t step_index; const char *name; bool named; } TSAliasEntry;\n\n");
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  uint16_t id;\n");
     try writer.writeAll("  const char *name;\n");
@@ -97,6 +99,7 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
     try writer.writeAll("  bool blocked;\n");
     try writer.writeAll("  uint16_t symbol_count;\n");
     try writer.writeAll("  uint16_t state_count;\n");
+    try writer.writeAll("  uint16_t keyword_capture_token;\n");
     try writer.writeAll("  const TSSymbolInfo *symbols;\n");
     try writer.writeAll("  const TSStateTable *states;\n");
     try writer.writeAll("  const TSCompatibilityInfo *compatibility;\n");

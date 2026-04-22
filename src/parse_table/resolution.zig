@@ -1537,7 +1537,7 @@ test "resolveActionTable uses shift-side integer precedence from the current sta
         },
     };
 
-    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, parse_states[0..], grouped);
+    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, &.{}, parse_states[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
             for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
@@ -1623,6 +1623,7 @@ test "resolveActionTable uses shift-side named precedence from the current state
         allocator,
         productions[0..],
         precedence_orderings[0..],
+        &.{},
         parse_states[0..],
         grouped,
     );
@@ -1700,7 +1701,7 @@ test "resolveActionTable uses production-level shift precedence from the current
         },
     };
 
-    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, parse_states[0..], grouped);
+    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, &.{}, parse_states[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
             for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
@@ -1768,7 +1769,7 @@ test "resolveActionTable prefers shift over reducing repeat auxiliaries" {
         },
     };
 
-    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, parse_states[0..], grouped);
+    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, &.{}, parse_states[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
             for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
@@ -1837,7 +1838,7 @@ test "resolveActionTable prefers shift when the shift candidate continues a repe
         },
     };
 
-    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, parse_states[0..], grouped);
+    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, &.{}, parse_states[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
             for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
@@ -1912,7 +1913,7 @@ test "resolveActionTable prefers shift when repeat auxiliary continuation confli
         },
     };
 
-    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, parse_states[0..], grouped);
+    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, &.{}, parse_states[0..], grouped);
     defer {
         for (resolved.states) |resolved_state| {
             for (resolved_state.groups) |group| allocator.free(group.candidate_actions);

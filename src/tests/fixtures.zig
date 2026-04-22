@@ -907,6 +907,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\#define TS_PARSER_BLOCKED false
             \\#define TS_STATE_COUNT 5
             \\#define TS_SYMBOL_COUNT 4
+            \\#define TS_KEYWORD_CAPTURE_TOKEN 0
             \\
             \\#define TS_LANGUAGE_VERSION 15
             \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
@@ -921,7 +922,9 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;
             \\typedef struct { uint16_t symbol_id; uint16_t state; } TSGotoEntry;
-            \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidates; } TSUnresolvedEntry;
+            \\typedef struct { uint16_t kind; uint16_t value; } TSCandidateEntry;
+            \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidate_count; const TSCandidateEntry *candidates; } TSUnresolvedEntry;
+            \\typedef struct { uint16_t production_id; uint16_t step_index; const char *name; bool named; } TSAliasEntry;
             \\
             \\typedef struct {
             \\  uint16_t id;
@@ -951,6 +954,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  bool blocked;
             \\  uint16_t symbol_count;
             \\  uint16_t state_count;
+            \\  uint16_t keyword_capture_token;
             \\  const TSSymbolInfo *symbols;
             \\  const TSStateTable *states;
             \\  const TSCompatibilityInfo *compatibility;
@@ -1101,10 +1105,14 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  },
             \\};
             \\
+            \\#define TS_ALIAS_COUNT 0
+            \\static const TSAliasEntry *ts_alias_sequences = 0;
+            \\
             \\static const TSParser ts_parser = {
             \\  .blocked = false,
             \\  .symbol_count = TS_SYMBOL_COUNT,
             \\  .state_count = TS_STATE_COUNT,
+            \\  .keyword_capture_token = TS_KEYWORD_CAPTURE_TOKEN,
             \\  .symbols = ts_symbols,
             \\  .states = ts_states,
             \\  .compatibility = &ts_compatibility,
@@ -1393,7 +1401,12 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\
             \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
             \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-            \\  return entry ? entry->candidates : 0;
+            \\  return entry ? entry->candidate_count : 0;
+            \\}
+            \\
+            \\const TSCandidateEntry *ts_parser_unresolved_candidate_at(uint16_t state_id, uint16_t entry_index, uint16_t candidate_index) {
+            \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, entry_index);
+            \\  return entry && candidate_index < entry->candidate_count ? &entry->candidates[candidate_index] : 0;
             \\}
             \\
             \\const TSActionEntry *ts_parser_find_action(uint16_t state_id, const char *symbol) {
@@ -1441,6 +1454,19 @@ pub fn parseTableMetadataParserCDump() Fixture {
             \\  return ts_parser_find_unresolved(state_id, symbol) != 0;
             \\}
             \\
+            \\uint16_t ts_parser_alias_count(void) {
+            \\  return TS_ALIAS_COUNT;
+            \\}
+            \\
+            \\const TSAliasEntry *ts_parser_alias_at(uint16_t production_id, uint16_t step_index) {
+            \\  uint16_t i = 0;
+            \\  while (i < TS_ALIAS_COUNT) {
+            \\    if (ts_alias_sequences[i].production_id == production_id && ts_alias_sequences[i].step_index == step_index) return &ts_alias_sequences[i];
+            \\    i += 1;
+            \\  }
+            \\  return 0;
+            \\}
+            \\
         ,
     };
 }
@@ -1457,6 +1483,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\#define TS_PARSER_BLOCKED true
             \\#define TS_STATE_COUNT 6
             \\#define TS_SYMBOL_COUNT 4
+            \\#define TS_KEYWORD_CAPTURE_TOKEN 0
             \\
             \\#define TS_LANGUAGE_VERSION 15
             \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
@@ -1471,7 +1498,9 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;
             \\typedef struct { uint16_t symbol_id; uint16_t state; } TSGotoEntry;
-            \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidates; } TSUnresolvedEntry;
+            \\typedef struct { uint16_t kind; uint16_t value; } TSCandidateEntry;
+            \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidate_count; const TSCandidateEntry *candidates; } TSUnresolvedEntry;
+            \\typedef struct { uint16_t production_id; uint16_t step_index; const char *name; bool named; } TSAliasEntry;
             \\
             \\typedef struct {
             \\  uint16_t id;
@@ -1501,6 +1530,7 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  bool blocked;
             \\  uint16_t symbol_count;
             \\  uint16_t state_count;
+            \\  uint16_t keyword_capture_token;
             \\  const TSSymbolInfo *symbols;
             \\  const TSStateTable *states;
             \\  const TSCompatibilityInfo *compatibility;
@@ -1607,8 +1637,12 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\};
             \\
             \\/* state 5 */
+            \\static const TSCandidateEntry ts_state_5_unresolved_0_candidates[] = {
+            \\  { 1, 4 },
+            \\  { 2, 2 },
+            \\};
             \\static const TSUnresolvedEntry ts_state_5_unresolved[] = {
-            \\  { 2, 1, 2 },
+            \\  { 2, 1, 2, ts_state_5_unresolved_0_candidates },
             \\};
             \\static const TSStateTable ts_states[TS_STATE_COUNT] = {
             \\  {
@@ -1661,10 +1695,14 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\  },
             \\};
             \\
+            \\#define TS_ALIAS_COUNT 0
+            \\static const TSAliasEntry *ts_alias_sequences = 0;
+            \\
             \\static const TSParser ts_parser = {
             \\  .blocked = true,
             \\  .symbol_count = TS_SYMBOL_COUNT,
             \\  .state_count = TS_STATE_COUNT,
+            \\  .keyword_capture_token = TS_KEYWORD_CAPTURE_TOKEN,
             \\  .symbols = ts_symbols,
             \\  .states = ts_states,
             \\  .compatibility = &ts_compatibility,
@@ -1959,7 +1997,12 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
             \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-            \\  return entry ? entry->candidates : 0;
+            \\  return entry ? entry->candidate_count : 0;
+            \\}
+            \\
+            \\const TSCandidateEntry *ts_parser_unresolved_candidate_at(uint16_t state_id, uint16_t entry_index, uint16_t candidate_index) {
+            \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, entry_index);
+            \\  return entry && candidate_index < entry->candidate_count ? &entry->candidates[candidate_index] : 0;
             \\}
             \\
             \\const TSActionEntry *ts_parser_find_action(uint16_t state_id, const char *symbol) {
@@ -2005,6 +2048,19 @@ pub fn parseTableConflictParserCDump() Fixture {
             \\
             \\bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {
             \\  return ts_parser_find_unresolved(state_id, symbol) != 0;
+            \\}
+            \\
+            \\uint16_t ts_parser_alias_count(void) {
+            \\  return TS_ALIAS_COUNT;
+            \\}
+            \\
+            \\const TSAliasEntry *ts_parser_alias_at(uint16_t production_id, uint16_t step_index) {
+            \\  uint16_t i = 0;
+            \\  while (i < TS_ALIAS_COUNT) {
+            \\    if (ts_alias_sequences[i].production_id == production_id && ts_alias_sequences[i].step_index == step_index) return &ts_alias_sequences[i];
+            \\    i += 1;
+            \\  }
+            \\  return 0;
             \\}
             \\
         ,

@@ -1,5 +1,6 @@
 const std = @import("std");
 const grammar_ir = @import("../ir/grammar_ir.zig");
+const syntax_ir = @import("../ir/syntax_grammar.zig");
 const actions = @import("actions.zig");
 const debug_dump = @import("debug_dump.zig");
 const build = @import("build.zig");
@@ -232,7 +233,13 @@ pub fn generateParserCEmitterDumpFromPreparedWithOptions(
     options: emit_optimize.Options,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const serialized = try serialize.serializeBuildResult(allocator, result, mode);
+    var serialized = try serialize.serializeBuildResult(allocator, result, mode);
+    if (prepared.word_token) |wt| {
+        serialized.word_token = switch (wt.kind) {
+            .non_terminal => syntax_ir.SymbolRef{ .non_terminal = wt.index },
+            .external => syntax_ir.SymbolRef{ .external = wt.index },
+        };
+    }
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, options);
 }
 

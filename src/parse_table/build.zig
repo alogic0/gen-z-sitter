@@ -6,6 +6,7 @@ const item = @import("item.zig");
 const state = @import("state.zig");
 const conflicts = @import("conflicts.zig");
 const resolution = @import("resolution.zig");
+const minimize = @import("minimize.zig");
 const rules = @import("../ir/rules.zig");
 const runtime_io = @import("../support/runtime_io.zig");
 
@@ -1103,6 +1104,7 @@ pub const BuildOptions = struct {
     closure_pressure_mode: ClosurePressureMode = .none,
     closure_pressure_thresholds: ClosurePressureThresholds = .{},
     coarse_transitions: []const CoarseTransitionSpec = &.{},
+    minimize_states: bool = false,
 };
 
 fn shouldUseCoarseTransition(options: BuildOptions, source_state_id: state.StateId, symbol: syntax_ir.SymbolRef) bool {
@@ -1308,6 +1310,28 @@ pub fn buildStatesWithOptions(
         );
     }
     const lex_states = try assignLexStateIdsAlloc(allocator, constructed.states, resolved_actions);
+
+    if (options.minimize_states) {
+        timer = maybeStartTimer(progress_log);
+        if (progress_log) logBuildStart("minimize_states");
+        const minimized = try minimize.minimizeAlloc(allocator, lex_states.states, resolved_actions);
+        if (progress_log) {
+            maybeLogBuildDone("minimize_states", timer);
+            logBuildSummary(
+                "minimize_states summary states_before={d} states_after={d} merged={d}",
+                .{ lex_states.states.len, minimized.states.len, minimized.merged_count },
+            );
+        }
+        return .{
+            .productions = productions,
+            .precedence_orderings = grammar.precedence_orderings,
+            .states = minimized.states,
+            .lex_state_count = lex_states.count,
+            .actions = constructed.actions,
+            .resolved_actions = minimized.resolved_actions,
+        };
+    }
+
     return .{
         .productions = productions,
         .precedence_orderings = grammar.precedence_orderings,

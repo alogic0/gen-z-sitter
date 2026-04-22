@@ -105,6 +105,7 @@ test {
     _ = @import("parse_table/conflicts.zig");
     _ = @import("parse_table/debug_dump.zig");
     _ = @import("parse_table/build.zig");
+    _ = @import("parse_table/minimize.zig");
     _ = @import("parse_table/resolution.zig");
     _ = @import("parse_table/serialize.zig");
     _ = @import("parse_table/pipeline.zig");

@@ -37,9 +37,18 @@ pub const SerializedState = struct {
     unresolved: []const SerializedUnresolvedEntry,
 };
 
+pub const SerializedAliasEntry = struct {
+    production_id: u32,
+    step_index: u32,
+    name: []const u8,
+    named: bool,
+};
+
 pub const SerializedTable = struct {
     states: []const SerializedState,
     blocked: bool,
+    alias_sequences: []const SerializedAliasEntry = &.{},
+    word_token: ?syntax_ir.SymbolRef = null,
 
     pub fn isSerializationReady(self: SerializedTable) bool {
         return !self.blocked;
@@ -80,11 +89,26 @@ pub fn serializeBuildResult(
         };
     }
 
+    var alias_list = std.ArrayListUnmanaged(SerializedAliasEntry){};
+    for (result.productions, 0..) |production, production_id| {
+        for (production.steps, 0..) |step, step_index| {
+            if (step.alias) |alias| {
+                try alias_list.append(allocator, .{
+                    .production_id = @intCast(production_id),
+                    .step_index = @intCast(step_index),
+                    .name = alias.value,
+                    .named = alias.named,
+                });
+            }
+        }
+    }
+
     const blocked = result.hasBlockingUnresolvedDecisions();
     std.debug.print("[parse_table/serialize] serializeBuildResult done blocked={}\n", .{blocked});
     return .{
         .states = serialized_states,
         .blocked = blocked,
+        .alias_sequences = try alias_list.toOwnedSlice(allocator),
     };
 }
 
