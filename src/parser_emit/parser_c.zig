@@ -4,6 +4,7 @@ const serialize = @import("../parse_table/serialize.zig");
 const syntax_grammar = @import("../ir/syntax_grammar.zig");
 const common = @import("common.zig");
 const compat = @import("compat.zig");
+const compile_smoke = @import("../compat/compile_smoke.zig");
 const optimize = @import("optimize.zig");
 
 pub const EmitError = std.mem.Allocator.Error || std.Io.Writer.Error;
@@ -112,381 +113,258 @@ pub fn writeParserCWithOptions(
     const compatibility = compat.currentRuntimeCompatibility();
     const emitted_symbols = try collectEmittedSymbols(allocator, compacted);
     defer deinitEmittedSymbols(allocator, emitted_symbols);
-    const action_owners = try collectStateArrayOwners(allocator, serialize.SerializedActionEntry, compacted.states, stateActions);
-    defer allocator.free(action_owners);
-    const goto_owners = try collectStateArrayOwners(allocator, serialize.SerializedGotoEntry, compacted.states, stateGotos);
-    defer allocator.free(goto_owners);
-    const unresolved_owners = try collectStateArrayOwners(allocator, serialize.SerializedUnresolvedEntry, compacted.states, stateUnresolved);
-    defer allocator.free(unresolved_owners);
+
+    var action_lists = std.array_list.Managed(ParseActionList).init(allocator);
+    defer action_lists.deinit();
+    try action_lists.append(.{ .action = null, .index = 0 });
 
     try compat.writeContractPrelude(writer, compatibility);
-    try writer.print("#define TS_PARSER_BLOCKED {}\n", .{compacted.blocked});
-    try writer.print("#define TS_STATE_COUNT {d}\n", .{compacted.states.len});
-    try writer.print("#define TS_SYMBOL_COUNT {d}\n", .{emitted_symbols.len});
+    try compat.writeContractTypesAndConstants(writer, compatibility);
+    try writer.print("#define STATE_COUNT {d}\n", .{compacted.states.len});
+    try writer.print("#define LARGE_STATE_COUNT {d}\n", .{largeStateCount(compacted, emitted_symbols.len)});
+    try writer.print("#define SYMBOL_COUNT {d}\n", .{emitted_symbols.len});
+    try writer.print("#define TOKEN_COUNT {d}\n", .{tokenCount(emitted_symbols)});
+    try writer.print("#define EXTERNAL_TOKEN_COUNT {d}\n", .{externalTokenCount(emitted_symbols)});
+    try writer.print("#define PRODUCTION_ID_COUNT {d}\n", .{compacted.productions.len});
+    try writer.writeAll("#define FIELD_COUNT 0\n");
+    try writer.print("#define ALIAS_COUNT {d}\n", .{compacted.alias_sequences.len});
+    try writer.writeAll("#define MAX_ALIAS_SEQUENCE_LENGTH 0\n\n");
+
     const keyword_capture_id: u16 = if (compacted.word_token) |wt|
         symbolIdForRef(emitted_symbols, wt) orelse 0
     else
         0;
-    try writer.print("#define TS_KEYWORD_CAPTURE_TOKEN {d}\n\n", .{keyword_capture_id});
-    try compat.writeContractTypesAndConstants(writer, compatibility);
-    try writer.writeAll("static bool ts_string_eq(const char *a, const char *b) {\n");
-    try writer.writeAll("  if (!a || !b) return false;\n");
-    try writer.writeAll("  while (a[0] != 0 && b[0] != 0) {\n");
-    try writer.writeAll("    if (a[0] != b[0]) return false;\n");
-    try writer.writeAll("    a += 1;\n");
-    try writer.writeAll("    b += 1;\n");
-    try writer.writeAll("  }\n");
-    try writer.writeAll("  return a[0] == b[0];\n");
+
+    try writer.writeAll("static bool ts_lex(TSLexer *lexer, TSStateId state) {\n");
+    try writer.writeAll("  (void)lexer;\n");
+    try writer.writeAll("  (void)state;\n");
+    try writer.writeAll("  return false;\n");
     try writer.writeAll("}\n\n");
-    try writer.writeAll("static const TSCompatibilityInfo ts_compatibility = {\n");
-    try writer.print("  .language_version = {d},\n", .{compatibility.language_version});
-    try writer.print("  .min_compatible_language_version = {d},\n", .{compatibility.min_compatible_language_version});
-    try writer.writeAll("  .target = \"");
-    try writer.writeAll(compat.targetName(compatibility.target));
-    try writer.writeAll("\",\n");
-    try writer.writeAll("  .layer = \"");
-    try writer.writeAll(compat.layerName(compatibility.layer));
-    try writer.writeAll("\",\n");
-    try writer.writeAll("};\n\n");
-    try writer.writeAll("static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {\n");
+    try writer.writeAll("static const char * const ts_symbol_names[SYMBOL_COUNT] = {\n");
     for (emitted_symbols, 0..) |symbol, index| {
-        try writer.writeAll("  {\n");
-        try writer.print("    .id = {d},\n", .{index});
-        try writer.writeAll("    .name = \"");
+        try writer.print("  [{d}] = \"", .{index});
         try writer.writeAll(symbol.label);
         try writer.writeAll("\",\n");
-        try writer.print("    .kind = {d},\n", .{symbolKindCode(symbol.ref)});
-        try writer.print("    .terminal = {},\n", .{symbolKindIsTerminal(symbol.ref)});
-        try writer.print("    .external = {},\n", .{symbolKindIsExternal(symbol.ref)});
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("static const TSSymbolMetadata ts_symbol_metadata[SYMBOL_COUNT] = {\n");
+    for (emitted_symbols, 0..) |symbol, index| {
+        const visible = !symbolKindIsExternal(symbol.ref);
+        const named = !symbolKindIsTerminal(symbol.ref);
+        try writer.print("  [{d}] = {{ .visible = {}, .named = {}, .supertype = false }},\n", .{ index, visible, named });
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("static const TSSymbol ts_symbol_map[SYMBOL_COUNT] = {\n");
+    for (emitted_symbols, 0..) |_, index| {
+        try writer.print("  [{d}] = {d},\n", .{ index, index });
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("static const uint16_t ts_non_terminal_alias_map[] = { 0 };\n");
+    try writer.writeAll("static const TSStateId ts_primary_state_ids[SYMBOL_COUNT] = { 0 };\n\n");
+
+    const large_state_count_value = largeStateCount(compacted, emitted_symbols.len);
+    try writer.writeAll("static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {\n");
+    for (compacted.states[0..large_state_count_value], 0..) |serialized_state, index| {
+        try writer.print("  [STATE({d})] = {{\n", .{index});
+        for (serialized_state.gotos) |entry| {
+            const symbol_id = symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory;
+            try writer.print("    [{d}] = STATE({d}),\n", .{ symbol_id, entry.state });
+        }
+        for (serialized_state.actions) |entry| {
+            const symbol_id = symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory;
+            const action_index = try internActionList(&action_lists, compacted, emitted_symbols, entry.action);
+            try writer.print("    [{d}] = ACTIONS({d}),\n", .{ symbol_id, action_index });
+        }
         try writer.writeAll("  },\n");
     }
     try writer.writeAll("};\n\n");
-    try writer.writeAll("static const TSActionEntry ts_empty_actions[] = {\n");
-    try writer.writeAll("};\n");
-    try writer.writeAll("static const TSGotoEntry ts_empty_gotos[] = {\n");
-    try writer.writeAll("};\n\n");
 
-    for (compacted.states, 0..) |serialized_state, index| {
-        try writer.print("/* state {d} */\n", .{serialized_state.id});
-
-        if (serialized_state.actions.len > 0 and action_owners[index] == index) {
-            try writer.print("static const TSActionEntry ts_state_{d}_actions[] = {{\n", .{serialized_state.id});
-            for (serialized_state.actions) |entry| {
-                try writer.print(
-                    "  {{ {d}, {d}, ",
-                    .{
-                        symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory,
-                        actionKindCode(entry.action),
-                    },
-                );
-                try common.writeActionValue(writer, entry.action);
-                try writer.writeAll(" },\n");
-            }
-            try writer.writeAll("};\n");
-        }
-
-        if (serialized_state.gotos.len > 0 and goto_owners[index] == index) {
-            try writer.print("static const TSGotoEntry ts_state_{d}_gotos[] = {{\n", .{serialized_state.id});
+    if (large_state_count_value < compacted.states.len) {
+        try writer.writeAll("static const uint16_t ts_small_parse_table[] = {\n");
+        var offset: usize = 0;
+        for (compacted.states[large_state_count_value..]) |serialized_state| {
+            const entry_count = serialized_state.actions.len + serialized_state.gotos.len;
+            try writer.print("  [{d}] = {d},\n", .{ offset, entry_count });
+            offset += 1;
             for (serialized_state.gotos) |entry| {
-                try writer.print(
-                    "  {{ {d}, {d} }},\n",
-                    .{
-                        symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory,
-                        entry.state,
-                    },
-                );
-            }
-            try writer.writeAll("};\n");
-        }
-
-        if (serialized_state.unresolved.len > 0 and unresolved_owners[index] == index) {
-            for (serialized_state.unresolved, 0..) |entry, entry_index| {
-                if (entry.candidate_actions.len > 0) {
-                    try writer.print("static const TSCandidateEntry ts_state_{d}_unresolved_{d}_candidates[] = {{\n", .{ serialized_state.id, entry_index });
-                    for (entry.candidate_actions) |candidate| {
-                        try writer.print("  {{ {d}, ", .{actionKindCode(candidate)});
-                        try common.writeActionValue(writer, candidate);
-                        try writer.writeAll(" },\n");
-                    }
-                    try writer.writeAll("};\n");
-                }
-            }
-            try writer.print("static const TSUnresolvedEntry ts_state_{d}_unresolved[] = {{\n", .{serialized_state.id});
-            for (serialized_state.unresolved, 0..) |entry, entry_index| {
                 const symbol_id = symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory;
-                if (entry.candidate_actions.len > 0) {
-                    try writer.print(
-                        "  {{ {d}, {d}, {d}, ts_state_{d}_unresolved_{d}_candidates }},\n",
-                        .{ symbol_id, unresolvedReasonCode(entry.reason), entry.candidate_actions.len, serialized_state.id, entry_index },
-                    );
-                } else {
-                    try writer.print(
-                        "  {{ {d}, {d}, 0, 0 }},\n",
-                        .{ symbol_id, unresolvedReasonCode(entry.reason) },
-                    );
-                }
+                try writer.print("  STATE({d}), 1, {d},\n", .{ entry.state, symbol_id });
+                offset += 3;
             }
-            try writer.writeAll("};\n");
+            for (serialized_state.actions) |entry| {
+                const symbol_id = symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory;
+                const action_index = try internActionList(&action_lists, compacted, emitted_symbols, entry.action);
+                try writer.print("  ACTIONS({d}), 1, {d},\n", .{ action_index, symbol_id });
+                offset += 3;
+            }
         }
-
-        if (index + 1 < compacted.states.len) try writer.writeByte('\n');
+        try writer.writeAll("};\n\n");
+        try writer.writeAll("static const uint32_t ts_small_parse_table_map[] = {\n");
+        offset = 0;
+        for (compacted.states[large_state_count_value..], large_state_count_value..) |serialized_state, index| {
+            try writer.print("  [SMALL_STATE({d})] = {d},\n", .{ index, offset });
+            offset += 1 + 3 * (serialized_state.actions.len + serialized_state.gotos.len);
+        }
+        try writer.writeAll("};\n\n");
     }
 
-    try writer.writeAll("static const TSStateTable ts_states[TS_STATE_COUNT] = {\n");
-    for (compacted.states, 0..) |serialized_state, index| {
-        try writer.writeAll("  {\n");
-        if (serialized_state.actions.len > 0) {
-            try writer.print("    .actions = ts_state_{d}_actions,\n", .{compacted.states[action_owners[index]].id});
+    try writer.writeAll("static const TSParseActionEntry ts_parse_actions[] = {\n");
+    for (action_lists.items) |entry| {
+        if (entry.action) |action| {
+            try writer.print("  [{d}] = {{ .entry = {{ .count = 1, .reusable = true }} }}, ", .{entry.index});
+            try writeRuntimeAction(writer, compacted, emitted_symbols, action);
+            try writer.writeAll(",\n");
         } else {
-            try writer.writeAll("    .actions = ts_empty_actions,\n");
+            try writer.writeAll("  [0] = { .entry = { .count = 0, .reusable = false } },\n");
         }
-        try writer.print("    .action_count = {d},\n", .{serialized_state.actions.len});
-        if (serialized_state.gotos.len > 0) {
-            try writer.print("    .gotos = ts_state_{d}_gotos,\n", .{compacted.states[goto_owners[index]].id});
-        } else {
-            try writer.writeAll("    .gotos = ts_empty_gotos,\n");
-        }
-        try writer.print("    .goto_count = {d},\n", .{serialized_state.gotos.len});
-        if (serialized_state.unresolved.len > 0) {
-            try writer.print("    .unresolved = ts_state_{d}_unresolved,\n", .{compacted.states[unresolved_owners[index]].id});
-        } else {
-            try writer.writeAll("    .unresolved = 0,\n");
-        }
-        try writer.print("    .unresolved_count = {d},\n", .{serialized_state.unresolved.len});
-        try writer.writeAll("  },\n");
     }
-    try writer.writeAll("};\n");
-    try writer.writeAll("\n");
-    try writer.print("#define TS_ALIAS_COUNT {d}\n", .{compacted.alias_sequences.len});
-    if (compacted.alias_sequences.len > 0) {
-        try writer.writeAll("static const TSAliasEntry ts_alias_sequences[TS_ALIAS_COUNT] = {\n");
-        for (compacted.alias_sequences) |entry| {
-            try writer.print("  {{ {d}, {d}, \"{s}\", {} }},\n", .{ entry.production_id, entry.step_index, entry.name, entry.named });
-        }
-        try writer.writeAll("};\n");
-    } else {
-        try writer.writeAll("static const TSAliasEntry *ts_alias_sequences = 0;\n");
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("static const TSLexerMode ts_lex_modes[STATE_COUNT] = {\n");
+    for (compacted.states, 0..) |_, index| {
+        try writer.print("  [{d}] = {{ .lex_state = 0, .external_lex_state = 0 }},\n", .{index});
     }
-    try writer.writeAll("\n");
-    try writer.writeAll("static const TSParser ts_parser = {\n");
-    try writer.print("  .blocked = {},\n", .{compacted.blocked});
-    try writer.writeAll("  .symbol_count = TS_SYMBOL_COUNT,\n");
-    try writer.writeAll("  .state_count = TS_STATE_COUNT,\n");
-    try writer.writeAll("  .keyword_capture_token = TS_KEYWORD_CAPTURE_TOKEN,\n");
-    try writer.writeAll("  .symbols = ts_symbols,\n");
-    try writer.writeAll("  .states = ts_states,\n");
-    try writer.writeAll("  .compatibility = &ts_compatibility,\n");
-    try writer.writeAll("};\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {\n");
-    for (compacted.states) |serialized_state| {
-        try writer.writeAll("  {\n");
-        try writer.print("    .action_count = {d},\n", .{serialized_state.actions.len});
-        try writer.print("    .goto_count = {d},\n", .{serialized_state.gotos.len});
-        try writer.print("    .unresolved_count = {d},\n", .{serialized_state.unresolved.len});
-        try writer.print("    .has_unresolved = {},\n", .{serialized_state.unresolved.len > 0});
-        try writer.writeAll("  },\n");
-    }
-    try writer.writeAll("};\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("static const TSParserRuntime ts_runtime = {\n");
-    try writer.print("  .blocked = {},\n", .{compacted.blocked});
-    try writer.print("  .has_unresolved_states = {},\n", .{hasUnresolvedStates(compacted)});
-    try writer.writeAll("  .state_count = TS_STATE_COUNT,\n");
-    try writer.writeAll("  .parser = &ts_parser,\n");
-    try writer.writeAll("  .states = ts_runtime_states,\n");
-    try writer.writeAll("};\n");
-    try writer.writeAll("\n");
+    try writer.writeAll("};\n\n");
+
     try writer.writeAll("static const TSLanguage ts_language = {\n");
-    try writer.writeAll("  .parser = &ts_parser,\n");
-    try writer.writeAll("  .runtime = &ts_runtime,\n");
-    try writer.writeAll("  .compatibility = &ts_compatibility,\n");
-    try writer.writeAll("};\n");
-    try writer.writeAll("\n");
-    try compat.writeContractAccessors(writer);
-    try writer.writeAll("int16_t ts_parser_find_symbol_id(const char *symbol) {\n");
-    try writer.writeAll("  const TSParser *parser = ts_parser_instance();\n");
-    try writer.writeAll("  uint16_t i = 0;\n");
-    try writer.writeAll("  while (parser && i < parser->symbol_count) {\n");
-    try writer.writeAll("    if (ts_string_eq(parser->symbols[i].name, symbol)) return (int16_t)i;\n");
-    try writer.writeAll("    i += 1;\n");
-    try writer.writeAll("  }\n");
-    try writer.writeAll("  return -1;\n");
+    try writer.writeAll("  .abi_version = LANGUAGE_VERSION,\n");
+    try writer.writeAll("  .symbol_count = SYMBOL_COUNT,\n");
+    try writer.writeAll("  .alias_count = ALIAS_COUNT,\n");
+    try writer.writeAll("  .token_count = TOKEN_COUNT,\n");
+    try writer.writeAll("  .external_token_count = EXTERNAL_TOKEN_COUNT,\n");
+    try writer.writeAll("  .state_count = STATE_COUNT,\n");
+    try writer.writeAll("  .large_state_count = LARGE_STATE_COUNT,\n");
+    try writer.writeAll("  .production_id_count = PRODUCTION_ID_COUNT,\n");
+    try writer.writeAll("  .field_count = FIELD_COUNT,\n");
+    try writer.writeAll("  .max_alias_sequence_length = MAX_ALIAS_SEQUENCE_LENGTH,\n");
+    try writer.writeAll("  .parse_table = &ts_parse_table[0][0],\n");
+    if (large_state_count_value < compacted.states.len) {
+        try writer.writeAll("  .small_parse_table = ts_small_parse_table,\n");
+        try writer.writeAll("  .small_parse_table_map = ts_small_parse_table_map,\n");
+    }
+    try writer.writeAll("  .parse_actions = ts_parse_actions,\n");
+    try writer.writeAll("  .symbol_names = ts_symbol_names,\n");
+    try writer.writeAll("  .symbol_metadata = ts_symbol_metadata,\n");
+    try writer.writeAll("  .public_symbol_map = ts_symbol_map,\n");
+    try writer.writeAll("  .alias_map = ts_non_terminal_alias_map,\n");
+    try writer.writeAll("  .lex_modes = ts_lex_modes,\n");
+    try writer.writeAll("  .lex_fn = ts_lex,\n");
+    try writer.print("  .keyword_capture_token = {d},\n", .{keyword_capture_id});
+    try writer.writeAll("  .primary_state_ids = ts_primary_state_ids,\n");
+    try writer.writeAll("  .name = \"generated\",\n");
+    try writer.writeAll("};\n\n");
+    try writer.writeAll("const TSLanguage *tree_sitter_generated(void) {\n");
+    try writer.writeAll("  return &ts_language;\n");
     try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const TSActionEntry *ts_parser_actions(uint16_t state_id) {\n");
-    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
-    try writer.writeAll("  return state ? state->actions : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("uint16_t ts_parser_action_count(uint16_t state_id) {\n");
-    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
-    try writer.writeAll("  return state ? state->action_count : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const TSGotoEntry *ts_parser_gotos(uint16_t state_id) {\n");
-    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
-    try writer.writeAll("  return state ? state->gotos : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("uint16_t ts_parser_goto_count(uint16_t state_id) {\n");
-    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
-    try writer.writeAll("  return state ? state->goto_count : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const TSUnresolvedEntry *ts_parser_unresolved(uint16_t state_id) {\n");
-    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
-    try writer.writeAll("  return state ? state->unresolved : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("uint16_t ts_parser_unresolved_count(uint16_t state_id) {\n");
-    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
-    try writer.writeAll("  return state ? state->unresolved_count : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const TSActionEntry *ts_parser_action_at(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
-    try writer.writeAll("  return state && index < state->action_count ? &state->actions[index] : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const TSGotoEntry *ts_parser_goto_at(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
-    try writer.writeAll("  return state && index < state->goto_count ? &state->gotos[index] : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const TSStateTable *state = ts_parser_state(state_id);\n");
-    try writer.writeAll("  return state && index < state->unresolved_count ? &state->unresolved[index] : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const TSActionEntry *entry = ts_parser_action_at(state_id, index);\n");
-    try writer.writeAll("  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const TSActionEntry *entry = ts_parser_action_at(state_id, index);\n");
-    try writer.writeAll("  if (!entry) return 0;\n");
-    try writer.writeAll("  switch (entry->kind) {\n");
-    try writer.writeAll("    case TS_ACTION_SHIFT: return \"shift\";\n");
-    try writer.writeAll("    case TS_ACTION_REDUCE: return \"reduce\";\n");
-    try writer.writeAll("    case TS_ACTION_ACCEPT: return \"accept\";\n");
-    try writer.writeAll("    default: return 0;\n");
-    try writer.writeAll("  }\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const char *kind = ts_parser_action_kind(state_id, index);\n");
-    try writer.writeAll("  return kind && ts_string_eq(kind, \"shift\");\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("bool ts_parser_action_is_reduce(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const char *kind = ts_parser_action_kind(state_id, index);\n");
-    try writer.writeAll("  return kind && ts_string_eq(kind, \"reduce\");\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("bool ts_parser_action_is_accept(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const char *kind = ts_parser_action_kind(state_id, index);\n");
-    try writer.writeAll("  return kind && ts_string_eq(kind, \"accept\");\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const TSActionEntry *entry = ts_parser_action_at(state_id, index);\n");
-    try writer.writeAll("  return entry ? entry->value : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const char *ts_parser_goto_symbol(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);\n");
-    try writer.writeAll("  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("uint16_t ts_parser_goto_target(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);\n");
-    try writer.writeAll("  return entry ? entry->state : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const char *ts_parser_unresolved_symbol(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);\n");
-    try writer.writeAll("  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const char *ts_parser_unresolved_reason(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);\n");
-    try writer.writeAll("  if (!entry) return 0;\n");
-    try writer.writeAll("  switch (entry->reason) {\n");
-    try writer.writeAll("    case TS_UNRESOLVED_SHIFT_REDUCE: return \"shift_reduce\";\n");
-    try writer.writeAll("    case TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED: return \"reduce_reduce_deferred\";\n");
-    try writer.writeAll("    default: return 0;\n");
-    try writer.writeAll("  }\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {\n");
-    try writer.writeAll("  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);\n");
-    try writer.writeAll("  return entry ? entry->candidate_count : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const TSCandidateEntry *ts_parser_unresolved_candidate_at(uint16_t state_id, uint16_t entry_index, uint16_t candidate_index) {\n");
-    try writer.writeAll("  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, entry_index);\n");
-    try writer.writeAll("  return entry && candidate_index < entry->candidate_count ? &entry->candidates[candidate_index] : 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const TSActionEntry *ts_parser_find_action(uint16_t state_id, const char *symbol) {\n");
-    try writer.writeAll("  uint16_t count = ts_parser_action_count(state_id);\n");
-    try writer.writeAll("  uint16_t i = 0;\n");
-    try writer.writeAll("  while (i < count) {\n");
-    try writer.writeAll("    const TSActionEntry *entry = ts_parser_action_at(state_id, i);\n");
-    try writer.writeAll("    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;\n");
-    try writer.writeAll("    i += 1;\n");
-    try writer.writeAll("  }\n");
-    try writer.writeAll("  return 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const TSGotoEntry *ts_parser_find_goto(uint16_t state_id, const char *symbol) {\n");
-    try writer.writeAll("  uint16_t count = ts_parser_goto_count(state_id);\n");
-    try writer.writeAll("  uint16_t i = 0;\n");
-    try writer.writeAll("  while (i < count) {\n");
-    try writer.writeAll("    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);\n");
-    try writer.writeAll("    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;\n");
-    try writer.writeAll("    i += 1;\n");
-    try writer.writeAll("  }\n");
-    try writer.writeAll("  return 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const TSUnresolvedEntry *ts_parser_find_unresolved(uint16_t state_id, const char *symbol) {\n");
-    try writer.writeAll("  uint16_t count = ts_parser_unresolved_count(state_id);\n");
-    try writer.writeAll("  uint16_t i = 0;\n");
-    try writer.writeAll("  while (i < count) {\n");
-    try writer.writeAll("    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);\n");
-    try writer.writeAll("    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;\n");
-    try writer.writeAll("    i += 1;\n");
-    try writer.writeAll("  }\n");
-    try writer.writeAll("  return 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("bool ts_parser_has_action(uint16_t state_id, const char *symbol) {\n");
-    try writer.writeAll("  return ts_parser_find_action(state_id, symbol) != 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("bool ts_parser_has_goto(uint16_t state_id, const char *symbol) {\n");
-    try writer.writeAll("  return ts_parser_find_goto(state_id, symbol) != 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {\n");
-    try writer.writeAll("  return ts_parser_find_unresolved(state_id, symbol) != 0;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("uint16_t ts_parser_alias_count(void) {\n");
-    try writer.writeAll("  return TS_ALIAS_COUNT;\n");
-    try writer.writeAll("}\n");
-    try writer.writeAll("\n");
-    try writer.writeAll("const TSAliasEntry *ts_parser_alias_at(uint16_t production_id, uint16_t step_index) {\n");
-    try writer.writeAll("  uint16_t i = 0;\n");
-    try writer.writeAll("  while (i < TS_ALIAS_COUNT) {\n");
-    try writer.writeAll("    if (ts_alias_sequences[i].production_id == production_id && ts_alias_sequences[i].step_index == step_index) return &ts_alias_sequences[i];\n");
-    try writer.writeAll("    i += 1;\n");
-    try writer.writeAll("  }\n");
-    try writer.writeAll("  return 0;\n");
-    try writer.writeAll("}\n");
+}
+
+const ParseActionList = struct {
+    action: ?parse_actions.ParseAction,
+    index: u16,
+};
+
+fn internActionList(
+    action_lists: *std.array_list.Managed(ParseActionList),
+    serialized: serialize.SerializedTable,
+    symbols: []const EmittedSymbol,
+    action: parse_actions.ParseAction,
+) !u16 {
+    for (action_lists.items) |entry| {
+        if (entry.action) |existing| {
+            if (runtimeActionEql(serialized, symbols, existing, action)) return entry.index;
+        }
+    }
+    const index: u16 = @intCast(action_lists.items.len * 2 - 1);
+    try action_lists.append(.{ .action = action, .index = index });
+    return index;
+}
+
+fn runtimeActionEql(
+    serialized: serialize.SerializedTable,
+    symbols: []const EmittedSymbol,
+    left: parse_actions.ParseAction,
+    right: parse_actions.ParseAction,
+) bool {
+    return switch (left) {
+        .shift => |left_state| switch (right) {
+            .shift => |right_state| left_state == right_state,
+            else => false,
+        },
+        .reduce => |left_production| switch (right) {
+            .reduce => |right_production| blk: {
+                const left_info = productionInfo(serialized, left_production);
+                const right_info = productionInfo(serialized, right_production);
+                const left_symbol = symbolIdForRef(symbols, .{ .non_terminal = left_info.lhs }) orelse 0;
+                const right_symbol = symbolIdForRef(symbols, .{ .non_terminal = right_info.lhs }) orelse 0;
+                break :blk left_info.child_count == right_info.child_count and
+                    left_symbol == right_symbol and
+                    left_info.dynamic_precedence == right_info.dynamic_precedence and
+                    left_production == right_production;
+            },
+            else => false,
+        },
+        .accept => switch (right) {
+            .accept => true,
+            else => false,
+        },
+    };
+}
+
+fn writeRuntimeAction(
+    writer: anytype,
+    serialized: serialize.SerializedTable,
+    symbols: []const EmittedSymbol,
+    action: parse_actions.ParseAction,
+) !void {
+    switch (action) {
+        .shift => |state_id| try writer.print("{{ .action = {{ .shift = {{ .type = TSParseActionTypeShift, .state = {d} }} }} }}", .{state_id}),
+        .reduce => |production_id| {
+            const info = productionInfo(serialized, production_id);
+            const symbol_id = symbolIdForRef(symbols, .{ .non_terminal = info.lhs }) orelse 0;
+            try writer.print(
+                "{{ .action = {{ .reduce = {{ .type = TSParseActionTypeReduce, .child_count = {d}, .symbol = {d}, .dynamic_precedence = {d}, .production_id = {d} }} }} }}",
+                .{ info.child_count, symbol_id, info.dynamic_precedence, production_id },
+            );
+        },
+        .accept => try writer.writeAll("{ .action = { .type = TSParseActionTypeAccept } }"),
+    }
+}
+
+fn productionInfo(serialized: serialize.SerializedTable, production_id: u32) serialize.SerializedProductionInfo {
+    if (production_id < serialized.productions.len) return serialized.productions[production_id];
+    return .{ .lhs = 0, .child_count = 0, .dynamic_precedence = 0 };
+}
+
+fn largeStateCount(serialized: serialize.SerializedTable, symbol_count: usize) usize {
+    const threshold = @min(@as(usize, 64), symbol_count / 2);
+    var count: usize = 0;
+    for (serialized.states, 0..) |state_value, index| {
+        if (index <= 1 or state_value.actions.len + state_value.gotos.len > threshold) {
+            count += 1;
+        } else {
+            break;
+        }
+    }
+    return count;
+}
+
+fn tokenCount(symbols: []const EmittedSymbol) usize {
+    var count: usize = 0;
+    for (symbols) |symbol| {
+        if (symbolKindIsTerminal(symbol.ref) or symbolKindIsExternal(symbol.ref)) count += 1;
+    }
+    return count;
+}
+
+fn externalTokenCount(symbols: []const EmittedSymbol) usize {
+    var count: usize = 0;
+    for (symbols) |symbol| {
+        if (symbolKindIsExternal(symbol.ref)) count += 1;
+    }
+    return count;
 }
 
 fn collectStateArrayOwners(
@@ -623,12 +501,30 @@ fn collectEmittedSymbols(
     for (serialized.states) |state| {
         for (state.actions) |entry| {
             try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
+            switch (entry.action) {
+                .reduce => |production_id| {
+                    if (production_id < serialized.productions.len) {
+                        try appendUniqueEmittedSymbol(allocator, &symbols, .{ .non_terminal = serialized.productions[production_id].lhs });
+                    }
+                },
+                .shift, .accept => {},
+            }
         }
         for (state.gotos) |entry| {
             try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
         }
         for (state.unresolved) |entry| {
             try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
+            for (entry.candidate_actions) |candidate| {
+                switch (candidate) {
+                    .reduce => |production_id| {
+                        if (production_id < serialized.productions.len) {
+                            try appendUniqueEmittedSymbol(allocator, &symbols, .{ .non_terminal = serialized.productions[production_id].lhs });
+                        }
+                    },
+                    .shift, .accept => {},
+                }
+            }
         }
     }
 
@@ -775,499 +671,16 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
     const emitted = try emitParserCAlloc(allocator, serialized);
     defer allocator.free(emitted);
 
-    try std.testing.expectEqualStrings(
-        \\/* generated parser.c skeleton */
-        \\/* top-level layout: ts_language -> parser/runtime/compatibility */
-        \\#include <stdbool.h>
-        \\#include <stdint.h>
-        \\
-        \\#define TS_PARSER_BLOCKED true
-        \\#define TS_STATE_COUNT 1
-        \\#define TS_SYMBOL_COUNT 3
-        \\#define TS_KEYWORD_CAPTURE_TOKEN 0
-        \\
-        \\#define TS_LANGUAGE_VERSION 15
-        \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
-        \\#define TS_SYMBOL_KIND_NON_TERMINAL 1
-        \\#define TS_SYMBOL_KIND_TERMINAL 2
-        \\#define TS_SYMBOL_KIND_EXTERNAL 3
-        \\#define TS_ACTION_SHIFT 1
-        \\#define TS_ACTION_REDUCE 2
-        \\#define TS_ACTION_ACCEPT 3
-        \\#define TS_UNRESOLVED_SHIFT_REDUCE 1
-        \\#define TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED 2
-        \\
-        \\typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;
-        \\typedef struct { uint16_t symbol_id; uint16_t state; } TSGotoEntry;
-        \\typedef struct { uint16_t kind; uint16_t value; } TSCandidateEntry;
-        \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidate_count; const TSCandidateEntry *candidates; } TSUnresolvedEntry;
-        \\typedef struct { uint16_t production_id; uint16_t step_index; const char *name; bool named; } TSAliasEntry;
-        \\
-        \\typedef struct {
-        \\  uint16_t id;
-        \\  const char *name;
-        \\  uint16_t kind;
-        \\  bool terminal;
-        \\  bool external;
-        \\} TSSymbolInfo;
-        \\
-        \\typedef struct {
-        \\  uint16_t language_version;
-        \\  uint16_t min_compatible_language_version;
-        \\  const char *target;
-        \\  const char *layer;
-        \\} TSCompatibilityInfo;
-        \\
-        \\typedef struct {
-        \\  const TSActionEntry *actions;
-        \\  uint16_t action_count;
-        \\  const TSGotoEntry *gotos;
-        \\  uint16_t goto_count;
-        \\  const TSUnresolvedEntry *unresolved;
-        \\  uint16_t unresolved_count;
-        \\} TSStateTable;
-        \\
-        \\typedef struct {
-        \\  bool blocked;
-        \\  uint16_t symbol_count;
-        \\  uint16_t state_count;
-        \\  uint16_t keyword_capture_token;
-        \\  const TSSymbolInfo *symbols;
-        \\  const TSStateTable *states;
-        \\  const TSCompatibilityInfo *compatibility;
-        \\} TSParser;
-        \\
-        \\typedef struct {
-        \\  uint16_t action_count;
-        \\  uint16_t goto_count;
-        \\  uint16_t unresolved_count;
-        \\  bool has_unresolved;
-        \\} TSRuntimeStateInfo;
-        \\
-        \\typedef struct {
-        \\  bool blocked;
-        \\  bool has_unresolved_states;
-        \\  uint16_t state_count;
-        \\  const TSParser *parser;
-        \\  const TSRuntimeStateInfo *states;
-        \\} TSParserRuntime;
-        \\
-        \\typedef struct {
-        \\  const TSParser *parser;
-        \\  const TSParserRuntime *runtime;
-        \\  const TSCompatibilityInfo *compatibility;
-        \\} TSLanguage;
-        \\
-        \\static bool ts_string_eq(const char *a, const char *b) {
-        \\  if (!a || !b) return false;
-        \\  while (a[0] != 0 && b[0] != 0) {
-        \\    if (a[0] != b[0]) return false;
-        \\    a += 1;
-        \\    b += 1;
-        \\  }
-        \\  return a[0] == b[0];
-        \\}
-        \\
-        \\static const TSCompatibilityInfo ts_compatibility = {
-        \\  .language_version = 15,
-        \\  .min_compatible_language_version = 13,
-        \\  .target = "tree-sitter-runtime-surface",
-        \\  .layer = "intermediate",
-        \\};
-        \\
-        \\static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {
-        \\  {
-        \\    .id = 0,
-        \\    .name = "non_terminal:1",
-        \\    .kind = 1,
-        \\    .terminal = false,
-        \\    .external = false,
-        \\  },
-        \\  {
-        \\    .id = 1,
-        \\    .name = "terminal:0",
-        \\    .kind = 2,
-        \\    .terminal = true,
-        \\    .external = false,
-        \\  },
-        \\  {
-        \\    .id = 2,
-        \\    .name = "terminal:1",
-        \\    .kind = 2,
-        \\    .terminal = true,
-        \\    .external = false,
-        \\  },
-        \\};
-        \\
-        \\static const TSActionEntry ts_empty_actions[] = {
-        \\};
-        \\static const TSGotoEntry ts_empty_gotos[] = {
-        \\};
-        \\
-        \\/* state 0 */
-        \\static const TSActionEntry ts_state_0_actions[] = {
-        \\  { 1, 1, 2 },
-        \\};
-        \\static const TSGotoEntry ts_state_0_gotos[] = {
-        \\  { 0, 3 },
-        \\};
-        \\static const TSCandidateEntry ts_state_0_unresolved_0_candidates[] = {
-        \\  { 1, 4 },
-        \\  { 2, 5 },
-        \\};
-        \\static const TSUnresolvedEntry ts_state_0_unresolved[] = {
-        \\  { 2, 1, 2, ts_state_0_unresolved_0_candidates },
-        \\};
-        \\static const TSStateTable ts_states[TS_STATE_COUNT] = {
-        \\  {
-        \\    .actions = ts_state_0_actions,
-        \\    .action_count = 1,
-        \\    .gotos = ts_state_0_gotos,
-        \\    .goto_count = 1,
-        \\    .unresolved = ts_state_0_unresolved,
-        \\    .unresolved_count = 1,
-        \\  },
-        \\};
-        \\
-        \\#define TS_ALIAS_COUNT 0
-        \\static const TSAliasEntry *ts_alias_sequences = 0;
-        \\
-        \\static const TSParser ts_parser = {
-        \\  .blocked = true,
-        \\  .symbol_count = TS_SYMBOL_COUNT,
-        \\  .state_count = TS_STATE_COUNT,
-        \\  .keyword_capture_token = TS_KEYWORD_CAPTURE_TOKEN,
-        \\  .symbols = ts_symbols,
-        \\  .states = ts_states,
-        \\  .compatibility = &ts_compatibility,
-        \\};
-        \\
-        \\static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {
-        \\  {
-        \\    .action_count = 1,
-        \\    .goto_count = 1,
-        \\    .unresolved_count = 1,
-        \\    .has_unresolved = true,
-        \\  },
-        \\};
-        \\
-        \\static const TSParserRuntime ts_runtime = {
-        \\  .blocked = true,
-        \\  .has_unresolved_states = true,
-        \\  .state_count = TS_STATE_COUNT,
-        \\  .parser = &ts_parser,
-        \\  .states = ts_runtime_states,
-        \\};
-        \\
-        \\static const TSLanguage ts_language = {
-        \\  .parser = &ts_parser,
-        \\  .runtime = &ts_runtime,
-        \\  .compatibility = &ts_compatibility,
-        \\};
-        \\
-        \\const TSLanguage *ts_language_instance(void) {
-        \\  return &ts_language;
-        \\}
-        \\
-        \\const TSParser *ts_language_parser(const TSLanguage *language) {
-        \\  return language ? language->parser : 0;
-        \\}
-        \\
-        \\const TSParserRuntime *ts_language_runtime(const TSLanguage *language) {
-        \\  return language ? language->runtime : 0;
-        \\}
-        \\
-        \\const TSCompatibilityInfo *ts_language_compatibility(const TSLanguage *language) {
-        \\  return language ? language->compatibility : 0;
-        \\}
-        \\
-        \\const TSParser *ts_parser_instance(void) {
-        \\  return ts_language_parser(ts_language_instance());
-        \\}
-        \\
-        \\const TSCompatibilityInfo *ts_parser_compatibility(void) {
-        \\  return ts_language_compatibility(ts_language_instance());
-        \\}
-        \\
-        \\uint16_t ts_parser_language_version(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->language_version : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_min_compatible_language_version(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->min_compatible_language_version : 0;
-        \\}
-        \\
-        \\const char *ts_parser_compatibility_target(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->target : 0;
-        \\}
-        \\
-        \\const char *ts_parser_compatibility_layer(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->layer : 0;
-        \\}
-        \\
-        \\const TSParserRuntime *ts_parser_runtime(void) {
-        \\  return ts_language_runtime(ts_language_instance());
-        \\}
-        \\
-        \\bool ts_parser_runtime_is_blocked(void) {
-        \\  const TSParserRuntime *runtime = ts_parser_runtime();
-        \\  return runtime ? runtime->blocked : false;
-        \\}
-        \\
-        \\bool ts_parser_runtime_has_unresolved_states(void) {
-        \\  const TSParserRuntime *runtime = ts_parser_runtime();
-        \\  return runtime ? runtime->has_unresolved_states : false;
-        \\}
-        \\
-        \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
-        \\  const TSParserRuntime *runtime = ts_parser_runtime();
-        \\  return runtime && state_id < runtime->state_count ? &runtime->states[state_id] : 0;
-        \\}
-        \\
-        \\bool ts_parser_runtime_state_has_unresolved(uint16_t state_id) {
-        \\  const TSRuntimeStateInfo *state = ts_parser_runtime_state(state_id);
-        \\  return state ? state->has_unresolved : false;
-        \\}
-        \\
-        \\const TSStateTable *ts_parser_state(uint16_t state_id) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser && state_id < parser->state_count ? &parser->states[state_id] : 0;
-        \\}
-        \\
-        \\bool ts_parser_is_blocked(void) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser ? parser->blocked : false;
-        \\}
-        \\
-        \\uint16_t ts_parser_symbol_count(void) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser ? parser->symbol_count : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_state_count(void) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser ? parser->state_count : 0;
-        \\}
-        \\
-        \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser && symbol_id < parser->symbol_count ? &parser->symbols[symbol_id] : 0;
-        \\}
-        \\
-        \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->name : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_symbol_id(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->id : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_symbol_kind(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->kind : 0;
-        \\}
-        \\
-        \\bool ts_parser_symbol_is_terminal(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->terminal : false;
-        \\}
-        \\
-        \\bool ts_parser_symbol_is_external(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->external : false;
-        \\}
-        \\
-        \\int16_t ts_parser_find_symbol_id(const char *symbol) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  uint16_t i = 0;
-        \\  while (parser && i < parser->symbol_count) {
-        \\    if (ts_string_eq(parser->symbols[i].name, symbol)) return (int16_t)i;
-        \\    i += 1;
-        \\  }
-        \\  return -1;
-        \\}
-        \\
-        \\const TSActionEntry *ts_parser_actions(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->actions : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_action_count(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->action_count : 0;
-        \\}
-        \\
-        \\const TSGotoEntry *ts_parser_gotos(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->gotos : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_goto_count(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->goto_count : 0;
-        \\}
-        \\
-        \\const TSUnresolvedEntry *ts_parser_unresolved(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->unresolved : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_unresolved_count(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->unresolved_count : 0;
-        \\}
-        \\
-        \\const TSActionEntry *ts_parser_action_at(uint16_t state_id, uint16_t index) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state && index < state->action_count ? &state->actions[index] : 0;
-        \\}
-        \\
-        \\const TSGotoEntry *ts_parser_goto_at(uint16_t state_id, uint16_t index) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state && index < state->goto_count ? &state->gotos[index] : 0;
-        \\}
-        \\
-        \\const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state && index < state->unresolved_count ? &state->unresolved[index] : 0;
-        \\}
-        \\
-        \\const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {
-        \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
-        \\}
-        \\
-        \\const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {
-        \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-        \\  if (!entry) return 0;
-        \\  switch (entry->kind) {
-        \\    case TS_ACTION_SHIFT: return "shift";
-        \\    case TS_ACTION_REDUCE: return "reduce";
-        \\    case TS_ACTION_ACCEPT: return "accept";
-        \\    default: return 0;
-        \\  }
-        \\}
-        \\
-        \\bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {
-        \\  const char *kind = ts_parser_action_kind(state_id, index);
-        \\  return kind && ts_string_eq(kind, "shift");
-        \\}
-        \\
-        \\bool ts_parser_action_is_reduce(uint16_t state_id, uint16_t index) {
-        \\  const char *kind = ts_parser_action_kind(state_id, index);
-        \\  return kind && ts_string_eq(kind, "reduce");
-        \\}
-        \\
-        \\bool ts_parser_action_is_accept(uint16_t state_id, uint16_t index) {
-        \\  const char *kind = ts_parser_action_kind(state_id, index);
-        \\  return kind && ts_string_eq(kind, "accept");
-        \\}
-        \\
-        \\uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {
-        \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-        \\  return entry ? entry->value : 0;
-        \\}
-        \\
-        \\const char *ts_parser_goto_symbol(uint16_t state_id, uint16_t index) {
-        \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
-        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_goto_target(uint16_t state_id, uint16_t index) {
-        \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
-        \\  return entry ? entry->state : 0;
-        \\}
-        \\
-        \\const char *ts_parser_unresolved_symbol(uint16_t state_id, uint16_t index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
-        \\}
-        \\
-        \\const char *ts_parser_unresolved_reason(uint16_t state_id, uint16_t index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-        \\  if (!entry) return 0;
-        \\  switch (entry->reason) {
-        \\    case TS_UNRESOLVED_SHIFT_REDUCE: return "shift_reduce";
-        \\    case TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED: return "reduce_reduce_deferred";
-        \\    default: return 0;
-        \\  }
-        \\}
-        \\
-        \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-        \\  return entry ? entry->candidate_count : 0;
-        \\}
-        \\
-        \\const TSCandidateEntry *ts_parser_unresolved_candidate_at(uint16_t state_id, uint16_t entry_index, uint16_t candidate_index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, entry_index);
-        \\  return entry && candidate_index < entry->candidate_count ? &entry->candidates[candidate_index] : 0;
-        \\}
-        \\
-        \\const TSActionEntry *ts_parser_find_action(uint16_t state_id, const char *symbol) {
-        \\  uint16_t count = ts_parser_action_count(state_id);
-        \\  uint16_t i = 0;
-        \\  while (i < count) {
-        \\    const TSActionEntry *entry = ts_parser_action_at(state_id, i);
-        \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
-        \\    i += 1;
-        \\  }
-        \\  return 0;
-        \\}
-        \\
-        \\const TSGotoEntry *ts_parser_find_goto(uint16_t state_id, const char *symbol) {
-        \\  uint16_t count = ts_parser_goto_count(state_id);
-        \\  uint16_t i = 0;
-        \\  while (i < count) {
-        \\    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);
-        \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
-        \\    i += 1;
-        \\  }
-        \\  return 0;
-        \\}
-        \\
-        \\const TSUnresolvedEntry *ts_parser_find_unresolved(uint16_t state_id, const char *symbol) {
-        \\  uint16_t count = ts_parser_unresolved_count(state_id);
-        \\  uint16_t i = 0;
-        \\  while (i < count) {
-        \\    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);
-        \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
-        \\    i += 1;
-        \\  }
-        \\  return 0;
-        \\}
-        \\
-        \\bool ts_parser_has_action(uint16_t state_id, const char *symbol) {
-        \\  return ts_parser_find_action(state_id, symbol) != 0;
-        \\}
-        \\
-        \\bool ts_parser_has_goto(uint16_t state_id, const char *symbol) {
-        \\  return ts_parser_find_goto(state_id, symbol) != 0;
-        \\}
-        \\
-        \\bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {
-        \\  return ts_parser_find_unresolved(state_id, symbol) != 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_alias_count(void) {
-        \\  return TS_ALIAS_COUNT;
-        \\}
-        \\
-        \\const TSAliasEntry *ts_parser_alias_at(uint16_t production_id, uint16_t step_index) {
-        \\  uint16_t i = 0;
-        \\  while (i < TS_ALIAS_COUNT) {
-        \\    if (ts_alias_sequences[i].production_id == production_id && ts_alias_sequences[i].step_index == step_index) return &ts_alias_sequences[i];
-        \\    i += 1;
-        \\  }
-        \\  return 0;
-        \\}
-        \\
-    , emitted);
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#include <stdint.h>\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSParseActionEntry ts_parse_actions[] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSLanguage ts_language = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".parse_actions = ts_parse_actions,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".symbol_names = ts_symbol_names,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".lex_modes = ts_lex_modes,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "struct TSLanguage {\n"));
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;") == null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "const TSParser *ts_parser_instance(void)") == null);
 }
 
 test "emitParserCAlloc compacts identical serialized states before row sharing" {
@@ -1317,16 +730,43 @@ test "emitParserCAlloc compacts identical serialized states before row sharing" 
     const emitted = try emitParserCAlloc(allocator, serialized);
     defer allocator.free(emitted);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define TS_STATE_COUNT 1\n"));
-    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSActionEntry ts_state_0_actions[] = {\n"));
-    try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSActionEntry ts_state_1_actions[] = {\n"));
-    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSGotoEntry ts_state_0_gotos[] = {\n"));
-    try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSGotoEntry ts_state_1_gotos[] = {\n"));
-    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSUnresolvedEntry ts_state_0_unresolved[] = {\n"));
-    try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSUnresolvedEntry ts_state_1_unresolved[] = {\n"));
-    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "    .actions = ts_state_0_actions,\n"));
-    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "    .gotos = ts_state_0_gotos,\n"));
-    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "    .unresolved = ts_state_0_unresolved,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define STATE_COUNT 1\n"));
+    try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSActionEntry ts_state_0_actions[] = {\n"));
+    try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSGotoEntry ts_state_0_gotos[] = {\n"));
+    try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSUnresolvedEntry ts_state_0_unresolved[] = {\n"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSParseActionEntry ts_parse_actions[] = {\n"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "[1] = { .entry = { .count = 1, .reusable = true } }"));
+}
+
+test "emitParserCAlloc emits self-contained C that compiles" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .productions = &[_]serialize.SerializedProductionInfo{
+            .{ .lhs = 0, .child_count = 1, .dynamic_precedence = 0 },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]serialize.SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
+                    .{ .symbol = .{ .terminal = 1 }, .action = .{ .reduce = 0 } },
+                },
+                .gotos = &[_]serialize.SerializedGotoEntry{
+                    .{ .symbol = .{ .non_terminal = 0 }, .state = 1 },
+                },
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAlloc(allocator, serialized);
+    defer allocator.free(emitted);
+
+    var result = try compile_smoke.compileParserC(allocator, emitted);
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result == .success);
 }
 
 test "collectEmissionStats reports shared empty and canonical non-empty rows" {

@@ -44,9 +44,16 @@ pub const SerializedAliasEntry = struct {
     named: bool,
 };
 
+pub const SerializedProductionInfo = struct {
+    lhs: u32,
+    child_count: u8,
+    dynamic_precedence: i16,
+};
+
 pub const SerializedTable = struct {
     states: []const SerializedState,
     blocked: bool,
+    productions: []const SerializedProductionInfo = &.{},
     alias_sequences: []const SerializedAliasEntry = &.{},
     word_token: ?syntax_ir.SymbolRef = null,
 
@@ -89,8 +96,14 @@ pub fn serializeBuildResult(
         };
     }
 
-    var alias_list = std.ArrayListUnmanaged(SerializedAliasEntry){};
+    var alias_list = std.ArrayListUnmanaged(SerializedAliasEntry).empty;
+    const productions = try allocator.alloc(SerializedProductionInfo, result.productions.len);
     for (result.productions, 0..) |production, production_id| {
+        productions[production_id] = .{
+            .lhs = production.lhs,
+            .child_count = @intCast(@min(production.steps.len, std.math.maxInt(u8))),
+            .dynamic_precedence = @intCast(std.math.clamp(production.dynamic_precedence, std.math.minInt(i16), std.math.maxInt(i16))),
+        };
         for (production.steps, 0..) |step, step_index| {
             if (step.alias) |alias| {
                 try alias_list.append(allocator, .{
@@ -108,6 +121,7 @@ pub fn serializeBuildResult(
     return .{
         .states = serialized_states,
         .blocked = blocked,
+        .productions = productions,
         .alias_sequences = try alias_list.toOwnedSlice(allocator),
     };
 }
