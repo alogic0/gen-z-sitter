@@ -128,16 +128,18 @@ Data source: `src/lexer/serialize.zig` (`SerializedLexTable`) and the lexer pipe
 Data source: `PreparedGrammar.variables` and the field metadata already tracked in
 `src/parse_table/build.zig` via `production_id` → field assignments.
 
-- [ ] Enumerate all distinct field names across all productions; assign sequential
+- [x] Enumerate all distinct field names across all productions; assign sequential
   `TSFieldId` values starting at 1.
-- [ ] Emit `static const char * const ts_field_names[] = { "", … };` — index 0 is the
+- [x] Emit `static const char * const ts_field_names[] = { "", … };` — index 0 is the
   empty string; indices 1..N are field names.
-- [ ] Build the flat `ts_field_map_entries[]` list: `{ field_id, child_index, inherited }`
+- [x] Build the flat `ts_field_map_entries[]` list: `{ field_id, child_index, inherited }`
   per (production, step) pair that carries a field name.
-- [ ] Build `ts_field_map_slices[]`: one `{ index, length }` per production ID pointing
+- [x] Build `ts_field_map_slices[]`: one `{ index, length }` per production ID pointing
   into `ts_field_map_entries`.
-- [ ] Emit both arrays and set `.field_count`, `.field_names`, `.field_map_slices`,
+- [x] Emit both arrays and set `.field_count`, `.field_names`, `.field_map_slices`,
   `.field_map_entries` in the `ts_language` literal.
+  Note: inherited field entries are emitted as `false`; the current local IR only carries
+  field names, not inherited-field metadata.
 
 ---
 

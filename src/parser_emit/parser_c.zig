@@ -131,7 +131,7 @@ pub fn writeParserCWithOptions(
     try writer.print("#define TOKEN_COUNT {d}\n", .{tokenCount(emitted_symbols)});
     try writer.print("#define EXTERNAL_TOKEN_COUNT {d}\n", .{externalTokenCount(emitted_symbols)});
     try writer.print("#define PRODUCTION_ID_COUNT {d}\n", .{compacted.productions.len});
-    try writer.writeAll("#define FIELD_COUNT 0\n");
+    try writer.print("#define FIELD_COUNT {d}\n", .{compacted.field_map.names.len});
     try writer.print("#define ALIAS_COUNT {d}\n", .{compacted.alias_sequences.len});
     try writer.writeAll("#define MAX_ALIAS_SEQUENCE_LENGTH 0\n\n");
 
@@ -162,6 +162,38 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("static const TSSymbol ts_symbol_map[SYMBOL_COUNT] = {\n");
     for (emitted_symbols, 0..) |symbol, index| {
         try writer.print("  [{d}] = {d},\n", .{ index, symbol.public_symbol });
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("static const char * const ts_field_names[FIELD_COUNT + 1] = {\n");
+    try writer.writeAll("  [0] = \"\",\n");
+    for (compacted.field_map.names) |field| {
+        try writer.print("  [{d}] = \"", .{field.id});
+        try writeCStringLiteralContents(writer, field.name);
+        try writer.writeAll("\",\n");
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("static const TSFieldMapEntry ts_field_map_entries[] = {\n");
+    if (compacted.field_map.entries.len == 0) {
+        try writer.writeAll("  { 0 },\n");
+    } else {
+        for (compacted.field_map.entries, 0..) |entry, index| {
+            try writer.print(
+                "  [{d}] = {{ .field_id = {d}, .child_index = {d}, .inherited = {} }},\n",
+                .{ index, entry.field_id, entry.child_index, entry.inherited },
+            );
+        }
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("static const TSMapSlice ts_field_map_slices[] = {\n");
+    if (compacted.field_map.slices.len == 0) {
+        try writer.writeAll("  { 0 },\n");
+    } else {
+        for (compacted.field_map.slices, 0..) |slice, index| {
+            try writer.print("  [{d}] = {{ .index = {d}, .length = {d} }},\n", .{ index, slice.index, slice.length });
+        }
     }
     try writer.writeAll("};\n\n");
 
@@ -248,6 +280,9 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("  .parse_actions = ts_parse_actions,\n");
     try writer.writeAll("  .symbol_names = ts_symbol_names,\n");
+    try writer.writeAll("  .field_names = ts_field_names,\n");
+    try writer.writeAll("  .field_map_slices = ts_field_map_slices,\n");
+    try writer.writeAll("  .field_map_entries = ts_field_map_entries,\n");
     try writer.writeAll("  .symbol_metadata = ts_symbol_metadata,\n");
     try writer.writeAll("  .public_symbol_map = ts_symbol_map,\n");
     try writer.writeAll("  .alias_map = ts_non_terminal_alias_map,\n");
@@ -780,6 +815,55 @@ test "emitParserCAlloc emits prepared symbol metadata and grammar name" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = 4,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .name = \"quote\\\"grammar\",\n"));
+}
+
+test "emitParserCAlloc emits serialized field map tables" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .field_map = .{
+            .names = &[_]serialize.SerializedFieldName{
+                .{ .id = 1, .name = "left" },
+                .{ .id = 2, .name = "right\"field" },
+            },
+            .entries = &[_]serialize.SerializedFieldMapEntry{
+                .{ .field_id = 1, .child_index = 0, .inherited = false },
+                .{ .field_id = 2, .child_index = 2, .inherited = false },
+            },
+            .slices = &[_]serialize.SerializedFieldMapSlice{
+                .{ .index = 0, .length = 2 },
+            },
+        },
+        .productions = &[_]serialize.SerializedProductionInfo{
+            .{ .lhs = 0, .child_count = 3, .dynamic_precedence = 0 },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAlloc(allocator, serialized);
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define FIELD_COUNT 2\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const char * const ts_field_names[FIELD_COUNT + 1] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = \"\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = \"left\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = \"right\\\"field\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSFieldMapEntry ts_field_map_entries[] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .field_id = 1, .child_index = 0, .inherited = false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .field_id = 2, .child_index = 2, .inherited = false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSMapSlice ts_field_map_slices[] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .index = 0, .length = 2 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .field_count = FIELD_COUNT,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .field_names = ts_field_names,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .field_map_slices = ts_field_map_slices,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .field_map_entries = ts_field_map_entries,\n"));
 }
 
 test "emitParserCAlloc emits self-contained C that compiles" {

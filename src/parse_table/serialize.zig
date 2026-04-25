@@ -106,6 +106,28 @@ pub const SerializedSymbolInfo = struct {
     public_symbol: u16,
 };
 
+pub const SerializedFieldName = struct {
+    id: u16,
+    name: []const u8,
+};
+
+pub const SerializedFieldMapEntry = struct {
+    field_id: u16,
+    child_index: u8,
+    inherited: bool,
+};
+
+pub const SerializedFieldMapSlice = struct {
+    index: u16,
+    length: u16,
+};
+
+pub const SerializedFieldMap = struct {
+    names: []const SerializedFieldName = &.{},
+    entries: []const SerializedFieldMapEntry = &.{},
+    slices: []const SerializedFieldMapSlice = &.{},
+};
+
 pub const SerializedTable = struct {
     states: []const SerializedState,
     blocked: bool,
@@ -116,6 +138,7 @@ pub const SerializedTable = struct {
     parse_action_list: []const SerializedParseActionListEntry = &.{},
     small_parse_table: SerializedSmallParseTable = .{},
     alias_sequences: []const SerializedAliasEntry = &.{},
+    field_map: SerializedFieldMap = .{},
     word_token: ?syntax_ir.SymbolRef = null,
 
     pub fn isSerializationReady(self: SerializedTable) bool {
@@ -180,6 +203,7 @@ pub fn serializeBuildResult(
     const blocked = result.hasBlockingUnresolvedDecisions();
     const large_state_count = try computeLargeStateCountAlloc(allocator, serialized_states, productions);
     const parse_action_list = try buildParseActionListAlloc(allocator, serialized_states, productions);
+    const field_map = try buildFieldMapAlloc(allocator, result.productions);
     std.debug.print("[parse_table/serialize] serializeBuildResult done blocked={}\n", .{blocked});
     return .{
         .states = serialized_states,
@@ -189,6 +213,7 @@ pub fn serializeBuildResult(
         .parse_action_list = parse_action_list,
         .small_parse_table = try buildSmallParseTableAlloc(allocator, serialized_states, large_state_count, parse_action_list, productions),
         .alias_sequences = try alias_list.toOwnedSlice(allocator),
+        .field_map = field_map,
     };
 }
 
@@ -303,6 +328,12 @@ pub fn deinitSmallParseTable(allocator: std.mem.Allocator, table: SerializedSmal
     }
     allocator.free(table.rows);
     allocator.free(table.map);
+}
+
+pub fn deinitFieldMap(allocator: std.mem.Allocator, field_map: SerializedFieldMap) void {
+    allocator.free(field_map.names);
+    allocator.free(field_map.entries);
+    allocator.free(field_map.slices);
 }
 
 pub fn computeLargeStateCountAlloc(
@@ -515,6 +546,56 @@ fn appendUniqueSymbolRef(
     try symbols.append(symbol);
 }
 
+fn buildFieldMapAlloc(
+    allocator: std.mem.Allocator,
+    productions: []const build.ProductionInfo,
+) std.mem.Allocator.Error!SerializedFieldMap {
+    var names = std.array_list.Managed(SerializedFieldName).init(allocator);
+    defer names.deinit();
+    var entries = std.array_list.Managed(SerializedFieldMapEntry).init(allocator);
+    defer entries.deinit();
+
+    const slices = try allocator.alloc(SerializedFieldMapSlice, productions.len);
+    for (productions, 0..) |production, production_id| {
+        const start = entries.items.len;
+        for (production.steps, 0..) |step, step_index| {
+            const field_name = step.field_name orelse continue;
+            const field_id = try internFieldName(&names, field_name);
+            try entries.append(.{
+                .field_id = field_id,
+                .child_index = @intCast(@min(step_index, std.math.maxInt(u8))),
+                .inherited = false,
+            });
+        }
+        slices[production_id] = .{
+            .index = @intCast(@min(start, std.math.maxInt(u16))),
+            .length = @intCast(@min(entries.items.len - start, std.math.maxInt(u16))),
+        };
+    }
+
+    return .{
+        .names = try names.toOwnedSlice(),
+        .entries = try entries.toOwnedSlice(),
+        .slices = slices,
+    };
+}
+
+fn internFieldName(
+    names: *std.array_list.Managed(SerializedFieldName),
+    name: []const u8,
+) std.mem.Allocator.Error!u16 {
+    for (names.items) |entry| {
+        if (std.mem.eql(u8, entry.name, name)) return entry.id;
+    }
+
+    const id: u16 = @intCast(names.items.len + 1);
+    try names.append(.{
+        .id = id,
+        .name = name,
+    });
+    return id;
+}
+
 fn symbolRefFromPreparedSymbol(symbol: ir_symbols.SymbolId) syntax_ir.SymbolRef {
     return switch (symbol.kind) {
         .non_terminal => .{ .non_terminal = symbol.index },
@@ -683,6 +764,37 @@ test "attachPreparedMetadataAlloc adds grammar and symbol metadata" {
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .external = 1 }, serialized.word_token.?);
 }
 
+test "buildFieldMapAlloc serializes distinct field names and production slices" {
+    const allocator = std.testing.allocator;
+    const first_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 }, .field_name = "left" },
+        .{ .symbol = .{ .terminal = 0 } },
+        .{ .symbol = .{ .non_terminal = 2 }, .field_name = "right" },
+    };
+    const second_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 3 }, .field_name = "left" },
+    };
+    const productions = [_]build.ProductionInfo{
+        .{ .lhs = 0, .steps = first_steps[0..] },
+        .{ .lhs = 1, .steps = second_steps[0..] },
+    };
+
+    const field_map = try buildFieldMapAlloc(allocator, productions[0..]);
+    defer deinitFieldMap(allocator, field_map);
+
+    try std.testing.expectEqual(@as(usize, 2), field_map.names.len);
+    try std.testing.expectEqual(@as(u16, 1), field_map.names[0].id);
+    try std.testing.expectEqualStrings("left", field_map.names[0].name);
+    try std.testing.expectEqual(@as(u16, 2), field_map.names[1].id);
+    try std.testing.expectEqualStrings("right", field_map.names[1].name);
+    try std.testing.expectEqual(@as(usize, 3), field_map.entries.len);
+    try std.testing.expectEqual(SerializedFieldMapEntry{ .field_id = 1, .child_index = 0, .inherited = false }, field_map.entries[0]);
+    try std.testing.expectEqual(SerializedFieldMapEntry{ .field_id = 2, .child_index = 2, .inherited = false }, field_map.entries[1]);
+    try std.testing.expectEqual(SerializedFieldMapEntry{ .field_id = 1, .child_index = 0, .inherited = false }, field_map.entries[2]);
+    try std.testing.expectEqual(SerializedFieldMapSlice{ .index = 0, .length = 2 }, field_map.slices[0]);
+    try std.testing.expectEqual(SerializedFieldMapSlice{ .index = 2, .length = 1 }, field_map.slices[1]);
+}
+
 test "serializeBuildResult rejects blocked snapshots in strict mode" {
     const allocator = std.testing.allocator;
 
@@ -775,6 +887,7 @@ test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {
     defer allocator.free(serialized.states);
     defer deinitSmallParseTable(allocator, serialized.small_parse_table);
     defer deinitParseActionList(allocator, serialized.parse_action_list);
+    defer deinitFieldMap(allocator, serialized.field_map);
     defer allocator.free(serialized.states[0].unresolved);
     defer allocator.free(serialized.states[0].gotos);
     defer allocator.free(serialized.states[0].actions);

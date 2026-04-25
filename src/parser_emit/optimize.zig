@@ -63,6 +63,7 @@ pub fn compactSerializedTableAlloc(
         .parse_action_list = parse_action_list,
         .small_parse_table = try serialize.buildSmallParseTableAlloc(allocator, compacted_states, large_state_count, parse_action_list, serialized.productions),
         .alias_sequences = serialized.alias_sequences,
+        .field_map = serialized.field_map,
         .word_token = serialized.word_token,
     };
 }
