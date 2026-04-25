@@ -261,10 +261,10 @@ Tree-sitter builds `ts_supertype_symbols`, `ts_supertype_map_slices`, and
 `ts_supertype_map_entries` from a supertype-to-subtypes map. Aliased child types must map
 through alias IDs where present.
 
-- [ ] Serialize `supertype_symbols` in runtime symbol-ID order.
-- [ ] Serialize `supertype_map_slices` indexed by supertype symbol ID.
-- [ ] Serialize deduplicated/sorted `supertype_map_entries`.
-- [ ] Emit and wire `.supertype_count`, `.supertype_symbols`,
+- [x] Serialize `supertype_symbols` in runtime symbol-ID order.
+- [x] Serialize `supertype_map_slices` indexed by supertype symbol ID.
+- [x] Serialize deduplicated/sorted `supertype_map_entries`.
+- [x] Emit and wire `.supertype_count`, `.supertype_symbols`,
   `.supertype_map_slices`, and `.supertype_map_entries`.
 
 ---

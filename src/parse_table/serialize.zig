@@ -4,6 +4,7 @@ const build = @import("build.zig");
 const resolution = @import("resolution.zig");
 const state = @import("state.zig");
 const grammar_ir = @import("../ir/grammar_ir.zig");
+const ir_rules = @import("../ir/rules.zig");
 const ir_symbols = @import("../ir/symbols.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
@@ -153,6 +154,27 @@ pub const SerializedFieldMap = struct {
     slices: []const SerializedFieldMapSlice = &.{},
 };
 
+/// One runtime supertype-map entry before final C symbol-id resolution.
+pub const SerializedSupertypeMapEntry = struct {
+    symbol: syntax_ir.SymbolRef,
+    alias_name: ?[]const u8 = null,
+    alias_named: bool = false,
+};
+
+/// Slice into the supertype-map entry table for one supertype.
+pub const SerializedSupertypeMapSlice = struct {
+    supertype: syntax_ir.SymbolRef,
+    index: u16,
+    length: u16,
+};
+
+/// Serialized runtime supertype map tables.
+pub const SerializedSupertypeMap = struct {
+    symbols: []const syntax_ir.SymbolRef = &.{},
+    entries: []const SerializedSupertypeMapEntry = &.{},
+    slices: []const SerializedSupertypeMapSlice = &.{},
+};
+
 /// Complete parse table model consumed by emitters.
 pub const SerializedTable = struct {
     states: []const SerializedState,
@@ -165,6 +187,7 @@ pub const SerializedTable = struct {
     small_parse_table: SerializedSmallParseTable = .{},
     alias_sequences: []const SerializedAliasEntry = &.{},
     field_map: SerializedFieldMap = .{},
+    supertype_map: SerializedSupertypeMap = .{},
     lex_modes: []const lexer_serialize.SerializedLexMode = &.{},
     lex_state_terminal_sets: []const []const bool = &.{},
     lex_tables: []const lexer_serialize.SerializedLexTable = &.{},
@@ -269,6 +292,7 @@ pub fn attachPreparedMetadataAlloc(
     var result = serialized;
     result.grammar_name = prepared.grammar_name;
     result.symbols = serialized_symbols;
+    result.supertype_map = try buildSupertypeMapAlloc(allocator, prepared);
     if (prepared.external_tokens.len != 0) {
         result.blocked = true;
     }
@@ -369,6 +393,12 @@ pub fn deinitFieldMap(allocator: std.mem.Allocator, field_map: SerializedFieldMa
     allocator.free(field_map.names);
     allocator.free(field_map.entries);
     allocator.free(field_map.slices);
+}
+
+pub fn deinitSupertypeMap(allocator: std.mem.Allocator, supertype_map: SerializedSupertypeMap) void {
+    allocator.free(supertype_map.symbols);
+    allocator.free(supertype_map.entries);
+    allocator.free(supertype_map.slices);
 }
 
 pub fn deinitLexStateTerminalSets(
@@ -675,6 +705,115 @@ fn internFieldName(
     return id;
 }
 
+fn buildSupertypeMapAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+) std.mem.Allocator.Error!SerializedSupertypeMap {
+    var symbols = std.array_list.Managed(syntax_ir.SymbolRef).init(allocator);
+    defer symbols.deinit();
+    var entries = std.array_list.Managed(SerializedSupertypeMapEntry).init(allocator);
+    defer entries.deinit();
+
+    const slices = try allocator.alloc(SerializedSupertypeMapSlice, prepared.supertype_symbols.len);
+    for (prepared.supertype_symbols, 0..) |prepared_symbol, slice_index| {
+        const supertype = symbolRefFromPreparedSymbol(prepared_symbol);
+        try symbols.append(supertype);
+        const start = entries.items.len;
+        switch (prepared_symbol.kind) {
+            .non_terminal => {
+                if (prepared_symbol.index < prepared.variables.len) {
+                    const rule_id = prepared.variables[prepared_symbol.index].rule;
+                    try collectSupertypeEntriesFromRule(allocator, &entries, prepared.rules, rule_id, null);
+                }
+            },
+            .external => {},
+        }
+        std.mem.sort(SerializedSupertypeMapEntry, entries.items[start..], {}, supertypeEntryLessThan);
+        slices[slice_index] = .{
+            .supertype = supertype,
+            .index = @intCast(@min(start, std.math.maxInt(u16))),
+            .length = @intCast(@min(entries.items.len - start, std.math.maxInt(u16))),
+        };
+    }
+
+    std.mem.sort(syntax_ir.SymbolRef, symbols.items, {}, symbolRefLessThan);
+    std.mem.sort(SerializedSupertypeMapSlice, slices, {}, supertypeSliceLessThan);
+    return .{
+        .symbols = try symbols.toOwnedSlice(),
+        .entries = try entries.toOwnedSlice(),
+        .slices = slices,
+    };
+}
+
+const PendingSupertypeAlias = struct {
+    name: []const u8,
+    named: bool,
+};
+
+fn collectSupertypeEntriesFromRule(
+    allocator: std.mem.Allocator,
+    entries: *std.array_list.Managed(SerializedSupertypeMapEntry),
+    rules: []const ir_rules.Rule,
+    rule_id: ir_rules.RuleId,
+    alias: ?PendingSupertypeAlias,
+) std.mem.Allocator.Error!void {
+    switch (rules[rule_id]) {
+        .symbol => |symbol| try appendUniqueSupertypeEntry(entries, .{
+            .symbol = symbolRefFromPreparedSymbol(symbol),
+            .alias_name = if (alias) |value| value.name else null,
+            .alias_named = if (alias) |value| value.named else false,
+        }),
+        .choice => |members| for (members) |member| {
+            try collectSupertypeEntriesFromRule(allocator, entries, rules, member, alias);
+        },
+        .seq => |members| {
+            if (members.len == 1) {
+                try collectSupertypeEntriesFromRule(allocator, entries, rules, members[0], alias);
+            }
+        },
+        .metadata => |metadata| {
+            const next_alias = if (metadata.data.alias) |value|
+                PendingSupertypeAlias{ .name = value.value, .named = value.named }
+            else
+                alias;
+            try collectSupertypeEntriesFromRule(allocator, entries, rules, metadata.inner, next_alias);
+        },
+        else => {},
+    }
+}
+
+fn appendUniqueSupertypeEntry(
+    entries: *std.array_list.Managed(SerializedSupertypeMapEntry),
+    entry: SerializedSupertypeMapEntry,
+) std.mem.Allocator.Error!void {
+    for (entries.items) |existing| {
+        if (supertypeEntryEql(existing, entry)) return;
+    }
+    try entries.append(entry);
+}
+
+fn supertypeEntryEql(left: SerializedSupertypeMapEntry, right: SerializedSupertypeMapEntry) bool {
+    if (!symbolRefEql(left.symbol, right.symbol)) return false;
+    if (left.alias_named != right.alias_named) return false;
+    if (left.alias_name == null or right.alias_name == null) return left.alias_name == null and right.alias_name == null;
+    return std.mem.eql(u8, left.alias_name.?, right.alias_name.?);
+}
+
+fn supertypeEntryLessThan(_: void, left: SerializedSupertypeMapEntry, right: SerializedSupertypeMapEntry) bool {
+    const left_symbol_key = symbolSortKey(left.symbol);
+    const right_symbol_key = symbolSortKey(right.symbol);
+    if (left_symbol_key != right_symbol_key) return left_symbol_key < right_symbol_key;
+    const left_key = if (left.alias_name) |name| name else "";
+    const right_key = if (right.alias_name) |name| name else "";
+    if (!std.mem.eql(u8, left_key, right_key)) return std.mem.lessThan(u8, left_key, right_key);
+    if (left.alias_named != right.alias_named) return left.alias_named and !right.alias_named;
+    return symbolSortKey(left.symbol) < symbolSortKey(right.symbol);
+}
+
+fn supertypeSliceLessThan(_: void, left: SerializedSupertypeMapSlice, right: SerializedSupertypeMapSlice) bool {
+    return symbolSortKey(left.supertype) < symbolSortKey(right.supertype);
+}
+
 fn symbolRefFromPreparedSymbol(symbol: ir_symbols.SymbolId) syntax_ir.SymbolRef {
     return switch (symbol.kind) {
         .non_terminal => .{ .non_terminal = symbol.index },
@@ -825,6 +964,7 @@ test "attachPreparedMetadataAlloc adds grammar and symbol metadata" {
         .blocked = false,
     }, prepared);
     defer allocator.free(serialized.symbols);
+    defer deinitSupertypeMap(allocator, serialized.supertype_map);
 
     try std.testing.expectEqualStrings("metadata_fixture", serialized.grammar_name);
     try std.testing.expectEqual(@as(usize, 2), serialized.symbols.len);
@@ -872,8 +1012,61 @@ test "attachPreparedMetadataAlloc blocks grammars that declare external tokens" 
         .blocked = false,
     }, prepared);
     defer allocator.free(serialized.symbols);
+    defer deinitSupertypeMap(allocator, serialized.supertype_map);
 
     try std.testing.expect(!serialized.isSerializationReady());
+}
+
+test "attachPreparedMetadataAlloc serializes supertype map entries" {
+    const allocator = std.testing.allocator;
+    const rules = [_]ir_rules.Rule{
+        .{ .choice = &.{ 1, 2, 3 } },
+        .{ .symbol = .{ .kind = .non_terminal, .index = 2 } },
+        .{ .metadata = .{
+            .inner = 1,
+            .data = .{ .alias = .{ .value = "identifier_alias", .named = true } },
+        } },
+        .{ .seq = &.{4} },
+        .{ .symbol = .{ .kind = .non_terminal, .index = 3 } },
+    };
+    const variables = [_]grammar_ir.Variable{
+        .{ .name = "source_file", .symbol = .{ .kind = .non_terminal, .index = 0 }, .kind = .named, .rule = 4 },
+        .{ .name = "expression", .symbol = .{ .kind = .non_terminal, .index = 1 }, .kind = .named, .rule = 0 },
+        .{ .name = "identifier", .symbol = .{ .kind = .non_terminal, .index = 2 }, .kind = .named, .rule = 4 },
+        .{ .name = "number", .symbol = .{ .kind = .non_terminal, .index = 3 }, .kind = .named, .rule = 4 },
+    };
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "supertype_fixture",
+        .variables = variables[0..],
+        .external_tokens = &.{},
+        .rules = rules[0..],
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{.{ .kind = .non_terminal, .index = 1 }},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    const serialized = try attachPreparedMetadataAlloc(allocator, .{
+        .states = &.{},
+        .blocked = false,
+    }, prepared);
+    defer allocator.free(serialized.symbols);
+    defer deinitSupertypeMap(allocator, serialized.supertype_map);
+
+    try std.testing.expectEqual(@as(usize, 1), serialized.supertype_map.symbols.len);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 1 }, serialized.supertype_map.symbols[0]);
+    try std.testing.expectEqual(@as(usize, 1), serialized.supertype_map.slices.len);
+    try std.testing.expectEqual(@as(u16, 0), serialized.supertype_map.slices[0].index);
+    try std.testing.expectEqual(@as(u16, 3), serialized.supertype_map.slices[0].length);
+    try std.testing.expectEqual(@as(usize, 3), serialized.supertype_map.entries.len);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 2 }, serialized.supertype_map.entries[0].symbol);
+    try std.testing.expectEqualStrings("identifier_alias", serialized.supertype_map.entries[1].alias_name.?);
+    try std.testing.expect(serialized.supertype_map.entries[1].alias_named);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 3 }, serialized.supertype_map.entries[2].symbol);
 }
 
 test "buildFieldMapAlloc serializes distinct field names and production slices" {

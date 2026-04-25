@@ -252,6 +252,7 @@ pub fn writeParserCWithOptions(
         try writer.print("  [{d}] = {d},\n", .{ index, primary_state_id });
     }
     try writer.writeAll("};\n\n");
+    try writeSupertypeTables(writer, emitted_symbols, compacted.supertype_map);
 
     try writer.writeAll("static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {\n");
     for (compacted.states[0..large_state_count_value], 0..) |serialized_state, index| {
@@ -356,6 +357,12 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("  .name = \"");
     try writeCStringLiteralContents(writer, compacted.grammar_name);
     try writer.writeAll("\",\n");
+    try writer.print("  .supertype_count = {d},\n", .{compacted.supertype_map.symbols.len});
+    if (compacted.supertype_map.symbols.len != 0) {
+        try writer.writeAll("  .supertype_symbols = ts_supertype_symbols,\n");
+        try writer.writeAll("  .supertype_map_slices = ts_supertype_map_slices,\n");
+        try writer.writeAll("  .supertype_map_entries = ts_supertype_map_entries,\n");
+    }
     try writer.writeAll("};\n\n");
     try writer.writeAll("const TSLanguage *tree_sitter_generated(void) {\n");
     try writer.writeAll("  return &ts_language;\n");
@@ -382,6 +389,49 @@ fn writeRuntimeAction(
         .accept => try writer.writeAll("{ .action = { .type = TSParseActionTypeAccept } }"),
         .recover => try writer.writeAll("{ .action = { .type = TSParseActionTypeRecover } }"),
     }
+}
+
+fn writeSupertypeTables(
+    writer: anytype,
+    symbols: []const EmittedSymbol,
+    supertype_map: serialize.SerializedSupertypeMap,
+) EmitError!void {
+    if (supertype_map.symbols.len == 0) return;
+
+    try writer.writeAll("static const TSSymbol ts_supertype_symbols[] = {\n");
+    for (supertype_map.symbols, 0..) |symbol, index| {
+        const symbol_id = symbolIdForRef(symbols, symbol) orelse return error.OutOfMemory;
+        try writer.print("  [{d}] = {d},\n", .{ index, symbol_id });
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("static const TSMapSlice ts_supertype_map_slices[SYMBOL_COUNT] = {\n");
+    for (supertype_map.slices) |slice| {
+        const symbol_id = symbolIdForRef(symbols, slice.supertype) orelse return error.OutOfMemory;
+        try writer.print("  [{d}] = {{ .index = {d}, .length = {d} }},\n", .{ symbol_id, slice.index, slice.length });
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("static const TSSymbol ts_supertype_map_entries[] = {\n");
+    if (supertype_map.entries.len == 0) {
+        try writer.writeAll("  0,\n");
+    } else {
+        for (supertype_map.entries, 0..) |entry, index| {
+            const symbol_id = supertypeEntrySymbolId(symbols, entry) orelse return error.OutOfMemory;
+            try writer.print("  [{d}] = {d},\n", .{ index, symbol_id });
+        }
+    }
+    try writer.writeAll("};\n\n");
+}
+
+fn supertypeEntrySymbolId(
+    symbols: []const EmittedSymbol,
+    entry: serialize.SerializedSupertypeMapEntry,
+) ?u16 {
+    if (entry.alias_name) |name| {
+        return aliasSymbolIdForName(symbols, name, entry.alias_named);
+    }
+    return symbolIdForRef(symbols, entry.symbol);
 }
 
 const RuntimeLexTable = struct {
@@ -742,6 +792,17 @@ fn collectEmittedSymbols(
         }
     }
 
+    for (serialized.supertype_map.symbols) |symbol| {
+        try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
+    }
+    for (serialized.supertype_map.entries) |entry| {
+        if (entry.alias_name) |name| {
+            try appendUniqueAliasSymbol(&symbols, name, entry.alias_named);
+        } else {
+            try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
+        }
+    }
+
     std.mem.sort(EmittedSymbol, symbols.items, {}, emittedSymbolLessThan);
     assignPublicSymbolIds(symbols.items);
     return try symbols.toOwnedSlice();
@@ -1086,6 +1147,46 @@ test "emitParserCAlloc emits prepared symbol metadata and grammar name" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = 1,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .name = \"quote\\\"grammar\",\n"));
+}
+
+test "emitParserCAlloc emits serialized supertype tables" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .symbols = &[_]serialize.SerializedSymbolInfo{
+            .{ .ref = .{ .non_terminal = 0 }, .name = "source_file", .named = true, .visible = true, .supertype = false, .public_symbol = 0 },
+            .{ .ref = .{ .non_terminal = 1 }, .name = "expression", .named = true, .visible = true, .supertype = true, .public_symbol = 1 },
+            .{ .ref = .{ .non_terminal = 2 }, .name = "identifier", .named = true, .visible = true, .supertype = false, .public_symbol = 2 },
+            .{ .ref = .{ .non_terminal = 3 }, .name = "number", .named = true, .visible = true, .supertype = false, .public_symbol = 3 },
+        },
+        .supertype_map = .{
+            .symbols = &[_]syntax_grammar.SymbolRef{
+                .{ .non_terminal = 1 },
+            },
+            .entries = &[_]serialize.SerializedSupertypeMapEntry{
+                .{ .symbol = .{ .non_terminal = 2 } },
+                .{ .symbol = .{ .non_terminal = 3 }, .alias_name = "number_alias", .alias_named = true },
+            },
+            .slices = &[_]serialize.SerializedSupertypeMapSlice{
+                .{ .supertype = .{ .non_terminal = 1 }, .index = 0, .length = 2 },
+            },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_supertype_symbols[] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSMapSlice ts_supertype_map_slices[SYMBOL_COUNT] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_supertype_map_entries[] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .index = 0, .length = 2 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .supertype_count = 1,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .supertype_symbols = ts_supertype_symbols,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .supertype_map_slices = ts_supertype_map_slices,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .supertype_map_entries = ts_supertype_map_entries,\n"));
 }
 
 test "emitParserCAlloc emits serialized field map tables" {
