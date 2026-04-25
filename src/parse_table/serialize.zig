@@ -332,6 +332,33 @@ pub fn attachReservedWordsAlloc(
     return result;
 }
 
+pub fn attachReservedWordLexModesAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    parse_states: []const state.ParseState,
+    productions: []const build.ProductionInfo,
+    word_token: ?syntax_ir.SymbolRef,
+    reserved_word_sets: []const grammar_ir.ReservedWordSet,
+) std.mem.Allocator.Error!SerializedTable {
+    if (word_token == null or reserved_word_sets.len == 0) return serialized;
+
+    var result = serialized;
+    const lex_modes = try allocator.alloc(lexer_serialize.SerializedLexMode, serialized.lex_modes.len);
+    for (serialized.lex_modes, 0..) |mode, index| {
+        lex_modes[index] = mode;
+        if (index < parse_states.len) {
+            lex_modes[index].reserved_word_set_id = reservedWordSetIdForState(
+                parse_states[index],
+                productions,
+                word_token.?,
+                reserved_word_sets,
+            );
+        }
+    }
+    result.lex_modes = lex_modes;
+    return result;
+}
+
 pub fn attachExtraShiftMetadataAlloc(
     allocator: std.mem.Allocator,
     serialized: SerializedTable,
@@ -1019,6 +1046,39 @@ fn terminalRefForLexicalRule(
     return null;
 }
 
+fn reservedWordSetIdForState(
+    parse_state: state.ParseState,
+    productions: []const build.ProductionInfo,
+    word_token: syntax_ir.SymbolRef,
+    reserved_word_sets: []const grammar_ir.ReservedWordSet,
+) u16 {
+    var result: u16 = 0;
+    for (parse_state.items) |entry| {
+        if (entry.item.production_id >= productions.len) continue;
+        const production = productions[entry.item.production_id];
+        if (entry.item.step_index >= production.steps.len) continue;
+        const step = production.steps[entry.item.step_index];
+        if (!symbolRefEql(step.symbol, word_token)) continue;
+        const context_name = step.reserved_context_name orelse continue;
+        if (reservedWordSetIdForContext(reserved_word_sets, context_name)) |set_id| {
+            result = @max(result, set_id);
+        }
+    }
+    return result;
+}
+
+fn reservedWordSetIdForContext(
+    reserved_word_sets: []const grammar_ir.ReservedWordSet,
+    context_name: []const u8,
+) ?u16 {
+    for (reserved_word_sets, 0..) |reserved_set, index| {
+        if (std.mem.eql(u8, reserved_set.context_name, context_name)) {
+            return @intCast(index + 1);
+        }
+    }
+    return null;
+}
+
 fn buildKeywordTerminalSetAlloc(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
@@ -1538,6 +1598,42 @@ test "attachReservedWordsAlloc serializes reserved word sets from lexical termin
     try std.testing.expectEqual(@as(usize, 0), serialized.reserved_words.sets[0].len);
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .terminal = 0 }, serialized.reserved_words.sets[1][0]);
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .terminal = 1 }, serialized.reserved_words.sets[1][1]);
+}
+
+test "attachReservedWordLexModesAlloc serializes reserved word set ids" {
+    const allocator = std.testing.allocator;
+    const steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 }, .reserved_context_name = "global" },
+    };
+    const productions = [_]build.ProductionInfo{
+        .{ .lhs = 0, .steps = steps[0..] },
+    };
+    const items = [_]@import("item.zig").ParseItemSetEntry{
+        .{
+            .item = .{ .production_id = 0, .step_index = 0 },
+            .lookaheads = .{ .terminals = &.{}, .externals = &.{}, .includes_epsilon = false },
+        },
+    };
+    const parse_states = [_]state.ParseState{
+        .{ .id = 0, .items = items[0..], .transitions = &.{} },
+        .{ .id = 1, .items = &.{}, .transitions = &.{} },
+    };
+    const reserved_sets = [_]grammar_ir.ReservedWordSet{
+        .{ .context_name = "local", .members = &.{} },
+        .{ .context_name = "global", .members = &.{} },
+    };
+    const serialized = try attachReservedWordLexModesAlloc(allocator, .{
+        .states = &.{},
+        .blocked = false,
+        .lex_modes = &[_]lexer_serialize.SerializedLexMode{
+            .{ .lex_state = 0 },
+            .{ .lex_state = 1 },
+        },
+    }, parse_states[0..], productions[0..], .{ .terminal = 1 }, reserved_sets[0..]);
+    defer allocator.free(serialized.lex_modes);
+
+    try std.testing.expectEqual(@as(u16, 2), serialized.lex_modes[0].reserved_word_set_id);
+    try std.testing.expectEqual(@as(u16, 0), serialized.lex_modes[1].reserved_word_set_id);
 }
 
 test "attachKeywordLexTableAlloc builds keyword table from reserved words" {

@@ -10,6 +10,7 @@ const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const compat_checks = @import("../parser_emit/compat_checks.zig");
 const process_support = @import("../support/process.zig");
 const state = @import("state.zig");
+const extract_default_aliases = @import("../grammar/prepare/extract_default_aliases.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
@@ -91,7 +92,8 @@ pub fn generateStateDumpFromPrepared(
     prepared: grammar_ir.PreparedGrammar,
 ) PipelineError![]const u8 {
     const extracted = try extract_tokens.extractTokens(allocator, prepared);
-    const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
+    const default_aliases = try extract_default_aliases.extractDefaultAliases(allocator, extracted.syntax, extracted.lexical);
+    const flattened = try flatten_grammar.flattenGrammar(allocator, default_aliases.syntax);
     const result = try build.buildStates(allocator, flattened);
     return try debug_dump.dumpStatesAlloc(allocator, result.states);
 }
@@ -117,7 +119,8 @@ pub fn buildStatesFromPreparedWithOptions(
 
     timer = maybeStartTimer(progress_log);
     if (progress_log) logPipelineStart("flatten_grammar");
-    const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
+    const default_aliases = try extract_default_aliases.extractDefaultAliases(allocator, extracted.syntax, extracted.lexical);
+    const flattened = try flatten_grammar.flattenGrammar(allocator, default_aliases.syntax);
     if (progress_log) maybeLogPipelineDone("flatten_grammar", timer);
 
     timer = maybeStartTimer(progress_log);
@@ -264,6 +267,14 @@ fn serializePreparedBuildResultAlloc(
         serialized,
         prepared,
         extracted.lexical,
+    );
+    serialized = try serialize.attachReservedWordLexModesAlloc(
+        allocator,
+        serialized,
+        result.states,
+        result.productions,
+        extracted.syntax.word_token,
+        prepared.reserved_word_sets,
     );
     serialized = try serialize.attachKeywordLexTableAlloc(
         allocator,
@@ -1072,6 +1083,49 @@ test "serializeTableFromPrepared attaches serialized lex tables" {
     for (serialized.lex_tables) |lex_table| {
         try std.testing.expect(lex_table.start_state_id < lex_table.states.len);
     }
+}
+
+test "serializeTableFromPrepared excludes default aliases from alias sequences" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const contents =
+        \\{
+        \\  "name": "default_aliases",
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        {
+        \\          "type": "ALIAS",
+        \\          "named": true,
+        \\          "value": "value",
+        \\          "content": { "type": "SYMBOL", "name": "expr" }
+        \\        },
+        \\        {
+        \\          "type": "ALIAS",
+        \\          "named": true,
+        \\          "value": "value",
+        \\          "content": { "type": "SYMBOL", "name": "expr" }
+        \\        }
+        \\      ]
+        \\    },
+        \\    "expr": {
+        \\      "type": "STRING",
+        \\      "value": "x"
+        \\    }
+        \\  }
+        \\}
+    ;
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, arena.allocator(), contents, .{});
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &raw);
+    const serialized = try serializeTableFromPrepared(arena.allocator(), prepared, .strict);
+
+    try std.testing.expectEqual(@as(usize, 0), serialized.alias_sequences.len);
 }
 
 test "generateSerializedTableDumpFromPrepared matches the metadata-rich serialized-table golden fixture" {

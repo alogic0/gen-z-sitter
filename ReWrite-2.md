@@ -87,7 +87,7 @@ symbol_id, 1 + alias_count,
 
 - [x] Extend serialized alias data so each alias entry also carries the original step
   symbol, not just `production_id` and `step_index`.
-- [ ] Exclude default aliases when the local IR can identify them.
+- [x] Exclude default aliases when the local IR can identify them.
 - [x] Deduplicate alias IDs per original symbol and sort by original symbol ID.
 - [x] Build and emit the grouped alias map shape from serialized source data.
 
@@ -108,8 +108,8 @@ Tree-sitter assigns a reserved word set to parse states while building actions f
 that see the `word_token`.
 
 - [ ] Add parse-state reserved-word-set tracking to the local parse-table builder.
-- [ ] Serialize `reserved_word_set_id` into each `SerializedLexMode`.
-- [ ] Serialize reserved word sets in runtime symbol-ID form.
+- [x] Serialize `reserved_word_set_id` into each `SerializedLexMode`.
+- [x] Serialize reserved word sets in runtime symbol-ID form.
 
 ---
 
