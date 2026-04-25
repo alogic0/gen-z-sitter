@@ -1,50 +1,18 @@
 const std = @import("std");
 
-pub const CompatibilityTarget = enum {
-    tree_sitter_runtime_surface,
-};
-
-pub const CompatibilityLayer = enum {
-    intermediate,
-};
-
 pub const language_version: u16 = 15;
 pub const min_compatible_language_version: u16 = 13;
-pub const symbol_kind_non_terminal: u16 = 1;
-pub const symbol_kind_terminal: u16 = 2;
-pub const symbol_kind_external: u16 = 3;
-pub const action_shift: u16 = 1;
-pub const action_reduce: u16 = 2;
-pub const action_accept: u16 = 3;
-pub const unresolved_shift_reduce: u16 = 1;
-pub const unresolved_reduce_reduce_deferred: u16 = 2;
 
 pub const generated_parser_comment = "/* generated parser.c */\n";
 pub const layout_comment = "/* tree-sitter runtime ABI layout */\n";
 
-pub fn targetName(target: CompatibilityTarget) []const u8 {
-    return switch (target) {
-        .tree_sitter_runtime_surface => "tree-sitter-runtime-surface",
-    };
-}
-
-pub fn layerName(layer: CompatibilityLayer) []const u8 {
-    return switch (layer) {
-        .intermediate => "intermediate",
-    };
-}
-
 pub const RuntimeCompatibilityInfo = struct {
-    target: CompatibilityTarget,
-    layer: CompatibilityLayer,
     language_version: u16,
     min_compatible_language_version: u16,
 };
 
 pub fn currentRuntimeCompatibility() RuntimeCompatibilityInfo {
     return .{
-        .target = .tree_sitter_runtime_surface,
-        .layer = .intermediate,
         .language_version = language_version,
         .min_compatible_language_version = min_compatible_language_version,
     };
@@ -167,15 +135,11 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
     try writer.writeAll("#define ACTIONS(id) id\n\n");
 }
 
-test "current runtime compatibility exposes the Milestone 15 target" {
+test "current runtime compatibility exposes ABI versions" {
     const info = currentRuntimeCompatibility();
 
-    try std.testing.expectEqual(CompatibilityTarget.tree_sitter_runtime_surface, info.target);
-    try std.testing.expectEqual(CompatibilityLayer.intermediate, info.layer);
     try std.testing.expectEqual(@as(u16, 15), info.language_version);
     try std.testing.expectEqual(@as(u16, 13), info.min_compatible_language_version);
-    try std.testing.expectEqualStrings("tree-sitter-runtime-surface", targetName(info.target));
-    try std.testing.expectEqualStrings("intermediate", layerName(info.layer));
 }
 
 test "writeContractPrelude emits the centralized staged compatibility prelude" {

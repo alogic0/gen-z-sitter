@@ -181,10 +181,11 @@ These fields are straightforward once Phases 1–6 are done.
   emission).
 - [x] Remove all accessor functions from `parser_c.zig` (`ts_parser_find_symbol_id()`,
   `ts_parser_actions()`, etc.) — these are runtime functions, not emitted code.
-- [ ] Update `src/parser_emit/compat.zig`: retain only the build-time constants
+- [x] Update `src/parser_emit/compat.zig`: retain only the build-time constants
   (`language_version`, `min_compatible_language_version`) used during generation; remove
   all emitted accessor functions.
-  Partial: emitted accessor functions are removed; `compat.zig` still owns self-contained ABI type emission.
+  Note: `compat.zig` still owns self-contained ABI type emission so generated parser C
+  does not include tree-sitter headers.
 - [ ] Run `zig build test` — all existing unit tests must still pass.
 - [x] Run compile-smoke check: `zig cc -std=c11 -c` on an emitted parser.c. Fix any type
   or layout errors.
