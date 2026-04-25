@@ -273,20 +273,20 @@ through alias IDs where present.
 
 External scanner support must be emitted as a complete set.
 
-- [ ] Serialize external scanner symbol identifiers in declared external-token order.
+- [x] Serialize external scanner symbol identifiers in declared external-token order.
 - [x] Emit `enum ts_external_scanner_symbol_identifiers`.
 - [x] Emit `ts_external_scanner_symbol_map[EXTERNAL_TOKEN_COUNT]`, mapping scanner-local
   IDs to runtime symbol IDs.
-- [ ] Add external lex-state sets to the parse-table builder and serialize
+- [x] Add external lex-state sets to the parse-table builder and serialize
   `external_lex_state` per parse state.
-- [ ] Emit `ts_external_scanner_states[external_state_count][EXTERNAL_TOKEN_COUNT]`.
+- [x] Emit `ts_external_scanner_states[external_state_count][EXTERNAL_TOKEN_COUNT]`.
 - [x] Emit scanner function declarations:
   - `tree_sitter_NAME_external_scanner_create`
   - `tree_sitter_NAME_external_scanner_destroy`
   - `tree_sitter_NAME_external_scanner_scan`
   - `tree_sitter_NAME_external_scanner_serialize`
   - `tree_sitter_NAME_external_scanner_deserialize`
-- [ ] Wire `TSLanguage.external_scanner` with states, symbol map, and function pointers.
+- [x] Wire `TSLanguage.external_scanner` with states, symbol map, and function pointers.
 - [x] Keep grammars with externals blocked until all of the above are present.
 
 ---

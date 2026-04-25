@@ -337,7 +337,7 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("};\n\n");
     try writeReservedWords(writer, emitted_symbols, compacted.reserved_words);
-    try writeExternalScannerTables(writer, emitted_symbols, compacted.grammar_name);
+    try writeExternalScannerTables(writer, emitted_symbols, compacted.grammar_name, compacted.external_scanner);
 
     try writer.writeAll("static const TSLanguage ts_language = {\n");
     try writer.writeAll("  .abi_version = LANGUAGE_VERSION,\n");
@@ -374,6 +374,9 @@ pub fn writeParserCWithOptions(
     try writer.print("  .keyword_capture_token = {d},\n", .{keyword_capture_id});
     if (externalTokenCount(emitted_symbols) != 0) {
         try writer.writeAll("  .external_scanner = {\n");
+        if (compacted.external_scanner.states.len != 0) {
+            try writer.writeAll("    .states = &ts_external_scanner_states[0][0],\n");
+        }
         try writer.writeAll("    .symbol_map = ts_external_scanner_symbol_map,\n");
         try writer.writeAll("    .create = ");
         try writeExternalScannerFunctionName(writer, compacted.grammar_name, "create");
@@ -505,31 +508,39 @@ fn writeExternalScannerTables(
     writer: anytype,
     symbols: []const EmittedSymbol,
     grammar_name: []const u8,
+    external_scanner: serialize.SerializedExternalScanner,
 ) EmitError!void {
-    if (externalTokenCount(symbols) == 0) return;
+    if (external_scanner.symbols.len == 0) return;
 
     try writer.writeAll("enum ts_external_scanner_symbol_identifiers {\n");
-    var local_index: usize = 0;
-    for (symbols) |symbol| {
-        const ref = symbol.ref orelse continue;
-        if (!symbolKindIsExternal(ref)) continue;
+    for (external_scanner.symbols, 0..) |symbol_ref, local_index| {
+        const symbol = emittedSymbolForRef(symbols, symbol_ref) orelse return error.OutOfMemory;
         try writer.writeAll("  ts_external_token_");
         try writeCIdentifierFragment(writer, symbol.label);
         try writer.print(" = {d},\n", .{local_index});
-        local_index += 1;
     }
     try writer.writeAll("};\n\n");
 
     try writer.writeAll("static const TSSymbol ts_external_scanner_symbol_map[EXTERNAL_TOKEN_COUNT] = {\n");
-    local_index = 0;
-    for (symbols) |symbol| {
-        const ref = symbol.ref orelse continue;
-        if (!symbolKindIsExternal(ref)) continue;
-        const symbol_id = symbolIdForRef(symbols, ref) orelse return error.OutOfMemory;
+    for (external_scanner.symbols, 0..) |symbol_ref, local_index| {
+        const symbol_id = symbolIdForRef(symbols, symbol_ref) orelse return error.OutOfMemory;
         try writer.print("  [{d}] = {d},\n", .{ local_index, symbol_id });
-        local_index += 1;
     }
     try writer.writeAll("};\n\n");
+
+    if (external_scanner.states.len != 0) {
+        try writer.writeAll("static const bool ts_external_scanner_states[][EXTERNAL_TOKEN_COUNT] = {\n");
+        for (external_scanner.states, 0..) |state_set, state_index| {
+            try writer.print("  [{d}] = {{", .{state_index});
+            for (0..external_scanner.symbols.len) |symbol_index| {
+                if (symbol_index > 0) try writer.writeByte(',');
+                const enabled = symbol_index < state_set.len and state_set[symbol_index];
+                try writer.print(" {}", .{enabled});
+            }
+            try writer.writeAll(" },\n");
+        }
+        try writer.writeAll("};\n\n");
+    }
 
     try writer.writeAll("extern void *");
     try writeExternalScannerFunctionName(writer, grammar_name, "create");
@@ -546,6 +557,15 @@ fn writeExternalScannerTables(
     try writer.writeAll("extern void ");
     try writeExternalScannerFunctionName(writer, grammar_name, "deserialize");
     try writer.writeAll("(void *, const char *, unsigned);\n\n");
+}
+
+fn emittedSymbolForRef(symbols: []const EmittedSymbol, symbol_ref: syntax_grammar.SymbolRef) ?EmittedSymbol {
+    for (symbols) |symbol| {
+        if (symbol.ref) |candidate| {
+            if (symbolRefEql(candidate, symbol_ref)) return symbol;
+        }
+    }
+    return null;
 }
 
 fn writeExternalScannerFunctionName(writer: anytype, grammar_name: []const u8, suffix: []const u8) EmitError!void {
@@ -931,6 +951,9 @@ fn collectEmittedSymbols(
                 try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
             }
         }
+    }
+    for (serialized.external_scanner.symbols) |symbol| {
+        try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
     }
 
     for (serialized.supertype_map.symbols) |symbol| {
@@ -1640,6 +1663,17 @@ test "emitParserCAlloc emits external scanner symbols and declarations" {
             .{ .ref = .{ .external = 0 }, .name = "_indent", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
             .{ .ref = .{ .external = 1 }, .name = "dedent-token", .named = false, .visible = false, .supertype = false, .public_symbol = 1 },
         },
+        .external_scanner = .{
+            .symbols = &[_]syntax_grammar.SymbolRef{
+                .{ .external = 0 },
+                .{ .external = 1 },
+            },
+            .states = &[_][]const bool{
+                &.{ false, false },
+                &.{ true, false },
+                &.{ true, true },
+            },
+        },
         .states = &[_]serialize.SerializedState{
             .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
         },
@@ -1653,8 +1687,12 @@ test "emitParserCAlloc emits external scanner symbols and declarations" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token__indent = 0,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_dedent_token = 1,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_external_scanner_symbol_map[EXTERNAL_TOKEN_COUNT] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const bool ts_external_scanner_states[][EXTERNAL_TOKEN_COUNT] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { true, false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = { true, true },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "extern void *tree_sitter_external_grammar_external_scanner_create(void);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "extern bool tree_sitter_external_grammar_external_scanner_scan(void *, TSLexer *, const bool *);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .states = &ts_external_scanner_states[0][0],\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .symbol_map = ts_external_scanner_symbol_map,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .create = tree_sitter_external_grammar_external_scanner_create,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .deserialize = tree_sitter_external_grammar_external_scanner_deserialize,\n"));

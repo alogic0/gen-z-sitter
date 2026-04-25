@@ -182,6 +182,12 @@ pub const SerializedReservedWords = struct {
     max_size: u16 = 0,
 };
 
+/// Serialized external scanner symbol/state tables. Symbol order is scanner-local.
+pub const SerializedExternalScanner = struct {
+    symbols: []const syntax_ir.SymbolRef = &.{},
+    states: []const []const bool = &.{},
+};
+
 /// Complete parse table model consumed by emitters.
 pub const SerializedTable = struct {
     states: []const SerializedState,
@@ -202,6 +208,7 @@ pub const SerializedTable = struct {
     primary_state_ids: []const state.StateId = &.{},
     word_token: ?syntax_ir.SymbolRef = null,
     reserved_words: SerializedReservedWords = .{},
+    external_scanner: SerializedExternalScanner = .{},
 
     pub fn isSerializationReady(self: SerializedTable) bool {
         return !self.blocked;
@@ -302,6 +309,7 @@ pub fn attachPreparedMetadataAlloc(
     result.grammar_name = prepared.grammar_name;
     result.symbols = serialized_symbols;
     result.supertype_map = try buildSupertypeMapAlloc(allocator, prepared);
+    result = try attachExternalScannerAlloc(allocator, result, prepared);
     if (prepared.external_tokens.len != 0) {
         result.blocked = true;
     }
@@ -319,6 +327,36 @@ pub fn attachReservedWordsAlloc(
 ) std.mem.Allocator.Error!SerializedTable {
     var result = serialized;
     result.reserved_words = try buildReservedWordsAlloc(allocator, prepared, lexical);
+    return result;
+}
+
+fn attachExternalScannerAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    prepared: grammar_ir.PreparedGrammar,
+) std.mem.Allocator.Error!SerializedTable {
+    if (prepared.external_tokens.len == 0) return serialized;
+
+    var result = serialized;
+    const symbols = try allocator.alloc(syntax_ir.SymbolRef, prepared.external_tokens.len);
+    errdefer allocator.free(symbols);
+    for (prepared.external_tokens, 0..) |token, index| {
+        symbols[index] = symbolRefFromPreparedSymbol(token.symbol);
+    }
+
+    const built_states = try buildExternalScannerStatesAlloc(allocator, symbols, serialized.states);
+    errdefer deinitExternalScanner(allocator, .{ .symbols = symbols, .states = built_states.states });
+    errdefer allocator.free(built_states.state_ids);
+    result.external_scanner = .{
+        .symbols = symbols,
+        .states = built_states.states,
+    };
+    result.lex_modes = try buildLexModesWithExternalStatesAlloc(
+        allocator,
+        serialized.lex_modes,
+        built_states.state_ids,
+    );
+    allocator.free(built_states.state_ids);
     return result;
 }
 
@@ -456,6 +494,12 @@ pub fn deinitSupertypeMap(allocator: std.mem.Allocator, supertype_map: Serialize
 pub fn deinitReservedWords(allocator: std.mem.Allocator, reserved_words: SerializedReservedWords) void {
     for (reserved_words.sets) |set| allocator.free(set);
     allocator.free(reserved_words.sets);
+}
+
+pub fn deinitExternalScanner(allocator: std.mem.Allocator, external_scanner: SerializedExternalScanner) void {
+    allocator.free(external_scanner.symbols);
+    for (external_scanner.states) |state_set| allocator.free(state_set);
+    allocator.free(external_scanner.states);
 }
 
 pub fn deinitLexStateTerminalSets(
@@ -938,6 +982,73 @@ fn buildKeywordTerminalSetAlloc(
     return terminal_set;
 }
 
+const BuiltExternalScannerStates = struct {
+    states: []const []const bool,
+    state_ids: []const u16,
+};
+
+fn buildExternalScannerStatesAlloc(
+    allocator: std.mem.Allocator,
+    symbols: []const syntax_ir.SymbolRef,
+    states: []const SerializedState,
+) std.mem.Allocator.Error!BuiltExternalScannerStates {
+    var unique_states = std.array_list.Managed([]const bool).init(allocator);
+    defer unique_states.deinit();
+    const state_ids = try allocator.alloc(u16, states.len);
+
+    for (states, 0..) |serialized_state, state_index| {
+        const set = try allocator.alloc(bool, symbols.len);
+        @memset(set, false);
+        for (serialized_state.actions) |entry| {
+            const symbol_index = externalScannerSymbolIndex(symbols, entry.symbol) orelse continue;
+            set[symbol_index] = true;
+        }
+
+        if (findBoolSet(unique_states.items, set)) |existing_index| {
+            allocator.free(set);
+            state_ids[state_index] = @intCast(existing_index);
+            continue;
+        }
+
+        state_ids[state_index] = @intCast(unique_states.items.len);
+        try unique_states.append(set);
+    }
+
+    return .{
+        .states = try unique_states.toOwnedSlice(),
+        .state_ids = state_ids,
+    };
+}
+
+fn buildLexModesWithExternalStatesAlloc(
+    allocator: std.mem.Allocator,
+    lex_modes: []const lexer_serialize.SerializedLexMode,
+    external_state_ids: []const u16,
+) std.mem.Allocator.Error![]const lexer_serialize.SerializedLexMode {
+    const result = try allocator.alloc(lexer_serialize.SerializedLexMode, lex_modes.len);
+    for (lex_modes, 0..) |mode, index| {
+        result[index] = mode;
+        if (index < external_state_ids.len) {
+            result[index].external_lex_state = external_state_ids[index];
+        }
+    }
+    return result;
+}
+
+fn externalScannerSymbolIndex(symbols: []const syntax_ir.SymbolRef, symbol: syntax_ir.SymbolRef) ?usize {
+    for (symbols, 0..) |candidate, index| {
+        if (symbolRefEql(candidate, symbol)) return index;
+    }
+    return null;
+}
+
+fn findBoolSet(sets: []const []const bool, target: []const bool) ?usize {
+    for (sets, 0..) |set, index| {
+        if (std.mem.eql(bool, set, target)) return index;
+    }
+    return null;
+}
+
 fn symbolRefFromPreparedSymbol(symbol: ir_symbols.SymbolId) syntax_ir.SymbolRef {
     return switch (symbol.kind) {
         .non_terminal => .{ .non_terminal = symbol.index },
@@ -1089,6 +1200,7 @@ test "attachPreparedMetadataAlloc adds grammar and symbol metadata" {
     }, prepared);
     defer allocator.free(serialized.symbols);
     defer deinitSupertypeMap(allocator, serialized.supertype_map);
+    defer deinitExternalScanner(allocator, serialized.external_scanner);
 
     try std.testing.expectEqualStrings("metadata_fixture", serialized.grammar_name);
     try std.testing.expectEqual(@as(usize, 2), serialized.symbols.len);
@@ -1137,8 +1249,77 @@ test "attachPreparedMetadataAlloc blocks grammars that declare external tokens" 
     }, prepared);
     defer allocator.free(serialized.symbols);
     defer deinitSupertypeMap(allocator, serialized.supertype_map);
+    defer deinitExternalScanner(allocator, serialized.external_scanner);
 
     try std.testing.expect(!serialized.isSerializationReady());
+    try std.testing.expectEqual(@as(usize, 1), serialized.external_scanner.symbols.len);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .external = 0 }, serialized.external_scanner.symbols[0]);
+}
+
+test "attachPreparedMetadataAlloc derives external scanner state sets from actions" {
+    const allocator = std.testing.allocator;
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "external_states",
+        .variables = &.{},
+        .external_tokens = &.{
+            .{ .name = "indent", .symbol = .{ .kind = .external, .index = 0 }, .kind = .named, .rule = 0 },
+            .{ .name = "dedent", .symbol = .{ .kind = .external, .index = 1 }, .kind = .named, .rule = 1 },
+        },
+        .rules = &.{},
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    const lex_modes = [_]lexer_serialize.SerializedLexMode{
+        .{ .lex_state = 0 },
+        .{ .lex_state = 1 },
+        .{ .lex_state = 2 },
+    };
+    const serialized = try attachPreparedMetadataAlloc(allocator, .{
+        .states = &[_]SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+            .{
+                .id = 1,
+                .actions = &[_]SerializedActionEntry{
+                    .{ .symbol = .{ .external = 0 }, .action = .{ .shift = 2 } },
+                },
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+            .{
+                .id = 2,
+                .actions = &[_]SerializedActionEntry{
+                    .{ .symbol = .{ .external = 0 }, .action = .{ .shift = 2 } },
+                    .{ .symbol = .{ .external = 1 }, .action = .{ .shift = 0 } },
+                },
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+        .blocked = false,
+        .lex_modes = lex_modes[0..],
+    }, prepared);
+    defer allocator.free(serialized.symbols);
+    defer allocator.free(serialized.lex_modes);
+    defer deinitSupertypeMap(allocator, serialized.supertype_map);
+    defer deinitExternalScanner(allocator, serialized.external_scanner);
+
+    try std.testing.expectEqual(@as(usize, 2), serialized.external_scanner.symbols.len);
+    try std.testing.expectEqual(@as(usize, 3), serialized.external_scanner.states.len);
+    try std.testing.expect(!serialized.external_scanner.states[0][0]);
+    try std.testing.expect(serialized.external_scanner.states[1][0]);
+    try std.testing.expect(!serialized.external_scanner.states[1][1]);
+    try std.testing.expect(serialized.external_scanner.states[2][0]);
+    try std.testing.expect(serialized.external_scanner.states[2][1]);
+    try std.testing.expectEqual(@as(u16, 0), serialized.lex_modes[0].external_lex_state);
+    try std.testing.expectEqual(@as(u16, 1), serialized.lex_modes[1].external_lex_state);
+    try std.testing.expectEqual(@as(u16, 2), serialized.lex_modes[2].external_lex_state);
 }
 
 test "attachPreparedMetadataAlloc serializes supertype map entries" {
