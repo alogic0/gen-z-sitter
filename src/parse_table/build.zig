@@ -94,6 +94,7 @@ fn countPresent(values: []const bool) usize {
 fn optionalSymbolRefFormat(value: ?syntax_ir.SymbolRef, writer: anytype) !void {
     if (value) |symbol| {
         switch (symbol) {
+            .end => try writer.writeAll("end"),
             .non_terminal => |index| try writer.print("non_terminal:{d}", .{index}),
             .terminal => |index| try writer.print("terminal:{d}", .{index}),
             .external => |index| try writer.print("external:{d}", .{index}),
@@ -106,6 +107,7 @@ fn optionalSymbolRefFormat(value: ?syntax_ir.SymbolRef, writer: anytype) !void {
 fn optionalSymbolRefText(buf: []u8, value: ?syntax_ir.SymbolRef) []const u8 {
     if (value) |symbol| {
         return switch (symbol) {
+            .end => "end",
             .non_terminal => |index| std.fmt.bufPrint(buf, "non_terminal:{d}", .{index}) catch "format_error",
             .terminal => |index| std.fmt.bufPrint(buf, "terminal:{d}", .{index}) catch "format_error",
             .external => |index| std.fmt.bufPrint(buf, "external:{d}", .{index}) catch "format_error",
@@ -116,6 +118,7 @@ fn optionalSymbolRefText(buf: []u8, value: ?syntax_ir.SymbolRef) []const u8 {
 
 fn singleLookahead(lookaheads: first.SymbolSet) ?syntax_ir.SymbolRef {
     var found: ?syntax_ir.SymbolRef = null;
+    if (lookaheads.includes_end) found = .{ .end = {} };
     for (lookaheads.terminals, 0..) |present, index| {
         if (!present) continue;
         if (found != null) return null;
@@ -135,6 +138,7 @@ fn symbolDisplayText(
     symbol: syntax_ir.SymbolRef,
 ) []const u8 {
     switch (symbol) {
+        .end => return "end",
         .non_terminal => |index| {
             const name = if (index < variables.len) variables[index].name else "<unknown>";
             return std.fmt.bufPrint(buf, "non_terminal:{d}({s})", .{ index, name }) catch "format_error";
@@ -194,12 +198,14 @@ const SymbolRefContext = struct {
     pub fn hash(_: @This(), value: syntax_ir.SymbolRef) u64 {
         var hasher = std.hash.Wyhash.init(0);
         const tag: u8 = switch (value) {
+            .end => 3,
             .non_terminal => 0,
             .terminal => 1,
             .external => 2,
         };
         hasher.update(std.mem.asBytes(&tag));
         switch (value) {
+            .end => {},
             .non_terminal => |index| hasher.update(std.mem.asBytes(&index)),
             .terminal => |index| hasher.update(std.mem.asBytes(&index)),
             .external => |index| hasher.update(std.mem.asBytes(&index)),
@@ -220,6 +226,7 @@ const ParseItemSliceContext = struct {
             hasher.update(std.mem.asBytes(&value.item.step_index));
             hasher.update(std.mem.sliceAsBytes(value.lookaheads.terminals));
             hasher.update(std.mem.sliceAsBytes(value.lookaheads.externals));
+            hasher.update(std.mem.asBytes(&value.lookaheads.includes_end));
             hasher.update(std.mem.asBytes(&value.lookaheads.includes_epsilon));
         }
         return hasher.final();
@@ -647,6 +654,7 @@ fn mergeSymbolSetLookaheads(target: *first.SymbolSet, incoming: first.SymbolSet)
 
 fn addSymbolToSet(target: *first.SymbolSet, symbol: syntax_ir.SymbolRef) void {
     switch (symbol) {
+        .end => target.includes_end = true,
         .terminal => |index| target.terminals[index] = true,
         .external => |index| target.externals[index] = true,
         .non_terminal => {},
@@ -1003,6 +1011,7 @@ fn appendGeneratedItems(
 
     if (options.closure_lookahead_mode == .none) {
         const has_any_signal = nullable_ancestor_suffix_follow.includes_epsilon or
+            effective_suffix_follow.includes_end or
             countPresent(effective_suffix_follow.terminals) > 0 or
             countPresent(effective_suffix_follow.externals) > 0;
         if (has_any_signal) {
@@ -1028,7 +1037,11 @@ fn appendGeneratedItems(
         first_sets.externals_len,
         item.ParseItem.init(production_id, 0),
     );
-    var has_any_signal = nullable_ancestor_suffix_follow.includes_epsilon;
+    var has_any_signal = nullable_ancestor_suffix_follow.includes_epsilon or effective_suffix_follow.includes_end;
+
+    if (effective_suffix_follow.includes_end) {
+        item.addLookahead(&generated_entry.lookaheads, .{ .end = {} });
+    }
 
     for (effective_suffix_follow.terminals, 0..) |present, index| {
         if (!present) continue;
@@ -1043,6 +1056,9 @@ fn appendGeneratedItems(
     }
 
     if (nullable_ancestor_suffix_follow.includes_epsilon) {
+        if (context.production_end_follow.includes_end and !item.containsLookahead(generated_entry.lookaheads, .{ .end = {} })) {
+            item.addLookahead(&generated_entry.lookaheads, .{ .end = {} });
+        }
         for (context.production_end_follow.terminals, 0..) |present, index| {
             if (!present) continue;
             const lookahead: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
@@ -1175,7 +1191,7 @@ fn terminalCountForResolvedActions(resolved_actions: resolution.ResolvedActionTa
         for (resolved_state.groups) |group| {
             switch (group.symbol) {
                 .terminal => |index| count = @max(count, index + 1),
-                .non_terminal, .external => {},
+                .end, .non_terminal, .external => {},
             }
         }
     }
@@ -1217,7 +1233,7 @@ fn assignLexStateIdsAlloc(
         for (resolved_actions.groupsForState(parse_state.id)) |group| {
             switch (group.symbol) {
                 .terminal => |index| terminal_set[index] = true,
-                .non_terminal, .external => {},
+                .end, .non_terminal, .external => {},
             }
         }
 
@@ -2815,7 +2831,16 @@ fn constructStates(
 
     const start_timer = reporter.startInitialClosure();
     const start_seed = [_]item.ParseItemSetEntry{
-        try item.ParseItemSetEntry.initEmpty(allocator, first_sets.terminals_len, first_sets.externals_len, item.ParseItem.init(0, 0)),
+        blk: {
+            var entry = try item.ParseItemSetEntry.initEmpty(
+                allocator,
+                first_sets.terminals_len,
+                first_sets.externals_len,
+                item.ParseItem.init(0, 0),
+            );
+            item.addLookahead(&entry.lookaheads, .{ .end = {} });
+            break :blk entry;
+        },
     };
     const start_item_set = try item_set_builder.transitiveClosure(
         allocator,
@@ -3008,6 +3033,10 @@ fn itemsEql(left: []const item.ParseItemSetEntry, right: []const item.ParseItemS
 
 fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
     return switch (a) {
+        .end => switch (b) {
+            .end => true,
+            else => false,
+        },
         .non_terminal => |index| switch (b) {
             .non_terminal => |other| index == other,
             else => false,
@@ -3081,6 +3110,49 @@ test "buildStates constructs deterministic LR(0)-style states for a tiny grammar
     try std.testing.expectEqual(@as(state.StateId, 0), result.states[0].id);
     try std.testing.expectEqual(@as(usize, 3), result.states[0].items.len);
     try std.testing.expectEqual(@as(usize, 3), result.states[0].transitions.len);
+}
+
+test "buildStates seeds parser EOF lookahead and accepts on EOF" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const result = try buildStates(arena.allocator(), grammar);
+
+    try std.testing.expect(findParseItem(result.states[0].items, item.ParseItem.init(0, 0), .{ .end = {} }) != null);
+
+    var saw_accept_on_end = false;
+    var saw_real_terminal_in_lex_state = false;
+    for (result.actions.states) |state_actions| {
+        for (state_actions.entries) |entry| {
+            if (symbolRefEql(entry.symbol, .{ .end = {} }) and entry.action == .accept) {
+                saw_accept_on_end = true;
+            }
+        }
+    }
+    for (result.lex_state_terminal_sets) |terminal_set| {
+        try std.testing.expect(terminal_set.len <= 1);
+        if (terminal_set.len != 0 and terminal_set[0]) saw_real_terminal_in_lex_state = true;
+    }
+
+    try std.testing.expect(saw_accept_on_end);
+    try std.testing.expect(saw_real_terminal_in_lex_state);
 }
 
 test "buildStates propagates terminal lookaheads through nullable suffix closure" {

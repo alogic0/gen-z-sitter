@@ -343,6 +343,7 @@ fn statusForSymbol(
     external_statuses: []SymbolStatus,
 ) *SymbolStatus {
     return switch (symbol) {
+        .end => unreachable,
         .terminal => |index| &terminal_statuses[index],
         .non_terminal => |index| &non_terminal_statuses[index],
         .external => |index| &external_statuses[index],
@@ -351,6 +352,7 @@ fn statusForSymbol(
 
 fn defaultAliasForSymbol(defaults: alias_ir.AliasMap, symbol: syntax_ir.SymbolRef) ?rules.Alias {
     return switch (symbol) {
+        .end => null,
         .terminal => |index| defaults.findForSymbol(.{ .terminal = index }),
         .non_terminal => |index| defaults.findForSymbol(.{ .non_terminal = index }),
         .external => |index| defaults.findForSymbol(.{ .external = index }),
@@ -359,6 +361,10 @@ fn defaultAliasForSymbol(defaults: alias_ir.AliasMap, symbol: syntax_ir.SymbolRe
 
 fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
     return switch (a) {
+        .end => switch (b) {
+            .end => true,
+            else => false,
+        },
         .non_terminal => |index| switch (b) {
             .non_terminal => |other| index == other,
             else => false,

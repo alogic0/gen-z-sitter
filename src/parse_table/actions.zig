@@ -91,7 +91,7 @@ pub fn buildActionsForState(
                     .action = .{ .shift = transition.state },
                 });
             },
-            .non_terminal => {},
+            .end, .non_terminal => {},
         }
     }
 
@@ -116,6 +116,12 @@ pub fn buildActionsForState(
             if (!present) continue;
             try appendUniqueAction(&entries, .{
                 .symbol = .{ .external = @intCast(index) },
+                .action = action,
+            });
+        }
+        if (entry.lookaheads.includes_end) {
+            try appendUniqueAction(&entries, .{
+                .symbol = .{ .end = {} },
                 .action = action,
             });
         }
@@ -220,6 +226,10 @@ fn parseActionEql(a: ParseAction, b: ParseAction) bool {
 
 fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
     return switch (a) {
+        .end => switch (b) {
+            .end => true,
+            else => false,
+        },
         .non_terminal => |index| switch (b) {
             .non_terminal => |other| index == other,
             else => false,
@@ -237,16 +247,23 @@ fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
 
 fn symbolLessThan(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
     return switch (a) {
+        .end => switch (b) {
+            .end => false,
+            else => true,
+        },
         .non_terminal => |index| switch (b) {
+            .end => false,
             .non_terminal => |other| index < other,
             else => true,
         },
         .terminal => |index| switch (b) {
+            .end => false,
             .non_terminal => false,
             .terminal => |other| index < other,
             .external => true,
         },
         .external => |index| switch (b) {
+            .end => false,
             .external => |other| index < other,
             else => false,
         },

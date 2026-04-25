@@ -101,6 +101,11 @@ pub const ParseItemSetEntry = struct {
             try writer.print("external:{d}", .{index});
             first_written = true;
         }
+        if (self.lookaheads.includes_end) {
+            if (first_written) try writer.writeAll(", ");
+            try writer.writeAll("end");
+            first_written = true;
+        }
         if (self.lookaheads.includes_epsilon) {
             if (first_written) try writer.writeAll(", ");
             try writer.writeAll("epsilon");
@@ -158,6 +163,7 @@ pub fn initEmptyLookaheadSet(
     return .{
         .terminals = terminals,
         .externals = externals,
+        .includes_end = false,
         .includes_epsilon = false,
     };
 }
@@ -166,6 +172,7 @@ pub fn cloneSymbolSet(allocator: std.mem.Allocator, source: first.SymbolSet) !fi
     return .{
         .terminals = try allocator.dupe(bool, source.terminals),
         .externals = try allocator.dupe(bool, source.externals),
+        .includes_end = source.includes_end,
         .includes_epsilon = source.includes_epsilon,
     };
 }
@@ -177,6 +184,7 @@ pub fn freeSymbolSet(allocator: std.mem.Allocator, symbol_set: first.SymbolSet) 
 
 pub fn addLookahead(target: *first.SymbolSet, lookahead: syntax_ir.SymbolRef) void {
     switch (lookahead) {
+        .end => target.includes_end = true,
         .terminal => |index| target.terminals[index] = true,
         .external => |index| target.externals[index] = true,
         .non_terminal => {},
@@ -185,6 +193,7 @@ pub fn addLookahead(target: *first.SymbolSet, lookahead: syntax_ir.SymbolRef) vo
 
 pub fn containsLookahead(symbol_set: first.SymbolSet, lookahead: syntax_ir.SymbolRef) bool {
     return switch (lookahead) {
+        .end => symbol_set.includes_end,
         .terminal => |index| symbol_set.terminals[index],
         .external => |index| symbol_set.externals[index],
         .non_terminal => false,
@@ -193,6 +202,10 @@ pub fn containsLookahead(symbol_set: first.SymbolSet, lookahead: syntax_ir.Symbo
 
 pub fn mergeSymbolSetLookaheads(target: *first.SymbolSet, incoming: first.SymbolSet) bool {
     var changed = false;
+    if (incoming.includes_end and !target.includes_end) {
+        target.includes_end = true;
+        changed = true;
+    }
     for (incoming.terminals, 0..) |present, index| {
         if (present and !target.terminals[index]) {
             target.terminals[index] = true;
@@ -217,6 +230,7 @@ pub fn isSymbolSetEmpty(symbol_set: first.SymbolSet) bool {
 }
 
 fn symbolSetLessThan(a: first.SymbolSet, b: first.SymbolSet) bool {
+    if (a.includes_end != b.includes_end) return !a.includes_end and b.includes_end;
     if (a.includes_epsilon != b.includes_epsilon) return !a.includes_epsilon and b.includes_epsilon;
     for (a.terminals, b.terminals) |left, right| {
         if (left != right) return !left and right;

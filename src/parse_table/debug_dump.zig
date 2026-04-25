@@ -90,6 +90,7 @@ pub fn writeStatesWithActions(
         try writer.writeAll("  transitions:\n");
         for (parse_state.transitions) |transition| {
             switch (transition.symbol) {
+                .end => try writer.print("    end -> {d}\n", .{transition.state}),
                 .non_terminal => |symbol_index| try writer.print("    non_terminal:{d} -> {d}\n", .{ symbol_index, transition.state }),
                 .terminal => |symbol_index| try writer.print("    terminal:{d} -> {d}\n", .{ symbol_index, transition.state }),
                 .external => |symbol_index| try writer.print("    external:{d} -> {d}\n", .{ symbol_index, transition.state }),
@@ -315,6 +316,7 @@ pub fn writeSerializedTable(
 
 fn writeSymbol(writer: anytype, symbol: @import("../ir/syntax_grammar.zig").SymbolRef) !void {
     switch (symbol) {
+        .end => try writer.writeAll("end"),
         .non_terminal => |symbol_index| try writer.print("non_terminal:{d}", .{symbol_index}),
         .terminal => |symbol_index| try writer.print("terminal:{d}", .{symbol_index}),
         .external => |symbol_index| try writer.print("external:{d}", .{symbol_index}),

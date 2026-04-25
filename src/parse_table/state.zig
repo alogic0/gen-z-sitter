@@ -53,16 +53,23 @@ fn lessThanTransition(_: void, a: Transition, b: Transition) bool {
 
 fn symbolLessThan(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
     return switch (a) {
+        .end => switch (b) {
+            .end => false,
+            else => true,
+        },
         .non_terminal => |index| switch (b) {
+            .end => false,
             .non_terminal => |other| index < other,
             else => true,
         },
         .terminal => |index| switch (b) {
+            .end => false,
             .non_terminal => false,
             .terminal => |other| index < other,
             .external => true,
         },
         .external => |index| switch (b) {
+            .end => false,
             .external => |other| index < other,
             else => false,
         },

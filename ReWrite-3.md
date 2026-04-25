@@ -24,22 +24,21 @@ link tests open; those tests are the first RW-3 acceptance gate.
 First prove that a generated no-external parser can link with the tree-sitter runtime
 and parse real input. This should be narrow and fast.
 
-Status: a serialized no-external runtime ABI fixture exists and passes under
-`zig build test-link-no-external`. The generated-from-grammar fixture remains open until
-the EOF symbol/lookahead model is implemented, because current prepared grammars do not
-produce runtime EOF reduce/accept actions.
+Status: the focused no-external runtime link test now builds the parser from a tiny
+local grammar through the parse-table builder, serializes EOF actions, emits parser C,
+links it with `../tree-sitter/lib/src`, and parses real input.
 
-- [ ] Choose the smallest no-external fixture that already emits parser C cleanly
+- [x] Choose the smallest no-external fixture that already emits parser C cleanly
   (for example `parse_table_tiny` or another existing fixture with deterministic input).
-- [ ] Emit `parser.c` for that fixture from the local Zig generator.
-- [ ] Compile emitted `parser.c` together with the tree-sitter runtime sources from
+- [x] Emit `parser.c` for that fixture from the local Zig generator.
+- [x] Compile emitted `parser.c` together with the tree-sitter runtime sources from
   `../tree-sitter/lib/src` using `zig cc -std=c11`.
-- [ ] Add a minimal C driver that calls:
+- [x] Add a minimal C driver that calls:
   - `ts_parser_new()`
   - `ts_parser_set_language()`
   - `ts_parser_parse_string()`
   - `ts_tree_root_node()`
-- [ ] Assert the root node is not an ERROR node and the program does not crash.
+- [x] Assert the root node is not an ERROR node and the program does not crash.
 - [x] Add a focused `zig build test-link-no-external` step.
 - [x] Keep this test independent from broad compatibility harnesses.
 
@@ -151,20 +150,20 @@ serialized no-external runtime fixture with a real generated-from-grammar fixtur
   - `build_tables/item.rs`
   - `build_tables/item_set_builder.rs`
   - `rules.rs` / symbol construction code, if needed
-- [ ] Add a distinct EOF/end symbol to the local symbol or syntax grammar model without
+- [x] Add a distinct EOF/end symbol to the local symbol or syntax grammar model without
   treating it as a normal lexical terminal.
-- [ ] Seed parser-state construction with EOF lookahead for the start production.
-- [ ] Preserve EOF lookahead through FIRST-set and item-closure propagation.
-- [ ] Emit reduce and accept actions keyed by EOF in the serialized parse-action model.
-- [ ] Ensure EOF does not count as a normal named/anonymous grammar symbol in generated
+- [x] Seed parser-state construction with EOF lookahead for the start production.
+- [x] Preserve EOF lookahead through FIRST-set and item-closure propagation.
+- [x] Emit reduce and accept actions keyed by EOF in the serialized parse-action model.
+- [x] Ensure EOF does not count as a normal named/anonymous grammar symbol in generated
   metadata tables.
-- [ ] Add focused parser-table tests for:
+- [x] Add focused parser-table tests for:
   - start-production EOF lookahead
   - EOF-keyed reduce/accept action serialization
   - no spurious lexical token generated for EOF
-- [ ] Convert the Phase 1 no-external link test from serialized-only fixture coverage to
+- [x] Convert the Phase 1 no-external link test from serialized-only fixture coverage to
   a real generated-from-grammar parser fixture.
-- [ ] Assert the generated-from-grammar no-external parser accepts complete input at EOF.
+- [x] Assert the generated-from-grammar no-external parser accepts complete input at EOF.
 
 ---
 

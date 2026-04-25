@@ -1273,9 +1273,10 @@ fn symbolRefLessThan(_: void, left: syntax_ir.SymbolRef, right: syntax_ir.Symbol
 
 fn symbolSortKey(symbol: syntax_ir.SymbolRef) u64 {
     return switch (symbol) {
-        .non_terminal => |index| (@as(u64, 0) << 32) | index,
-        .terminal => |index| (@as(u64, 1) << 32) | index,
-        .external => |index| (@as(u64, 2) << 32) | index,
+        .end => 0,
+        .non_terminal => |index| (@as(u64, 1) << 32) | index,
+        .terminal => |index| (@as(u64, 2) << 32) | index,
+        .external => |index| (@as(u64, 3) << 32) | index,
     };
 }
 
@@ -1310,7 +1311,7 @@ fn collectGotosForState(
     for (parse_state.transitions) |transition| {
         switch (transition.symbol) {
             .non_terminal => count += 1,
-            .terminal, .external => {},
+            .end, .terminal, .external => {},
         }
     }
 
@@ -1325,7 +1326,7 @@ fn collectGotosForState(
                 };
                 index += 1;
             },
-            .terminal, .external => {},
+            .end, .terminal, .external => {},
         }
     }
     return entries;
@@ -1357,6 +1358,10 @@ fn collectUnresolvedForState(
 
 fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
     return switch (a) {
+        .end => switch (b) {
+            .end => true,
+            else => false,
+        },
         .non_terminal => |index| switch (b) {
             .non_terminal => |other| index == other,
             else => false,
@@ -1992,6 +1997,44 @@ test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {
     try std.testing.expectEqual(@as(usize, 1), serialized.states[0].gotos.len);
     try std.testing.expectEqual(@as(usize, 1), serialized.states[0].unresolved.len);
     try std.testing.expectEqual(resolution.UnresolvedReason.shift_reduce, serialized.states[0].unresolved[0].reason);
+}
+
+test "serializeBuildResult preserves EOF accept actions without adding lexical terminals" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const result = try build.buildStates(arena.allocator(), grammar);
+    const serialized = try serializeBuildResult(arena.allocator(), result, .strict);
+
+    var saw_end_accept = false;
+    for (serialized.states) |serialized_state| {
+        for (serialized_state.actions) |entry| {
+            if (symbolRefEql(entry.symbol, .{ .end = {} }) and entry.action == .accept) {
+                saw_end_accept = true;
+            }
+        }
+    }
+    for (serialized.lex_state_terminal_sets) |terminal_set| {
+        try std.testing.expect(terminal_set.len <= 1);
+    }
+
+    try std.testing.expect(saw_end_accept);
 }
 
 test "buildParseActionListAlloc deduplicates runtime actions" {

@@ -293,6 +293,10 @@ fn parseActionEql(left: parse_actions.ParseAction, right: parse_actions.ParseAct
 
 fn symbolRefEql(a: syntax_grammar.SymbolRef, b: syntax_grammar.SymbolRef) bool {
     return switch (a) {
+        .end => switch (b) {
+            .end => true,
+            else => false,
+        },
         .non_terminal => |index| switch (b) {
             .non_terminal => |other| index == other,
             else => false,

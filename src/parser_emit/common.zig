@@ -5,6 +5,7 @@ const resolution = @import("../parse_table/resolution.zig");
 
 pub fn writeSymbol(writer: anytype, symbol: syntax_grammar.SymbolRef) !void {
     switch (symbol) {
+        .end => try writer.writeAll("end"),
         .non_terminal => |symbol_index| try writer.print("non_terminal:{d}", .{symbol_index}),
         .terminal => |symbol_index| try writer.print("terminal:{d}", .{symbol_index}),
         .external => |symbol_index| try writer.print("external:{d}", .{symbol_index}),

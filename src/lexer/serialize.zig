@@ -98,6 +98,16 @@ pub fn buildSerializedLexTablesAlloc(
     lexical: lexical_ir.LexicalGrammar,
     terminal_sets: []const []const bool,
 ) SerializeError![]const SerializedLexTable {
+    return buildSerializedLexTablesWithEofAlloc(allocator, all_rules, lexical, terminal_sets, null);
+}
+
+pub fn buildSerializedLexTablesWithEofAlloc(
+    allocator: std.mem.Allocator,
+    all_rules: []const ir_rules.Rule,
+    lexical: lexical_ir.LexicalGrammar,
+    terminal_sets: []const []const bool,
+    eof_valids: ?[]const bool,
+) SerializeError![]const SerializedLexTable {
     var expanded = try lexer_model.expandExtractedLexicalGrammar(allocator, all_rules, lexical);
     defer expanded.deinit(allocator);
 
@@ -112,7 +122,10 @@ pub fn buildSerializedLexTablesAlloc(
         var allowed = try tokenIndexSetFromTerminalSet(allocator, expanded.variables.len, terminal_set);
         defer allowed.deinit(allocator);
 
-        var table = try lexer_table.buildLexTableForSet(allocator, expanded, allowed);
+        const eof_valid = if (eof_valids) |values| index < values.len and values[index] else false;
+        var table = try lexer_table.buildLexTableForSetWithOptions(allocator, expanded, allowed, .{
+            .eof_valid = eof_valid,
+        });
         defer table.deinit();
 
         tables[index] = try serializeLexTableAlloc(allocator, table);
@@ -198,6 +211,8 @@ fn serializeLexStateAlloc(
     return .{
         .accept_symbol = if (state.completion) |completion|
             .{ .terminal = @intCast(completion.variable_index) }
+        else if (state.nfa_states.len == 0)
+            .{ .end = {} }
         else
             null,
         .eof_target = if (state.eof_target) |target| @intCast(target) else null,
@@ -447,6 +462,7 @@ test "serializeLexTableAlloc preserves EOF targets" {
     const start = serialized.states[serialized.start_state_id];
     try std.testing.expect(start.eof_target != null);
     try std.testing.expect(start.eof_target.? < serialized.states.len);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .end = {} }, serialized.states[start.eof_target.?].accept_symbol.?);
 }
 
 fn lexTableAcceptsTerminal(table: SerializedLexTable, terminal_index: u32) bool {

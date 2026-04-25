@@ -1,4 +1,7 @@
 const std = @import("std");
+const build_parse_table = @import("../parse_table/build.zig");
+const ir_rules = @import("../ir/rules.zig");
+const lexical_grammar = @import("../ir/lexical_grammar.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const serialize = @import("../parse_table/serialize.zig");
@@ -51,88 +54,129 @@ pub fn linkAndRunExternalScannerParser(allocator: std.mem.Allocator) RuntimeLink
 }
 
 fn emitTinyParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    const rules = [_]ir_rules.Rule{
+        .{ .string = "x" },
+    };
+    var source_steps = [_]syntax_grammar.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    const syntax = syntax_grammar.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_grammar.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "x", .kind = .anonymous, .rule = 0 },
+        },
+        .separators = &.{},
+    };
+
+    const built = try build_parse_table.buildStates(allocator, syntax);
+    var serialized = try serialize.serializeBuildResult(allocator, built, .strict);
     const symbols = [_]serialize.SerializedSymbolInfo{
-        .{
-            .ref = .{ .terminal = 0 },
-            .name = "end",
-            .named = false,
-            .visible = false,
-            .supertype = false,
-            .public_symbol = 0,
-        },
-        .{
-            .ref = .{ .terminal = 1 },
-            .name = "x",
-            .named = false,
-            .visible = true,
-            .supertype = false,
-            .public_symbol = 1,
-        },
-        .{
-            .ref = .{ .non_terminal = 0 },
-            .name = "source_file",
-            .named = true,
-            .visible = true,
-            .supertype = false,
-            .public_symbol = 2,
-        },
+        .{ .ref = .{ .terminal = 0 }, .name = "x", .named = false, .visible = true, .supertype = false, .public_symbol = 1 },
+        .{ .ref = .{ .non_terminal = 0 }, .name = "source_file", .named = true, .visible = true, .supertype = false, .public_symbol = 2 },
     };
-    const productions = [_]serialize.SerializedProductionInfo{
-        .{ .lhs = 0, .child_count = 1, .dynamic_precedence = 0 },
-    };
-    const state0_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 2 } },
-    };
-    const state0_gotos = [_]serialize.SerializedGotoEntry{
-        .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
-    };
-    const state1_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
-    };
-    const state2_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
-    };
-    const states = [_]serialize.SerializedState{
-        .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
-        .{ .id = 1, .lex_state_id = 0, .actions = state0_actions[0..], .gotos = state0_gotos[0..], .unresolved = &.{} },
-        .{ .id = 2, .lex_state_id = 0, .actions = state1_actions[0..], .gotos = &.{}, .unresolved = &.{} },
-        .{ .id = 3, .lex_state_id = 0, .actions = state2_actions[0..], .gotos = &.{}, .unresolved = &.{} },
-    };
-    const x_ranges = [_]lexer_serialize.SerializedCharacterRange{
-        .{ .start = 'x', .end_inclusive = 'x' },
-    };
-    const lex_transitions = [_]lexer_serialize.SerializedLexTransition{
-        .{ .ranges = x_ranges[0..], .next_state_id = 1, .skip = false },
-    };
-    const lex_states = [_]lexer_serialize.SerializedLexState{
-        .{ .accept_symbol = .{ .terminal = 0 }, .transitions = lex_transitions[0..] },
-        .{ .accept_symbol = .{ .terminal = 1 }, .transitions = &.{} },
-    };
-    const lex_tables = [_]lexer_serialize.SerializedLexTable{
-        .{ .start_state_id = 0, .states = lex_states[0..] },
-    };
-    const lex_modes = [_]lexer_serialize.SerializedLexMode{
-        .{ .lex_state = 0 },
-        .{ .lex_state = 0 },
-        .{ .lex_state = 0 },
-        .{ .lex_state = 0 },
-    };
-    const primary_state_ids = [_]u32{ 0, 1, 2, 3 };
-    const serialized = serialize.SerializedTable{
-        .blocked = false,
-        .grammar_name = "generated",
-        .symbols = symbols[0..],
-        .large_state_count = states.len,
-        .productions = productions[0..],
-        .lex_modes = lex_modes[0..],
-        .lex_tables = lex_tables[0..],
-        .primary_state_ids = primary_state_ids[0..],
-        .states = states[0..],
-    };
+    serialized.grammar_name = "generated";
+    serialized.symbols = symbols[0..];
+    const eof_valids = try eofValidLexStatesAlloc(allocator, serialized);
+    serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesWithEofAlloc(
+        allocator,
+        rules[0..],
+        lexical,
+        serialized.lex_state_terminal_sets,
+        eof_valids,
+    );
+    serialized = try offsetRuntimeStartStateAlloc(allocator, serialized);
 
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
         .compact_duplicate_states = false,
     });
+}
+
+fn eofValidLexStatesAlloc(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+) RuntimeLinkError![]const bool {
+    const values = try allocator.alloc(bool, serialized.lex_state_terminal_sets.len);
+    @memset(values, false);
+    for (serialized.states) |state_value| {
+        if (state_value.lex_state_id >= values.len) continue;
+        for (state_value.actions) |entry| {
+            if (entry.symbol == .end) {
+                values[state_value.lex_state_id] = true;
+                break;
+            }
+        }
+    }
+    return values;
+}
+
+fn offsetRuntimeStartStateAlloc(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+) RuntimeLinkError!serialize.SerializedTable {
+    const states = try allocator.alloc(serialize.SerializedState, serialized.states.len + 1);
+    states[0] = .{
+        .id = 0,
+        .lex_state_id = 0,
+        .actions = &.{},
+        .gotos = &.{},
+        .unresolved = &.{},
+    };
+    for (serialized.states, 0..) |source_state, index| {
+        const actions = try allocator.alloc(serialize.SerializedActionEntry, source_state.actions.len);
+        for (source_state.actions, 0..) |entry, action_index| {
+            actions[action_index] = entry;
+            if (entry.action == .shift) {
+                actions[action_index].action = .{ .shift = entry.action.shift + 1 };
+            }
+        }
+        const gotos = try allocator.alloc(serialize.SerializedGotoEntry, source_state.gotos.len);
+        for (source_state.gotos, 0..) |entry, goto_index| {
+            gotos[goto_index] = entry;
+            gotos[goto_index].state = entry.state + 1;
+        }
+        states[index + 1] = source_state;
+        states[index + 1].id = source_state.id + 1;
+        states[index + 1].actions = actions;
+        states[index + 1].gotos = gotos;
+    }
+
+    const lex_modes = try allocator.alloc(lexer_serialize.SerializedLexMode, serialized.lex_modes.len + 1);
+    lex_modes[0] = .{ .lex_state = 0 };
+    for (serialized.lex_modes, 0..) |mode, index| {
+        lex_modes[index + 1] = mode;
+    }
+
+    const primary_state_ids = try allocator.alloc(u32, states.len);
+    primary_state_ids[0] = 0;
+    for (serialized.primary_state_ids, 0..) |state_id, index| {
+        primary_state_ids[index + 1] = state_id + 1;
+    }
+
+    var result = serialized;
+    result.states = states;
+    result.lex_modes = lex_modes;
+    result.primary_state_ids = primary_state_ids;
+    result.large_state_count = try serialize.computeLargeStateCountAlloc(allocator, states, serialized.productions);
+    result.parse_action_list = try serialize.buildParseActionListAlloc(allocator, states, serialized.productions);
+    result.small_parse_table = try serialize.buildSmallParseTableAlloc(
+        allocator,
+        states,
+        result.large_state_count,
+        result.parse_action_list,
+        serialized.productions,
+    );
+    return result;
 }
 
 fn emitKeywordReservedParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {

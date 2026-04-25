@@ -25,6 +25,7 @@ pub const Production = struct {
 };
 
 pub const SymbolRef = union(enum) {
+    end: void,
     non_terminal: u32,
     terminal: u32,
     external: u32,

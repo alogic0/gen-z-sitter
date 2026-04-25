@@ -106,6 +106,7 @@ fn runtimeSymbolId(symbol: syntax_ir.SymbolRef, resolver: ?SymbolResolver) u16 {
         if (value.symbolId(symbol)) |symbol_id| return symbol_id;
     }
     return switch (symbol) {
+        .end => 0,
         .terminal => |index| @intCast(index),
         .external => |index| @intCast(index),
         .non_terminal => |index| @intCast(index),

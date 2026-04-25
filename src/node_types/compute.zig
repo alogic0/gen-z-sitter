@@ -643,6 +643,7 @@ fn isVisibleChild(
     defaults: alias_ir.AliasMap,
 ) bool {
     return switch (symbol) {
+        .end => false,
         .non_terminal => |index| isVisibleSyntaxVariable(syntax.variables[index]),
         .terminal => |index| isVisibleLexicalVariable(lexical.variables[index], defaults.findForSymbol(symbol)),
         .external => |index| isVisibleExternalToken(syntax.external_tokens[index], defaults.findForSymbol(symbol)),
@@ -669,6 +670,7 @@ fn effectiveNameForSymbol(
     if (defaults.findForSymbol(symbol)) |alias| return alias.value;
 
     return switch (symbol) {
+        .end => "end",
         .non_terminal => |index| syntax.variables[index].name,
         .terminal => |index| lexical.variables[index].name,
         .external => |index| syntax.external_tokens[index].name,
@@ -693,6 +695,7 @@ fn isNamedSymbol(
 ) bool {
     const alias = defaults.findForSymbol(symbol);
     return switch (symbol) {
+        .end => false,
         .non_terminal => |index| isNamedSyntaxVariable(syntax.variables[index], alias),
         .terminal => |index| isNamedLexicalVariable(lexical.variables[index], alias),
         .external => |index| isNamedExternalToken(syntax.external_tokens[index], alias),
@@ -776,6 +779,10 @@ fn sameNodeTypeKey(a: NodeType, b: NodeType) bool {
 
 fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
     return switch (a) {
+        .end => switch (b) {
+            .end => true,
+            else => false,
+        },
         .non_terminal => |index| switch (b) {
             .non_terminal => |other| index == other,
             else => false,

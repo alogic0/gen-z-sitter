@@ -990,7 +990,7 @@ fn appendUniqueEmittedSymbol(
         .ref = symbol,
         .label = try fallbackSymbolLabelAlloc(allocator, symbol),
         .named = !symbolKindIsTerminal(symbol),
-        .visible = !symbolKindIsExternal(symbol),
+        .visible = !symbolKindIsExternal(symbol) and symbol != .end,
         .supertype = false,
         .public_symbol = @intCast(index),
         .owns_label = true,
@@ -1116,14 +1116,19 @@ fn unresolvedReasonCode(reason: @import("../parse_table/resolution.zig").Unresol
 
 fn symbolSortKey(symbol: syntax_grammar.SymbolRef) u64 {
     return switch (symbol) {
-        .terminal => |index| (@as(u64, 0) << 32) | index,
-        .external => |index| (@as(u64, 1) << 32) | index,
-        .non_terminal => |index| (@as(u64, 2) << 32) | index,
+        .end => 0,
+        .terminal => |index| (@as(u64, 1) << 32) | index,
+        .external => |index| (@as(u64, 2) << 32) | index,
+        .non_terminal => |index| (@as(u64, 3) << 32) | index,
     };
 }
 
 fn symbolRefEql(a: syntax_grammar.SymbolRef, b: syntax_grammar.SymbolRef) bool {
     return switch (a) {
+        .end => switch (b) {
+            .end => true,
+            else => false,
+        },
         .non_terminal => |index| switch (b) {
             .non_terminal => |other| index == other,
             else => false,
@@ -1141,7 +1146,7 @@ fn symbolRefEql(a: syntax_grammar.SymbolRef, b: syntax_grammar.SymbolRef) bool {
 
 fn symbolKindIsTerminal(symbol: syntax_grammar.SymbolRef) bool {
     return switch (symbol) {
-        .terminal => true,
+        .end, .terminal => true,
         .non_terminal, .external => false,
     };
 }
@@ -1149,19 +1154,20 @@ fn symbolKindIsTerminal(symbol: syntax_grammar.SymbolRef) bool {
 fn symbolKindIsNonTerminal(symbol: syntax_grammar.SymbolRef) bool {
     return switch (symbol) {
         .non_terminal => true,
-        .terminal, .external => false,
+        .end, .terminal, .external => false,
     };
 }
 
 fn symbolKindIsExternal(symbol: syntax_grammar.SymbolRef) bool {
     return switch (symbol) {
         .external => true,
-        .non_terminal, .terminal => false,
+        .end, .non_terminal, .terminal => false,
     };
 }
 
 fn symbolKindCode(symbol: syntax_grammar.SymbolRef) u16 {
     return switch (symbol) {
+        .end => 2,
         .non_terminal => 1,
         .terminal => 2,
         .external => 3,
@@ -1215,6 +1221,31 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "struct TSLanguage {\n"));
     try std.testing.expect(std.mem.indexOf(u8, emitted, "typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;") == null);
     try std.testing.expect(std.mem.indexOf(u8, emitted, "const TSParser *ts_parser_instance(void)") == null);
+}
+
+test "emitParserCAlloc emits EOF as builtin symbol zero" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]serialize.SerializedActionEntry{
+                    .{ .symbol = .{ .end = {} }, .action = .accept },
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
+                },
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAlloc(allocator, serialized);
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = \"end\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .visible = false, .named = false, .supertype = false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    [0] = ACTIONS("));
 }
 
 test "emitParserCAlloc compacts identical serialized states before row sharing" {

@@ -36,7 +36,7 @@ pub fn detectConflicts(
     for (transitions) |transition| {
         switch (transition.symbol) {
             .terminal, .external => {},
-            .non_terminal => continue,
+            .end, .non_terminal => continue,
         }
 
         var conflict_items = std.array_list.Managed(item.ParseItem).init(allocator);
@@ -174,6 +174,10 @@ fn classifyConflict(grouped: []const actions.ActionEntry) ?state.ConflictKind {
 
 fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
     return switch (a) {
+        .end => switch (b) {
+            .end => true,
+            else => false,
+        },
         .non_terminal => |index| switch (b) {
             .non_terminal => |other| index == other,
             else => false,

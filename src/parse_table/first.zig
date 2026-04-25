@@ -6,6 +6,7 @@ pub const FirstError = std.mem.Allocator.Error;
 pub const SymbolSet = struct {
     terminals: []bool,
     externals: []bool,
+    includes_end: bool = false,
     includes_epsilon: bool = false,
 
     pub fn containsTerminal(self: SymbolSet, index: u32) bool {
@@ -17,6 +18,7 @@ pub const SymbolSet = struct {
     }
 
     pub fn isEmpty(self: SymbolSet) bool {
+        if (self.includes_end) return false;
         if (self.includes_epsilon) return false;
         for (self.terminals) |present| {
             if (present) return false;
@@ -28,7 +30,8 @@ pub const SymbolSet = struct {
     }
 
     pub fn eql(a: SymbolSet, b: SymbolSet) bool {
-        return a.includes_epsilon == b.includes_epsilon and
+        return a.includes_end == b.includes_end and
+            a.includes_epsilon == b.includes_epsilon and
             std.mem.eql(bool, a.terminals, b.terminals) and
             std.mem.eql(bool, a.externals, b.externals);
     }
@@ -63,6 +66,7 @@ pub fn computeFirstSets(
         entry.* = .{
             .terminals = try allocator.alloc(bool, counts.terminals),
             .externals = try allocator.alloc(bool, counts.externals),
+            .includes_end = false,
             .includes_epsilon = false,
         };
         @memset(entry.terminals, false);
@@ -107,6 +111,7 @@ fn computeSequenceFirst(
     var result = SymbolSet{
         .terminals = try allocator.alloc(bool, terminals_len),
         .externals = try allocator.alloc(bool, externals_len),
+        .includes_end = false,
         .includes_epsilon = false,
     };
     @memset(result.terminals, false);
@@ -127,6 +132,11 @@ fn computeSequenceFirst(
             },
             .external => |index| {
                 result.externals[index] = true;
+                all_nullable = false;
+                break;
+            },
+            .end => {
+                result.includes_end = true;
                 all_nullable = false;
                 break;
             },
@@ -165,6 +175,11 @@ fn mergeSymbolSets(target: *SymbolSet, incoming: SymbolSet) bool {
         changed = true;
     }
 
+    if (incoming.includes_end and !target.includes_end) {
+        target.includes_end = true;
+        changed = true;
+    }
+
     for (incoming.terminals, 0..) |present, index| {
         if (present and !target.terminals[index]) {
             target.terminals[index] = true;
@@ -184,6 +199,11 @@ fn mergeSymbolSets(target: *SymbolSet, incoming: SymbolSet) bool {
 
 fn changedMergeWithoutEpsilon(target: *SymbolSet, incoming: SymbolSet) bool {
     var changed = false;
+
+    if (incoming.includes_end and !target.includes_end) {
+        target.includes_end = true;
+        changed = true;
+    }
 
     for (incoming.terminals, 0..) |present, index| {
         if (present and !target.terminals[index]) {
@@ -212,6 +232,7 @@ fn countSymbols(grammar: syntax_ir.SyntaxGrammar) struct { terminals: usize, ext
                 switch (step.symbol) {
                     .terminal => |index| max_terminal = @max(max_terminal, index + 1),
                     .external => |index| max_external = @max(max_external, index + 1),
+                    .end => {},
                     .non_terminal => {},
                 }
             }
@@ -222,6 +243,7 @@ fn countSymbols(grammar: syntax_ir.SyntaxGrammar) struct { terminals: usize, ext
         switch (symbol) {
             .terminal => |index| max_terminal = @max(max_terminal, index + 1),
             .external => |index| max_external = @max(max_external, index + 1),
+            .end => {},
             .non_terminal => {},
         }
     }
@@ -230,6 +252,7 @@ fn countSymbols(grammar: syntax_ir.SyntaxGrammar) struct { terminals: usize, ext
         switch (symbol) {
             .terminal => |index| max_terminal = @max(max_terminal, index + 1),
             .external => |index| max_external = @max(max_external, index + 1),
+            .end => {},
             .non_terminal => {},
         }
     }

@@ -218,11 +218,13 @@ fn buildSig(
 
     for (resolved.groupsForState(s.id)) |group| {
         const sym_tag: u8 = switch (group.symbol) {
+            .end => 0,
             .terminal => 1,
             .external => 2,
             .non_terminal => continue,
         };
         const sym_idx: u32 = switch (group.symbol) {
+            .end => 0,
             .terminal => |idx| idx,
             .external => |idx| idx,
             .non_terminal => |idx| idx,
@@ -412,6 +414,7 @@ test "minimizeAlloc merges two identical states" {
                     _ = idx;
                     try std.testing.expectEqual(@as(state.StateId, 1), t.state);
                 },
+                .end => {},
                 .terminal => {},
                 .external => {},
             }
