@@ -165,6 +165,7 @@ pub const SerializedTable = struct {
     alias_sequences: []const SerializedAliasEntry = &.{},
     field_map: SerializedFieldMap = .{},
     lex_modes: []const lexer_serialize.SerializedLexMode = &.{},
+    lex_state_terminal_sets: []const []const bool = &.{},
     primary_state_ids: []const state.StateId = &.{},
     word_token: ?syntax_ir.SymbolRef = null,
 
@@ -228,6 +229,7 @@ pub fn serializeBuildResult(
     const parse_action_list = try buildParseActionListAlloc(allocator, serialized_states, productions);
     const field_map = try buildFieldMapAlloc(allocator, result.productions);
     const lex_modes = try lexer_serialize.buildLexModesAlloc(allocator, serialized_states);
+    const lex_state_terminal_sets = try buildLexStateTerminalSetsAlloc(allocator, result.lex_state_terminal_sets);
     const primary_state_ids = try buildPrimaryStateIdsAlloc(allocator, serialized_states);
     return .{
         .states = serialized_states,
@@ -239,6 +241,7 @@ pub fn serializeBuildResult(
         .alias_sequences = try alias_list.toOwnedSlice(allocator),
         .field_map = field_map,
         .lex_modes = lex_modes,
+        .lex_state_terminal_sets = lex_state_terminal_sets,
         .primary_state_ids = primary_state_ids,
     };
 }
@@ -360,6 +363,32 @@ pub fn deinitFieldMap(allocator: std.mem.Allocator, field_map: SerializedFieldMa
     allocator.free(field_map.names);
     allocator.free(field_map.entries);
     allocator.free(field_map.slices);
+}
+
+pub fn deinitLexStateTerminalSets(
+    allocator: std.mem.Allocator,
+    terminal_sets: []const []const bool,
+) void {
+    for (terminal_sets) |terminal_set| allocator.free(terminal_set);
+    allocator.free(terminal_sets);
+}
+
+pub fn buildLexStateTerminalSetsAlloc(
+    allocator: std.mem.Allocator,
+    terminal_sets: []const []const bool,
+) std.mem.Allocator.Error![]const []const bool {
+    const serialized = try allocator.alloc([]const bool, terminal_sets.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (serialized[0..initialized]) |terminal_set| allocator.free(terminal_set);
+        allocator.free(serialized);
+    }
+
+    for (terminal_sets, 0..) |terminal_set, index| {
+        serialized[index] = try allocator.dupe(bool, terminal_set);
+        initialized += 1;
+    }
+    return serialized;
 }
 
 pub fn buildPrimaryStateIdsAlloc(
@@ -933,6 +962,7 @@ test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {
     defer deinitParseActionList(allocator, serialized.parse_action_list);
     defer deinitFieldMap(allocator, serialized.field_map);
     defer allocator.free(serialized.lex_modes);
+    defer deinitLexStateTerminalSets(allocator, serialized.lex_state_terminal_sets);
     defer allocator.free(serialized.primary_state_ids);
     defer allocator.free(serialized.states[0].unresolved);
     defer allocator.free(serialized.states[0].gotos);
@@ -1058,6 +1088,21 @@ test "buildPrimaryStateIdsAlloc maps states to first matching core id" {
     try std.testing.expectEqual(@as(state.StateId, 1), ids[1]);
     try std.testing.expectEqual(@as(state.StateId, 0), ids[2]);
     try std.testing.expectEqual(@as(state.StateId, 1), ids[3]);
+}
+
+test "buildLexStateTerminalSetsAlloc preserves lex-state terminal sets by id" {
+    const allocator = std.testing.allocator;
+    const source = [_][]const bool{
+        &.{ true, false, true },
+        &.{ false, true, false },
+    };
+
+    const terminal_sets = try buildLexStateTerminalSetsAlloc(allocator, source[0..]);
+    defer deinitLexStateTerminalSets(allocator, terminal_sets);
+
+    try std.testing.expectEqual(@as(usize, 2), terminal_sets.len);
+    try std.testing.expectEqualSlices(bool, source[0], terminal_sets[0]);
+    try std.testing.expectEqualSlices(bool, source[1], terminal_sets[1]);
 }
 
 test "buildSmallParseTableAlloc groups values and deduplicates rows" {

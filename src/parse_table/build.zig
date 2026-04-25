@@ -1125,6 +1125,7 @@ pub const BuildResult = struct {
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
     states: []const state.ParseState,
     lex_state_count: usize,
+    lex_state_terminal_sets: []const []const bool = &.{},
     actions: actions.ActionTable,
     resolved_actions: resolution.ResolvedActionTable,
 
@@ -1165,6 +1166,7 @@ pub const BuildResult = struct {
 const AssignedLexStates = struct {
     states: []const state.ParseState,
     count: usize,
+    terminal_sets: []const []const bool,
 };
 
 fn terminalCountForResolvedActions(resolved_actions: resolution.ResolvedActionTable) usize {
@@ -1189,17 +1191,20 @@ fn assignLexStateIdsAlloc(
         return .{
             .states = &.{},
             .count = 0,
+            .terminal_sets = &.{},
         };
     }
 
     const terminal_count = terminalCountForResolvedActions(resolved_actions);
     const assigned_states = try allocator.dupe(state.ParseState, parse_states);
+    errdefer allocator.free(assigned_states);
+    var terminal_sets = std.array_list.Managed([]const bool).init(allocator);
+    errdefer {
+        for (terminal_sets.items) |terminal_set| allocator.free(terminal_set);
+        terminal_sets.deinit();
+    }
     var lex_state_ids = LexStateIdByTerminalSet.init(allocator);
     defer {
-        var iterator = lex_state_ids.iterator();
-        while (iterator.next()) |entry| {
-            allocator.free(entry.key_ptr.*);
-        }
         lex_state_ids.deinit();
     }
 
@@ -1225,6 +1230,7 @@ fn assignLexStateIdsAlloc(
 
         gop.key_ptr.* = terminal_set;
         gop.value_ptr.* = next_id;
+        try terminal_sets.append(terminal_set);
         parse_state.lex_state_id = next_id;
         next_id += 1;
     }
@@ -1232,6 +1238,7 @@ fn assignLexStateIdsAlloc(
     return .{
         .states = assigned_states,
         .count = next_id,
+        .terminal_sets = try terminal_sets.toOwnedSlice(),
     };
 }
 
@@ -1323,6 +1330,7 @@ pub fn buildStatesWithOptions(
             .precedence_orderings = grammar.precedence_orderings,
             .states = minimized.states,
             .lex_state_count = lex_states.count,
+            .lex_state_terminal_sets = lex_states.terminal_sets,
             .actions = constructed.actions,
             .resolved_actions = minimized.resolved_actions,
         };
@@ -1333,6 +1341,7 @@ pub fn buildStatesWithOptions(
         .precedence_orderings = grammar.precedence_orderings,
         .states = lex_states.states,
         .lex_state_count = lex_states.count,
+        .lex_state_terminal_sets = lex_states.terminal_sets,
         .actions = constructed.actions,
         .resolved_actions = resolved_actions,
     };
@@ -3322,9 +3331,16 @@ test "assignLexStateIdsAlloc reuses ids for equivalent terminal sets determinist
 
     const assigned = try assignLexStateIdsAlloc(allocator, parse_states[0..], resolved_actions);
     defer allocator.free(assigned.states);
+    defer {
+        for (assigned.terminal_sets) |terminal_set| allocator.free(terminal_set);
+        allocator.free(assigned.terminal_sets);
+    }
 
     try std.testing.expectEqual(@as(usize, 2), assigned.count);
     try std.testing.expectEqual(@as(state.LexStateId, 0), assigned.states[0].lex_state_id);
     try std.testing.expectEqual(@as(state.LexStateId, 1), assigned.states[1].lex_state_id);
     try std.testing.expectEqual(assigned.states[0].lex_state_id, assigned.states[2].lex_state_id);
+    try std.testing.expectEqual(@as(usize, 2), assigned.terminal_sets.len);
+    try std.testing.expectEqualSlices(bool, &.{ true, true }, assigned.terminal_sets[0]);
+    try std.testing.expectEqualSlices(bool, &.{ true, false }, assigned.terminal_sets[1]);
 }

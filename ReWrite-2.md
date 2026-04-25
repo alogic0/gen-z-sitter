@@ -48,12 +48,12 @@ serialization boundary clean: all data required by `parser_c.zig` must be presen
 
 ### 2a — Lex State Terminal Sets
 
-- [ ] Extend `assignLexStateIdsAlloc()` so it preserves one terminal set per assigned
+- [x] Extend `assignLexStateIdsAlloc()` so it preserves one terminal set per assigned
   `lex_state_id`, in ID order.
-- [ ] Add the terminal-set list to `BuildResult` or another parse-table build artifact.
-- [ ] Serialize those terminal sets into `SerializedTable`, using terminal indexes or
+- [x] Add the terminal-set list to `BuildResult` or another parse-table build artifact.
+- [x] Serialize those terminal sets into `SerializedTable`, using terminal indexes or
   symbol refs that can be mapped to runtime symbol IDs later.
-- [ ] Keep `SerializedTable.lex_modes[parse_state].lex_state` aligned with this terminal
+- [x] Keep `SerializedTable.lex_modes[parse_state].lex_state` aligned with this terminal
   set array.
 
 ### 2b — Parse-State Core IDs
