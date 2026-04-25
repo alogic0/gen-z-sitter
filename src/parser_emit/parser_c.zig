@@ -132,8 +132,8 @@ pub fn writeParserCWithOptions(
     try writer.print("#define EXTERNAL_TOKEN_COUNT {d}\n", .{externalTokenCount(emitted_symbols)});
     try writer.print("#define PRODUCTION_ID_COUNT {d}\n", .{compacted.productions.len});
     try writer.print("#define FIELD_COUNT {d}\n", .{compacted.field_map.names.len});
-    try writer.print("#define ALIAS_COUNT {d}\n", .{compacted.alias_sequences.len});
-    try writer.writeAll("#define MAX_ALIAS_SEQUENCE_LENGTH 0\n\n");
+    try writer.print("#define ALIAS_COUNT {d}\n", .{aliasSymbolCount(emitted_symbols)});
+    try writer.print("#define MAX_ALIAS_SEQUENCE_LENGTH {d}\n\n", .{maxAliasSequenceLength(compacted)});
 
     const keyword_capture_id: u16 = if (compacted.word_token) |wt|
         symbolIdForRef(emitted_symbols, wt) orelse 0
@@ -198,6 +198,26 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("};\n\n");
 
     try writer.writeAll("static const uint16_t ts_non_terminal_alias_map[] = { 0 };\n");
+    try writer.writeAll("static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH > 0 ? MAX_ALIAS_SEQUENCE_LENGTH : 1] = {\n");
+    if (compacted.productions.len == 0) {
+        try writer.writeAll("  { 0 },\n");
+    } else {
+        for (compacted.productions, 0..) |_, production_id| {
+            try writer.print("  [{d}] = {{", .{production_id});
+            const sequence_len = maxAliasSequenceLength(compacted);
+            if (sequence_len == 0) {
+                try writer.writeAll(" 0");
+            } else {
+                for (0..sequence_len) |step_index| {
+                    const alias_symbol_id = aliasSymbolIdForPosition(emitted_symbols, compacted.alias_sequences, production_id, step_index) orelse 0;
+                    if (step_index > 0) try writer.writeByte(',');
+                    try writer.print(" {d}", .{alias_symbol_id});
+                }
+            }
+            try writer.writeAll(" },\n");
+        }
+    }
+    try writer.writeAll("};\n\n");
     try writer.writeAll("static const TSStateId ts_primary_state_ids[SYMBOL_COUNT] = { 0 };\n\n");
 
     try writer.writeAll("static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {\n");
@@ -286,6 +306,7 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("  .symbol_metadata = ts_symbol_metadata,\n");
     try writer.writeAll("  .public_symbol_map = ts_symbol_map,\n");
     try writer.writeAll("  .alias_map = ts_non_terminal_alias_map,\n");
+    try writer.writeAll("  .alias_sequences = &ts_alias_sequences[0][0],\n");
     try writer.writeAll("  .lex_modes = ts_lex_modes,\n");
     try writer.writeAll("  .lex_fn = ts_lex,\n");
     try writer.print("  .keyword_capture_token = {d},\n", .{keyword_capture_id});
@@ -329,7 +350,8 @@ fn serializedLargeStateCount(serialized: serialize.SerializedTable) usize {
 fn tokenCount(symbols: []const EmittedSymbol) usize {
     var count: usize = 0;
     for (symbols) |symbol| {
-        if (symbolKindIsTerminal(symbol.ref) or symbolKindIsExternal(symbol.ref)) count += 1;
+        const ref = symbol.ref orelse continue;
+        if (symbolKindIsTerminal(ref) or symbolKindIsExternal(ref)) count += 1;
     }
     return count;
 }
@@ -337,9 +359,46 @@ fn tokenCount(symbols: []const EmittedSymbol) usize {
 fn externalTokenCount(symbols: []const EmittedSymbol) usize {
     var count: usize = 0;
     for (symbols) |symbol| {
-        if (symbolKindIsExternal(symbol.ref)) count += 1;
+        const ref = symbol.ref orelse continue;
+        if (symbolKindIsExternal(ref)) count += 1;
     }
     return count;
+}
+
+fn aliasSymbolCount(symbols: []const EmittedSymbol) usize {
+    var count: usize = 0;
+    for (symbols) |symbol| {
+        if (symbol.ref == null) count += 1;
+    }
+    return count;
+}
+
+fn maxAliasSequenceLength(serialized: serialize.SerializedTable) usize {
+    var max_len: usize = 0;
+    for (serialized.alias_sequences) |alias| {
+        max_len = @max(max_len, alias.step_index + 1);
+    }
+    return max_len;
+}
+
+fn aliasSymbolIdForPosition(
+    symbols: []const EmittedSymbol,
+    aliases: []const serialize.SerializedAliasEntry,
+    production_id: usize,
+    step_index: usize,
+) ?u16 {
+    for (aliases) |alias| {
+        if (alias.production_id != production_id or alias.step_index != step_index) continue;
+        return aliasSymbolIdForName(symbols, alias.name, alias.named);
+    }
+    return null;
+}
+
+fn aliasSymbolIdForName(symbols: []const EmittedSymbol, name: []const u8, named: bool) ?u16 {
+    for (symbols, 0..) |symbol, index| {
+        if (symbol.ref == null and symbol.named == named and std.mem.eql(u8, symbol.label, name)) return @intCast(index);
+    }
+    return null;
 }
 
 fn collectStateArrayOwners(
@@ -462,7 +521,7 @@ fn parseActionSlicesEql(
 }
 
 const EmittedSymbol = struct {
-    ref: syntax_grammar.SymbolRef,
+    ref: ?syntax_grammar.SymbolRef = null,
     label: []const u8,
     named: bool,
     visible: bool,
@@ -519,9 +578,13 @@ fn collectEmittedSymbols(
         }
     }
 
+    for (serialized.alias_sequences) |alias| {
+        try appendUniqueAliasSymbol(&symbols, alias.name, alias.named);
+    }
+
     std.mem.sort(EmittedSymbol, symbols.items, {}, emittedSymbolLessThan);
     for (symbols.items, 0..) |*symbol, index| {
-        if (symbol.owns_label) symbol.public_symbol = @intCast(index);
+        if (symbol.owns_label or symbol.ref == null) symbol.public_symbol = @intCast(index);
     }
     return try symbols.toOwnedSlice();
 }
@@ -543,13 +606,31 @@ fn appendUniqueEmittedSymbol(
     });
 }
 
+fn appendUniqueAliasSymbol(
+    symbols: *std.array_list.Managed(EmittedSymbol),
+    name: []const u8,
+    named: bool,
+) EmitError!void {
+    for (symbols.items) |existing| {
+        if (existing.ref == null and existing.named == named and std.mem.eql(u8, existing.label, name)) return;
+    }
+
+    try symbols.append(.{
+        .label = name,
+        .named = named,
+        .visible = true,
+        .supertype = false,
+        .public_symbol = @intCast(symbols.items.len),
+    });
+}
+
 fn appendUniqueEmittedSymbolWithMetadata(
     allocator: std.mem.Allocator,
     symbols: *std.array_list.Managed(EmittedSymbol),
     symbol: EmittedSymbol,
 ) EmitError!void {
     for (symbols.items) |existing| {
-        if (symbolRefEql(existing.ref, symbol.ref)) {
+        if (existing.ref != null and symbol.ref != null and symbolRefEql(existing.ref.?, symbol.ref.?)) {
             if (symbol.owns_label) allocator.free(symbol.label);
             return;
         }
@@ -589,12 +670,20 @@ fn deinitEmittedSymbols(allocator: std.mem.Allocator, symbols: []EmittedSymbol) 
 }
 
 fn emittedSymbolLessThan(_: void, a: EmittedSymbol, b: EmittedSymbol) bool {
-    return symbolSortKey(a.ref) < symbolSortKey(b.ref);
+    if (a.ref) |a_ref| {
+        if (b.ref) |b_ref| return symbolSortKey(a_ref) < symbolSortKey(b_ref);
+        return true;
+    }
+    if (b.ref != null) return false;
+    if (a.named != b.named) return a.named and !b.named;
+    return std.mem.lessThan(u8, a.label, b.label);
 }
 
 fn symbolIdForRef(symbols: []const EmittedSymbol, symbol: syntax_grammar.SymbolRef) ?u16 {
     for (symbols, 0..) |entry, index| {
-        if (symbolRefEql(entry.ref, symbol)) return @intCast(index);
+        if (entry.ref) |entry_ref| {
+            if (symbolRefEql(entry_ref, symbol)) return @intCast(index);
+        }
     }
     return null;
 }
@@ -864,6 +953,54 @@ test "emitParserCAlloc emits serialized field map tables" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .field_names = ts_field_names,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .field_map_slices = ts_field_map_slices,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .field_map_entries = ts_field_map_entries,\n"));
+}
+
+test "emitParserCAlloc emits runtime alias sequences" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .symbols = &[_]serialize.SerializedSymbolInfo{
+            .{
+                .ref = .{ .non_terminal = 0 },
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+                .supertype = false,
+                .public_symbol = 0,
+            },
+        },
+        .productions = &[_]serialize.SerializedProductionInfo{
+            .{ .lhs = 0, .child_count = 2, .dynamic_precedence = 0 },
+            .{ .lhs = 1, .child_count = 3, .dynamic_precedence = 0 },
+        },
+        .alias_sequences = &[_]serialize.SerializedAliasEntry{
+            .{ .production_id = 0, .step_index = 1, .name = "value_alias", .named = true },
+            .{ .production_id = 1, .step_index = 2, .name = "anon_alias", .named = false },
+            .{ .production_id = 1, .step_index = 0, .name = "value_alias", .named = true },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAlloc(allocator, serialized);
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define ALIAS_COUNT 2\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define MAX_ALIAS_SEQUENCE_LENGTH 3\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH > 0 ? MAX_ALIAS_SEQUENCE_LENGTH : 1] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .alias_count = ALIAS_COUNT,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .max_alias_sequence_length = MAX_ALIAS_SEQUENCE_LENGTH,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .alias_sequences = &ts_alias_sequences[0][0],\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "\"value_alias\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "\"anon_alias\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { 0, 1, 0 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 1, 0, 2 },\n"));
 }
 
 test "emitParserCAlloc emits self-contained C that compiles" {

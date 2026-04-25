@@ -147,12 +147,14 @@ Data source: `PreparedGrammar.variables` and the field metadata already tracked 
 
 Data source: `SerializedTable.alias_sequences` (currently flat `[]SerializedAliasEntry`).
 
-- [ ] Change the emitted format from the flat `TSAliasEntry ts_alias_sequences[]` array to
+- [x] Change the emitted format from the flat `TSAliasEntry ts_alias_sequences[]` array to
   the 2D layout `TSSymbol ts_alias_sequences[PRODUCTION_COUNT][MAX_ALIAS_SEQUENCE_LENGTH]`.
-- [ ] Fill cells with the aliased symbol ID where an alias exists, `0` (UNNAMED) elsewhere.
-- [ ] Emit `static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH] = { … };`.
-- [ ] Set `.alias_count`, `.max_alias_sequence_length`, `.alias_sequences` in the
+- [x] Fill cells with the aliased symbol ID where an alias exists, `0` (UNNAMED) elsewhere.
+- [x] Emit `static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH] = { … };`.
+- [x] Set `.alias_count`, `.max_alias_sequence_length`, `.alias_sequences` in the
   `ts_language` literal.
+  Note: emitted as a self-contained C array with a width fallback when
+  `MAX_ALIAS_SEQUENCE_LENGTH == 0`, because ISO C does not allow zero-width arrays.
 
 ---
 
