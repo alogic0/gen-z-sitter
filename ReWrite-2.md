@@ -95,11 +95,11 @@ symbol_id, 1 + alias_count,
 
 Tree-sitter distinguishes `Shift`, `ShiftExtra`, and `Shift { is_repetition }`.
 
-- [ ] Extend local parse actions so serialized shift actions can carry `extra` and
+- [x] Extend local parse actions so serialized shift actions can carry `extra` and
   `repetition`.
-- [ ] Set `extra = true` for terminal extra shifts derived from `SyntaxGrammar.extra_symbols`.
+- [x] Set `extra = true` for terminal extra shifts derived from `SyntaxGrammar.extra_symbols`.
 - [ ] Set `repetition = true` for shifts that tree-sitter would mark `is_repetition`.
-- [ ] Keep non-terminal extra handling explicit. If local build still cannot model it,
+- [x] Keep non-terminal extra handling explicit. If local build still cannot model it,
   preserve a diagnostic blocker instead of silently emitting a normal shift.
 
 ### 2e — Reserved-Word State Data
@@ -193,7 +193,7 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
   `add_character_range_conditions`.
 - [x] Implement `SKIP(next)` for separator transitions and `ADVANCE(next)` for normal
   transitions.
-- [ ] Add `ADVANCE_MAP` only after the simple transition path works. Tree-sitter uses it
+- [x] Add `ADVANCE_MAP` only after the simple transition path works. Tree-sitter uses it
   when the leading simple transition range count is at least 8.
 - [ ] Defer large character set constants until the basic lexer works; add them only if
   generated code size or compile time becomes a problem.

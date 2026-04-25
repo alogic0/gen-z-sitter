@@ -3,6 +3,7 @@ const lexical_serialize = @import("serialize.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const EmitError = std.Io.Writer.Error;
+const advance_map_threshold = 8;
 
 pub const SymbolResolver = struct {
     context: *const anyopaque,
@@ -40,7 +41,11 @@ pub fn emitLexFunctionWithResolver(
         if (state_value.eof_target) |target| {
             try writer.print("      if (eof) ADVANCE({d});\n", .{target});
         }
-        for (state_value.transitions) |transition| {
+        const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
+        if (advance_map_end != 0) {
+            try emitAdvanceMap(writer, state_value.transitions[0..advance_map_end]);
+        }
+        for (state_value.transitions[advance_map_end..]) |transition| {
             if (transition.ranges.len == 0) continue;
             try writer.writeAll("      if (");
             try writeTransitionCondition(writer, transition.ranges);
@@ -57,6 +62,43 @@ pub fn emitLexFunctionWithResolver(
     try writer.writeAll("      return false;\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("}\n\n");
+}
+
+fn leadingAdvanceMapTransitionEnd(transitions: []const lexical_serialize.SerializedLexTransition) usize {
+    var transition_count: usize = 0;
+    var range_count: usize = 0;
+    for (transitions) |transition| {
+        if (transition.skip) break;
+        if (!isAdvanceMapTransition(transition)) break;
+        transition_count += 1;
+        range_count += transition.ranges.len;
+    }
+    return if (range_count >= advance_map_threshold) transition_count else 0;
+}
+
+fn isAdvanceMapTransition(transition: lexical_serialize.SerializedLexTransition) bool {
+    if (transition.ranges.len == 0) return false;
+    for (transition.ranges) |range| {
+        if (range.end_inclusive > std.math.maxInt(u16)) return false;
+        if (range.end_inclusive > range.start + 1) return false;
+    }
+    return true;
+}
+
+fn emitAdvanceMap(
+    writer: anytype,
+    transitions: []const lexical_serialize.SerializedLexTransition,
+) EmitError!void {
+    try writer.writeAll("      ADVANCE_MAP(\n");
+    for (transitions) |transition| {
+        for (transition.ranges) |range| {
+            try writer.print("        {d}, {d},\n", .{ range.start, transition.next_state_id });
+            if (range.end_inclusive > range.start) {
+                try writer.print("        {d}, {d},\n", .{ range.end_inclusive, transition.next_state_id });
+            }
+        }
+    }
+    try writer.writeAll("      );\n");
 }
 
 fn runtimeSymbolId(symbol: syntax_ir.SymbolRef, resolver: ?SymbolResolver) u16 {
@@ -189,4 +231,71 @@ test "emitLexFunction renders EOF guards and adjacent range readability form" {
         1,
         "      if ((!eof && (0 <= lookahead && lookahead <= 3)) || (lookahead == 120 || lookahead == 121)) ADVANCE(1);\n",
     ));
+}
+
+test "emitLexFunction uses ADVANCE_MAP for leading simple transitions" {
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buffer.deinit();
+
+    const transitions = [_]lexical_serialize.SerializedLexTransition{
+        .{
+            .ranges = &[_]lexical_serialize.SerializedCharacterRange{
+                .{ .start = 'a', .end_inclusive = 'a' },
+                .{ .start = 'b', .end_inclusive = 'b' },
+            },
+            .next_state_id = 1,
+            .skip = false,
+        },
+        .{
+            .ranges = &[_]lexical_serialize.SerializedCharacterRange{
+                .{ .start = 'c', .end_inclusive = 'd' },
+                .{ .start = 'e', .end_inclusive = 'f' },
+            },
+            .next_state_id = 2,
+            .skip = false,
+        },
+        .{
+            .ranges = &[_]lexical_serialize.SerializedCharacterRange{
+                .{ .start = 'g', .end_inclusive = 'g' },
+                .{ .start = 'h', .end_inclusive = 'h' },
+            },
+            .next_state_id = 3,
+            .skip = false,
+        },
+        .{
+            .ranges = &[_]lexical_serialize.SerializedCharacterRange{
+                .{ .start = 'i', .end_inclusive = 'i' },
+                .{ .start = 'j', .end_inclusive = 'j' },
+            },
+            .next_state_id = 4,
+            .skip = false,
+        },
+        .{
+            .ranges = &[_]lexical_serialize.SerializedCharacterRange{
+                .{ .start = '0', .end_inclusive = '9' },
+            },
+            .next_state_id = 5,
+            .skip = false,
+        },
+    };
+    const table = lexical_serialize.SerializedLexTable{
+        .start_state_id = 0,
+        .states = &[_]lexical_serialize.SerializedLexState{
+            .{ .transitions = transitions[0..] },
+            .{ .transitions = &.{} },
+            .{ .transitions = &.{} },
+            .{ .transitions = &.{} },
+            .{ .transitions = &.{} },
+            .{ .transitions = &.{} },
+        },
+    };
+
+    try emitLexFunction(&buffer.writer, "ts_lex", table);
+    const emitted = buffer.writer.buffered();
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      ADVANCE_MAP(\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "        97, 1,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "        100, 2,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "        106, 4,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      if ((48 <= lookahead && lookahead <= 57)) ADVANCE(5);\n"));
 }

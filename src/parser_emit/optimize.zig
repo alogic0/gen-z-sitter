@@ -155,6 +155,8 @@ fn remapActionEntries(
         remapped[index] = .{
             .symbol = entry.symbol,
             .action = remapParseAction(states, entry.action, state_owners, owner_new_ids),
+            .extra = entry.extra,
+            .repetition = entry.repetition,
         };
     }
     return remapped;
@@ -237,6 +239,8 @@ fn actionEntrySlicesEql(left: []const serialize.SerializedActionEntry, right: []
     for (left, right) |left_entry, right_entry| {
         if (!symbolRefEql(left_entry.symbol, right_entry.symbol)) return false;
         if (!parseActionEql(left_entry.action, right_entry.action)) return false;
+        if (left_entry.extra != right_entry.extra) return false;
+        if (left_entry.repetition != right_entry.repetition) return false;
     }
     return true;
 }

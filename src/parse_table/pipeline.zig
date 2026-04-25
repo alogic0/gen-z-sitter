@@ -248,12 +248,17 @@ fn serializePreparedBuildResultAlloc(
     result: build.BuildResult,
     mode: serialize.SerializeMode,
 ) PipelineError!serialize.SerializedTable {
+    const extracted = try extract_tokens.extractTokens(allocator, prepared);
     var serialized = try serialize.attachPreparedMetadataAlloc(
         allocator,
         try serialize.serializeBuildResult(allocator, result, mode),
         prepared,
     );
-    const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    serialized = try serialize.attachExtraShiftMetadataAlloc(
+        allocator,
+        serialized,
+        extracted.syntax.extra_symbols,
+    );
     serialized = try serialize.attachReservedWordsAlloc(
         allocator,
         serialized,

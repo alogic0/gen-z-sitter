@@ -26,6 +26,8 @@ pub const SerializeMode = enum {
 pub const SerializedActionEntry = struct {
     symbol: syntax_ir.SymbolRef,
     action: actions.ParseAction,
+    extra: bool = false,
+    repetition: bool = false,
 };
 
 /// A non-terminal transition attached to one serialized state.
@@ -330,6 +332,41 @@ pub fn attachReservedWordsAlloc(
     return result;
 }
 
+pub fn attachExtraShiftMetadataAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    extra_symbols: []const syntax_ir.SymbolRef,
+) std.mem.Allocator.Error!SerializedTable {
+    if (extra_symbols.len == 0) return serialized;
+
+    const states = try allocator.alloc(SerializedState, serialized.states.len);
+    var result = serialized;
+    result.states = states;
+    result.blocked = serialized.blocked or hasNonTerminalExtra(extra_symbols);
+
+    for (serialized.states, 0..) |serialized_state, state_index| {
+        const entries = try allocator.alloc(SerializedActionEntry, serialized_state.actions.len);
+        for (serialized_state.actions, 0..) |entry, entry_index| {
+            entries[entry_index] = entry;
+            if (entry.action == .shift and symbolRefIn(extra_symbols, entry.symbol)) {
+                entries[entry_index].extra = true;
+            }
+        }
+        states[state_index] = serialized_state;
+        states[state_index].actions = entries;
+    }
+
+    result.parse_action_list = try buildParseActionListAlloc(allocator, states, serialized.productions);
+    result.small_parse_table = try buildSmallParseTableAlloc(
+        allocator,
+        states,
+        serialized.large_state_count,
+        result.parse_action_list,
+        serialized.productions,
+    );
+    return result;
+}
+
 fn attachExternalScannerAlloc(
     allocator: std.mem.Allocator,
     serialized: SerializedTable,
@@ -408,7 +445,7 @@ pub fn buildParseActionListAlloc(
 
     for (states) |serialized_state| {
         for (serialized_state.actions) |entry| {
-            const runtime_action = runtimeActionFromParseAction(entry.action, productions);
+            const runtime_action = runtimeActionFromActionEntry(entry, productions);
             if (parseActionListIndexForRuntimeAction(entries.items, runtime_action) != null) continue;
 
             const action_slice = try allocator.alloc(SerializedParseAction, 1);
@@ -596,7 +633,7 @@ fn buildSmallParseGroupsAlloc(
         try appendSmallParseSymbol(allocator, &groups, .state, @intCast(entry.state), entry.symbol);
     }
     for (serialized_state.actions) |entry| {
-        const action_index = parseActionListIndexForParseAction(parse_action_list, entry.action, productions) orelse 0;
+        const action_index = parseActionListIndexForActionEntry(parse_action_list, entry, productions) orelse 0;
         try appendSmallParseSymbol(allocator, &groups, .action, action_index, entry.symbol);
     }
 
@@ -691,6 +728,26 @@ pub fn parseActionListIndexForParseAction(
     productions: []const SerializedProductionInfo,
 ) ?u16 {
     return parseActionListIndexForRuntimeAction(entries, runtimeActionFromParseAction(action, productions));
+}
+
+pub fn parseActionListIndexForActionEntry(
+    entries: []const SerializedParseActionListEntry,
+    entry: SerializedActionEntry,
+    productions: []const SerializedProductionInfo,
+) ?u16 {
+    return parseActionListIndexForRuntimeAction(entries, runtimeActionFromActionEntry(entry, productions));
+}
+
+pub fn runtimeActionFromActionEntry(
+    entry: SerializedActionEntry,
+    productions: []const SerializedProductionInfo,
+) SerializedParseAction {
+    var runtime_action = runtimeActionFromParseAction(entry.action, productions);
+    if (runtime_action.kind == .shift) {
+        runtime_action.extra = entry.extra;
+        runtime_action.repetition = entry.repetition;
+    }
+    return runtime_action;
 }
 
 pub fn runtimeActionFromParseAction(
@@ -1042,6 +1099,18 @@ fn externalScannerSymbolIndex(symbols: []const syntax_ir.SymbolRef, symbol: synt
     return null;
 }
 
+fn symbolRefIn(symbols: []const syntax_ir.SymbolRef, symbol: syntax_ir.SymbolRef) bool {
+    return for (symbols) |candidate| {
+        if (symbolRefEql(candidate, symbol)) break true;
+    } else false;
+}
+
+fn hasNonTerminalExtra(symbols: []const syntax_ir.SymbolRef) bool {
+    return for (symbols) |symbol| {
+        if (symbol == .non_terminal) break true;
+    } else false;
+}
+
 fn findBoolSet(sets: []const []const bool, target: []const bool) ?usize {
     for (sets, 0..) |set, index| {
         if (std.mem.eql(bool, set, target)) return index;
@@ -1320,6 +1389,58 @@ test "attachPreparedMetadataAlloc derives external scanner state sets from actio
     try std.testing.expectEqual(@as(u16, 0), serialized.lex_modes[0].external_lex_state);
     try std.testing.expectEqual(@as(u16, 1), serialized.lex_modes[1].external_lex_state);
     try std.testing.expectEqual(@as(u16, 2), serialized.lex_modes[2].external_lex_state);
+}
+
+test "attachExtraShiftMetadataAlloc marks terminal extra shifts" {
+    const allocator = std.testing.allocator;
+    const serialized = try attachExtraShiftMetadataAlloc(allocator, .{
+        .states = &[_]SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
+                    .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 2 } },
+                },
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+        .blocked = false,
+        .productions = &.{},
+        .large_state_count = 0,
+    }, &[_]syntax_ir.SymbolRef{.{ .terminal = 0 }});
+    defer {
+        for (serialized.states) |state_value| allocator.free(state_value.actions);
+        allocator.free(serialized.states);
+        deinitParseActionList(allocator, serialized.parse_action_list);
+        deinitSmallParseTable(allocator, serialized.small_parse_table);
+    }
+
+    try std.testing.expect(!serialized.blocked);
+    try std.testing.expect(serialized.states[0].actions[0].extra);
+    try std.testing.expect(!serialized.states[0].actions[1].extra);
+    try std.testing.expectEqual(SerializedParseActionKind.shift, serialized.parse_action_list[1].actions[0].kind);
+    try std.testing.expect(serialized.parse_action_list[1].actions[0].extra);
+    try std.testing.expect(!serialized.parse_action_list[2].actions[0].extra);
+}
+
+test "attachExtraShiftMetadataAlloc blocks non-terminal extras explicitly" {
+    const allocator = std.testing.allocator;
+    const serialized = try attachExtraShiftMetadataAlloc(allocator, .{
+        .states = &[_]SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+        .blocked = false,
+        .productions = &.{},
+        .large_state_count = 1,
+    }, &[_]syntax_ir.SymbolRef{.{ .non_terminal = 0 }});
+    defer {
+        for (serialized.states) |state_value| allocator.free(state_value.actions);
+        allocator.free(serialized.states);
+        deinitParseActionList(allocator, serialized.parse_action_list);
+    }
+
+    try std.testing.expect(serialized.blocked);
 }
 
 test "attachPreparedMetadataAlloc serializes supertype map entries" {

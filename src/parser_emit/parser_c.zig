@@ -832,7 +832,10 @@ fn serializedEntrySlicesEql(comptime T: type, left: []const T, right: []const T)
 
 fn serializedEntryEql(comptime T: type, left: T, right: T) bool {
     if (T == serialize.SerializedActionEntry) {
-        return symbolRefEql(left.symbol, right.symbol) and parseActionEql(left.action, right.action);
+        return symbolRefEql(left.symbol, right.symbol) and
+            parseActionEql(left.action, right.action) and
+            left.extra == right.extra and
+            left.repetition == right.repetition;
     }
     if (T == serialize.SerializedGotoEntry) {
         return symbolRefEql(left.symbol, right.symbol) and left.state == right.state;

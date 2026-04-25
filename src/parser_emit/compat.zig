@@ -148,16 +148,38 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
 
 /// Write the lexer helper macros used by generated `ts_lex` functions.
 pub fn writeLexerMacros(writer: anytype) !void {
+    try writer.writeAll("#ifdef _MSC_VER\n");
+    try writer.writeAll("#define UNUSED __pragma(warning(suppress : 4101))\n");
+    try writer.writeAll("#else\n");
+    try writer.writeAll("#define UNUSED __attribute__((unused))\n");
+    try writer.writeAll("#endif\n");
     try writer.writeAll("#define START_LEXER() \\\n");
     try writer.writeAll("  bool result = false; \\\n");
+    try writer.writeAll("  bool skip = false; \\\n");
+    try writer.writeAll("  UNUSED \\\n");
     try writer.writeAll("  bool eof = false; \\\n");
-    try writer.writeAll("  int32_t lookahead = lexer->lookahead; \\\n");
-    try writer.writeAll("  lexer->result_symbol = 0\n");
+    try writer.writeAll("  int32_t lookahead; \\\n");
+    try writer.writeAll("  lexer->result_symbol = 0; \\\n");
+    try writer.writeAll("  goto start; \\\n");
+    try writer.writeAll("  next_state: \\\n");
+    try writer.writeAll("  lexer->advance(lexer, skip); \\\n");
+    try writer.writeAll("  start: \\\n");
+    try writer.writeAll("  skip = false; \\\n");
+    try writer.writeAll("  lookahead = lexer->lookahead\n");
     try writer.writeAll("#define ADVANCE(state_value) \\\n");
-    try writer.writeAll("  do { lexer->advance(lexer, false); return ts_lex(lexer, state_value); } while (0)\n");
-    try writer.writeAll("#define ADVANCE_MAP(...) ADVANCE(__VA_ARGS__)\n");
+    try writer.writeAll("  do { state = state_value; goto next_state; } while (0)\n");
+    try writer.writeAll("#define ADVANCE_MAP(...) \\\n");
+    try writer.writeAll("  do { \\\n");
+    try writer.writeAll("    static const uint16_t map[] = { __VA_ARGS__ }; \\\n");
+    try writer.writeAll("    for (uint32_t i = 0; i < sizeof(map) / sizeof(map[0]); i += 2) { \\\n");
+    try writer.writeAll("      if (map[i] == lookahead) { \\\n");
+    try writer.writeAll("        state = map[i + 1]; \\\n");
+    try writer.writeAll("        goto next_state; \\\n");
+    try writer.writeAll("      } \\\n");
+    try writer.writeAll("    } \\\n");
+    try writer.writeAll("  } while (0)\n");
     try writer.writeAll("#define SKIP(state_value) \\\n");
-    try writer.writeAll("  do { lexer->advance(lexer, true); return ts_lex(lexer, state_value); } while (0)\n");
+    try writer.writeAll("  do { skip = true; state = state_value; goto next_state; } while (0)\n");
     try writer.writeAll("#define ACCEPT_TOKEN(symbol_value) \\\n");
     try writer.writeAll("  do { result = true; lexer->result_symbol = symbol_value; lexer->mark_end(lexer); } while (0)\n");
     try writer.writeAll("#define END_STATE() return result\n\n");
