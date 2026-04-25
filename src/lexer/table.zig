@@ -12,6 +12,8 @@ pub const LexTransition = struct {
 pub const LexState = struct {
     nfa_states: []const u32,
     completion: ?ConflictCompletion,
+    eof_valid: bool,
+    eof_target: ?usize,
     transitions: []LexTransition,
     has_separator_transitions: bool,
 };
@@ -178,6 +180,19 @@ pub fn buildLexTableForSet(
     grammar: lexer_model.ExpandedLexicalGrammar,
     allowed_tokens: lexer_model.TokenIndexSet,
 ) !LexTable {
+    return buildLexTableForSetWithOptions(allocator, grammar, allowed_tokens, .{});
+}
+
+pub const BuildOptions = struct {
+    eof_valid: bool = false,
+};
+
+pub fn buildLexTableForSetWithOptions(
+    allocator: std.mem.Allocator,
+    grammar: lexer_model.ExpandedLexicalGrammar,
+    allowed_tokens: lexer_model.TokenIndexSet,
+    options: BuildOptions,
+) !LexTable {
     var start_states = std.ArrayListUnmanaged(u32).empty;
     defer start_states.deinit(allocator);
 
@@ -185,7 +200,7 @@ pub fn buildLexTableForSet(
         if (!allowed_tokens.contains(index)) continue;
         try start_states.append(allocator, variable.start_state);
     }
-    if (start_states.items.len == 0) {
+    if (start_states.items.len == 0 and !options.eof_valid) {
         return .{
             .allocator = allocator,
             .grammar = grammar,
@@ -205,7 +220,7 @@ pub fn buildLexTableForSet(
     };
     errdefer builder.deinit();
 
-    const start_state_id = try builder.internState(closure);
+    const start_state_id = try builder.internState(closure, options.eof_valid);
     var table: LexTable = .{
         .allocator = allocator,
         .grammar = grammar,
@@ -268,8 +283,9 @@ const LexTableBuilder = struct {
         self.* = undefined;
     }
 
-    fn internState(self: *LexTableBuilder, nfa_states: []const u32) !usize {
+    fn internState(self: *LexTableBuilder, nfa_states: []const u32, eof_valid: bool) !usize {
         for (self.states.items, 0..) |state, index| {
+            if (state.eof_valid != eof_valid) continue;
             if (std.mem.eql(u32, state.nfa_states, nfa_states)) return index;
         }
 
@@ -280,10 +296,16 @@ const LexTableBuilder = struct {
         try self.states.append(self.allocator, .{
             .nfa_states = owned_states,
             .completion = completion,
+            .eof_valid = eof_valid,
+            .eof_target = null,
             .transitions = &.{},
             .has_separator_transitions = false,
         });
         const state_id = self.states.items.len - 1;
+
+        if (eof_valid) {
+            self.states.items[state_id].eof_target = try self.internState(&.{}, false);
+        }
 
         const transition_collection = try collectTransitionsAlloc(self.allocator, self.grammar, owned_states);
         errdefer {
@@ -300,7 +322,7 @@ const LexTableBuilder = struct {
         for (transition_collection.transitions, 0..) |transition, index| {
             const next_states = try epsilonClosureAlloc(self.allocator, self.grammar, &.{transition.target_state});
             defer self.allocator.free(next_states);
-            const next_state_id = try self.internState(next_states);
+            const next_state_id = try self.internState(next_states, eof_valid and transition.is_separator);
             transitions[index] = .{
                 .chars = transition.chars,
                 .next_state_id = next_state_id,
@@ -552,6 +574,7 @@ fn minimizeLexTable(table: *LexTable) !void {
 
     const group_ids = try table.allocator.alloc(usize, table.states.len);
     defer table.allocator.free(group_ids);
+    @memset(group_ids, 0);
     var changed = true;
 
     while (changed) {
@@ -603,6 +626,9 @@ fn minimizeLexTable(table: *LexTable) !void {
     for (0..new_state_count) |group_id| {
         const rep = representative_by_group[group_id];
         new_states[group_id] = old_states[rep];
+        if (new_states[group_id].eof_target) |target| {
+            new_states[group_id].eof_target = group_ids[target];
+        }
         for (new_states[group_id].transitions) |*transition| {
             transition.next_state_id = group_ids[transition.next_state_id];
         }
@@ -631,6 +657,9 @@ fn sortLexTable(table: *LexTable) !void {
     const new_states = try table.allocator.alloc(LexState, table.states.len);
     for (order, 0..) |old_id, new_id| {
         new_states[new_id] = old_states[old_id];
+        if (new_states[new_id].eof_target) |target| {
+            new_states[new_id].eof_target = remap[target];
+        }
         for (new_states[new_id].transitions) |*transition| {
             transition.next_state_id = remap[transition.next_state_id];
         }
@@ -657,6 +686,7 @@ fn lexStatesEquivalent(table: *const LexTable, left_id: usize, right_id: usize, 
     const right = table.states[right_id];
     if ((left_id == table.start_state_id) != (right_id == table.start_state_id)) return false;
     if (!conflictCompletionEql(left.completion, right.completion)) return false;
+    if (left.eof_valid != right.eof_valid) return false;
     if (left.has_separator_transitions != right.has_separator_transitions) return false;
     if (left.transitions.len != right.transitions.len) return false;
     for (left.transitions, right.transitions) |left_transition, right_transition| {
@@ -665,12 +695,20 @@ fn lexStatesEquivalent(table: *const LexTable, left_id: usize, right_id: usize, 
         if (left_transition.precedence != right_transition.precedence) return false;
         if (!characterSetEql(left_transition.chars, right_transition.chars)) return false;
     }
+    if (left.eof_target == null or right.eof_target == null) return left.eof_target == null and right.eof_target == null;
+    if (group_ids[left.eof_target.?] != group_ids[right.eof_target.?]) return false;
     return true;
 }
 
 fn lexStateLessThan(left: LexState, right: LexState) bool {
     if (!conflictCompletionEql(left.completion, right.completion)) {
         return conflictCompletionLessThan(left.completion, right.completion);
+    }
+    if (left.eof_valid != right.eof_valid) return !left.eof_valid and right.eof_valid;
+    if (left.eof_target != right.eof_target) {
+        if (left.eof_target == null) return true;
+        if (right.eof_target == null) return false;
+        return left.eof_target.? < right.eof_target.?;
     }
     if (left.has_separator_transitions != right.has_separator_transitions) {
         return !left.has_separator_transitions and right.has_separator_transitions;
@@ -820,4 +858,68 @@ test "buildLexTableForSet sorts lexer states deterministically with start state 
         table.states[0].transitions[0].chars,
         table.states[0].transitions[1].chars,
     ));
+}
+
+test "buildLexTableForSetWithOptions builds an EOF successor for empty valid-token sets" {
+    const rules = [_]@import("../ir/rules.zig").Rule{
+        .{ .string = "a" },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "letter_a", .kind = .named, .rule = 0 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try lexer_model.expandExtractedLexicalGrammar(std.testing.allocator, rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var allowed = try lexer_model.TokenIndexSet.initEmpty(std.testing.allocator, expanded.variables.len);
+    defer allowed.deinit(std.testing.allocator);
+
+    var table = try buildLexTableForSetWithOptions(std.testing.allocator, expanded, allowed, .{ .eof_valid = true });
+    defer table.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), table.states.len);
+    const start = table.states[table.start_state_id];
+    try std.testing.expect(start.eof_valid);
+    try std.testing.expect(start.eof_target != null);
+    try std.testing.expect(!table.states[start.eof_target.?].eof_valid);
+    try std.testing.expectEqual(@as(?usize, null), table.states[start.eof_target.?].eof_target);
+}
+
+test "buildLexTableForSetWithOptions propagates EOF validity across separators" {
+    const rules = [_]@import("../ir/rules.zig").Rule{
+        .{ .string = "a" },
+        .{ .pattern = .{ .value = "[ ]+", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "letter_a", .kind = .named, .rule = 0 },
+        },
+        .separators = &.{1},
+    };
+
+    var expanded = try lexer_model.expandExtractedLexicalGrammar(std.testing.allocator, rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var allowed = try lexer_model.TokenIndexSet.initEmpty(std.testing.allocator, expanded.variables.len);
+    defer allowed.deinit(std.testing.allocator);
+    allowed.fill();
+
+    var table = try buildLexTableForSetWithOptions(std.testing.allocator, expanded, allowed, .{ .eof_valid = true });
+    defer table.deinit();
+
+    const start = table.states[table.start_state_id];
+    var separator_target: ?usize = null;
+    for (start.transitions) |transition| {
+        if (transition.is_separator) {
+            separator_target = transition.next_state_id;
+            break;
+        }
+    }
+
+    try std.testing.expect(separator_target != null);
+    try std.testing.expect(table.states[separator_target.?].eof_valid);
+    try std.testing.expect(table.states[separator_target.?].eof_target != null);
 }

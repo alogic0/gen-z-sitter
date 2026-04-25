@@ -127,6 +127,34 @@ pub fn build(b: *std.Build) void {
     const no_external_link_step = b.step("test-link-no-external", "Link and run a generated no-external parser with tree-sitter runtime");
     no_external_link_step.dependOn(&run_no_external_link_tests.step);
 
+    const keyword_link_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunKeywordReservedParser"},
+    });
+
+    const run_keyword_link_tests = b.addRunArtifact(keyword_link_tests);
+    if (b.args) |args| run_keyword_link_tests.addArgs(args);
+    const keyword_link_step = b.step("test-link-keywords", "Link and run a generated keyword/reserved-word parser with tree-sitter runtime");
+    keyword_link_step.dependOn(&run_keyword_link_tests.step);
+
+    const external_scanner_link_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunExternalScannerParser"},
+    });
+
+    const run_external_scanner_link_tests = b.addRunArtifact(external_scanner_link_tests);
+    if (b.args) |args| run_external_scanner_link_tests.addArgs(args);
+    const external_scanner_link_step = b.step("test-link-external-scanner", "Link and run a generated external-scanner parser with tree-sitter runtime");
+    external_scanner_link_step.dependOn(&run_external_scanner_link_tests.step);
+
     const runtime_link_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/runtime_link_test_entry.zig"),

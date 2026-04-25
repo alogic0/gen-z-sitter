@@ -200,6 +200,7 @@ fn serializeLexStateAlloc(
             .{ .terminal = @intCast(completion.variable_index) }
         else
             null,
+        .eof_target = if (state.eof_target) |target| @intCast(target) else null,
         .transitions = transitions,
     };
 }
@@ -413,6 +414,39 @@ test "buildSerializedLexTablesAlloc builds one table per terminal set" {
     try std.testing.expect(lexTableAcceptsTerminal(tables[1], 1));
     try std.testing.expect(lexTableAcceptsTerminal(tables[2], 0));
     try std.testing.expect(lexTableAcceptsTerminal(tables[2], 1));
+}
+
+test "serializeLexTableAlloc preserves EOF targets" {
+    const rules = [_]ir_rules.Rule{
+        .{ .string = "a" },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "letter_a", .kind = .named, .rule = 0 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try lexer_model.expandExtractedLexicalGrammar(std.testing.allocator, rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var allowed = try lexer_model.TokenIndexSet.initEmpty(std.testing.allocator, expanded.variables.len);
+    defer allowed.deinit(std.testing.allocator);
+
+    var table = try lexer_table.buildLexTableForSetWithOptions(
+        std.testing.allocator,
+        expanded,
+        allowed,
+        .{ .eof_valid = true },
+    );
+    defer table.deinit();
+
+    const serialized = try serializeLexTableAlloc(std.testing.allocator, table);
+    defer deinitSerializedLexTable(std.testing.allocator, serialized);
+
+    const start = serialized.states[serialized.start_state_id];
+    try std.testing.expect(start.eof_target != null);
+    try std.testing.expect(start.eof_target.? < serialized.states.len);
 }
 
 fn lexTableAcceptsTerminal(table: SerializedLexTable, terminal_index: u32) bool {

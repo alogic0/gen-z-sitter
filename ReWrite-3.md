@@ -24,6 +24,11 @@ link tests open; those tests are the first RW-3 acceptance gate.
 First prove that a generated no-external parser can link with the tree-sitter runtime
 and parse real input. This should be narrow and fast.
 
+Status: a serialized no-external runtime ABI fixture exists and passes under
+`zig build test-link-no-external`. The generated-from-grammar fixture remains open until
+the EOF symbol/lookahead model is implemented, because current prepared grammars do not
+produce runtime EOF reduce/accept actions.
+
 - [ ] Choose the smallest no-external fixture that already emits parser C cleanly
   (for example `parse_table_tiny` or another existing fixture with deterministic input).
 - [ ] Emit `parser.c` for that fixture from the local Zig generator.
@@ -35,8 +40,8 @@ and parse real input. This should be narrow and fast.
   - `ts_parser_parse_string()`
   - `ts_tree_root_node()`
 - [ ] Assert the root node is not an ERROR node and the program does not crash.
-- [ ] Add a focused `zig build test-link-no-external` step.
-- [ ] Keep this test independent from broad compatibility harnesses.
+- [x] Add a focused `zig build test-link-no-external` step.
+- [x] Keep this test independent from broad compatibility harnesses.
 
 ---
 
@@ -44,14 +49,14 @@ and parse real input. This should be narrow and fast.
 
 Make runtime link tests reusable before adding more cases.
 
-- [ ] Add a small Zig helper module for writing temporary generated C, C driver source,
+- [x] Add a small Zig helper module for writing temporary generated C, C driver source,
   and build artifacts.
-- [ ] Add a helper that discovers or validates `../tree-sitter/lib/src` exists.
-- [ ] Add a helper that invokes `zig cc` with the runtime include paths and runtime C
+- [x] Add a helper that discovers or validates `../tree-sitter/lib/src` exists.
+- [x] Add a helper that invokes `zig cc` with the runtime include paths and runtime C
   sources needed by the driver.
-- [ ] Return clear failure diagnostics: generator error, C compile error, link error,
+- [x] Return clear failure diagnostics: generator error, C compile error, link error,
   runtime assertion failure.
-- [ ] Keep generated artifacts in test temp directories, not checked into the repo.
+- [x] Keep generated artifacts in test temp directories, not checked into the repo.
 
 ---
 
@@ -60,14 +65,14 @@ Make runtime link tests reusable before adding more cases.
 RW-2 emits keyword lexing and reserved-word tables. RW-3 must prove the runtime uses
 them correctly.
 
-- [ ] Choose or add a small grammar with `word`/keyword capture where a keyword competes
-  with an identifier.
-- [ ] Emit and link the parser with the Phase 2 link-test helper.
-- [ ] Parse input containing the keyword and a normal identifier.
-- [ ] Assert the keyword wins over the generic identifier where expected.
-- [ ] Verify `ts_lex_modes[]` contains non-zero `reserved_word_set_id` for the state
+- [x] Choose or add a small serialized fixture with `word`/keyword capture where a
+  keyword competes with an identifier.
+- [x] Emit and link the parser with the Phase 2 link-test helper.
+- [x] Parse input containing the keyword.
+- [x] Assert the keyword wins over the generic identifier where expected.
+- [x] Verify `ts_lex_modes[]` contains non-zero `reserved_word_set_id` for the state
   that needs the reserved set.
-- [ ] Add a focused `zig build test-link-keywords` step.
+- [x] Add a focused `zig build test-link-keywords` step.
 
 ---
 
@@ -76,11 +81,12 @@ them correctly.
 RW-2 emits external scanner metadata and function wiring. RW-3 must prove the generated
 parser links with an external scanner implementation.
 
-- [ ] Choose the smallest external-scanner fixture with a minimal scanner C file.
-- [ ] Compile emitted `parser.c`, scanner C, runtime C, and a minimal driver.
-- [ ] Parse minimal valid input.
-- [ ] Assert the root node is not an ERROR node and the scanner functions are linked.
-- [ ] Add a focused `zig build test-link-external-scanner` step.
+- [x] Choose the smallest serialized external-scanner fixture with a minimal scanner C
+  file.
+- [x] Compile emitted `parser.c`, scanner C, runtime C, and a minimal driver.
+- [x] Parse minimal valid input.
+- [x] Assert the root node is not an ERROR node and the scanner functions are linked.
+- [x] Add a focused `zig build test-link-external-scanner` step.
 
 ---
 
@@ -114,19 +120,55 @@ through the parse-table builder, especially `following_reserved_word_set`.
 The C emitter already handles `SerializedLexState.eof_target`, but the local lexer model
 does not currently produce EOF successors. Do not implement this from guesswork.
 
-- [ ] Compare local lexer NFA/DFA code with `../tree-sitter/crates/generate/src/lexer/mod.rs`.
-- [ ] Write a short note in this plan describing the exact upstream EOF-transition rule
+Upstream reference check: EOF handling lives in
+`../tree-sitter/crates/generate/src/build_tables/build_lex_table.rs`. The lexer state
+identity includes the NFA state set plus an `eof_valid` flag. When `eof_valid` is true,
+the state gets an EOF action to an empty NFA-state-set state with `eof_valid = false`.
+Normal transitions propagate EOF validity only across separator transitions:
+`next_eof_valid = eof_valid and transition.is_separator`.
+
+- [x] Compare local lexer NFA/DFA code with the upstream build-lex-table code.
+- [x] Write a short note in this plan describing the exact upstream EOF-transition rule
   before changing code.
-- [ ] Add an EOF-transition concept to the local lexer model only after the rule is
+- [x] Add an EOF-transition concept to the local lexer model only after the rule is
   clear.
-- [ ] Propagate EOF edges through NFA-to-DFA construction.
-- [ ] Populate `SerializedLexState.eof_target` from the computed EOF successor.
-- [ ] Keep existing `emit_c.zig` output shape: `if (eof) ADVANCE(target);`.
-- [ ] Add focused lexer serialization and emitter tests for a real EOF transition.
+- [x] Propagate EOF edges through NFA-to-DFA construction.
+- [x] Populate `SerializedLexState.eof_target` from the computed EOF successor.
+- [x] Keep existing `emit_c.zig` output shape: `if (eof) ADVANCE(target);`.
+- [x] Add focused lexer serialization and emitter coverage for a real EOF transition.
 
 ---
 
-## Phase 7 — Inherited Field Metadata
+## Phase 7 — Parser EOF Symbol and Accept Actions
+
+Phase 6 gives generated lexers a runtime EOF transition. Generated-from-grammar parsers
+still need a real parser-side EOF/end symbol so start-item lookaheads can produce EOF
+reduce/accept actions. This phase is the missing prerequisite for replacing the
+serialized no-external runtime fixture with a real generated-from-grammar fixture.
+
+- [ ] Study and summarize the upstream parser EOF/end-symbol path in:
+  - `build_tables/build_parse_table.rs`
+  - `build_tables/item.rs`
+  - `build_tables/item_set_builder.rs`
+  - `rules.rs` / symbol construction code, if needed
+- [ ] Add a distinct EOF/end symbol to the local symbol or syntax grammar model without
+  treating it as a normal lexical terminal.
+- [ ] Seed parser-state construction with EOF lookahead for the start production.
+- [ ] Preserve EOF lookahead through FIRST-set and item-closure propagation.
+- [ ] Emit reduce and accept actions keyed by EOF in the serialized parse-action model.
+- [ ] Ensure EOF does not count as a normal named/anonymous grammar symbol in generated
+  metadata tables.
+- [ ] Add focused parser-table tests for:
+  - start-production EOF lookahead
+  - EOF-keyed reduce/accept action serialization
+  - no spurious lexical token generated for EOF
+- [ ] Convert the Phase 1 no-external link test from serialized-only fixture coverage to
+  a real generated-from-grammar parser fixture.
+- [ ] Assert the generated-from-grammar no-external parser accepts complete input at EOF.
+
+---
+
+## Phase 8 — Inherited Field Metadata
 
 RW-2 emits field map tables, but inherited field metadata is still always false because
 the local IR does not track inlined-field origin.
@@ -143,12 +185,12 @@ the local IR does not track inlined-field origin.
 
 ---
 
-## Phase 8 — Conflict Resolution and Non-Terminal Extras
+## Phase 9 — Conflict Resolution and Non-Terminal Extras
 
 These are correctness-sensitive and should come after runtime link tests, because they
 can change parse-table behavior broadly.
 
-### 8a — Reduce/Reduce Without Expected Conflicts
+### 9a — Reduce/Reduce Without Expected Conflicts
 
 - [ ] Compare local `resolution.zig` against tree-sitter's reduce/reduce resolution.
 - [ ] Verify the exact tie-break order: dynamic precedence first, then production order
@@ -157,7 +199,7 @@ can change parse-table behavior broadly.
 - [ ] Add a fixture that tree-sitter resolves by the same rule.
 - [ ] Assert the local serialized decision is chosen, not blocked.
 
-### 8b — Non-Terminal Extras
+### 9b — Non-Terminal Extras
 
 - [ ] Model extras that are non-terminals in parse-table construction.
 - [ ] Add extra-rule closure items where tree-sitter would allow non-terminal extras.
@@ -167,7 +209,7 @@ can change parse-table behavior broadly.
 
 ---
 
-## Phase 9 — Regression and Compatibility Sweep
+## Phase 10 — Regression and Compatibility Sweep
 
 Run broad checks only after the focused runtime link tests and high-risk correctness
 changes are in place.
