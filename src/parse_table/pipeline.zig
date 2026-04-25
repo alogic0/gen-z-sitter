@@ -12,6 +12,7 @@ const process_support = @import("../support/process.zig");
 const state = @import("state.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
+const lexer_serialize = @import("../lexer/serialize.zig");
 const fixtures = @import("../tests/fixtures.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const json_loader = @import("../grammar/json_loader.zig");
@@ -78,6 +79,7 @@ pub const PipelineError =
     flatten_grammar.FlattenGrammarError ||
     build.BuildError ||
     serialize.SerializeError ||
+    lexer_serialize.SerializeError ||
     parser_tables_emit.EmitError ||
     parser_c_emit.EmitError ||
     debug_dump.DebugDumpError ||
@@ -169,11 +171,7 @@ pub fn generateSerializedTableDumpFromPrepared(
     mode: serialize.SerializeMode,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const serialized = try serialize.attachPreparedMetadataAlloc(
-        allocator,
-        try serialize.serializeBuildResult(allocator, result, mode),
-        prepared,
-    );
+    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode);
     return try debug_dump.dumpSerializedTableAlloc(allocator, serialized);
 }
 
@@ -192,11 +190,7 @@ pub fn generateParserTableEmitterDumpFromPreparedWithOptions(
     options: emit_optimize.Options,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const serialized = try serialize.attachPreparedMetadataAlloc(
-        allocator,
-        try serialize.serializeBuildResult(allocator, result, mode),
-        prepared,
-    );
+    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode);
     return try parser_tables_emit.emitSerializedTableAllocWithOptions(allocator, serialized, options);
 }
 
@@ -215,11 +209,7 @@ pub fn generateParserCEmitterDumpFromPreparedWithOptions(
     options: emit_optimize.Options,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const serialized = try serialize.attachPreparedMetadataAlloc(
-        allocator,
-        try serialize.serializeBuildResult(allocator, result, mode),
-        prepared,
-    );
+    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode);
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, options);
 }
 
@@ -241,11 +231,7 @@ pub fn serializeTableFromPreparedWithBuildOptions(
     const result = try buildStatesFromPreparedWithOptions(allocator, prepared, build_options);
     const timer = maybeStartTimer(progress_log);
     if (progress_log) logPipelineStart("serialize_build_result");
-    const serialized = try serialize.attachPreparedMetadataAlloc(
-        allocator,
-        try serialize.serializeBuildResult(allocator, result, mode),
-        prepared,
-    );
+    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode);
     if (progress_log) {
         maybeLogPipelineDone("serialize_build_result", timer);
         logPipelineSummary(
@@ -253,6 +239,27 @@ pub fn serializeTableFromPreparedWithBuildOptions(
             .{ @tagName(mode), serialized.states.len, serialized.blocked },
         );
     }
+    return serialized;
+}
+
+fn serializePreparedBuildResultAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    result: build.BuildResult,
+    mode: serialize.SerializeMode,
+) PipelineError!serialize.SerializedTable {
+    var serialized = try serialize.attachPreparedMetadataAlloc(
+        allocator,
+        try serialize.serializeBuildResult(allocator, result, mode),
+        prepared,
+    );
+    const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesAlloc(
+        allocator,
+        prepared.rules,
+        extracted.lexical,
+        serialized.lex_state_terminal_sets,
+    );
     return serialized;
 }
 
@@ -1025,6 +1032,29 @@ test "buildStatesFromPrepared rejects unresolved conflict grammar in strict seri
         error.UnresolvedDecisions,
         serialize.serializeBuildResult(pipeline_arena.allocator(), result, .strict),
     );
+}
+
+test "serializeTableFromPrepared attaches serialized lex tables" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        arena.allocator(),
+        fixtures.repeatChoiceSeqGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &raw);
+    const serialized = try serializeTableFromPrepared(arena.allocator(), prepared, .strict);
+
+    try std.testing.expect(serialized.lex_tables.len > 0);
+    try std.testing.expectEqual(serialized.lex_state_terminal_sets.len, serialized.lex_tables.len);
+    for (serialized.lex_tables) |lex_table| {
+        try std.testing.expect(lex_table.start_state_id < lex_table.states.len);
+    }
 }
 
 test "generateSerializedTableDumpFromPrepared matches the metadata-rich serialized-table golden fixture" {

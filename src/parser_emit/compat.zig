@@ -143,6 +143,24 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
     try writer.writeAll("#define SMALL_STATE(id) ((id) - LARGE_STATE_COUNT)\n");
     try writer.writeAll("#define STATE(id) id\n");
     try writer.writeAll("#define ACTIONS(id) id\n\n");
+    try writeLexerMacros(writer);
+}
+
+/// Write the lexer helper macros used by generated `ts_lex` functions.
+pub fn writeLexerMacros(writer: anytype) !void {
+    try writer.writeAll("#define START_LEXER() \\\n");
+    try writer.writeAll("  bool result = false; \\\n");
+    try writer.writeAll("  bool eof = false; \\\n");
+    try writer.writeAll("  int32_t lookahead = lexer->lookahead; \\\n");
+    try writer.writeAll("  lexer->result_symbol = 0\n");
+    try writer.writeAll("#define ADVANCE(state_value) \\\n");
+    try writer.writeAll("  do { lexer->advance(lexer, false); return ts_lex(lexer, state_value); } while (0)\n");
+    try writer.writeAll("#define ADVANCE_MAP(...) ADVANCE(__VA_ARGS__)\n");
+    try writer.writeAll("#define SKIP(state_value) \\\n");
+    try writer.writeAll("  do { lexer->advance(lexer, true); return ts_lex(lexer, state_value); } while (0)\n");
+    try writer.writeAll("#define ACCEPT_TOKEN(symbol_value) \\\n");
+    try writer.writeAll("  do { result = true; lexer->result_symbol = symbol_value; lexer->mark_end(lexer); } while (0)\n");
+    try writer.writeAll("#define END_STATE() return result\n\n");
 }
 
 test "current runtime compatibility exposes ABI versions" {
@@ -172,4 +190,6 @@ test "writeContractTypesAndConstants emits runtime ABI version constants only" {
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define MIN_COMPATIBLE_LANGUAGE_VERSION 13") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "TSParseActionEntry") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "struct TSLanguage") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define START_LEXER()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define ACCEPT_TOKEN(symbol_value)") != null);
 }

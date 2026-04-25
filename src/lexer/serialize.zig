@@ -5,11 +5,13 @@ const syntax_ir = @import("../ir/syntax_grammar.zig");
 const ir_rules = @import("../ir/rules.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const json_loader = @import("../grammar/json_loader.zig");
+const lexer_model = @import("model.zig");
+const lexer_table = @import("table.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
 /// Errors produced while serializing the extracted lexical grammar.
-pub const SerializeError = std.mem.Allocator.Error;
+pub const SerializeError = std.mem.Allocator.Error || lexer_model.ExpandError;
 
 /// Serialized form of one lexical rule.
 pub const SerializedLexicalForm = union(enum) {
@@ -49,11 +51,37 @@ pub const SerializedLexMode = struct {
     reserved_word_set_id: u16 = 0,
 };
 
+/// Inclusive codepoint range consumed by the generated lexer.
+pub const SerializedCharacterRange = struct {
+    start: u32,
+    end_inclusive: u32,
+};
+
+/// One serialized lexer transition.
+pub const SerializedLexTransition = struct {
+    ranges: []const SerializedCharacterRange,
+    next_state_id: u32,
+    skip: bool,
+};
+
+/// One serialized lexer state.
+pub const SerializedLexState = struct {
+    accept_symbol: ?syntax_ir.SymbolRef = null,
+    eof_target: ?u32 = null,
+    transitions: []const SerializedLexTransition,
+};
+
+/// Runtime-oriented lexer table for one valid-token set.
+pub const SerializedLexTable = struct {
+    start_state_id: u32,
+    states: []const SerializedLexState,
+};
+
 /// Build parser-state-indexed lexer modes from serialized parse states.
 pub fn buildLexModesAlloc(
     allocator: std.mem.Allocator,
     states: anytype,
-) SerializeError![]const SerializedLexMode {
+) std.mem.Allocator.Error![]const SerializedLexMode {
     const modes = try allocator.alloc(SerializedLexMode, states.len);
     for (states, 0..) |parse_state, index| {
         modes[index] = .{
@@ -61,6 +89,138 @@ pub fn buildLexModesAlloc(
         };
     }
     return modes;
+}
+
+/// Build one serialized lexer table for each assigned parser lex-state terminal set.
+pub fn buildSerializedLexTablesAlloc(
+    allocator: std.mem.Allocator,
+    all_rules: []const ir_rules.Rule,
+    lexical: lexical_ir.LexicalGrammar,
+    terminal_sets: []const []const bool,
+) SerializeError![]const SerializedLexTable {
+    var expanded = try lexer_model.expandExtractedLexicalGrammar(allocator, all_rules, lexical);
+    defer expanded.deinit(allocator);
+
+    const tables = try allocator.alloc(SerializedLexTable, terminal_sets.len);
+    var initialized: usize = 0;
+    errdefer {
+        deinitSerializedLexTables(allocator, tables[0..initialized]);
+        allocator.free(tables);
+    }
+
+    for (terminal_sets, 0..) |terminal_set, index| {
+        var allowed = try tokenIndexSetFromTerminalSet(allocator, expanded.variables.len, terminal_set);
+        defer allowed.deinit(allocator);
+
+        var table = try lexer_table.buildLexTableForSet(allocator, expanded, allowed);
+        defer table.deinit();
+
+        tables[index] = try serializeLexTableAlloc(allocator, table);
+        initialized += 1;
+    }
+
+    return tables;
+}
+
+pub fn deinitSerializedLexTables(
+    allocator: std.mem.Allocator,
+    tables: []const SerializedLexTable,
+) void {
+    for (tables) |table| deinitSerializedLexTable(allocator, table);
+    allocator.free(tables);
+}
+
+pub fn deinitSerializedLexTable(
+    allocator: std.mem.Allocator,
+    table: SerializedLexTable,
+) void {
+    for (table.states) |state| {
+        for (state.transitions) |transition| allocator.free(transition.ranges);
+        allocator.free(state.transitions);
+    }
+    allocator.free(table.states);
+}
+
+fn tokenIndexSetFromTerminalSet(
+    allocator: std.mem.Allocator,
+    variable_count: usize,
+    terminal_set: []const bool,
+) std.mem.Allocator.Error!lexer_model.TokenIndexSet {
+    var allowed = try lexer_model.TokenIndexSet.initEmpty(allocator, variable_count);
+    errdefer allowed.deinit(allocator);
+    for (allowed.values, 0..) |*value, index| {
+        value.* = index < terminal_set.len and terminal_set[index];
+    }
+    return allowed;
+}
+
+fn serializeLexTableAlloc(
+    allocator: std.mem.Allocator,
+    table: lexer_table.LexTable,
+) std.mem.Allocator.Error!SerializedLexTable {
+    const states = try allocator.alloc(SerializedLexState, table.states.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (states[0..initialized]) |state| {
+            for (state.transitions) |transition| allocator.free(transition.ranges);
+            allocator.free(state.transitions);
+        }
+        allocator.free(states);
+    }
+
+    for (table.states, 0..) |state, index| {
+        states[index] = try serializeLexStateAlloc(allocator, state);
+        initialized += 1;
+    }
+
+    return .{
+        .start_state_id = @intCast(table.start_state_id),
+        .states = states,
+    };
+}
+
+fn serializeLexStateAlloc(
+    allocator: std.mem.Allocator,
+    state: lexer_table.LexState,
+) std.mem.Allocator.Error!SerializedLexState {
+    const transitions = try allocator.alloc(SerializedLexTransition, state.transitions.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (transitions[0..initialized]) |transition| allocator.free(transition.ranges);
+        allocator.free(transitions);
+    }
+
+    for (state.transitions, 0..) |transition, index| {
+        transitions[index] = try serializeLexTransitionAlloc(allocator, transition);
+        initialized += 1;
+    }
+
+    return .{
+        .accept_symbol = if (state.completion) |completion|
+            .{ .terminal = @intCast(completion.variable_index) }
+        else
+            null,
+        .transitions = transitions,
+    };
+}
+
+fn serializeLexTransitionAlloc(
+    allocator: std.mem.Allocator,
+    transition: lexer_table.LexTransition,
+) std.mem.Allocator.Error!SerializedLexTransition {
+    const ranges = try allocator.alloc(SerializedCharacterRange, transition.chars.ranges.items.len);
+    for (transition.chars.ranges.items, 0..) |range, index| {
+        std.debug.assert(range.end > range.start);
+        ranges[index] = .{
+            .start = range.start,
+            .end_inclusive = range.end - 1,
+        };
+    }
+    return .{
+        .ranges = ranges,
+        .next_state_id = @intCast(transition.next_state_id),
+        .skip = transition.is_separator,
+    };
 }
 
 /// Serialized lexical grammar plus boundary blockers.
@@ -217,6 +377,52 @@ test "buildLexModesAlloc serializes parse-state lex ids" {
     try std.testing.expectEqual(@as(usize, 2), modes.len);
     try std.testing.expectEqual(SerializedLexMode{ .lex_state = 0 }, modes[0]);
     try std.testing.expectEqual(SerializedLexMode{ .lex_state = 7 }, modes[1]);
+}
+
+test "buildSerializedLexTablesAlloc builds one table per terminal set" {
+    const rules = [_]ir_rules.Rule{
+        .{ .string = "a" },
+        .{ .string = "b" },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "letter_a", .kind = .named, .rule = 0 },
+            .{ .name = "letter_b", .kind = .named, .rule = 1 },
+        },
+        .separators = &.{},
+    };
+    const terminal_sets = [_][]const bool{
+        &.{ true, false },
+        &.{ false, true },
+        &.{ true, true },
+    };
+
+    const tables = try buildSerializedLexTablesAlloc(
+        std.testing.allocator,
+        rules[0..],
+        lexical,
+        terminal_sets[0..],
+    );
+    defer deinitSerializedLexTables(std.testing.allocator, tables);
+
+    try std.testing.expectEqual(@as(usize, 3), tables.len);
+    try std.testing.expect(tables[0].states.len > 0);
+    try std.testing.expect(tables[0].start_state_id < tables[0].states.len);
+    try std.testing.expect(lexTableAcceptsTerminal(tables[0], 0));
+    try std.testing.expect(!lexTableAcceptsTerminal(tables[0], 1));
+    try std.testing.expect(lexTableAcceptsTerminal(tables[1], 1));
+    try std.testing.expect(lexTableAcceptsTerminal(tables[2], 0));
+    try std.testing.expect(lexTableAcceptsTerminal(tables[2], 1));
+}
+
+fn lexTableAcceptsTerminal(table: SerializedLexTable, terminal_index: u32) bool {
+    for (table.states) |state| {
+        if (state.accept_symbol) |symbol| switch (symbol) {
+            .terminal => |index| if (index == terminal_index) return true,
+            else => {},
+        };
+    }
+    return false;
 }
 
 test "serializeExtractedLexicalGrammar keeps token and immediate metadata on lexical rules" {

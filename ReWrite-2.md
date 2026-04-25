@@ -118,20 +118,23 @@ that see the `word_token`.
 Build lex tables before C emission and store a serialized representation. Do not pass
 `PreparedGrammar` into `parser_emit`.
 
-- [ ] Add serialized lexer table structs in `src/lexer/serialize.zig`, for example:
+- [x] Add serialized lexer table structs in `src/lexer/serialize.zig`, for example:
   - `SerializedLexTable { states, start_state_id }`
   - `SerializedLexState { accept_symbol, eof_target, transitions }`
   - `SerializedLexTransition { ranges, next_state_id, skip }`
   - `SerializedCharacterRange { start, end_inclusive }`
-- [ ] Build one lex table per serialized lex-state terminal set, ordered by
+- [x] Build one lex table per serialized lex-state terminal set, ordered by
   `lex_state_id`.
-- [ ] Convert `LexState.completion.variable_index` into the final runtime symbol ID during
-  serialization.
+- [x] Convert `LexState.completion.variable_index` into serialized terminal symbol refs;
+  final runtime symbol IDs are still resolved by the C emitter.
 - [ ] Preserve EOF transitions if the local lexer model gains them. If it does not yet
   model EOF-specific transitions, document the limitation and keep a focused blocker.
-- [ ] Add deinit helpers for serialized lex tables because they contain nested owned
+- [x] Add deinit helpers for serialized lex tables because they contain nested owned
   arrays.
-- [ ] Thread serialized lex tables through `optimize.prepareSerializedTableAlloc()`.
+- [x] Thread serialized lex tables through `optimize.prepareSerializedTableAlloc()`.
+
+Note: the current local lexer model has no EOF-specific transition field, so serialized
+`eof_target` remains null until that model exists.
 
 ---
 
@@ -141,7 +144,7 @@ Implement tree-sitter's `render.rs::add_lex_function` and `add_lex_state` shape 
 
 ### 4a — New Emitter Module
 
-- [ ] Create `src/lexer/emit_c.zig`.
+- [x] Create `src/lexer/emit_c.zig`.
 - [ ] Public entry point:
 
 ```zig
@@ -152,7 +155,7 @@ pub fn emitLexFunction(
 ) !void
 ```
 
-- [ ] Keep generated C self-contained. The macros `START_LEXER`, `ADVANCE`,
+- [x] Keep generated C self-contained. The macros `START_LEXER`, `ADVANCE`,
   `ADVANCE_MAP`, `SKIP`, `ACCEPT_TOKEN`, and `END_STATE` are emitted by
   `parser_emit/compat.zig` from local Zig strings, matching the runtime ABI behavior.
 
@@ -173,22 +176,22 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
 }
 ```
 
-- [ ] Emit one `case` per serialized lex state ID.
-- [ ] Emit `ACCEPT_TOKEN(symbol)` before transitions when the state has an accept action,
+- [x] Emit one `case` per serialized lex state ID.
+- [x] Emit `ACCEPT_TOKEN(symbol)` before transitions when the state has an accept action,
   matching tree-sitter.
-- [ ] Emit EOF transition handling before normal transitions when present:
+- [x] Emit EOF transition handling before normal transitions when present:
   `if (eof) ADVANCE(target);`
-- [ ] Emit `END_STATE();` at the end of every state.
+- [x] Emit `END_STATE();` at the end of every state.
 
 ### 4c — Transition Conditions
 
-- [ ] Render single codepoints as `lookahead == X`.
-- [ ] Render adjacent two-character ranges as two equality checks, matching tree-sitter's
+- [x] Render single codepoints as `lookahead == X`.
+- [x] Render adjacent two-character ranges as two equality checks, matching tree-sitter's
   readability optimization.
-- [ ] Render longer ranges as `start <= lookahead && lookahead <= end`.
-- [ ] Handle ranges containing `0` with `!eof` guards, matching tree-sitter's
+- [x] Render longer ranges as `start <= lookahead && lookahead <= end`.
+- [x] Handle ranges containing `0` with `!eof` guards, matching tree-sitter's
   `add_character_range_conditions`.
-- [ ] Implement `SKIP(next)` for separator transitions and `ADVANCE(next)` for normal
+- [x] Implement `SKIP(next)` for separator transitions and `ADVANCE(next)` for normal
   transitions.
 - [ ] Add `ADVANCE_MAP` only after the simple transition path works. Tree-sitter uses it
   when the leading simple transition range count is at least 8.

@@ -167,6 +167,7 @@ pub const SerializedTable = struct {
     field_map: SerializedFieldMap = .{},
     lex_modes: []const lexer_serialize.SerializedLexMode = &.{},
     lex_state_terminal_sets: []const []const bool = &.{},
+    lex_tables: []const lexer_serialize.SerializedLexTable = &.{},
     primary_state_ids: []const state.StateId = &.{},
     word_token: ?syntax_ir.SymbolRef = null,
 

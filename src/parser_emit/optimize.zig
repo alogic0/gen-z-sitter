@@ -70,6 +70,7 @@ pub fn compactSerializedTableAlloc(
         .field_map = serialized.field_map,
         .lex_modes = lex_modes,
         .lex_state_terminal_sets = serialized.lex_state_terminal_sets,
+        .lex_tables = serialized.lex_tables,
         .primary_state_ids = primary_state_ids,
         .word_token = serialized.word_token,
     };
