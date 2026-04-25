@@ -95,19 +95,26 @@ RW-2 serializes reserved word sets and has a conservative serialization-side
 `reserved_word_set_id` assignment. The remaining gap is tree-sitter-style propagation
 through the parse-table builder, especially `following_reserved_word_set`.
 
-- [ ] Study and summarize the relevant upstream logic in:
+Upstream reference check: reserved-word context is tracked on item-set entries as
+`following_reserved_word_set`. When closure/goto combines entries, tree-sitter merges
+the reserved-word-set identity by keeping the largest set ID. Parse states receive a
+reserved-word set when the next symbol is the grammar `word_token` with a direct
+reserved context, or when a completed item has `word_token` in its lookahead and carries
+a propagated following reserved-word set.
+
+- [x] Study and summarize the relevant upstream logic in:
   - `build_tables/item.rs`
   - `build_tables/item_set_builder.rs`
   - `build_tables/build_parse_table.rs`
-- [ ] Add reserved-word-set identity to the local parse item / item-set data model.
-- [ ] When closure propagates lookaheads, also propagate the following reserved-word
+- [x] Add reserved-word-set identity to the local parse item / item-set data model.
+- [x] When closure propagates lookaheads, also propagate the following reserved-word
   set ID, matching tree-sitter's max/set merge behavior.
-- [ ] During parse-state construction, assign the state reserved-word set when the
+- [x] During parse-state construction, assign the state reserved-word set when the
   state sees `word_token` as the next symbol or lookahead.
-- [ ] Preserve that ID through lex-state assignment and state minimization.
+- [x] Preserve that ID through lex-state assignment and state minimization.
 - [ ] Remove or simplify the temporary serialization-side derivation once builder-level
   tracking is authoritative.
-- [ ] Add focused tests for:
+- [x] Add focused tests for:
   - direct `word_token` next-step context
   - propagated lookahead context
   - state minimization preserving non-zero reserved-word set IDs

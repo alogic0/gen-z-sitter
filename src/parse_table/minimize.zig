@@ -124,6 +124,7 @@ pub fn minimizeAlloc(
             .id = s.id,
             .core_id = s.core_id,
             .lex_state_id = s.lex_state_id,
+            .reserved_word_set_id = s.reserved_word_set_id,
             .items = s.items,
             .transitions = new_transitions,
             .conflicts = s.conflicts,
@@ -215,6 +216,12 @@ fn buildSig(
     };
 
     var entries = std.array_list.Managed(Entry).init(alloc);
+    try entries.append(.{
+        .sym_tag = 255,
+        .sym_idx = s.reserved_word_set_id,
+        .kind = 255,
+        .value = s.reserved_word_set_id,
+    });
 
     for (resolved.groupsForState(s.id)) |group| {
         const sym_tag: u8 = switch (group.symbol) {
@@ -471,4 +478,60 @@ test "minimizeAlloc keeps distinct states separate" {
 
     try std.testing.expectEqual(@as(usize, 2), result.states.len);
     try std.testing.expectEqual(@as(usize, 0), result.merged_count);
+}
+
+test "minimizeAlloc keeps states with different reserved-word sets separate" {
+    const allocator = std.testing.allocator;
+
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 0,
+            .reserved_word_set_id = 1,
+            .items = &.{},
+            .transitions = &.{},
+        },
+        .{
+            .id = 1,
+            .reserved_word_set_id = 2,
+            .items = &.{},
+            .transitions = &.{},
+        },
+    };
+
+    const resolved_actions = resolution.ResolvedActionTable{
+        .states = &[_]resolution.ResolvedStateActions{
+            .{
+                .state_id = 0,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &.{},
+                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                    },
+                },
+            },
+            .{
+                .state_id = 1,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &.{},
+                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                    },
+                },
+            },
+        },
+    };
+
+    const result = try minimizeAlloc(allocator, parse_states[0..], resolved_actions);
+    defer {
+        for (result.states) |s| allocator.free(s.transitions);
+        allocator.free(result.states);
+        allocator.free(result.resolved_actions.states);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), result.states.len);
+    try std.testing.expectEqual(@as(usize, 0), result.merged_count);
+    try std.testing.expectEqual(@as(u16, 1), result.states[0].reserved_word_set_id);
+    try std.testing.expectEqual(@as(u16, 2), result.states[1].reserved_word_set_id);
 }

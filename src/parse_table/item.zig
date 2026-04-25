@@ -32,6 +32,7 @@ pub const ParseItem = struct {
 pub const ParseItemSetEntry = struct {
     item: ParseItem,
     lookaheads: first.SymbolSet,
+    following_reserved_word_set_id: u16 = 0,
 
     pub fn initEmpty(
         allocator: std.mem.Allocator,
@@ -71,11 +72,16 @@ pub const ParseItemSetEntry = struct {
     }
 
     pub fn eql(a: ParseItemSetEntry, b: ParseItemSetEntry) bool {
-        return ParseItem.eql(a.item, b.item) and first.SymbolSet.eql(a.lookaheads, b.lookaheads);
+        return ParseItem.eql(a.item, b.item) and
+            first.SymbolSet.eql(a.lookaheads, b.lookaheads) and
+            a.following_reserved_word_set_id == b.following_reserved_word_set_id;
     }
 
     pub fn lessThan(_: void, a: ParseItemSetEntry, b: ParseItemSetEntry) bool {
         if (!ParseItem.eql(a.item, b.item)) return ParseItem.lessThan({}, a.item, b.item);
+        if (a.following_reserved_word_set_id != b.following_reserved_word_set_id) {
+            return a.following_reserved_word_set_id < b.following_reserved_word_set_id;
+        }
         return symbolSetLessThan(a.lookaheads, b.lookaheads);
     }
 
@@ -111,6 +117,9 @@ pub const ParseItemSetEntry = struct {
             try writer.writeAll("epsilon");
         }
         try writer.writeByte(']');
+        if (self.following_reserved_word_set_id != 0) {
+            try writer.print(" reserved:{d}", .{self.following_reserved_word_set_id});
+        }
     }
 };
 

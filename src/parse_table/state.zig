@@ -25,6 +25,7 @@ pub const ParseState = struct {
     id: StateId,
     core_id: u32 = 0,
     lex_state_id: LexStateId = 0,
+    reserved_word_set_id: u16 = 0,
     items: []const item.ParseItemSetEntry,
     transitions: []const Transition,
     conflicts: []const Conflict = &.{},

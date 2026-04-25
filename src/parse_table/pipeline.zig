@@ -125,7 +125,10 @@ pub fn buildStatesFromPreparedWithOptions(
 
     timer = maybeStartTimer(progress_log);
     if (progress_log) logPipelineStart("build_states");
-    const result = try build.buildStatesWithOptions(allocator, flattened, build_options);
+    var effective_build_options = build_options;
+    effective_build_options.reserved_word_context_names = try reservedWordContextNamesAlloc(allocator, prepared.reserved_word_sets);
+    defer allocator.free(effective_build_options.reserved_word_context_names);
+    const result = try build.buildStatesWithOptions(allocator, flattened, effective_build_options);
     if (progress_log) {
         maybeLogPipelineDone("build_states", timer);
         logPipelineSummary(
@@ -134,6 +137,17 @@ pub fn buildStatesFromPreparedWithOptions(
         );
     }
     return result;
+}
+
+fn reservedWordContextNamesAlloc(
+    allocator: std.mem.Allocator,
+    reserved_word_sets: []const grammar_ir.ReservedWordSet,
+) std.mem.Allocator.Error![]const []const u8 {
+    const names = try allocator.alloc([]const u8, reserved_word_sets.len);
+    for (reserved_word_sets, 0..) |reserved_set, index| {
+        names[index] = reserved_set.context_name;
+    }
+    return names;
 }
 
 pub fn generateStateActionDumpFromPrepared(

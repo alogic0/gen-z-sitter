@@ -224,6 +224,7 @@ const ParseItemSliceContext = struct {
         for (values) |value| {
             hasher.update(std.mem.asBytes(&value.item.production_id));
             hasher.update(std.mem.asBytes(&value.item.step_index));
+            hasher.update(std.mem.asBytes(&value.following_reserved_word_set_id));
             hasher.update(std.mem.sliceAsBytes(value.lookaheads.terminals));
             hasher.update(std.mem.sliceAsBytes(value.lookaheads.externals));
             hasher.update(std.mem.asBytes(&value.lookaheads.includes_end));
@@ -345,12 +346,17 @@ const SuccessorGroups = struct {
                     .step_index = parse_item.step_index + 1,
                 },
                 .lookaheads = try cloneSymbolSet(self.allocator, entry.lookaheads),
+                .following_reserved_word_set_id = entry.following_reserved_word_set_id,
             };
 
             const group = &self.groups.items[group_index];
             const item_index = try group.item_indexes.getOrPut(successor_entry.item);
             if (item_index.found_existing) {
                 _ = mergeSymbolSetLookaheads(&group.items.items[item_index.value_ptr.*].lookaheads, successor_entry.lookaheads);
+                group.items.items[item_index.value_ptr.*].following_reserved_word_set_id = @max(
+                    group.items.items[item_index.value_ptr.*].following_reserved_word_set_id,
+                    successor_entry.following_reserved_word_set_id,
+                );
                 freeSymbolSet(self.allocator, successor_entry.lookaheads);
             } else {
                 item_index.value_ptr.* = group.items.items.len;
@@ -368,6 +374,8 @@ const ClosureExpansionCacheEntry = struct {
     non_terminal: u32,
     closure_lookahead_mode: ClosureLookaheadMode,
     context_follow: first.SymbolSet,
+    following_reserved_word_set_id: u16 = 0,
+    production_end_reserved_word_set_id: u16 = 0,
     generated_items: []const item.ParseItemSetEntry,
 };
 
@@ -460,6 +468,8 @@ const ClosureResultCache = struct {
 const ClosureFollowInfo = struct {
     direct_suffix_follow: first.SymbolSet,
     nullable_ancestor_suffix_follow: first.SymbolSet,
+    direct_suffix_reserved_word_set_id: u16 = 0,
+    nullable_ancestor_reserved_word_set_id: u16 = 0,
 
     fn needsProductionEndFollow(self: @This()) bool {
         return self.nullable_ancestor_suffix_follow.includes_epsilon;
@@ -485,11 +495,15 @@ const ParseItemSetBuilder = struct {
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
     additions_per_non_terminal: [][]const TransitiveClosureAddition,
+    reserved_word_context_names: []const []const u8,
+    word_token: ?syntax_ir.SymbolRef,
 
     fn init(
         allocator: std.mem.Allocator,
         productions: []const ProductionInfo,
         first_sets: first.FirstSets,
+        reserved_word_context_names: []const []const u8,
+        word_token: ?syntax_ir.SymbolRef,
     ) !@This() {
         const variable_count = variableCountFromProductions(productions);
         const additions_per_non_terminal = try allocator.alloc([]const TransitiveClosureAddition, variable_count);
@@ -500,6 +514,7 @@ const ParseItemSetBuilder = struct {
                 allocator,
                 productions,
                 first_sets,
+                reserved_word_context_names,
                 @intCast(non_terminal),
             );
         }
@@ -509,6 +524,8 @@ const ParseItemSetBuilder = struct {
             .productions = productions,
             .first_sets = first_sets,
             .additions_per_non_terminal = additions_per_non_terminal,
+            .reserved_word_context_names = reserved_word_context_names,
+            .word_token = word_token,
         };
     }
 
@@ -686,15 +703,24 @@ fn closureContextProductionEndFollowSet(
 const ClosureContext = struct {
     following_tokens: first.SymbolSet,
     production_end_follow: first.SymbolSet,
+    following_reserved_word_set_id: u16 = 0,
+    production_end_reserved_word_set_id: u16 = 0,
 
     fn init(
         allocator: std.mem.Allocator,
         suffix_first: first.SymbolSet,
+        suffix_reserved_word_set_id: u16,
         inherited_lookahead: ?syntax_ir.SymbolRef,
+        inherited_reserved_word_set_id: u16,
     ) !@This() {
         return .{
             .following_tokens = try closureContextFollowSet(allocator, suffix_first, inherited_lookahead),
             .production_end_follow = try closureContextProductionEndFollowSet(allocator, suffix_first, inherited_lookahead),
+            .following_reserved_word_set_id = if (suffix_first.includes_epsilon)
+                @max(suffix_reserved_word_set_id, inherited_reserved_word_set_id)
+            else
+                suffix_reserved_word_set_id,
+            .production_end_reserved_word_set_id = inherited_reserved_word_set_id,
         };
     }
 
@@ -721,11 +747,15 @@ fn findClosureExpansionCache(
     non_terminal: u32,
     closure_lookahead_mode: ClosureLookaheadMode,
     context_follow: first.SymbolSet,
+    following_reserved_word_set_id: u16,
+    production_end_reserved_word_set_id: u16,
 ) ?[]const item.ParseItemSetEntry {
     for (entries) |entry| {
         if (entry.non_terminal != non_terminal) continue;
         if (entry.closure_lookahead_mode != closure_lookahead_mode) continue;
         if (!first.SymbolSet.eql(entry.context_follow, context_follow)) continue;
+        if (entry.following_reserved_word_set_id != following_reserved_word_set_id) continue;
+        if (entry.production_end_reserved_word_set_id != production_end_reserved_word_set_id) continue;
         return entry.generated_items;
     }
     return null;
@@ -823,6 +853,8 @@ const FollowWorkEntry = struct {
     non_terminal: u32,
     direct_suffix_follow: first.SymbolSet,
     nullable_ancestor_suffix_follow: first.SymbolSet,
+    direct_suffix_reserved_word_set_id: u16 = 0,
+    nullable_ancestor_reserved_word_set_id: u16 = 0,
 };
 
 fn findFollowInfoIndex(items: []const ?ClosureFollowInfo, non_terminal: u32) ?usize {
@@ -839,6 +871,8 @@ fn mergeFollowInfo(
         target.* = .{
             .direct_suffix_follow = try cloneSymbolSet(allocator, incoming.direct_suffix_follow),
             .nullable_ancestor_suffix_follow = try cloneSymbolSet(allocator, incoming.nullable_ancestor_suffix_follow),
+            .direct_suffix_reserved_word_set_id = incoming.direct_suffix_reserved_word_set_id,
+            .nullable_ancestor_reserved_word_set_id = incoming.nullable_ancestor_reserved_word_set_id,
         };
         return true;
     }
@@ -846,6 +880,14 @@ fn mergeFollowInfo(
     var changed = false;
     changed = mergeSymbolSetLookaheads(&target.*.?.direct_suffix_follow, incoming.direct_suffix_follow) or changed;
     changed = mergeSymbolSetLookaheads(&target.*.?.nullable_ancestor_suffix_follow, incoming.nullable_ancestor_suffix_follow) or changed;
+    if (incoming.direct_suffix_reserved_word_set_id > target.*.?.direct_suffix_reserved_word_set_id) {
+        target.*.?.direct_suffix_reserved_word_set_id = incoming.direct_suffix_reserved_word_set_id;
+        changed = true;
+    }
+    if (incoming.nullable_ancestor_reserved_word_set_id > target.*.?.nullable_ancestor_reserved_word_set_id) {
+        target.*.?.nullable_ancestor_reserved_word_set_id = incoming.nullable_ancestor_reserved_word_set_id;
+        changed = true;
+    }
     if (incoming.nullable_ancestor_suffix_follow.includes_epsilon and !target.*.?.nullable_ancestor_suffix_follow.includes_epsilon) {
         target.*.?.nullable_ancestor_suffix_follow.includes_epsilon = true;
         changed = true;
@@ -857,6 +899,7 @@ fn computeTransitiveClosureAdditionsAlloc(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
+    reserved_word_context_names: []const []const u8,
     root_non_terminal: u32,
 ) ![]const TransitiveClosureAddition {
     const variable_count = variableCountFromProductions(productions);
@@ -884,11 +927,13 @@ fn computeTransitiveClosureAdditionsAlloc(
     try stack.append(.{
         .non_terminal = root_non_terminal,
         .direct_suffix_follow = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len),
+        .direct_suffix_reserved_word_set_id = 0,
         .nullable_ancestor_suffix_follow = blk: {
             var set = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len);
             set.includes_epsilon = true;
             break :blk set;
         },
+        .nullable_ancestor_reserved_word_set_id = 0,
     });
 
     while (stack.items.len > 0) {
@@ -910,14 +955,26 @@ fn computeTransitiveClosureAdditionsAlloc(
                         initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len)
                     else
                         first_sets.firstOfSequence(allocator, remainder);
+                    const direct_suffix_reserved_word_set_id = if (remainder.len == 0)
+                        0
+                    else
+                        reservedWordSetIdForStep(remainder[0], reserved_word_context_names);
                     var nullable_ancestor_suffix_follow = try if (remainder.len == 0)
                         cloneSymbolSet(allocator, infos[entry.non_terminal].?.direct_suffix_follow)
                     else
                         initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len);
+                    var nullable_ancestor_reserved_word_set_id: u16 = if (remainder.len == 0)
+                        infos[entry.non_terminal].?.direct_suffix_reserved_word_set_id
+                    else
+                        0;
                     if (remainder.len == 0) {
                         _ = mergeSymbolSetLookaheads(
                             &nullable_ancestor_suffix_follow,
                             infos[entry.non_terminal].?.nullable_ancestor_suffix_follow,
+                        );
+                        nullable_ancestor_reserved_word_set_id = @max(
+                            nullable_ancestor_reserved_word_set_id,
+                            infos[entry.non_terminal].?.nullable_ancestor_reserved_word_set_id,
                         );
                         if (infos[entry.non_terminal].?.propagatesInheritedContext()) {
                             nullable_ancestor_suffix_follow.includes_epsilon = true;
@@ -932,11 +989,17 @@ fn computeTransitiveClosureAdditionsAlloc(
                             &nullable_ancestor_suffix_follow,
                             infos[entry.non_terminal].?.nullable_ancestor_suffix_follow,
                         );
+                        nullable_ancestor_reserved_word_set_id = @max(
+                            infos[entry.non_terminal].?.direct_suffix_reserved_word_set_id,
+                            infos[entry.non_terminal].?.nullable_ancestor_reserved_word_set_id,
+                        );
                     }
                     try stack.append(.{
                         .non_terminal = next_non_terminal,
                         .direct_suffix_follow = direct_suffix_follow,
                         .nullable_ancestor_suffix_follow = nullable_ancestor_suffix_follow,
+                        .direct_suffix_reserved_word_set_id = direct_suffix_reserved_word_set_id,
+                        .nullable_ancestor_reserved_word_set_id = nullable_ancestor_reserved_word_set_id,
                     });
                 },
                 else => {},
@@ -957,6 +1020,8 @@ fn computeTransitiveClosureAdditionsAlloc(
                 .info = .{
                     .direct_suffix_follow = try cloneSymbolSet(allocator, info.direct_suffix_follow),
                     .nullable_ancestor_suffix_follow = try cloneSymbolSet(allocator, info.nullable_ancestor_suffix_follow),
+                    .direct_suffix_reserved_word_set_id = info.direct_suffix_reserved_word_set_id,
+                    .nullable_ancestor_reserved_word_set_id = info.nullable_ancestor_reserved_word_set_id,
                 },
             });
         }
@@ -985,8 +1050,11 @@ fn buildClosureExpansionItemsAlloc(
             addition.production_id,
             addition.info.direct_suffix_follow,
             addition.info.nullable_ancestor_suffix_follow,
+            addition.info.direct_suffix_reserved_word_set_id,
+            addition.info.nullable_ancestor_reserved_word_set_id,
             context,
             item_set_builder.first_sets,
+            item_set_builder.word_token,
             options,
         );
     }
@@ -1001,8 +1069,11 @@ fn appendGeneratedItems(
     production_id: item.ProductionId,
     direct_suffix_follow: first.SymbolSet,
     nullable_ancestor_suffix_follow: first.SymbolSet,
+    direct_suffix_reserved_word_set_id: u16,
+    nullable_ancestor_reserved_word_set_id: u16,
     context: ClosureContext,
     first_sets: first.FirstSets,
+    word_token: ?syntax_ir.SymbolRef,
     options: BuildOptions,
 ) !void {
     var effective_suffix_follow = try cloneSymbolSet(allocator, direct_suffix_follow);
@@ -1071,6 +1142,23 @@ fn appendGeneratedItems(
         }
     }
 
+    if (word_token) |token| {
+        if (item.containsLookahead(generated_entry.lookaheads, token)) {
+            if (item.containsLookahead(effective_suffix_follow, token)) {
+                generated_entry.following_reserved_word_set_id = @max(
+                    generated_entry.following_reserved_word_set_id,
+                    @max(direct_suffix_reserved_word_set_id, nullable_ancestor_reserved_word_set_id),
+                );
+            }
+            if (nullable_ancestor_suffix_follow.includes_epsilon and item.containsLookahead(context.production_end_follow, token)) {
+                generated_entry.following_reserved_word_set_id = @max(
+                    generated_entry.following_reserved_word_set_id,
+                    context.production_end_reserved_word_set_id,
+                );
+            }
+        }
+    }
+
     if (!has_any_signal) {
         freeSymbolSet(allocator, generated_entry.lookaheads);
         return;
@@ -1116,6 +1204,7 @@ pub const BuildOptions = struct {
     closure_pressure_mode: ClosurePressureMode = .none,
     closure_pressure_thresholds: ClosurePressureThresholds = .{},
     coarse_transitions: []const CoarseTransitionSpec = &.{},
+    reserved_word_context_names: []const []const u8 = &.{},
     minimize_states: bool = false,
 };
 
@@ -1126,6 +1215,63 @@ fn shouldUseCoarseTransition(options: BuildOptions, source_state_id: state.State
         return true;
     }
     return false;
+}
+
+fn collectReservedWordContextNamesAlloc(
+    allocator: std.mem.Allocator,
+    grammar: syntax_ir.SyntaxGrammar,
+) std.mem.Allocator.Error![]const []const u8 {
+    var names = std.array_list.Managed([]const u8).init(allocator);
+    defer names.deinit();
+
+    for (grammar.variables) |variable| {
+        for (variable.productions) |production| {
+            for (production.steps) |step| {
+                const name = step.reserved_context_name orelse continue;
+                if (reservedContextIndex(names.items, name) == null) {
+                    try names.append(name);
+                }
+            }
+        }
+    }
+
+    return try names.toOwnedSlice();
+}
+
+fn reservedContextIndex(names: []const []const u8, target: []const u8) ?usize {
+    for (names, 0..) |name, index| {
+        if (std.mem.eql(u8, name, target)) return index;
+    }
+    return null;
+}
+
+fn reservedWordSetIdForStep(step: syntax_ir.ProductionStep, names: []const []const u8) u16 {
+    const context_name = step.reserved_context_name orelse return 0;
+    const index = reservedContextIndex(names, context_name) orelse return 0;
+    return @intCast(@min(index + 1, std.math.maxInt(u16)));
+}
+
+fn reservedWordSetIdForParseState(
+    parse_state: state.ParseState,
+    productions: []const ProductionInfo,
+    word_token: ?syntax_ir.SymbolRef,
+    reserved_word_context_names: []const []const u8,
+) u16 {
+    const token = word_token orelse return 0;
+    var result: u16 = 0;
+    for (parse_state.items) |entry| {
+        if (entry.item.production_id >= productions.len) continue;
+        const production = productions[entry.item.production_id];
+        if (entry.item.step_index < production.steps.len) {
+            const step = production.steps[entry.item.step_index];
+            if (symbolRefEql(step.symbol, token)) {
+                result = @max(result, reservedWordSetIdForStep(step, reserved_word_context_names));
+            }
+        } else if (item.containsLookahead(entry.lookaheads, token)) {
+            result = @max(result, entry.following_reserved_word_set_id);
+        }
+    }
+    return result;
 }
 
 pub const ProductionInfo = struct {
@@ -1289,7 +1435,14 @@ pub fn buildStatesWithOptions(
         logBuildSummary("collect_productions summary productions={d}", .{productions.len});
     }
 
-    var item_set_builder = try ParseItemSetBuilder.init(allocator, productions, first_sets);
+    const uses_option_reserved_contexts = options.reserved_word_context_names.len != 0;
+    const reserved_word_context_names = if (uses_option_reserved_contexts)
+        options.reserved_word_context_names
+    else
+        try collectReservedWordContextNamesAlloc(allocator, grammar);
+    defer if (!uses_option_reserved_contexts) allocator.free(reserved_word_context_names);
+
+    var item_set_builder = try ParseItemSetBuilder.init(allocator, productions, first_sets, reserved_word_context_names, grammar.word_token);
     defer item_set_builder.deinit();
 
     timer = maybeStartTimer(progress_log);
@@ -1737,6 +1890,12 @@ const StateConstructionEngine = struct {
 
         const mutable_states = self.state_registry.items();
         mutable_states[state_index].transitions = transitions;
+        mutable_states[state_index].reserved_word_set_id = reservedWordSetIdForParseState(
+            mutable_states[state_index],
+            self.productions,
+            self.item_set_builder.word_token,
+            self.item_set_builder.reserved_word_context_names,
+        );
 
         const state_actions = try actions.buildActionsForState(
             self.allocator,
@@ -2109,7 +2268,17 @@ const ClosureRun = struct {
                 }
                 const suffix = production.steps[parse_item.step_index + 1 ..];
                 const suffix_first = try self.item_set_builder.first_sets.firstOfSequence(self.allocator, suffix);
-                const context = try ClosureContext.init(self.allocator, suffix_first, inherited_lookahead);
+                const suffix_reserved_word_set_id = if (suffix.len == 0)
+                    0
+                else
+                    reservedWordSetIdForStep(suffix[0], self.item_set_builder.reserved_word_context_names);
+                const context = try ClosureContext.init(
+                    self.allocator,
+                    suffix_first,
+                    suffix_reserved_word_set_id,
+                    inherited_lookahead,
+                    parse_entry.following_reserved_word_set_id,
+                );
                 defer context.deinit(self.allocator);
                 const generated_items = try self.lookupGeneratedItems(
                     stats,
@@ -2220,6 +2389,8 @@ const ClosureRun = struct {
             non_terminal,
             self.effective_closure_lookahead_mode,
             context.following_tokens,
+            context.following_reserved_word_set_id,
+            context.production_end_reserved_word_set_id,
         )) |cached| {
             if (self.trace_current_closure and (cursor < 10 or (cursor + 1) % 25 == 0)) {
                 std.debug.print(
@@ -2255,6 +2426,8 @@ const ClosureRun = struct {
             .non_terminal = non_terminal,
             .closure_lookahead_mode = self.effective_closure_lookahead_mode,
             .context_follow = try cloneSymbolSet(self.allocator, context.following_tokens),
+            .following_reserved_word_set_id = context.following_reserved_word_set_id,
+            .production_end_reserved_word_set_id = context.production_end_reserved_word_set_id,
             .generated_items = generated,
         });
         if (self.progress_log and non_terminal < stats.unique_lookaheads.len) {
@@ -2413,7 +2586,7 @@ test "ParseItemSetBuilder precomputes transitive closure additions with propagat
 
     const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
     const productions = try collectProductions(arena.allocator(), grammar);
-    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null);
     defer item_set_builder.deinit();
 
     const additions = item_set_builder.additionsForNonTerminal(1);
@@ -2503,7 +2676,7 @@ test "ParseItemSetBuilder distinguishes direct suffix follow from nullable ances
 
     const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
     const productions = try collectProductions(arena.allocator(), grammar);
-    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null);
     defer item_set_builder.deinit();
 
     const additions = item_set_builder.additionsForNonTerminal(1);
@@ -2582,7 +2755,7 @@ test "closure uses precomputed transitive additions to expand leading recursive 
 
     const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
     const productions = try collectProductions(arena.allocator(), grammar);
-    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null);
     defer item_set_builder.deinit();
 
     const seed = [_]item.ParseItemSetEntry{
@@ -2650,7 +2823,7 @@ test "buildClosureExpansionItemsAlloc preserves inherited and propagated follow 
 
     const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
     const productions = try collectProductions(arena.allocator(), grammar);
-    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null);
     defer item_set_builder.deinit();
 
     const generated = try buildClosureExpansionItemsAlloc(arena.allocator(), item_set_builder, 1, blk: {
@@ -2664,6 +2837,8 @@ test "buildClosureExpansionItemsAlloc preserves inherited and propagated follow 
                 production_end_follow.terminals[0] = true;
                 break :production_end production_end_follow;
             },
+            .following_reserved_word_set_id = 0,
+            .production_end_reserved_word_set_id = 0,
         };
     }, .{});
 
@@ -2732,7 +2907,7 @@ test "closure preserves named-precedence plus lookahead through recursive contex
 
     const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
     const productions = try collectProductions(arena.allocator(), grammar);
-    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null);
     defer item_set_builder.deinit();
 
     const seed = [_]item.ParseItemSetEntry{
@@ -2785,7 +2960,7 @@ test "ClosureContext projects nullable-suffix follow from merged follow and prod
     suffix.terminals[1] = true;
     suffix.includes_epsilon = true;
 
-    const context = try ClosureContext.init(arena.allocator(), suffix, .{ .terminal = 2 });
+    const context = try ClosureContext.init(arena.allocator(), suffix, 0, .{ .terminal = 2 }, 0);
     defer context.deinit(arena.allocator());
 
     try std.testing.expect(context.following_tokens.terminals[1]);
@@ -2796,7 +2971,7 @@ test "ClosureContext projects nullable-suffix follow from merged follow and prod
 
     var non_nullable = try initEmptySymbolSet(arena.allocator(), 3, 0);
     non_nullable.terminals[1] = true;
-    const non_nullable_context = try ClosureContext.init(arena.allocator(), non_nullable, .{ .terminal = 2 });
+    const non_nullable_context = try ClosureContext.init(arena.allocator(), non_nullable, 0, .{ .terminal = 2 }, 0);
     defer non_nullable_context.deinit(arena.allocator());
 
     try std.testing.expect(non_nullable_context.following_tokens.terminals[1]);
@@ -3001,6 +3176,10 @@ fn appendGeneratedItemsToClosure(
         if (item_indexes.get(new_item.item)) |existing_index| {
             stats.duplicate_hits += 1;
             stats.changed = mergeSymbolSetLookaheads(&items.items[existing_index].lookaheads, new_item.lookaheads) or stats.changed;
+            if (new_item.following_reserved_word_set_id > items.items[existing_index].following_reserved_word_set_id) {
+                items.items[existing_index].following_reserved_word_set_id = new_item.following_reserved_word_set_id;
+                stats.changed = true;
+            }
             if (take_ownership) {
                 freeSymbolSet(allocator, new_item.lookaheads);
             }
@@ -3011,6 +3190,7 @@ fn appendGeneratedItemsToClosure(
                 item.ParseItemSetEntry{
                     .item = new_item.item,
                     .lookaheads = try cloneSymbolSet(allocator, new_item.lookaheads),
+                    .following_reserved_word_set_id = new_item.following_reserved_word_set_id,
                 };
             const new_index = items.items.len;
             try items.append(owned_item);
@@ -3061,6 +3241,10 @@ fn appendOrMergeClosureEntry(
 ) !void {
     if (item_indexes.get(incoming.item)) |index| {
         _ = mergeSymbolSetLookaheads(&entries.items[index].lookaheads, incoming.lookaheads);
+        entries.items[index].following_reserved_word_set_id = @max(
+            entries.items[index].following_reserved_word_set_id,
+            incoming.following_reserved_word_set_id,
+        );
         if (take_ownership) {
             freeSymbolSet(allocator, incoming.lookaheads);
         }
@@ -3073,6 +3257,7 @@ fn appendOrMergeClosureEntry(
         item.ParseItemSetEntry{
             .item = incoming.item,
             .lookaheads = try cloneSymbolSet(allocator, incoming.lookaheads),
+            .following_reserved_word_set_id = incoming.following_reserved_word_set_id,
         };
     const new_index = entries.items.len;
     try entries.append(owned_entry);
@@ -3267,6 +3452,87 @@ test "buildStates accepts dynamic precedence metadata in the current supported s
 
     const result = try buildStates(arena.allocator(), grammar);
     try std.testing.expect(result.states.len > 0);
+}
+
+test "buildStates assigns reserved-word set id for direct word-token context" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .terminal = 0 },
+            .reserved_context_name = "global",
+        },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = .{ .terminal = 0 },
+    };
+
+    const result = try buildStatesWithOptions(arena.allocator(), grammar, .{
+        .reserved_word_context_names = &.{"global"},
+    });
+
+    try std.testing.expectEqual(@as(u16, 1), result.states[0].reserved_word_set_id);
+}
+
+test "buildStates propagates following reserved-word set through nullable closure lookahead" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+        .{
+            .symbol = .{ .terminal = 0 },
+            .reserved_context_name = "global",
+        },
+    };
+    var wrapper_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+    };
+    var leaf_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "wrapper", .kind = .named, .productions = &.{.{ .steps = wrapper_steps[0..] }} },
+            .{ .name = "leaf", .kind = .named, .productions = &.{.{ .steps = leaf_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = .{ .terminal = 0 },
+    };
+
+    const result = try buildStatesWithOptions(arena.allocator(), grammar, .{
+        .reserved_word_context_names = &.{"global"},
+    });
+
+    var saw_propagated = false;
+    for (result.states[0].items) |entry| {
+        if (entry.item.production_id == 3 and
+            item.containsLookahead(entry.lookaheads, .{ .terminal = 0 }) and
+            entry.following_reserved_word_set_id == 1)
+        {
+            saw_propagated = true;
+        }
+    }
+
+    try std.testing.expect(saw_propagated);
 }
 
 test "buildStates keeps named-precedence reductions on the suffix symbol, not the inherited terminal" {

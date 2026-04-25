@@ -348,12 +348,15 @@ pub fn attachReservedWordLexModesAlloc(
     for (serialized.lex_modes, 0..) |mode, index| {
         lex_modes[index] = mode;
         if (index < parse_states.len) {
-            lex_modes[index].reserved_word_set_id = reservedWordSetIdForState(
-                parse_states[index],
-                productions,
-                word_token.?,
-                reserved_word_sets,
-            );
+            lex_modes[index].reserved_word_set_id = if (parse_states[index].reserved_word_set_id != 0)
+                parse_states[index].reserved_word_set_id
+            else
+                reservedWordSetIdForState(
+                    parse_states[index],
+                    productions,
+                    word_token.?,
+                    reserved_word_sets,
+                );
         }
     }
     result.lex_modes = lex_modes;
