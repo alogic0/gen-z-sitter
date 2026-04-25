@@ -591,9 +591,7 @@ fn collectEmittedSymbols(
     }
 
     std.mem.sort(EmittedSymbol, symbols.items, {}, emittedSymbolLessThan);
-    for (symbols.items, 0..) |*symbol, index| {
-        if (symbol.owns_label or symbol.ref == null) symbol.public_symbol = @intCast(index);
-    }
+    assignPublicSymbolIds(symbols.items);
     return try symbols.toOwnedSlice();
 }
 
@@ -675,6 +673,23 @@ fn deinitEmittedSymbols(allocator: std.mem.Allocator, symbols: []EmittedSymbol) 
         if (symbol.owns_label) allocator.free(symbol.label);
     }
     allocator.free(symbols);
+}
+
+fn assignPublicSymbolIds(symbols: []EmittedSymbol) void {
+    for (symbols, 0..) |*symbol, index| {
+        symbol.public_symbol = @intCast(canonicalPublicSymbolIndex(symbols[0 .. index + 1], symbol.*));
+    }
+}
+
+fn canonicalPublicSymbolIndex(symbols: []const EmittedSymbol, symbol: EmittedSymbol) usize {
+    for (symbols, 0..) |candidate, index| {
+        if (publicSymbolKeyEql(candidate, symbol)) return index;
+    }
+    return symbols.len - 1;
+}
+
+fn publicSymbolKeyEql(left: EmittedSymbol, right: EmittedSymbol) bool {
+    return left.named == right.named and std.mem.eql(u8, left.label, right.label);
 }
 
 fn emittedSymbolLessThan(_: void, a: EmittedSymbol, b: EmittedSymbol) bool {
@@ -909,7 +924,7 @@ test "emitParserCAlloc emits prepared symbol metadata and grammar name" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .visible = true, .named = true, .supertype = true },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .visible = true, .named = true, .supertype = false },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = { .visible = true, .named = false, .supertype = false },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = 4,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = 1,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .name = \"quote\\\"grammar\",\n"));
 }
@@ -976,6 +991,14 @@ test "emitParserCAlloc emits runtime alias sequences" {
                 .supertype = false,
                 .public_symbol = 0,
             },
+            .{
+                .ref = .{ .non_terminal = 1 },
+                .name = "value_alias",
+                .named = true,
+                .visible = true,
+                .supertype = false,
+                .public_symbol = 1,
+            },
         },
         .productions = &[_]serialize.SerializedProductionInfo{
             .{ .lhs = 0, .child_count = 2, .dynamic_precedence = 0 },
@@ -1007,8 +1030,10 @@ test "emitParserCAlloc emits runtime alias sequences" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .alias_sequences = &ts_alias_sequences[0][0],\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "\"value_alias\""));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "\"anon_alias\""));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { 0, 1, 0 },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 1, 0, 2 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { 0, 2, 0 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 2, 0, 3 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 1,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [3] = 3,\n"));
 }
 
 test "emitParserCAlloc emits serialized lex modes" {

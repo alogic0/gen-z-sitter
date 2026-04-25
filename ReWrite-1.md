@@ -96,10 +96,10 @@ Data source: `PreparedGrammar.symbols` (`[]SymbolInfo`) in `src/ir/grammar_ir.zi
   `named` from `SymbolInfo`, `supertype` from `SymbolInfo.supertype`.
   Note: prepared non-terminal/external symbols now use `SymbolInfo`; terminal-only fallback
   symbols keep inferred metadata until token metadata is modeled.
-- [ ] Compute and emit `static const TSSymbol ts_symbol_map[] = { … };` — maps internal
+- [x] Compute and emit `static const TSSymbol ts_symbol_map[] = { … };` — maps internal
   symbol IDs to the deduplicated public IDs (collapsing anonymous/alias duplicates).
-  Partial: prepared symbols carry stable public IDs and fallback symbols are mapped after
-  final symbol ordering, but alias/anonymous public-ID deduplication is not done.
+  Note: public IDs are assigned after final symbol ordering by canonical `(name, named)`
+  identity, so alias/internal duplicates collapse onto the first matching public symbol.
 - [x] Set `.symbol_count`, `.symbol_names`, `.symbol_metadata`, `.public_symbol_map` in
   the `ts_language` literal.
 
