@@ -27,7 +27,9 @@ pub fn compactSerializedTableAlloc(
     }
 
     const state_owners = try collectStateOwners(allocator, serialized.states, serialized.lex_modes);
+    defer allocator.free(state_owners);
     const owner_new_ids = try allocator.alloc(parse_state.StateId, serialized.states.len);
+    defer allocator.free(owner_new_ids);
     var unique_count: usize = 0;
 
     for (serialized.states, 0..) |_, index| {

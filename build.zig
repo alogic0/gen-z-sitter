@@ -26,7 +26,7 @@ pub fn build(b: *std.Build) void {
 
     const unit_tests = b.addTest(.{
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
+            .root_source_file = b.path("src/fast_test_entry.zig"),
             .target = target,
             .optimize = optimize,
         }),
@@ -52,6 +52,34 @@ pub fn build(b: *std.Build) void {
     const pt_test_step = b.step("test-pt", "Run parse_table unit tests only");
     pt_test_step.dependOn(&run_pt_tests.step);
 
+    const pipeline_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/pipeline_test_entry.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (test_filter) |f| &.{f} else &.{},
+    });
+
+    const run_pipeline_tests = b.addRunArtifact(pipeline_tests);
+    if (b.args) |args| run_pipeline_tests.addArgs(args);
+    const pipeline_test_step = b.step("test-pipeline", "Run pipeline integration and golden tests");
+    pipeline_test_step.dependOn(&run_pipeline_tests.step);
+
+    const cli_generate_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/cli_generate_test_entry.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (test_filter) |f| &.{f} else &.{},
+    });
+
+    const run_cli_generate_tests = b.addRunArtifact(cli_generate_tests);
+    if (b.args) |args| run_cli_generate_tests.addArgs(args);
+    const cli_generate_test_step = b.step("test-cli-generate", "Run CLI generate integration tests");
+    cli_generate_test_step.dependOn(&run_cli_generate_tests.step);
+
     const behavioral_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/behavioral_test_entry.zig"),
@@ -65,6 +93,20 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_behavioral_tests.addArgs(args);
     const behavioral_test_step = b.step("test-behavioral", "Run behavioral harness tests only");
     behavioral_test_step.dependOn(&run_behavioral_tests.step);
+
+    const compat_heavy_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/compat_heavy_test_entry.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (test_filter) |f| &.{f} else &.{},
+    });
+
+    const run_compat_heavy_tests = b.addRunArtifact(compat_heavy_tests);
+    if (b.args) |args| run_compat_heavy_tests.addArgs(args);
+    const compat_heavy_test_step = b.step("test-compat-heavy", "Run heavy compatibility harness and inventory tests");
+    compat_heavy_test_step.dependOn(&run_compat_heavy_tests.step);
 
     const default_runtime_link_filters = &.{
         "linkAndRunNoExternalTinyParser",

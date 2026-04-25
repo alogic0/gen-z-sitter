@@ -297,7 +297,7 @@ External scanner support must be emitted as a complete set.
 ## Phase 9 — End-to-End Validation
 
 - [x] Run focused unit tests for each new serialized model and emitter helper.
-- [ ] Run `zig build test` after the lexer path is wired.
+- [x] Run `zig build test` after the lexer path is wired.
 - [x] Compile-smoke emitted parser C for no-external fixtures first.
 - [x] Link one no-external fixture with the tree-sitter runtime from `../tree-sitter/lib/src`
   and parse minimal valid input. Assert the root is not an ERROR node.
