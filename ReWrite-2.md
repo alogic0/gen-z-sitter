@@ -85,11 +85,11 @@ symbol_id, 1 + alias_count,
 0,
 ```
 
-- [ ] Extend serialized alias data so each alias entry also carries the original step
+- [x] Extend serialized alias data so each alias entry also carries the original step
   symbol, not just `production_id` and `step_index`.
 - [ ] Exclude default aliases when the local IR can identify them.
-- [ ] Deduplicate alias IDs per original symbol and sort by original symbol ID.
-- [ ] Serialize the grouped alias map shape directly, so `parser_c.zig` only emits it.
+- [x] Deduplicate alias IDs per original symbol and sort by original symbol ID.
+- [x] Build and emit the grouped alias map shape from serialized source data.
 
 ### 2d — Shift Flags and Extras
 
@@ -232,7 +232,7 @@ Tree-sitter emits `ts_lex_keywords` only when `syntax_grammar.word_token` is pre
 
 ### 7a — Non-Terminal Alias Map
 
-- [ ] Emit `ts_non_terminal_alias_map[]` in tree-sitter's grouped format:
+- [x] Emit `ts_non_terminal_alias_map[]` in tree-sitter's grouped format:
 
 ```c
 static const uint16_t ts_non_terminal_alias_map[] = {
@@ -243,7 +243,7 @@ static const uint16_t ts_non_terminal_alias_map[] = {
 };
 ```
 
-- [ ] Set `.alias_map = ts_non_terminal_alias_map`.
+- [x] Set `.alias_map = ts_non_terminal_alias_map`.
 
 ### 7b — Primary State IDs
 

@@ -207,7 +207,7 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("};\n\n");
 
-    try writer.writeAll("static const uint16_t ts_non_terminal_alias_map[] = { 0 };\n");
+    try writeNonTerminalAliasMap(writer, allocator, emitted_symbols, compacted.alias_sequences);
     try writer.writeAll("static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH > 0 ? MAX_ALIAS_SEQUENCE_LENGTH : 1] = {\n");
     if (compacted.productions.len == 0) {
         try writer.writeAll("  { 0 },\n");
@@ -426,6 +426,51 @@ fn aliasSymbolIdForName(symbols: []const EmittedSymbol, name: []const u8, named:
     return null;
 }
 
+fn writeNonTerminalAliasMap(
+    writer: anytype,
+    allocator: std.mem.Allocator,
+    symbols: []const EmittedSymbol,
+    aliases: []const serialize.SerializedAliasEntry,
+) EmitError!void {
+    try writer.writeAll("static const uint16_t ts_non_terminal_alias_map[] = {\n");
+    for (symbols, 0..) |symbol, symbol_id| {
+        const original = symbol.ref orelse continue;
+        if (!symbolKindIsNonTerminal(original)) continue;
+
+        var alias_ids = std.array_list.Managed(u16).init(allocator);
+        defer alias_ids.deinit();
+
+        for (aliases) |alias| {
+            if (!symbolRefEql(alias.original_symbol, original)) continue;
+            const alias_id = aliasSymbolIdForName(symbols, alias.name, alias.named) orelse continue;
+            try appendUniqueSortedAliasId(&alias_ids, alias_id);
+        }
+        if (alias_ids.items.len == 0) continue;
+
+        try writer.print("  {d}, {d},\n", .{ symbol_id, alias_ids.items.len + 1 });
+        try writer.print("    {d},\n", .{symbol.public_symbol});
+        for (alias_ids.items) |alias_id| {
+            try writer.print("    {d},\n", .{alias_id});
+        }
+    }
+    try writer.writeAll("  0,\n");
+    try writer.writeAll("};\n");
+}
+
+fn appendUniqueSortedAliasId(
+    alias_ids: *std.array_list.Managed(u16),
+    alias_id: u16,
+) std.mem.Allocator.Error!void {
+    for (alias_ids.items, 0..) |existing, index| {
+        if (existing == alias_id) return;
+        if (existing > alias_id) {
+            try alias_ids.insert(index, alias_id);
+            return;
+        }
+    }
+    try alias_ids.append(alias_id);
+}
+
 fn collectStateArrayOwners(
     allocator: std.mem.Allocator,
     comptime T: type,
@@ -604,6 +649,9 @@ fn collectEmittedSymbols(
     }
 
     for (serialized.alias_sequences) |alias| {
+        if (symbolKindIsNonTerminal(alias.original_symbol)) {
+            try appendUniqueEmittedSymbol(allocator, &symbols, alias.original_symbol);
+        }
         try appendUniqueAliasSymbol(&symbols, alias.name, alias.named);
     }
 
@@ -775,6 +823,13 @@ fn symbolKindIsTerminal(symbol: syntax_grammar.SymbolRef) bool {
     return switch (symbol) {
         .terminal => true,
         .non_terminal, .external => false,
+    };
+}
+
+fn symbolKindIsNonTerminal(symbol: syntax_grammar.SymbolRef) bool {
+    return switch (symbol) {
+        .non_terminal => true,
+        .terminal, .external => false,
     };
 }
 
@@ -1022,9 +1077,9 @@ test "emitParserCAlloc emits runtime alias sequences" {
             .{ .lhs = 1, .child_count = 3, .dynamic_precedence = 0 },
         },
         .alias_sequences = &[_]serialize.SerializedAliasEntry{
-            .{ .production_id = 0, .step_index = 1, .name = "value_alias", .named = true },
-            .{ .production_id = 1, .step_index = 2, .name = "anon_alias", .named = false },
-            .{ .production_id = 1, .step_index = 0, .name = "value_alias", .named = true },
+            .{ .production_id = 0, .step_index = 1, .original_symbol = .{ .non_terminal = 0 }, .name = "value_alias", .named = true },
+            .{ .production_id = 1, .step_index = 2, .original_symbol = .{ .non_terminal = 1 }, .name = "anon_alias", .named = false },
+            .{ .production_id = 1, .step_index = 0, .original_symbol = .{ .non_terminal = 1 }, .name = "value_alias", .named = true },
         },
         .states = &[_]serialize.SerializedState{
             .{
@@ -1041,6 +1096,9 @@ test "emitParserCAlloc emits runtime alias sequences" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define ALIAS_COUNT 2\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define MAX_ALIAS_SEQUENCE_LENGTH 3\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const uint16_t ts_non_terminal_alias_map[] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  0, 2,\n    0,\n    2,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  1, 3,\n    1,\n    2,\n    3,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH > 0 ? MAX_ALIAS_SEQUENCE_LENGTH : 1] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .alias_count = ALIAS_COUNT,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .max_alias_sequence_length = MAX_ALIAS_SEQUENCE_LENGTH,\n"));

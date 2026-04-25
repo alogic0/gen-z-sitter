@@ -53,6 +53,7 @@ pub const SerializedState = struct {
 pub const SerializedAliasEntry = struct {
     production_id: u32,
     step_index: u32,
+    original_symbol: syntax_ir.SymbolRef = .{ .terminal = 0 },
     name: []const u8,
     named: bool,
 };
@@ -217,6 +218,7 @@ pub fn serializeBuildResult(
                 try alias_list.append(allocator, .{
                     .production_id = @intCast(production_id),
                     .step_index = @intCast(step_index),
+                    .original_symbol = step.symbol,
                     .name = alias.value,
                     .named = alias.named,
                 });
@@ -1103,6 +1105,41 @@ test "buildLexStateTerminalSetsAlloc preserves lex-state terminal sets by id" {
     try std.testing.expectEqual(@as(usize, 2), terminal_sets.len);
     try std.testing.expectEqualSlices(bool, source[0], terminal_sets[0]);
     try std.testing.expectEqualSlices(bool, source[1], terminal_sets[1]);
+}
+
+test "serializeBuildResult records original alias step symbols" {
+    const allocator = std.testing.allocator;
+    const aliased_steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .non_terminal = 7 },
+            .alias = .{ .value = "aliased_child", .named = true },
+        },
+    };
+    const result = build.BuildResult{
+        .productions = &[_]build.ProductionInfo{
+            .{ .lhs = 0, .steps = aliased_steps[0..] },
+        },
+        .precedence_orderings = &.{},
+        .states = &.{},
+        .lex_state_count = 0,
+        .lex_state_terminal_sets = &.{},
+        .actions = .{ .states = &.{} },
+        .resolved_actions = .{ .states = &.{} },
+    };
+
+    const serialized = try serializeBuildResult(allocator, result, .strict);
+    defer allocator.free(serialized.states);
+    defer allocator.free(serialized.productions);
+    defer deinitParseActionList(allocator, serialized.parse_action_list);
+    defer deinitSmallParseTable(allocator, serialized.small_parse_table);
+    defer allocator.free(serialized.alias_sequences);
+    defer deinitFieldMap(allocator, serialized.field_map);
+    defer allocator.free(serialized.lex_modes);
+    defer deinitLexStateTerminalSets(allocator, serialized.lex_state_terminal_sets);
+    defer allocator.free(serialized.primary_state_ids);
+
+    try std.testing.expectEqual(@as(usize, 1), serialized.alias_sequences.len);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 7 }, serialized.alias_sequences[0].original_symbol);
 }
 
 test "buildSmallParseTableAlloc groups values and deduplicates rows" {
