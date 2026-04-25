@@ -117,6 +117,10 @@ pub fn writeParserCWithOptions(
         compacted.parse_action_list
     else
         try serialize.buildParseActionListAlloc(arena.allocator(), compacted.states, compacted.productions);
+    const small_parse_table = if (compacted.small_parse_table.rows.len > 0 or compacted.small_parse_table.map.len > 0)
+        compacted.small_parse_table
+    else
+        try serialize.buildSmallParseTableAlloc(arena.allocator(), compacted.states, serializedLargeStateCount(compacted), parse_action_list, compacted.productions);
 
     try compat.writeContractPrelude(writer, compatibility);
     try compat.writeContractTypesAndConstants(writer, compatibility);
@@ -184,29 +188,24 @@ pub fn writeParserCWithOptions(
 
     if (large_state_count_value < compacted.states.len) {
         try writer.writeAll("static const uint16_t ts_small_parse_table[] = {\n");
-        var offset: usize = 0;
-        for (compacted.states[large_state_count_value..]) |serialized_state| {
-            const entry_count = serialized_state.actions.len + serialized_state.gotos.len;
-            try writer.print("  [{d}] = {d},\n", .{ offset, entry_count });
-            offset += 1;
-            for (serialized_state.gotos) |entry| {
-                const symbol_id = symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory;
-                try writer.print("  STATE({d}), 1, {d},\n", .{ entry.state, symbol_id });
-                offset += 3;
-            }
-            for (serialized_state.actions) |entry| {
-                const symbol_id = symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory;
-                const action_index = serialize.parseActionListIndexForParseAction(parse_action_list, entry.action, compacted.productions) orelse return error.OutOfMemory;
-                try writer.print("  ACTIONS({d}), 1, {d},\n", .{ action_index, symbol_id });
-                offset += 3;
+        for (small_parse_table.rows) |row| {
+            try writer.print("  [{d}] = {d},\n", .{ row.offset, row.groups.len });
+            for (row.groups) |group| {
+                switch (group.kind) {
+                    .state => try writer.print("  STATE({d}), {d},", .{ group.value, group.symbols.len }),
+                    .action => try writer.print("  ACTIONS({d}), {d},", .{ group.value, group.symbols.len }),
+                }
+                for (group.symbols) |symbol| {
+                    const symbol_id = symbolIdForRef(emitted_symbols, symbol) orelse return error.OutOfMemory;
+                    try writer.print(" {d},", .{symbol_id});
+                }
+                try writer.writeByte('\n');
             }
         }
         try writer.writeAll("};\n\n");
         try writer.writeAll("static const uint32_t ts_small_parse_table_map[] = {\n");
-        offset = 0;
-        for (compacted.states[large_state_count_value..], large_state_count_value..) |serialized_state, index| {
+        for (small_parse_table.map, large_state_count_value..) |offset, index| {
             try writer.print("  [SMALL_STATE({d})] = {d},\n", .{ index, offset });
-            offset += 1 + 3 * (serialized_state.actions.len + serialized_state.gotos.len);
         }
         try writer.writeAll("};\n\n");
     }

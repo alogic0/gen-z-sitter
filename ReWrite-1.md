@@ -64,13 +64,12 @@ These changes are in `src/parser_emit/parser_c.zig` and
 
 ### 2c — Small-state compressed table
 
-- [ ] Identify states `>= large_state_count`.  Group their rows as (symbol, value) pairs,
+- [x] Identify states `>= large_state_count`.  Group their rows as (symbol, value) pairs,
   deduplicate identical rows.
 - [x] Emit `static const uint16_t ts_small_parse_table[] = { … };` — packed groups of
   `[entry_count, sym0, val0, sym1, val1, …]`.
 - [x] Emit `static const uint32_t ts_small_parse_table_map[] = { … };` — one offset per
   small state pointing into `ts_small_parse_table`.
-  Note: initial small-table emission is present; identical-row deduplication is not done.
 
 ### 2d — Wire into TSLanguage initializer
 

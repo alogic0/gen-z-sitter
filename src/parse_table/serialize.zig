@@ -74,12 +74,34 @@ pub const SerializedParseActionListEntry = struct {
     actions: []const SerializedParseAction,
 };
 
+pub const SerializedSmallParseValueKind = enum {
+    state,
+    action,
+};
+
+pub const SerializedSmallParseGroup = struct {
+    kind: SerializedSmallParseValueKind,
+    value: u16,
+    symbols: []const syntax_ir.SymbolRef,
+};
+
+pub const SerializedSmallParseRow = struct {
+    offset: u32,
+    groups: []const SerializedSmallParseGroup,
+};
+
+pub const SerializedSmallParseTable = struct {
+    rows: []const SerializedSmallParseRow = &.{},
+    map: []const u32 = &.{},
+};
+
 pub const SerializedTable = struct {
     states: []const SerializedState,
     blocked: bool,
     large_state_count: usize = 0,
     productions: []const SerializedProductionInfo = &.{},
     parse_action_list: []const SerializedParseActionListEntry = &.{},
+    small_parse_table: SerializedSmallParseTable = .{},
     alias_sequences: []const SerializedAliasEntry = &.{},
     word_token: ?syntax_ir.SymbolRef = null,
 
@@ -143,13 +165,16 @@ pub fn serializeBuildResult(
     }
 
     const blocked = result.hasBlockingUnresolvedDecisions();
+    const large_state_count = try computeLargeStateCountAlloc(allocator, serialized_states, productions);
+    const parse_action_list = try buildParseActionListAlloc(allocator, serialized_states, productions);
     std.debug.print("[parse_table/serialize] serializeBuildResult done blocked={}\n", .{blocked});
     return .{
         .states = serialized_states,
         .blocked = blocked,
-        .large_state_count = try computeLargeStateCountAlloc(allocator, serialized_states, productions),
+        .large_state_count = large_state_count,
         .productions = productions,
-        .parse_action_list = try buildParseActionListAlloc(allocator, serialized_states, productions),
+        .parse_action_list = parse_action_list,
+        .small_parse_table = try buildSmallParseTableAlloc(allocator, serialized_states, large_state_count, parse_action_list, productions),
         .alias_sequences = try alias_list.toOwnedSlice(allocator),
     };
 }
@@ -196,6 +221,51 @@ pub fn deinitParseActionList(
     allocator.free(entries);
 }
 
+pub fn buildSmallParseTableAlloc(
+    allocator: std.mem.Allocator,
+    states: []const SerializedState,
+    large_state_count: usize,
+    parse_action_list: []const SerializedParseActionListEntry,
+    productions: []const SerializedProductionInfo,
+) std.mem.Allocator.Error!SerializedSmallParseTable {
+    if (large_state_count >= states.len) return .{};
+
+    var unique_rows = std.array_list.Managed(SerializedSmallParseRow).init(allocator);
+    defer unique_rows.deinit();
+
+    const map = try allocator.alloc(u32, states.len - large_state_count);
+    var next_offset: u32 = 0;
+
+    for (states[large_state_count..], 0..) |serialized_state, small_index| {
+        const groups = try buildSmallParseGroupsAlloc(allocator, serialized_state, parse_action_list, productions);
+        if (findSmallParseRow(unique_rows.items, groups)) |existing_index| {
+            map[small_index] = unique_rows.items[existing_index].offset;
+            deinitSmallParseGroups(allocator, groups);
+            continue;
+        }
+
+        map[small_index] = next_offset;
+        try unique_rows.append(.{
+            .offset = next_offset,
+            .groups = groups,
+        });
+        next_offset += packedSmallParseRowLength(groups);
+    }
+
+    return .{
+        .rows = try unique_rows.toOwnedSlice(),
+        .map = map,
+    };
+}
+
+pub fn deinitSmallParseTable(allocator: std.mem.Allocator, table: SerializedSmallParseTable) void {
+    for (table.rows) |row| {
+        deinitSmallParseGroups(allocator, row.groups);
+    }
+    allocator.free(table.rows);
+    allocator.free(table.map);
+}
+
 pub fn computeLargeStateCountAlloc(
     allocator: std.mem.Allocator,
     states: []const SerializedState,
@@ -231,6 +301,108 @@ pub fn computeLargeStateCountAlloc(
         }
     }
     return count;
+}
+
+fn buildSmallParseGroupsAlloc(
+    allocator: std.mem.Allocator,
+    serialized_state: SerializedState,
+    parse_action_list: []const SerializedParseActionListEntry,
+    productions: []const SerializedProductionInfo,
+) std.mem.Allocator.Error![]const SerializedSmallParseGroup {
+    var groups = std.array_list.Managed(SerializedSmallParseGroup).init(allocator);
+    defer groups.deinit();
+
+    for (serialized_state.gotos) |entry| {
+        try appendSmallParseSymbol(allocator, &groups, .state, @intCast(entry.state), entry.symbol);
+    }
+    for (serialized_state.actions) |entry| {
+        const action_index = parseActionListIndexForParseAction(parse_action_list, entry.action, productions) orelse 0;
+        try appendSmallParseSymbol(allocator, &groups, .action, action_index, entry.symbol);
+    }
+
+    for (groups.items) |*group| {
+        std.mem.sort(syntax_ir.SymbolRef, @constCast(group.symbols), {}, symbolRefLessThan);
+    }
+    std.mem.sort(SerializedSmallParseGroup, groups.items, {}, smallParseGroupLessThan);
+
+    return try groups.toOwnedSlice();
+}
+
+fn appendSmallParseSymbol(
+    allocator: std.mem.Allocator,
+    groups: *std.array_list.Managed(SerializedSmallParseGroup),
+    kind: SerializedSmallParseValueKind,
+    value: u16,
+    symbol: syntax_ir.SymbolRef,
+) std.mem.Allocator.Error!void {
+    for (groups.items) |*group| {
+        if (group.kind == kind and group.value == value) {
+            group.symbols = try appendSymbolToOwnedSlice(allocator, group.symbols, symbol);
+            return;
+        }
+    }
+
+    const symbols = try allocator.alloc(syntax_ir.SymbolRef, 1);
+    symbols[0] = symbol;
+    try groups.append(.{
+        .kind = kind,
+        .value = value,
+        .symbols = symbols,
+    });
+}
+
+fn appendSymbolToOwnedSlice(
+    allocator: std.mem.Allocator,
+    symbols: []const syntax_ir.SymbolRef,
+    symbol: syntax_ir.SymbolRef,
+) std.mem.Allocator.Error![]const syntax_ir.SymbolRef {
+    const updated = try allocator.alloc(syntax_ir.SymbolRef, symbols.len + 1);
+    @memcpy(updated[0..symbols.len], symbols);
+    updated[symbols.len] = symbol;
+    allocator.free(symbols);
+    return updated;
+}
+
+fn findSmallParseRow(rows: []const SerializedSmallParseRow, groups: []const SerializedSmallParseGroup) ?usize {
+    for (rows, 0..) |row, index| {
+        if (smallParseGroupsEql(row.groups, groups)) return index;
+    }
+    return null;
+}
+
+fn smallParseGroupsEql(left: []const SerializedSmallParseGroup, right: []const SerializedSmallParseGroup) bool {
+    if (left.len != right.len) return false;
+    for (left, right) |left_group, right_group| {
+        if (left_group.kind != right_group.kind or left_group.value != right_group.value) return false;
+        if (left_group.symbols.len != right_group.symbols.len) return false;
+        for (left_group.symbols, right_group.symbols) |left_symbol, right_symbol| {
+            if (!symbolRefEql(left_symbol, right_symbol)) return false;
+        }
+    }
+    return true;
+}
+
+fn packedSmallParseRowLength(groups: []const SerializedSmallParseGroup) u32 {
+    var len: u32 = 1;
+    for (groups) |group| {
+        len += 2 + @as(u32, @intCast(group.symbols.len));
+    }
+    return len;
+}
+
+fn deinitSmallParseGroups(allocator: std.mem.Allocator, groups: []const SerializedSmallParseGroup) void {
+    for (groups) |group| {
+        allocator.free(group.symbols);
+    }
+    allocator.free(groups);
+}
+
+fn smallParseGroupLessThan(_: void, left: SerializedSmallParseGroup, right: SerializedSmallParseGroup) bool {
+    if (left.symbols.len != right.symbols.len) return left.symbols.len < right.symbols.len;
+    if (left.kind != right.kind) return @intFromEnum(left.kind) < @intFromEnum(right.kind);
+    if (left.value != right.value) return left.value < right.value;
+    if (left.symbols.len == 0 or right.symbols.len == 0) return left.symbols.len < right.symbols.len;
+    return symbolRefLessThan({}, left.symbols[0], right.symbols[0]);
 }
 
 pub fn parseActionListIndexForParseAction(
@@ -302,6 +474,18 @@ fn appendUniqueSymbolRef(
         if (symbolRefEql(existing, symbol)) return;
     }
     try symbols.append(symbol);
+}
+
+fn symbolRefLessThan(_: void, left: syntax_ir.SymbolRef, right: syntax_ir.SymbolRef) bool {
+    return symbolSortKey(left) < symbolSortKey(right);
+}
+
+fn symbolSortKey(symbol: syntax_ir.SymbolRef) u64 {
+    return switch (symbol) {
+        .non_terminal => |index| (@as(u64, 0) << 32) | index,
+        .terminal => |index| (@as(u64, 1) << 32) | index,
+        .external => |index| (@as(u64, 2) << 32) | index,
+    };
 }
 
 fn collectActionsForState(
@@ -487,6 +671,7 @@ test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {
 
     const serialized = try serializeBuildResult(allocator, result, .diagnostic);
     defer allocator.free(serialized.states);
+    defer deinitSmallParseTable(allocator, serialized.small_parse_table);
     defer deinitParseActionList(allocator, serialized.parse_action_list);
     defer allocator.free(serialized.states[0].unresolved);
     defer allocator.free(serialized.states[0].gotos);
@@ -570,4 +755,60 @@ test "computeLargeStateCountAlloc follows tree-sitter threshold prefix rule" {
         @as(usize, 2),
         try computeLargeStateCountAlloc(allocator, states[0..], &.{}),
     );
+}
+
+test "buildSmallParseTableAlloc groups values and deduplicates rows" {
+    const allocator = std.testing.allocator;
+    const states = [_]SerializedState{
+        .{
+            .id = 0,
+            .actions = &.{},
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+        .{
+            .id = 1,
+            .actions = &.{},
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+        .{
+            .id = 2,
+            .actions = &[_]SerializedActionEntry{
+                .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 9 } },
+                .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 9 } },
+            },
+            .gotos = &[_]SerializedGotoEntry{
+                .{ .symbol = .{ .non_terminal = 0 }, .state = 4 },
+            },
+            .unresolved = &.{},
+        },
+        .{
+            .id = 3,
+            .actions = &[_]SerializedActionEntry{
+                .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 9 } },
+                .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 9 } },
+            },
+            .gotos = &[_]SerializedGotoEntry{
+                .{ .symbol = .{ .non_terminal = 0 }, .state = 4 },
+            },
+            .unresolved = &.{},
+        },
+    };
+    const actions_list = try buildParseActionListAlloc(allocator, states[0..], &.{});
+    defer deinitParseActionList(allocator, actions_list);
+
+    const table = try buildSmallParseTableAlloc(allocator, states[0..], 2, actions_list, &.{});
+    defer deinitSmallParseTable(allocator, table);
+
+    try std.testing.expectEqual(@as(usize, 1), table.rows.len);
+    try std.testing.expectEqual(@as(usize, 2), table.map.len);
+    try std.testing.expectEqual(@as(u32, 0), table.map[0]);
+    try std.testing.expectEqual(@as(u32, 0), table.map[1]);
+    try std.testing.expectEqual(@as(usize, 2), table.rows[0].groups.len);
+    try std.testing.expectEqual(SerializedSmallParseValueKind.state, table.rows[0].groups[0].kind);
+    try std.testing.expectEqual(@as(u16, 4), table.rows[0].groups[0].value);
+    try std.testing.expectEqual(@as(usize, 1), table.rows[0].groups[0].symbols.len);
+    try std.testing.expectEqual(SerializedSmallParseValueKind.action, table.rows[0].groups[1].kind);
+    try std.testing.expectEqual(@as(usize, 2), table.rows[0].groups[1].symbols.len);
 }
