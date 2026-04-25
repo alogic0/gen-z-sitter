@@ -107,9 +107,12 @@ Tree-sitter distinguishes `Shift`, `ShiftExtra`, and `Shift { is_repetition }`.
 Tree-sitter assigns a reserved word set to parse states while building actions for states
 that see the `word_token`.
 
-- [ ] Add parse-state reserved-word-set tracking to the local parse-table builder.
 - [x] Serialize `reserved_word_set_id` into each `SerializedLexMode`.
 - [x] Serialize reserved word sets in runtime symbol-ID form.
+
+> Builder-level reserved-word-set propagation (threading set IDs through the
+> parse-table action loop, mirroring `build_parse_table.rs`) is a larger task deferred
+> to ReWrite-3.
 
 ---
 
@@ -127,14 +130,13 @@ Build lex tables before C emission and store a serialized representation. Do not
   `lex_state_id`.
 - [x] Convert `LexState.completion.variable_index` into serialized terminal symbol refs;
   final runtime symbol IDs are still resolved by the C emitter.
-- [ ] Preserve EOF transitions if the local lexer model gains them. If it does not yet
-  model EOF-specific transitions, document the limitation and keep a focused blocker.
 - [x] Add deinit helpers for serialized lex tables because they contain nested owned
   arrays.
 - [x] Thread serialized lex tables through `optimize.prepareSerializedTableAlloc()`.
 
-Note: the current local lexer model has no EOF-specific transition field, so serialized
-`eof_target` remains null until that model exists.
+> EOF-specific transitions (`eof_target`) are deferred to ReWrite-3: they require adding
+> an EOF transition field to the lexer model itself, which is a broader change than this
+> rewrite scope.
 
 ---
 
@@ -195,8 +197,9 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
   transitions.
 - [x] Add `ADVANCE_MAP` only after the simple transition path works. Tree-sitter uses it
   when the leading simple transition range count is at least 8.
-- [ ] Defer large character set constants until the basic lexer works; add them only if
-  generated code size or compile time becomes a problem.
+
+> Large character set constants are deferred: add only if generated code size or
+> compile time becomes a problem in practice.
 
 ---
 
