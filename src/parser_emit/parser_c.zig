@@ -337,6 +337,7 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("};\n\n");
     try writeReservedWords(writer, emitted_symbols, compacted.reserved_words);
+    try writeExternalScannerTables(writer, emitted_symbols, compacted.grammar_name);
 
     try writer.writeAll("static const TSLanguage ts_language = {\n");
     try writer.writeAll("  .abi_version = LANGUAGE_VERSION,\n");
@@ -371,6 +372,26 @@ pub fn writeParserCWithOptions(
         try writer.writeAll("  .keyword_lex_fn = NULL,\n");
     }
     try writer.print("  .keyword_capture_token = {d},\n", .{keyword_capture_id});
+    if (externalTokenCount(emitted_symbols) != 0) {
+        try writer.writeAll("  .external_scanner = {\n");
+        try writer.writeAll("    .symbol_map = ts_external_scanner_symbol_map,\n");
+        try writer.writeAll("    .create = ");
+        try writeExternalScannerFunctionName(writer, compacted.grammar_name, "create");
+        try writer.writeAll(",\n");
+        try writer.writeAll("    .destroy = ");
+        try writeExternalScannerFunctionName(writer, compacted.grammar_name, "destroy");
+        try writer.writeAll(",\n");
+        try writer.writeAll("    .scan = ");
+        try writeExternalScannerFunctionName(writer, compacted.grammar_name, "scan");
+        try writer.writeAll(",\n");
+        try writer.writeAll("    .serialize = ");
+        try writeExternalScannerFunctionName(writer, compacted.grammar_name, "serialize");
+        try writer.writeAll(",\n");
+        try writer.writeAll("    .deserialize = ");
+        try writeExternalScannerFunctionName(writer, compacted.grammar_name, "deserialize");
+        try writer.writeAll(",\n");
+        try writer.writeAll("  },\n");
+    }
     try writer.writeAll("  .primary_state_ids = ts_primary_state_ids,\n");
     try writer.writeAll("  .name = \"");
     try writeCStringLiteralContents(writer, compacted.grammar_name);
@@ -478,6 +499,73 @@ fn writeReservedWords(
         try writer.writeAll(" },\n");
     }
     try writer.writeAll("};\n\n");
+}
+
+fn writeExternalScannerTables(
+    writer: anytype,
+    symbols: []const EmittedSymbol,
+    grammar_name: []const u8,
+) EmitError!void {
+    if (externalTokenCount(symbols) == 0) return;
+
+    try writer.writeAll("enum ts_external_scanner_symbol_identifiers {\n");
+    var local_index: usize = 0;
+    for (symbols) |symbol| {
+        const ref = symbol.ref orelse continue;
+        if (!symbolKindIsExternal(ref)) continue;
+        try writer.writeAll("  ts_external_token_");
+        try writeCIdentifierFragment(writer, symbol.label);
+        try writer.print(" = {d},\n", .{local_index});
+        local_index += 1;
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("static const TSSymbol ts_external_scanner_symbol_map[EXTERNAL_TOKEN_COUNT] = {\n");
+    local_index = 0;
+    for (symbols) |symbol| {
+        const ref = symbol.ref orelse continue;
+        if (!symbolKindIsExternal(ref)) continue;
+        const symbol_id = symbolIdForRef(symbols, ref) orelse return error.OutOfMemory;
+        try writer.print("  [{d}] = {d},\n", .{ local_index, symbol_id });
+        local_index += 1;
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("extern void *");
+    try writeExternalScannerFunctionName(writer, grammar_name, "create");
+    try writer.writeAll("(void);\n");
+    try writer.writeAll("extern void ");
+    try writeExternalScannerFunctionName(writer, grammar_name, "destroy");
+    try writer.writeAll("(void *);\n");
+    try writer.writeAll("extern bool ");
+    try writeExternalScannerFunctionName(writer, grammar_name, "scan");
+    try writer.writeAll("(void *, TSLexer *, const bool *);\n");
+    try writer.writeAll("extern unsigned ");
+    try writeExternalScannerFunctionName(writer, grammar_name, "serialize");
+    try writer.writeAll("(void *, char *);\n");
+    try writer.writeAll("extern void ");
+    try writeExternalScannerFunctionName(writer, grammar_name, "deserialize");
+    try writer.writeAll("(void *, const char *, unsigned);\n\n");
+}
+
+fn writeExternalScannerFunctionName(writer: anytype, grammar_name: []const u8, suffix: []const u8) EmitError!void {
+    try writer.writeAll("tree_sitter_");
+    try writeCIdentifierFragment(writer, grammar_name);
+    try writer.writeAll("_external_scanner_");
+    try writer.writeAll(suffix);
+}
+
+fn writeCIdentifierFragment(writer: anytype, value: []const u8) EmitError!void {
+    var wrote_any = false;
+    for (value) |byte| {
+        if (std.ascii.isAlphanumeric(byte) or byte == '_') {
+            try writer.writeByte(byte);
+        } else {
+            try writer.writeByte('_');
+        }
+        wrote_any = true;
+    }
+    if (!wrote_any) try writer.writeByte('_');
 }
 
 const RuntimeLexTable = struct {
@@ -1541,6 +1629,35 @@ test "emitParserCAlloc emits keyword lexer when serialized" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      ACCEPT_TOKEN(0);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_lex_fn = ts_lex_keywords,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_capture_token = 1,\n"));
+}
+
+test "emitParserCAlloc emits external scanner symbols and declarations" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = true,
+        .grammar_name = "external grammar",
+        .symbols = &[_]serialize.SerializedSymbolInfo{
+            .{ .ref = .{ .external = 0 }, .name = "_indent", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
+            .{ .ref = .{ .external = 1 }, .name = "dedent-token", .named = false, .visible = false, .supertype = false, .public_symbol = 1 },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define EXTERNAL_TOKEN_COUNT 2\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "enum ts_external_scanner_symbol_identifiers {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token__indent = 0,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_dedent_token = 1,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_external_scanner_symbol_map[EXTERNAL_TOKEN_COUNT] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "extern void *tree_sitter_external_grammar_external_scanner_create(void);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "extern bool tree_sitter_external_grammar_external_scanner_scan(void *, TSLexer *, const bool *);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .symbol_map = ts_external_scanner_symbol_map,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .create = tree_sitter_external_grammar_external_scanner_create,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .deserialize = tree_sitter_external_grammar_external_scanner_deserialize,\n"));
 }
 
 test "emitParserCAlloc emits primary state ids by parse state" {

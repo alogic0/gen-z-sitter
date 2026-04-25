@@ -219,15 +219,15 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
 
 Tree-sitter emits `ts_lex_keywords` only when `syntax_grammar.word_token` is present.
 
-- [ ] Build a keyword lex table that covers tokens competing with the word token.
-- [ ] Emit `ts_lex_keywords` using the same `emitLexFunction` path.
-- [ ] Set `.keyword_lex_fn = ts_lex_keywords` and `.keyword_capture_token` to the runtime
+- [x] Build a keyword lex table that covers tokens competing with the word token.
+- [x] Emit `ts_lex_keywords` using the same `emitLexFunction` path.
+- [x] Set `.keyword_lex_fn = ts_lex_keywords` and `.keyword_capture_token` to the runtime
   symbol ID for `word_token`.
-- [ ] Serialize reserved word sets as `ts_reserved_words[set_count][MAX_RESERVED_WORD_SET_SIZE]`.
+- [x] Serialize reserved word sets as `ts_reserved_words[set_count][MAX_RESERVED_WORD_SET_SIZE]`.
   Set index 0 as the empty/default set, matching tree-sitter.
-- [ ] Emit `MAX_RESERVED_WORD_SET_SIZE` from serialized data.
-- [ ] Set `.reserved_words` only when there is more than one reserved-word set.
-- [ ] Set `.max_reserved_word_set_size` unconditionally from the serialized maximum.
+- [x] Emit `MAX_RESERVED_WORD_SET_SIZE` from serialized data.
+- [x] Set `.reserved_words` only when there is more than one reserved-word set.
+- [x] Set `.max_reserved_word_set_size` unconditionally from the serialized maximum.
 
 ---
 
@@ -274,20 +274,20 @@ through alias IDs where present.
 External scanner support must be emitted as a complete set.
 
 - [ ] Serialize external scanner symbol identifiers in declared external-token order.
-- [ ] Emit `enum ts_external_scanner_symbol_identifiers`.
-- [ ] Emit `ts_external_scanner_symbol_map[EXTERNAL_TOKEN_COUNT]`, mapping scanner-local
+- [x] Emit `enum ts_external_scanner_symbol_identifiers`.
+- [x] Emit `ts_external_scanner_symbol_map[EXTERNAL_TOKEN_COUNT]`, mapping scanner-local
   IDs to runtime symbol IDs.
 - [ ] Add external lex-state sets to the parse-table builder and serialize
   `external_lex_state` per parse state.
 - [ ] Emit `ts_external_scanner_states[external_state_count][EXTERNAL_TOKEN_COUNT]`.
-- [ ] Emit scanner function declarations:
+- [x] Emit scanner function declarations:
   - `tree_sitter_NAME_external_scanner_create`
   - `tree_sitter_NAME_external_scanner_destroy`
   - `tree_sitter_NAME_external_scanner_scan`
   - `tree_sitter_NAME_external_scanner_serialize`
   - `tree_sitter_NAME_external_scanner_deserialize`
 - [ ] Wire `TSLanguage.external_scanner` with states, symbol map, and function pointers.
-- [ ] Keep grammars with externals blocked until all of the above are present.
+- [x] Keep grammars with externals blocked until all of the above are present.
 
 ---
 
