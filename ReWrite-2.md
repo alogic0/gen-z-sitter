@@ -31,11 +31,11 @@ in Zig and emit self-contained C ABI definitions from our own code.
 
 ## Phase 1 — Validation Baseline
 
-- [ ] Run focused tests that cover the current RW-1 emitter surface and record the
+- [x] Run focused tests that cover the current RW-1 emitter surface and record the
   baseline.
-- [ ] Run `zig fmt --check src`.
-- [ ] Run a self-contained compile smoke for emitted parser C.
-- [ ] Defer broad/heavy compatibility harness tests until a phase changes cross-module
+- [x] Run `zig fmt --check src`.
+- [x] Run a self-contained compile smoke for emitted parser C.
+- [x] Defer broad/heavy compatibility harness tests until a phase changes cross-module
   behavior that those tests cover.
 
 ---
@@ -98,7 +98,7 @@ Tree-sitter distinguishes `Shift`, `ShiftExtra`, and `Shift { is_repetition }`.
 - [x] Extend local parse actions so serialized shift actions can carry `extra` and
   `repetition`.
 - [x] Set `extra = true` for terminal extra shifts derived from `SyntaxGrammar.extra_symbols`.
-- [ ] Set `repetition = true` for shifts that tree-sitter would mark `is_repetition`.
+- [x] Set `repetition = true` for shifts that tree-sitter would mark `is_repetition`.
 - [x] Keep non-terminal extra handling explicit. If local build still cannot model it,
   preserve a diagnostic blocker instead of silently emitting a normal shift.
 
@@ -293,9 +293,9 @@ External scanner support must be emitted as a complete set.
 
 ## Phase 9 — End-to-End Validation
 
-- [ ] Run focused unit tests for each new serialized model and emitter helper.
+- [x] Run focused unit tests for each new serialized model and emitter helper.
 - [ ] Run `zig build test` after the lexer path is wired.
-- [ ] Compile-smoke emitted parser C for no-external fixtures first.
+- [x] Compile-smoke emitted parser C for no-external fixtures first.
 - [ ] Link one no-external fixture with the tree-sitter runtime from `../tree-sitter/lib/src`
   and parse minimal valid input. Assert the root is not an ERROR node.
 - [ ] Add a keyword/reserved-word link test after Phase 6.

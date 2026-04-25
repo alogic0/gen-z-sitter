@@ -262,6 +262,12 @@ fn serializePreparedBuildResultAlloc(
         serialized,
         extracted.syntax.extra_symbols,
     );
+    serialized = try serialize.attachRepetitionShiftMetadataAlloc(
+        allocator,
+        serialized,
+        result.states,
+        result.productions,
+    );
     serialized = try serialize.attachReservedWordsAlloc(
         allocator,
         serialized,

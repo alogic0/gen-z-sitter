@@ -1,6 +1,7 @@
 const std = @import("std");
 const actions = @import("actions.zig");
 const build = @import("build.zig");
+const item = @import("item.zig");
 const resolution = @import("resolution.zig");
 const state = @import("state.zig");
 const grammar_ir = @import("../ir/grammar_ir.zig");
@@ -377,6 +378,43 @@ pub fn attachExtraShiftMetadataAlloc(
             entries[entry_index] = entry;
             if (entry.action == .shift and symbolRefIn(extra_symbols, entry.symbol)) {
                 entries[entry_index].extra = true;
+            }
+        }
+        states[state_index] = serialized_state;
+        states[state_index].actions = entries;
+    }
+
+    result.parse_action_list = try buildParseActionListAlloc(allocator, states, serialized.productions);
+    result.small_parse_table = try buildSmallParseTableAlloc(
+        allocator,
+        states,
+        serialized.large_state_count,
+        result.parse_action_list,
+        serialized.productions,
+    );
+    return result;
+}
+
+pub fn attachRepetitionShiftMetadataAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    parse_states: []const state.ParseState,
+    productions: []const build.ProductionInfo,
+) std.mem.Allocator.Error!SerializedTable {
+    if (!hasRepetitionShift(serialized.states, parse_states, productions)) return serialized;
+
+    const states = try allocator.alloc(SerializedState, serialized.states.len);
+    var result = serialized;
+    result.states = states;
+
+    for (serialized.states, 0..) |serialized_state, state_index| {
+        const entries = try allocator.alloc(SerializedActionEntry, serialized_state.actions.len);
+        for (serialized_state.actions, 0..) |entry, entry_index| {
+            entries[entry_index] = entry;
+            if (entry.action == .shift and state_index < parse_states.len and
+                shiftHasRepeatAuxiliaryConflict(parse_states[state_index], productions, entry.symbol))
+            {
+                entries[entry_index].repetition = true;
             }
         }
         states[state_index] = serialized_state;
@@ -1079,6 +1117,50 @@ fn reservedWordSetIdForContext(
     return null;
 }
 
+fn hasRepetitionShift(
+    serialized_states: []const SerializedState,
+    parse_states: []const state.ParseState,
+    productions: []const build.ProductionInfo,
+) bool {
+    for (serialized_states, 0..) |serialized_state, state_index| {
+        if (state_index >= parse_states.len) return false;
+        for (serialized_state.actions) |entry| {
+            if (entry.action == .shift and
+                shiftHasRepeatAuxiliaryConflict(parse_states[state_index], productions, entry.symbol))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+fn shiftHasRepeatAuxiliaryConflict(
+    parse_state: state.ParseState,
+    productions: []const build.ProductionInfo,
+    symbol: syntax_ir.SymbolRef,
+) bool {
+    var repeat_lhs: ?u32 = null;
+    var saw_conflict = false;
+
+    for (parse_state.items) |entry| {
+        if (!item.containsLookahead(entry.lookaheads, symbol)) continue;
+        if (entry.item.production_id >= productions.len) continue;
+        const production = productions[entry.item.production_id];
+        if (entry.item.step_index != production.steps.len) continue;
+
+        if (!production.lhs_is_repeat_auxiliary) return false;
+        if (repeat_lhs) |lhs| {
+            if (lhs != production.lhs) return false;
+        } else {
+            repeat_lhs = production.lhs;
+        }
+        saw_conflict = true;
+    }
+
+    return saw_conflict;
+}
+
 fn buildKeywordTerminalSetAlloc(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
@@ -1501,6 +1583,83 @@ test "attachExtraShiftMetadataAlloc blocks non-terminal extras explicitly" {
     }
 
     try std.testing.expect(serialized.blocked);
+}
+
+test "attachRepetitionShiftMetadataAlloc marks repeat auxiliary conflicts" {
+    const allocator = std.testing.allocator;
+    const repeat_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    const productions = [_]build.ProductionInfo{
+        .{ .lhs = 1, .steps = repeat_steps[0..], .lhs_is_repeat_auxiliary = true },
+    };
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 0, .step_index = 1 }, .{ .terminal = 0 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+    const parse_states = [_]state.ParseState{
+        .{ .id = 0, .items = parse_items[0..], .transitions = &.{} },
+    };
+
+    const serialized = try attachRepetitionShiftMetadataAlloc(allocator, .{
+        .states = &[_]SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
+                },
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+        .blocked = false,
+        .productions = &.{},
+        .large_state_count = 0,
+    }, parse_states[0..], productions[0..]);
+    defer {
+        for (serialized.states) |state_value| allocator.free(state_value.actions);
+        allocator.free(serialized.states);
+        deinitParseActionList(allocator, serialized.parse_action_list);
+        deinitSmallParseTable(allocator, serialized.small_parse_table);
+    }
+
+    try std.testing.expect(serialized.states[0].actions[0].repetition);
+    try std.testing.expect(serialized.parse_action_list[1].actions[0].repetition);
+}
+
+test "attachRepetitionShiftMetadataAlloc leaves non-repeat conflicts unmarked" {
+    const allocator = std.testing.allocator;
+    const repeat_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    const productions = [_]build.ProductionInfo{
+        .{ .lhs = 1, .steps = repeat_steps[0..], .lhs_is_repeat_auxiliary = false },
+    };
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 0, .step_index = 1 }, .{ .terminal = 0 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+    const parse_states = [_]state.ParseState{
+        .{ .id = 0, .items = parse_items[0..], .transitions = &.{} },
+    };
+    const source = SerializedTable{
+        .states = &[_]SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
+                },
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+        .blocked = false,
+    };
+
+    const serialized = try attachRepetitionShiftMetadataAlloc(allocator, source, parse_states[0..], productions[0..]);
+
+    try std.testing.expectEqual(source.states.ptr, serialized.states.ptr);
+    try std.testing.expect(!serialized.states[0].actions[0].repetition);
 }
 
 test "attachPreparedMetadataAlloc serializes supertype map entries" {
