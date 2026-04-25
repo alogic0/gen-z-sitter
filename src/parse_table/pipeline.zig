@@ -1199,6 +1199,58 @@ test "generateSerializedTableDumpFromPrepared matches the conflict diagnostic se
     try std.testing.expectEqualStrings(fixtures.parseTableConflictSerializedDump().contents, dump);
 }
 
+test "serializeTableFromPrepared marks fields inherited from inline hidden fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.inlineFieldInheritanceGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    try std.testing.expectEqual(@as(usize, 1), prepared.variables_to_inline.len);
+
+    const serialized = try serializeTableFromPrepared(
+        pipeline_arena.allocator(),
+        prepared,
+        .strict,
+    );
+
+    var body_field_id: ?u16 = null;
+    for (serialized.field_map.names) |field| {
+        if (std.mem.eql(u8, field.name, "body")) {
+            body_field_id = field.id;
+            break;
+        }
+    }
+    try std.testing.expect(body_field_id != null);
+
+    var saw_inherited_body = false;
+    for (serialized.field_map.entries) |entry| {
+        if (entry.field_id == body_field_id.? and entry.inherited) {
+            saw_inherited_body = true;
+            break;
+        }
+    }
+    try std.testing.expect(saw_inherited_body);
+
+    const emitted = try generateParserCEmitterDumpFromPrepared(
+        pipeline_arena.allocator(),
+        prepared,
+        .strict,
+    );
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".inherited = true"));
+}
+
 test "generateParserTableEmitterDumpFromPrepared matches the metadata-rich emitter golden fixture" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();

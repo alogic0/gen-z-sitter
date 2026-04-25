@@ -195,7 +195,7 @@ index and sets `inherited = true`.
 - [x] Preserve the flag through syntax extraction, flattening, parse-table production
   collection, and serialization.
 - [x] Emit `TSFieldMapEntry.inherited = true` where appropriate.
-- [ ] Add a fixture with an inlined rule that contributes a field.
+- [x] Add a fixture with an inlined rule that contributes a field.
 - [x] Assert serialized field map entries and emitted `ts_field_map_entries[]` contain
   at least one inherited entry.
 
@@ -208,12 +208,17 @@ can change parse-table behavior broadly.
 
 ### 9a — Reduce/Reduce Without Expected Conflicts
 
-- [ ] Compare local `resolution.zig` against tree-sitter's reduce/reduce resolution.
-- [ ] Verify the exact tie-break order: dynamic precedence first, then production order
-  only when tree-sitter does that for the same conflict class.
-- [ ] Implement the narrow matching fallback.
-- [ ] Add a fixture that tree-sitter resolves by the same rule.
-- [ ] Assert the local serialized decision is chosen, not blocked.
+Upstream reference check: tree-sitter resolves reduce/reduce precedence while inserting
+reduce actions. Higher static precedence replaces lower-precedence reductions. Equal
+static precedence remains a conflict unless the grammar declares the conflict. There is
+no production-order fallback for this conflict class.
+
+- [x] Compare local `resolution.zig` against tree-sitter's reduce/reduce resolution.
+- [x] Verify the exact tie-break order: static precedence first; no production-order
+  fallback when tree-sitter does not use one for the same conflict class.
+- [x] Implement the narrow matching fallback.
+- [x] Add a fixture that tree-sitter resolves by the same rule.
+- [x] Assert the local serialized decision is chosen, not blocked.
 
 ### 9b — Non-Terminal Extras
 

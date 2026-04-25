@@ -4008,6 +4008,36 @@ pub fn hiddenAlternativeFieldsNodeTypesJson() Fixture {
     };
 }
 
+pub fn inlineFieldInheritanceGrammarJson() Fixture {
+    return .{
+        .name = "inline_field_inheritance",
+        .contents =
+        \\{
+        \\  "name": "inline_field_inheritance",
+        \\  "inline": ["_pair"],
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "SYMBOL",
+        \\      "name": "_pair"
+        \\    },
+        \\    "_pair": {
+        \\      "type": "FIELD",
+        \\      "name": "body",
+        \\      "content": {
+        \\        "type": "SYMBOL",
+        \\        "name": "item"
+        \\      }
+        \\    },
+        \\    "item": {
+        \\      "type": "STRING",
+        \\      "value": "x"
+        \\    }
+        \\  }
+        \\}
+        ,
+    };
+}
+
 pub fn hiddenExternalFieldsGrammarJson() Fixture {
     return .{
         .name = "hidden_external_fields",

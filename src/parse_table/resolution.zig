@@ -342,6 +342,9 @@ fn chooseResolvedAction(
             };
         }
         if (isReduce(first) and isReduce(second)) {
+            if (resolveReduceReduceByPrecedence(productions, precedence_orderings, first, second)) |chosen| {
+                return .{ .chosen = chosen };
+            }
             const reason: UnresolvedReason = if (reduceReduceIsExpected(productions, expected_conflicts, first, second))
                 .reduce_reduce_expected
             else
@@ -378,6 +381,89 @@ fn reduceReduceIsExpected(
         if (conflictSetContainsBoth(conflict_set, lhs_a, lhs_b)) return true;
     }
     return false;
+}
+
+const PrecedenceComparison = enum {
+    less,
+    equal,
+    greater,
+};
+
+fn resolveReduceReduceByPrecedence(
+    productions: anytype,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    first: actions.ParseAction,
+    second: actions.ParseAction,
+) ?actions.ParseAction {
+    const first_id = switch (first) {
+        .reduce => |id| id,
+        else => return null,
+    };
+    const second_id = switch (second) {
+        .reduce => |id| id,
+        else => return null,
+    };
+    if (first_id >= productions.len or second_id >= productions.len) return null;
+
+    return switch (compareReducePrecedence(
+        productions[first_id],
+        productions[second_id],
+        precedence_orderings,
+    )) {
+        .greater => first,
+        .less => second,
+        .equal => null,
+    };
+}
+
+fn compareReducePrecedence(
+    left: anytype,
+    right: @TypeOf(left),
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+) PrecedenceComparison {
+    const left_metadata = extractResolutionMetadata(left);
+    const right_metadata = extractResolutionMetadata(right);
+
+    const left_integer = left_metadata.max_integer_precedence orelse 0;
+    const right_integer = right_metadata.max_integer_precedence orelse 0;
+    if (left_integer != 0 or right_integer != 0) {
+        if (left_integer > right_integer) return .greater;
+        if (left_integer < right_integer) return .less;
+        return .equal;
+    }
+
+    for (precedence_orderings) |ordering| {
+        var saw_left = false;
+        var saw_right = false;
+        for (ordering) |entry| {
+            if (precedenceEntryMatchesProduction(entry, left_metadata, left.lhs)) {
+                saw_left = true;
+                if (saw_right) return .greater;
+            } else if (precedenceEntryMatchesProduction(entry, right_metadata, right.lhs)) {
+                saw_right = true;
+                if (saw_left) return .less;
+            }
+        }
+    }
+
+    return .equal;
+}
+
+fn precedenceEntryMatchesProduction(
+    entry: syntax_ir.PrecedenceEntry,
+    metadata: ProductionResolutionMetadata,
+    lhs: u32,
+) bool {
+    return switch (entry) {
+        .name => |name| if (metadata.named_precedence) |candidate|
+            std.mem.eql(u8, name, candidate)
+        else
+            false,
+        .symbol => |symbol| switch (symbol) {
+            .non_terminal => |index| index == lhs,
+            else => false,
+        },
+    };
 }
 
 fn conflictSetContainsBoth(
@@ -904,6 +990,121 @@ test "resolveActionTable keeps reduce/reduce pairs unresolved" {
     }
 
     try expectUnresolvedGroup(resolved.groupsForState(4)[0], .reduce_reduce_deferred, 2);
+}
+
+test "resolveActionTable chooses higher integer precedence reduce/reduce action" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{
+            .lhs = 1,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .terminal = 1 }, .precedence = .{ .integer = 1 } },
+            },
+        },
+        .{
+            .lhs = 2,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .terminal = 2 }, .precedence = .{ .integer = 3 } },
+            },
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 4,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTable(allocator, productions[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectChosenAction(resolved.groupsForState(4)[0], .{ .reduce = 2 });
+}
+
+test "resolveActionTable chooses ordered named precedence reduce/reduce action" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{
+            .lhs = 1,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .terminal = 1 }, .precedence = .{ .name = "low" } },
+            },
+        },
+        .{
+            .lhs = 2,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .terminal = 2 }, .precedence = .{ .name = "high" } },
+            },
+        },
+    };
+    const ordering = [_]syntax_ir.PrecedenceEntry{
+        .{ .name = "low" },
+        .{ .name = "high" },
+    };
+    const precedence_orderings = [_][]const syntax_ir.PrecedenceEntry{ordering[0..]};
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 4,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTableWithPrecedence(allocator, productions[0..], precedence_orderings[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectChosenAction(resolved.groupsForState(4)[0], .{ .reduce = 2 });
 }
 
 test "resolveActionTable chooses reduce for a positive integer precedence shift/reduce pair" {
