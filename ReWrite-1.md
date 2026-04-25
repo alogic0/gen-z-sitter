@@ -41,20 +41,20 @@ These changes are in `src/parser_emit/parser_c.zig` and
 
 ### 2a — TSParseActionEntry flat list
 
-- [ ] In `serialize.zig`, extend `SerializedTable` with a flat `parse_action_list` field:
+- [x] In `serialize.zig`, extend `SerializedTable` with a flat `parse_action_list` field:
   a deduplicated list of `TSParseActionEntry` values in the packed union format.
-- [ ] In `parser_c.zig`, emit `static const TSParseActionEntry ts_parse_actions[] = { … };`
+- [x] In `parser_c.zig`, emit `static const TSParseActionEntry ts_parse_actions[] = { … };`
   from `SerializedTable.parse_action_list`.
-  Partial: `parser_c.zig` emits `ts_parse_actions[]` now, but it is built in the emitter,
-  not from a serialized `parse_action_list` yet.
 - [ ] Each action entry must encode `type` (shift/reduce/accept/recover) and the correct
   branch fields; shift entries need `state`, `extra`, `repetition`; reduce entries need
   `child_count`, `symbol`, `dynamic_precedence`, `production_id`.
-  Partial: shift/reduce/accept are emitted; recover and true extra/repetition metadata are not done.
+  Partial: serialized/emitted action entries support shift/reduce/accept/recover fields,
+  but the current parse action model only produces shift/reduce/accept and has no true
+  extra/repetition source yet.
 
 ### 2b — Large-state parse table
 
-- [ ] In `serialize.zig`, compute `large_state_count`: states where the number of
+- [x] In `serialize.zig`, compute `large_state_count`: states where the number of
   (symbol → action/goto) entries justifies a direct 2D row (match tree-sitter's heuristic:
   all states up to the first state that saves space in the small-table format).
 - [x] Emit `static const uint16_t ts_parse_table[STATE_COUNT][SYMBOL_COUNT] = { … };`

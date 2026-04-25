@@ -50,10 +50,36 @@ pub const SerializedProductionInfo = struct {
     dynamic_precedence: i16,
 };
 
+pub const SerializedParseActionKind = enum {
+    shift,
+    reduce,
+    accept,
+    recover,
+};
+
+pub const SerializedParseAction = struct {
+    kind: SerializedParseActionKind,
+    state: state.StateId = 0,
+    extra: bool = false,
+    repetition: bool = false,
+    child_count: u8 = 0,
+    symbol: syntax_ir.SymbolRef = .{ .terminal = 0 },
+    dynamic_precedence: i16 = 0,
+    production_id: u16 = 0,
+};
+
+pub const SerializedParseActionListEntry = struct {
+    index: u16,
+    reusable: bool,
+    actions: []const SerializedParseAction,
+};
+
 pub const SerializedTable = struct {
     states: []const SerializedState,
     blocked: bool,
+    large_state_count: usize = 0,
     productions: []const SerializedProductionInfo = &.{},
+    parse_action_list: []const SerializedParseActionListEntry = &.{},
     alias_sequences: []const SerializedAliasEntry = &.{},
     word_token: ?syntax_ir.SymbolRef = null,
 
@@ -121,9 +147,161 @@ pub fn serializeBuildResult(
     return .{
         .states = serialized_states,
         .blocked = blocked,
+        .large_state_count = try computeLargeStateCountAlloc(allocator, serialized_states, productions),
         .productions = productions,
+        .parse_action_list = try buildParseActionListAlloc(allocator, serialized_states, productions),
         .alias_sequences = try alias_list.toOwnedSlice(allocator),
     };
+}
+
+pub fn buildParseActionListAlloc(
+    allocator: std.mem.Allocator,
+    states: []const SerializedState,
+    productions: []const SerializedProductionInfo,
+) std.mem.Allocator.Error![]const SerializedParseActionListEntry {
+    var entries = std.array_list.Managed(SerializedParseActionListEntry).init(allocator);
+    defer entries.deinit();
+
+    try entries.append(.{
+        .index = 0,
+        .reusable = false,
+        .actions = &.{},
+    });
+
+    for (states) |serialized_state| {
+        for (serialized_state.actions) |entry| {
+            const runtime_action = runtimeActionFromParseAction(entry.action, productions);
+            if (parseActionListIndexForRuntimeAction(entries.items, runtime_action) != null) continue;
+
+            const action_slice = try allocator.alloc(SerializedParseAction, 1);
+            action_slice[0] = runtime_action;
+            try entries.append(.{
+                .index = @intCast(entries.items.len * 2 - 1),
+                .reusable = true,
+                .actions = action_slice,
+            });
+        }
+    }
+
+    return try entries.toOwnedSlice();
+}
+
+pub fn deinitParseActionList(
+    allocator: std.mem.Allocator,
+    entries: []const SerializedParseActionListEntry,
+) void {
+    for (entries) |entry| {
+        if (entry.actions.len > 0) allocator.free(entry.actions);
+    }
+    allocator.free(entries);
+}
+
+pub fn computeLargeStateCountAlloc(
+    allocator: std.mem.Allocator,
+    states: []const SerializedState,
+    productions: []const SerializedProductionInfo,
+) std.mem.Allocator.Error!usize {
+    var symbols = std.array_list.Managed(syntax_ir.SymbolRef).init(allocator);
+    defer symbols.deinit();
+
+    for (states) |serialized_state| {
+        for (serialized_state.actions) |entry| {
+            try appendUniqueSymbolRef(&symbols, entry.symbol);
+            switch (entry.action) {
+                .reduce => |production_id| {
+                    if (production_id < productions.len) {
+                        try appendUniqueSymbolRef(&symbols, .{ .non_terminal = productions[production_id].lhs });
+                    }
+                },
+                .shift, .accept => {},
+            }
+        }
+        for (serialized_state.gotos) |entry| {
+            try appendUniqueSymbolRef(&symbols, entry.symbol);
+        }
+    }
+
+    const threshold = @min(@as(usize, 64), symbols.items.len / 2);
+    var count: usize = 0;
+    for (states, 0..) |serialized_state, index| {
+        if (index <= 1 or serialized_state.actions.len + serialized_state.gotos.len > threshold) {
+            count += 1;
+        } else {
+            break;
+        }
+    }
+    return count;
+}
+
+pub fn parseActionListIndexForParseAction(
+    entries: []const SerializedParseActionListEntry,
+    action: actions.ParseAction,
+    productions: []const SerializedProductionInfo,
+) ?u16 {
+    return parseActionListIndexForRuntimeAction(entries, runtimeActionFromParseAction(action, productions));
+}
+
+pub fn runtimeActionFromParseAction(
+    action: actions.ParseAction,
+    productions: []const SerializedProductionInfo,
+) SerializedParseAction {
+    return switch (action) {
+        .shift => |state_id| .{
+            .kind = .shift,
+            .state = state_id,
+        },
+        .reduce => |production_id| blk: {
+            const production = if (production_id < productions.len)
+                productions[production_id]
+            else
+                SerializedProductionInfo{ .lhs = 0, .child_count = 0, .dynamic_precedence = 0 };
+            break :blk .{
+                .kind = .reduce,
+                .child_count = production.child_count,
+                .symbol = .{ .non_terminal = production.lhs },
+                .dynamic_precedence = production.dynamic_precedence,
+                .production_id = @intCast(@min(production_id, std.math.maxInt(u16))),
+            };
+        },
+        .accept => .{
+            .kind = .accept,
+        },
+    };
+}
+
+fn parseActionListIndexForRuntimeAction(
+    entries: []const SerializedParseActionListEntry,
+    action: SerializedParseAction,
+) ?u16 {
+    for (entries) |entry| {
+        if (entry.actions.len != 1) continue;
+        if (serializedParseActionEql(entry.actions[0], action)) return entry.index;
+    }
+    return null;
+}
+
+fn serializedParseActionEql(left: SerializedParseAction, right: SerializedParseAction) bool {
+    if (left.kind != right.kind) return false;
+    return switch (left.kind) {
+        .shift => left.state == right.state and
+            left.extra == right.extra and
+            left.repetition == right.repetition,
+        .reduce => left.child_count == right.child_count and
+            symbolRefEql(left.symbol, right.symbol) and
+            left.dynamic_precedence == right.dynamic_precedence and
+            left.production_id == right.production_id,
+        .accept, .recover => true,
+    };
+}
+
+fn appendUniqueSymbolRef(
+    symbols: *std.array_list.Managed(syntax_ir.SymbolRef),
+    symbol: syntax_ir.SymbolRef,
+) std.mem.Allocator.Error!void {
+    for (symbols.items) |existing| {
+        if (symbolRefEql(existing, symbol)) return;
+    }
+    try symbols.append(symbol);
 }
 
 fn collectActionsForState(
@@ -200,6 +378,23 @@ fn collectUnresolvedForState(
         index += 1;
     }
     return entries;
+}
+
+fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
+    return switch (a) {
+        .non_terminal => |index| switch (b) {
+            .non_terminal => |other| index == other,
+            else => false,
+        },
+        .terminal => |index| switch (b) {
+            .terminal => |other| index == other,
+            else => false,
+        },
+        .external => |index| switch (b) {
+            .external => |other| index == other,
+            else => false,
+        },
+    };
 }
 
 test "serializeBuildResult rejects blocked snapshots in strict mode" {
@@ -292,6 +487,7 @@ test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {
 
     const serialized = try serializeBuildResult(allocator, result, .diagnostic);
     defer allocator.free(serialized.states);
+    defer deinitParseActionList(allocator, serialized.parse_action_list);
     defer allocator.free(serialized.states[0].unresolved);
     defer allocator.free(serialized.states[0].gotos);
     defer allocator.free(serialized.states[0].actions);
@@ -302,4 +498,76 @@ test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {
     try std.testing.expectEqual(@as(usize, 1), serialized.states[0].gotos.len);
     try std.testing.expectEqual(@as(usize, 1), serialized.states[0].unresolved.len);
     try std.testing.expectEqual(resolution.UnresolvedReason.shift_reduce, serialized.states[0].unresolved[0].reason);
+}
+
+test "buildParseActionListAlloc deduplicates runtime actions" {
+    const allocator = std.testing.allocator;
+    const productions = [_]SerializedProductionInfo{
+        .{ .lhs = 2, .child_count = 3, .dynamic_precedence = 4 },
+    };
+    const states = [_]SerializedState{
+        .{
+            .id = 0,
+            .actions = &[_]SerializedActionEntry{
+                .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 7 } },
+                .{ .symbol = .{ .terminal = 2 }, .action = .{ .reduce = 0 } },
+            },
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+    };
+
+    const list = try buildParseActionListAlloc(allocator, states[0..], productions[0..]);
+    defer deinitParseActionList(allocator, list);
+
+    try std.testing.expectEqual(@as(usize, 3), list.len);
+    try std.testing.expectEqual(@as(u16, 0), list[0].index);
+    try std.testing.expectEqual(@as(u16, 1), list[1].index);
+    try std.testing.expectEqual(@as(u16, 3), list[2].index);
+    try std.testing.expectEqual(@as(u16, 1), parseActionListIndexForParseAction(list, .{ .shift = 7 }, productions[0..]).?);
+    try std.testing.expectEqual(@as(u16, 3), parseActionListIndexForParseAction(list, .{ .reduce = 0 }, productions[0..]).?);
+    try std.testing.expectEqual(SerializedParseActionKind.reduce, list[2].actions[0].kind);
+    try std.testing.expectEqual(@as(u8, 3), list[2].actions[0].child_count);
+    try std.testing.expectEqual(@as(i16, 4), list[2].actions[0].dynamic_precedence);
+    try std.testing.expectEqual(@as(u32, 2), list[2].actions[0].symbol.non_terminal);
+}
+
+test "computeLargeStateCountAlloc follows tree-sitter threshold prefix rule" {
+    const allocator = std.testing.allocator;
+    const states = [_]SerializedState{
+        .{
+            .id = 0,
+            .actions = &[_]SerializedActionEntry{
+                .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
+            },
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+        .{
+            .id = 1,
+            .actions = &.{},
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+        .{
+            .id = 2,
+            .actions = &.{},
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+        .{
+            .id = 3,
+            .actions = &[_]SerializedActionEntry{
+                .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
+            },
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+    };
+
+    try std.testing.expectEqual(
+        @as(usize, 2),
+        try computeLargeStateCountAlloc(allocator, states[0..], &.{}),
+    );
 }

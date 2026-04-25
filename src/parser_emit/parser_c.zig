@@ -113,15 +113,16 @@ pub fn writeParserCWithOptions(
     const compatibility = compat.currentRuntimeCompatibility();
     const emitted_symbols = try collectEmittedSymbols(allocator, compacted);
     defer deinitEmittedSymbols(allocator, emitted_symbols);
-
-    var action_lists = std.array_list.Managed(ParseActionList).init(allocator);
-    defer action_lists.deinit();
-    try action_lists.append(.{ .action = null, .index = 0 });
+    const parse_action_list = if (compacted.parse_action_list.len > 0)
+        compacted.parse_action_list
+    else
+        try serialize.buildParseActionListAlloc(arena.allocator(), compacted.states, compacted.productions);
 
     try compat.writeContractPrelude(writer, compatibility);
     try compat.writeContractTypesAndConstants(writer, compatibility);
     try writer.print("#define STATE_COUNT {d}\n", .{compacted.states.len});
-    try writer.print("#define LARGE_STATE_COUNT {d}\n", .{largeStateCount(compacted, emitted_symbols.len)});
+    const large_state_count_value = serializedLargeStateCount(compacted);
+    try writer.print("#define LARGE_STATE_COUNT {d}\n", .{large_state_count_value});
     try writer.print("#define SYMBOL_COUNT {d}\n", .{emitted_symbols.len});
     try writer.print("#define TOKEN_COUNT {d}\n", .{tokenCount(emitted_symbols)});
     try writer.print("#define EXTERNAL_TOKEN_COUNT {d}\n", .{externalTokenCount(emitted_symbols)});
@@ -165,7 +166,6 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("static const uint16_t ts_non_terminal_alias_map[] = { 0 };\n");
     try writer.writeAll("static const TSStateId ts_primary_state_ids[SYMBOL_COUNT] = { 0 };\n\n");
 
-    const large_state_count_value = largeStateCount(compacted, emitted_symbols.len);
     try writer.writeAll("static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {\n");
     for (compacted.states[0..large_state_count_value], 0..) |serialized_state, index| {
         try writer.print("  [STATE({d})] = {{\n", .{index});
@@ -175,7 +175,7 @@ pub fn writeParserCWithOptions(
         }
         for (serialized_state.actions) |entry| {
             const symbol_id = symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory;
-            const action_index = try internActionList(&action_lists, compacted, emitted_symbols, entry.action);
+            const action_index = serialize.parseActionListIndexForParseAction(parse_action_list, entry.action, compacted.productions) orelse return error.OutOfMemory;
             try writer.print("    [{d}] = ACTIONS({d}),\n", .{ symbol_id, action_index });
         }
         try writer.writeAll("  },\n");
@@ -196,7 +196,7 @@ pub fn writeParserCWithOptions(
             }
             for (serialized_state.actions) |entry| {
                 const symbol_id = symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory;
-                const action_index = try internActionList(&action_lists, compacted, emitted_symbols, entry.action);
+                const action_index = serialize.parseActionListIndexForParseAction(parse_action_list, entry.action, compacted.productions) orelse return error.OutOfMemory;
                 try writer.print("  ACTIONS({d}), 1, {d},\n", .{ action_index, symbol_id });
                 offset += 3;
             }
@@ -212,13 +212,17 @@ pub fn writeParserCWithOptions(
     }
 
     try writer.writeAll("static const TSParseActionEntry ts_parse_actions[] = {\n");
-    for (action_lists.items) |entry| {
-        if (entry.action) |action| {
-            try writer.print("  [{d}] = {{ .entry = {{ .count = 1, .reusable = true }} }}, ", .{entry.index});
-            try writeRuntimeAction(writer, compacted, emitted_symbols, action);
-            try writer.writeAll(",\n");
+    for (parse_action_list) |entry| {
+        try writer.print("  [{d}] = {{ .entry = {{ .count = {d}, .reusable = {} }} }},", .{ entry.index, entry.actions.len, entry.reusable });
+        if (entry.actions.len == 0) {
+            try writer.writeByte('\n');
         } else {
-            try writer.writeAll("  [0] = { .entry = { .count = 0, .reusable = false } },\n");
+            for (entry.actions) |action| {
+                try writer.writeByte(' ');
+                try writeRuntimeAction(writer, emitted_symbols, action);
+                try writer.writeByte(',');
+            }
+            try writer.writeByte('\n');
         }
     }
     try writer.writeAll("};\n\n");
@@ -261,94 +265,31 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("}\n");
 }
 
-const ParseActionList = struct {
-    action: ?parse_actions.ParseAction,
-    index: u16,
-};
-
-fn internActionList(
-    action_lists: *std.array_list.Managed(ParseActionList),
-    serialized: serialize.SerializedTable,
-    symbols: []const EmittedSymbol,
-    action: parse_actions.ParseAction,
-) !u16 {
-    for (action_lists.items) |entry| {
-        if (entry.action) |existing| {
-            if (runtimeActionEql(serialized, symbols, existing, action)) return entry.index;
-        }
-    }
-    const index: u16 = @intCast(action_lists.items.len * 2 - 1);
-    try action_lists.append(.{ .action = action, .index = index });
-    return index;
-}
-
-fn runtimeActionEql(
-    serialized: serialize.SerializedTable,
-    symbols: []const EmittedSymbol,
-    left: parse_actions.ParseAction,
-    right: parse_actions.ParseAction,
-) bool {
-    return switch (left) {
-        .shift => |left_state| switch (right) {
-            .shift => |right_state| left_state == right_state,
-            else => false,
-        },
-        .reduce => |left_production| switch (right) {
-            .reduce => |right_production| blk: {
-                const left_info = productionInfo(serialized, left_production);
-                const right_info = productionInfo(serialized, right_production);
-                const left_symbol = symbolIdForRef(symbols, .{ .non_terminal = left_info.lhs }) orelse 0;
-                const right_symbol = symbolIdForRef(symbols, .{ .non_terminal = right_info.lhs }) orelse 0;
-                break :blk left_info.child_count == right_info.child_count and
-                    left_symbol == right_symbol and
-                    left_info.dynamic_precedence == right_info.dynamic_precedence and
-                    left_production == right_production;
-            },
-            else => false,
-        },
-        .accept => switch (right) {
-            .accept => true,
-            else => false,
-        },
-    };
-}
-
 fn writeRuntimeAction(
     writer: anytype,
-    serialized: serialize.SerializedTable,
     symbols: []const EmittedSymbol,
-    action: parse_actions.ParseAction,
+    action: serialize.SerializedParseAction,
 ) !void {
-    switch (action) {
-        .shift => |state_id| try writer.print("{{ .action = {{ .shift = {{ .type = TSParseActionTypeShift, .state = {d} }} }} }}", .{state_id}),
-        .reduce => |production_id| {
-            const info = productionInfo(serialized, production_id);
-            const symbol_id = symbolIdForRef(symbols, .{ .non_terminal = info.lhs }) orelse 0;
+    switch (action.kind) {
+        .shift => try writer.print(
+            "{{ .action = {{ .shift = {{ .type = TSParseActionTypeShift, .state = {d}, .extra = {}, .repetition = {} }} }} }}",
+            .{ action.state, action.extra, action.repetition },
+        ),
+        .reduce => {
+            const symbol_id = symbolIdForRef(symbols, action.symbol) orelse 0;
             try writer.print(
                 "{{ .action = {{ .reduce = {{ .type = TSParseActionTypeReduce, .child_count = {d}, .symbol = {d}, .dynamic_precedence = {d}, .production_id = {d} }} }} }}",
-                .{ info.child_count, symbol_id, info.dynamic_precedence, production_id },
+                .{ action.child_count, symbol_id, action.dynamic_precedence, action.production_id },
             );
         },
         .accept => try writer.writeAll("{ .action = { .type = TSParseActionTypeAccept } }"),
+        .recover => try writer.writeAll("{ .action = { .type = TSParseActionTypeRecover } }"),
     }
 }
 
-fn productionInfo(serialized: serialize.SerializedTable, production_id: u32) serialize.SerializedProductionInfo {
-    if (production_id < serialized.productions.len) return serialized.productions[production_id];
-    return .{ .lhs = 0, .child_count = 0, .dynamic_precedence = 0 };
-}
-
-fn largeStateCount(serialized: serialize.SerializedTable, symbol_count: usize) usize {
-    const threshold = @min(@as(usize, 64), symbol_count / 2);
-    var count: usize = 0;
-    for (serialized.states, 0..) |state_value, index| {
-        if (index <= 1 or state_value.actions.len + state_value.gotos.len > threshold) {
-            count += 1;
-        } else {
-            break;
-        }
-    }
-    return count;
+fn serializedLargeStateCount(serialized: serialize.SerializedTable) usize {
+    if (serialized.large_state_count != 0 or serialized.states.len == 0) return serialized.large_state_count;
+    return @min(serialized.states.len, 2);
 }
 
 fn tokenCount(symbols: []const EmittedSymbol) usize {

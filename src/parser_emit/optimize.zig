@@ -53,6 +53,9 @@ pub fn compactSerializedTableAlloc(
     return .{
         .states = compacted_states,
         .blocked = serialized.blocked,
+        .large_state_count = try serialize.computeLargeStateCountAlloc(allocator, compacted_states, serialized.productions),
+        .productions = serialized.productions,
+        .parse_action_list = try serialize.buildParseActionListAlloc(allocator, compacted_states, serialized.productions),
         .alias_sequences = serialized.alias_sequences,
         .word_token = serialized.word_token,
     };
