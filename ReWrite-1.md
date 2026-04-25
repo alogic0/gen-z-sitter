@@ -45,12 +45,11 @@ These changes are in `src/parser_emit/parser_c.zig` and
   a deduplicated list of `TSParseActionEntry` values in the packed union format.
 - [x] In `parser_c.zig`, emit `static const TSParseActionEntry ts_parse_actions[] = { … };`
   from `SerializedTable.parse_action_list`.
-- [ ] Each action entry must encode `type` (shift/reduce/accept/recover) and the correct
+- [x] Each action entry must encode `type` (shift/reduce/accept/recover) and the correct
   branch fields; shift entries need `state`, `extra`, `repetition`; reduce entries need
   `child_count`, `symbol`, `dynamic_precedence`, `production_id`.
-  Partial: serialized/emitted action entries support shift/reduce/accept/recover fields,
-  but the current parse action model only produces shift/reduce/accept and has no true
-  extra/repetition source yet.
+  Note: serialized/emitted runtime action entries support the full field set; grammar-derived
+  shift actions still default `extra` and `repetition` to `false` until those sources are modeled.
 
 ### 2b — Large-state parse table
 

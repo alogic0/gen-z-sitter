@@ -915,7 +915,7 @@ test "emitParserCAlloc emits prepared symbol metadata and grammar name" {
         },
     };
 
-    const emitted = try emitParserCAlloc(allocator, serialized);
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
     defer allocator.free(emitted);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = \"source_file\",\n"));
@@ -959,7 +959,7 @@ test "emitParserCAlloc emits serialized field map tables" {
         },
     };
 
-    const emitted = try emitParserCAlloc(allocator, serialized);
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
     defer allocator.free(emitted);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define FIELD_COUNT 2\n"));
@@ -1067,6 +1067,47 @@ test "emitParserCAlloc emits serialized lex modes" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 1 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .lex_state = 9, .external_lex_state = 2, .reserved_word_set_id = 0 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .lex_modes = ts_lex_modes,\n"));
+}
+
+test "emitParserCAlloc emits full runtime parse action fields" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .parse_action_list = &[_]serialize.SerializedParseActionListEntry{
+            .{ .index = 0, .reusable = false, .actions = &.{} },
+            .{
+                .index = 1,
+                .reusable = true,
+                .actions = &[_]serialize.SerializedParseAction{
+                    .{ .kind = .shift, .state = 9, .extra = true, .repetition = true },
+                },
+            },
+            .{
+                .index = 3,
+                .reusable = false,
+                .actions = &[_]serialize.SerializedParseAction{
+                    .{ .kind = .recover },
+                },
+            },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSParseActionTypeShift"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".state = 9"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".extra = true"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".repetition = true"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "{ .action = { .type = TSParseActionTypeRecover } }"));
 }
 
 test "emitParserCAlloc emits self-contained C that compiles" {
