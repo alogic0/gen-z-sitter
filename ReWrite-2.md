@@ -299,7 +299,9 @@ External scanner support must be emitted as a complete set.
 - [x] Run focused unit tests for each new serialized model and emitter helper.
 - [ ] Run `zig build test` after the lexer path is wired.
 - [x] Compile-smoke emitted parser C for no-external fixtures first.
-- [ ] Link one no-external fixture with the tree-sitter runtime from `../tree-sitter/lib/src`
+- [x] Link one no-external fixture with the tree-sitter runtime from `../tree-sitter/lib/src`
   and parse minimal valid input. Assert the root is not an ERROR node.
+  - Implemented as a serialized runtime fixture so this gate validates emitted C/runtime ABI
+    behavior without pulling builder-level EOF propagation forward from ReWrite-3.
 - [ ] Add a keyword/reserved-word link test after Phase 6.
 - [ ] Add an external-scanner compile/link test after Phase 8.

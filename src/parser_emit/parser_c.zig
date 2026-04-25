@@ -1116,9 +1116,9 @@ fn unresolvedReasonCode(reason: @import("../parse_table/resolution.zig").Unresol
 
 fn symbolSortKey(symbol: syntax_grammar.SymbolRef) u64 {
     return switch (symbol) {
-        .non_terminal => |index| (@as(u64, 0) << 32) | index,
-        .terminal => |index| (@as(u64, 1) << 32) | index,
-        .external => |index| (@as(u64, 2) << 32) | index,
+        .terminal => |index| (@as(u64, 0) << 32) | index,
+        .external => |index| (@as(u64, 1) << 32) | index,
+        .non_terminal => |index| (@as(u64, 2) << 32) | index,
     };
 }
 
@@ -1310,12 +1310,13 @@ test "emitParserCAlloc emits prepared symbol metadata and grammar name" {
     const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
     defer allocator.free(emitted);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = \"source_file\",\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = \"string\\\"token\",\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = \"terminal:2\",\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .visible = true, .named = true, .supertype = true },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .visible = true, .named = true, .supertype = false },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = { .visible = true, .named = false, .supertype = false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = \"string\\\"token\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = \"terminal:2\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = \"source_file\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .visible = true, .named = true, .supertype = false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .visible = true, .named = false, .supertype = false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = { .visible = true, .named = true, .supertype = true },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = 0,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = 1,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .name = \"quote\\\"grammar\",\n"));
