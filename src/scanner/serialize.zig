@@ -6,14 +6,17 @@ const json_loader = @import("../grammar/json_loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
+/// Errors produced while serializing external-scanner boundary metadata.
 pub const SerializeError = std.mem.Allocator.Error;
 
+/// External token metadata exposed by the syntax grammar.
 pub const SerializedExternalToken = struct {
     index: u32,
     name: []const u8,
     kind: syntax_ir.VariableKind,
 };
 
+/// One production step that references an external token.
 pub const SerializedExternalUse = struct {
     external_index: u32,
     variable_name: []const u8,
@@ -22,11 +25,13 @@ pub const SerializedExternalUse = struct {
     field_name: ?[]const u8,
 };
 
+/// Scanner feature that prevents the current boundary from being ready.
 pub const UnsupportedExternalScannerFeature = union(enum) {
     missing_external_tokens,
     extra_symbols: usize,
 };
 
+/// Serialized external-scanner boundary and readiness blockers.
 pub const SerializedExternalScannerBoundary = struct {
     tokens: []const SerializedExternalToken,
     uses: []const SerializedExternalUse,
@@ -38,6 +43,7 @@ pub const SerializedExternalScannerBoundary = struct {
     }
 };
 
+/// Serialize external-token usage from syntax grammar into boundary metadata.
 pub fn serializeExternalScannerBoundary(
     allocator: std.mem.Allocator,
     syntax: syntax_ir.SyntaxGrammar,
@@ -151,8 +157,7 @@ test "serializeExternalScannerBoundary tolerates multiple external tokens at the
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    const prepared = try parsePreparedFixture(
-        arena.allocator(),
+    const prepared = try parsePreparedFixture(arena.allocator(),
         \\{
         \\  "name": "multi_external_boundary",
         \\  "rules": {

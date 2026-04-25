@@ -26,7 +26,7 @@ pub fn runCapture(allocator: std.mem.Allocator, argv: []const []const u8) !RunRe
 
 test "runCapture can execute a simple process" {
     const allocator = std.testing.allocator;
-    var result = try runCapture(allocator, &.{"sh", "-c", "printf ok"});
+    var result = try runCapture(allocator, &.{ "sh", "-c", "printf ok" });
     defer result.deinit(allocator);
 
     try std.testing.expectEqualStrings("ok", result.stdout);

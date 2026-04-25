@@ -8,31 +8,38 @@ const ir_symbols = @import("../ir/symbols.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
+/// Errors produced while converting the parse-table builder output into the
+/// runtime-oriented serialized model.
 pub const SerializeError = std.mem.Allocator.Error || error{
     UnresolvedDecisions,
 };
 
+/// Controls whether unresolved parse decisions block serialization.
 pub const SerializeMode = enum {
     strict,
     diagnostic,
 };
 
+/// A terminal or external-symbol action attached to one serialized state.
 pub const SerializedActionEntry = struct {
     symbol: syntax_ir.SymbolRef,
     action: actions.ParseAction,
 };
 
+/// A non-terminal transition attached to one serialized state.
 pub const SerializedGotoEntry = struct {
     symbol: syntax_ir.SymbolRef,
     state: state.StateId,
 };
 
+/// A parse decision that could not be resolved but is preserved for diagnostics.
 pub const SerializedUnresolvedEntry = struct {
     symbol: syntax_ir.SymbolRef,
     reason: resolution.UnresolvedReason,
     candidate_actions: []const actions.ParseAction,
 };
 
+/// One parser state after build-time decisions have been applied.
 pub const SerializedState = struct {
     id: state.StateId,
     lex_state_id: state.LexStateId = 0,
@@ -41,6 +48,7 @@ pub const SerializedState = struct {
     unresolved: []const SerializedUnresolvedEntry,
 };
 
+/// Alias metadata keyed by production and child position.
 pub const SerializedAliasEntry = struct {
     production_id: u32,
     step_index: u32,
@@ -48,12 +56,14 @@ pub const SerializedAliasEntry = struct {
     named: bool,
 };
 
+/// Runtime production metadata used by reduce actions and field maps.
 pub const SerializedProductionInfo = struct {
     lhs: u32,
     child_count: u8,
     dynamic_precedence: i16,
 };
 
+/// Runtime parse-action tag used by the generated C table.
 pub const SerializedParseActionKind = enum {
     shift,
     reduce,
@@ -61,6 +71,7 @@ pub const SerializedParseActionKind = enum {
     recover,
 };
 
+/// Runtime parse action payload, matching the generated ABI model.
 pub const SerializedParseAction = struct {
     kind: SerializedParseActionKind,
     state: state.StateId = 0,
@@ -72,33 +83,39 @@ pub const SerializedParseAction = struct {
     production_id: u16 = 0,
 };
 
+/// One deduplicated runtime parse-action list entry.
 pub const SerializedParseActionListEntry = struct {
     index: u16,
     reusable: bool,
     actions: []const SerializedParseAction,
 };
 
+/// Identifies whether a small parse-table group stores a goto or action value.
 pub const SerializedSmallParseValueKind = enum {
     state,
     action,
 };
 
+/// Symbols that share the same small parse-table value.
 pub const SerializedSmallParseGroup = struct {
     kind: SerializedSmallParseValueKind,
     value: u16,
     symbols: []const syntax_ir.SymbolRef,
 };
 
+/// One unique packed small parse-table row.
 pub const SerializedSmallParseRow = struct {
     offset: u32,
     groups: []const SerializedSmallParseGroup,
 };
 
+/// Deduplicated small parse-table rows plus state-to-row offsets.
 pub const SerializedSmallParseTable = struct {
     rows: []const SerializedSmallParseRow = &.{},
     map: []const u32 = &.{},
 };
 
+/// Symbol metadata needed by the generated runtime language object.
 pub const SerializedSymbolInfo = struct {
     ref: syntax_ir.SymbolRef,
     name: []const u8,
@@ -108,28 +125,33 @@ pub const SerializedSymbolInfo = struct {
     public_symbol: u16,
 };
 
+/// Runtime field name entry. Field id zero is reserved for the empty field.
 pub const SerializedFieldName = struct {
     id: u16,
     name: []const u8,
 };
 
+/// Field metadata for one production child.
 pub const SerializedFieldMapEntry = struct {
     field_id: u16,
     child_index: u8,
     inherited: bool,
 };
 
+/// Slice into the field-map entry table for one production.
 pub const SerializedFieldMapSlice = struct {
     index: u16,
     length: u16,
 };
 
+/// Serialized runtime field map tables.
 pub const SerializedFieldMap = struct {
     names: []const SerializedFieldName = &.{},
     entries: []const SerializedFieldMapEntry = &.{},
     slices: []const SerializedFieldMapSlice = &.{},
 };
 
+/// Complete parse table model consumed by emitters.
 pub const SerializedTable = struct {
     states: []const SerializedState,
     blocked: bool,
@@ -154,24 +176,18 @@ pub fn serializeBuildResult(
     result: build.BuildResult,
     mode: SerializeMode,
 ) SerializeError!SerializedTable {
-    std.debug.print("[parse_table/serialize] serializeBuildResult enter mode={s} states={d}\n", .{ @tagName(mode), result.states.len });
     if (mode == .strict and result.hasBlockingUnresolvedDecisions()) {
         return error.UnresolvedDecisions;
     }
 
-    std.debug.print("[parse_table/serialize] stage decision_snapshot\n", .{});
     const snapshot = try result.decisionSnapshotAlloc(allocator);
     defer {
         allocator.free(snapshot.chosen);
         allocator.free(snapshot.unresolved);
     }
-    std.debug.print("[parse_table/serialize] stage allocate_serialized_states len={d}\n", .{result.states.len});
     const serialized_states = try allocator.alloc(SerializedState, result.states.len);
 
     for (result.states, 0..) |parse_state, index| {
-        if (index < 5 or (index + 1) % 500 == 0) {
-            std.debug.print("[parse_table/serialize] state {d}/{d} id={d}\n", .{ index + 1, result.states.len, parse_state.id });
-        }
         serialized_states[index] = .{
             .id = parse_state.id,
             .lex_state_id = parse_state.lex_state_id,
@@ -209,7 +225,6 @@ pub fn serializeBuildResult(
     const parse_action_list = try buildParseActionListAlloc(allocator, serialized_states, productions);
     const field_map = try buildFieldMapAlloc(allocator, result.productions);
     const lex_modes = try lexer_serialize.buildLexModesAlloc(allocator, serialized_states);
-    std.debug.print("[parse_table/serialize] serializeBuildResult done blocked={}\n", .{blocked});
     return .{
         .states = serialized_states,
         .blocked = blocked,

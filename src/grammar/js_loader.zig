@@ -83,7 +83,7 @@ test "loadGrammarJs rejects malformed emitted json" {
     try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.js",
         .data =
-            \\module.exports = "{";
+        \\module.exports = "{";
         ,
     });
 

@@ -8,8 +8,10 @@ const compat = @import("compat.zig");
 const compile_smoke = @import("../compat/compile_smoke.zig");
 const optimize = @import("optimize.zig");
 
+/// Errors produced while rendering parser C into an owned buffer or writer.
 pub const EmitError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
+/// Row-sharing summary for one emitted parse-table section.
 pub const RowSharingStats = struct {
     total_rows: usize,
     empty_rows: usize,
@@ -18,6 +20,7 @@ pub const RowSharingStats = struct {
     emitted_array_definitions: usize,
 };
 
+/// Summary of parser C emission after optional serialized-table optimization.
 pub const EmissionStats = struct {
     state_count: usize,
     merged_state_count: usize,
@@ -30,6 +33,7 @@ pub const EmissionStats = struct {
     unresolved_rows: RowSharingStats,
 };
 
+/// Render parser C into an owned buffer using the default emission options.
 pub fn emitParserCAlloc(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
@@ -37,6 +41,7 @@ pub fn emitParserCAlloc(
     return try emitParserCAllocWithOptions(allocator, serialized, .{});
 }
 
+/// Render parser C into an owned buffer using explicit emission options.
 pub fn emitParserCAllocWithOptions(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
@@ -48,6 +53,7 @@ pub fn emitParserCAllocWithOptions(
     return try out.toOwnedSlice();
 }
 
+/// Collect emission statistics using the default optimization options.
 pub fn collectEmissionStats(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
@@ -55,6 +61,7 @@ pub fn collectEmissionStats(
     return try collectEmissionStatsWithOptions(allocator, serialized, .{});
 }
 
+/// Collect emission statistics using explicit optimization options.
 pub fn collectEmissionStatsWithOptions(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
@@ -93,6 +100,7 @@ pub fn collectEmissionStatsWithOptions(
     };
 }
 
+/// Write parser C to an existing writer using the default emission options.
 pub fn writeParserC(
     writer: anytype,
     allocator: std.mem.Allocator,
@@ -101,6 +109,7 @@ pub fn writeParserC(
     return try writeParserCWithOptions(writer, allocator, serialized, .{});
 }
 
+/// Write parser C to an existing writer using explicit emission options.
 pub fn writeParserCWithOptions(
     writer: anytype,
     allocator: std.mem.Allocator,

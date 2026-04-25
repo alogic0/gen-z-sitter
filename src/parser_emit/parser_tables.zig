@@ -3,8 +3,10 @@ const serialize = @import("../parse_table/serialize.zig");
 const common = @import("common.zig");
 const optimize = @import("optimize.zig");
 
+/// Errors produced while rendering the textual parser-table dump.
 pub const EmitError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
+/// Render the textual parser-table dump into an owned buffer.
 pub fn emitSerializedTableAlloc(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
@@ -12,6 +14,7 @@ pub fn emitSerializedTableAlloc(
     return try emitSerializedTableAllocWithOptions(allocator, serialized, .{});
 }
 
+/// Render the textual parser-table dump using explicit optimization options.
 pub fn emitSerializedTableAllocWithOptions(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
@@ -26,6 +29,7 @@ pub fn emitSerializedTableAllocWithOptions(
     return try out.toOwnedSlice();
 }
 
+/// Write the textual parser-table dump to an existing writer.
 pub fn writeSerializedTable(
     writer: anytype,
     serialized: serialize.SerializedTable,

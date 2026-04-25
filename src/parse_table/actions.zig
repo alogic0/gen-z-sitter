@@ -3,10 +3,6 @@ const item = @import("item.zig");
 const state = @import("state.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
-fn testLog(name: []const u8) void {
-    std.debug.print("[parse_table/actions] {s}\n", .{name});
-}
-
 pub const ActionKind = enum {
     shift,
     reduce,
@@ -258,7 +254,6 @@ fn symbolLessThan(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
 }
 
 test "action helpers sort deterministically" {
-    testLog("action helpers sort deterministically");
     var entries = [_]ActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
@@ -267,13 +262,21 @@ test "action helpers sort deterministically" {
 
     sortActionEntries(entries[0..]);
     try std.testing.expectEqual(@as(u32, 0), entries[0].symbol.terminal);
-    try std.testing.expect(switch (entries[0].action) { .shift => true, else => false });
-    try std.testing.expect(switch (entries[1].action) { .reduce => true, else => false });
-    try std.testing.expect(switch (entries[2].action) { .accept => true, else => false });
+    try std.testing.expect(switch (entries[0].action) {
+        .shift => true,
+        else => false,
+    });
+    try std.testing.expect(switch (entries[1].action) {
+        .reduce => true,
+        else => false,
+    });
+    try std.testing.expect(switch (entries[2].action) {
+        .accept => true,
+        else => false,
+    });
 }
 
 test "buildActionsForState derives shift reduce and accept actions" {
-    testLog("buildActionsForState derives shift reduce and accept actions");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -319,14 +322,22 @@ test "buildActionsForState derives shift reduce and accept actions" {
 
     try std.testing.expectEqual(@as(usize, 3), entries.len);
     try std.testing.expectEqual(@as(u32, 0), entries[0].symbol.terminal);
-    try std.testing.expect(switch (entries[0].action) { .shift => |id| id == 7, else => false });
-    try std.testing.expect(switch (entries[1].action) { .reduce => |id| id == 1, else => false });
+    try std.testing.expect(switch (entries[0].action) {
+        .shift => |id| id == 7,
+        else => false,
+    });
+    try std.testing.expect(switch (entries[1].action) {
+        .reduce => |id| id == 1,
+        else => false,
+    });
     try std.testing.expectEqual(@as(u32, 2), entries[2].symbol.external);
-    try std.testing.expect(switch (entries[2].action) { .accept => true, else => false });
+    try std.testing.expect(switch (entries[2].action) {
+        .accept => true,
+        else => false,
+    });
 }
 
 test "buildActionTable keeps per-state actions addressable by state id" {
-    testLog("buildActionTable keeps per-state actions addressable by state id");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -382,9 +393,15 @@ test "buildActionTable keeps per-state actions addressable by state id" {
     try std.testing.expectEqual(@as(usize, 2), table.states.len);
     try std.testing.expectEqual(@as(usize, 1), table.entriesForState(2).len);
     try std.testing.expectEqual(@as(u32, 0), table.entriesForState(2)[0].symbol.terminal);
-    try std.testing.expect(switch (table.entriesForState(2)[0].action) { .reduce => |id| id == 1, else => false });
+    try std.testing.expect(switch (table.entriesForState(2)[0].action) {
+        .reduce => |id| id == 1,
+        else => false,
+    });
     try std.testing.expectEqual(@as(usize, 1), table.entriesForState(7).len);
-    try std.testing.expect(switch (table.entriesForState(7)[0].action) { .accept => true, else => false });
+    try std.testing.expect(switch (table.entriesForState(7)[0].action) {
+        .accept => true,
+        else => false,
+    });
 }
 
 test "groupActionsForState groups sorted actions by symbol deterministically" {
@@ -406,8 +423,14 @@ test "groupActionsForState groups sorted actions by symbol deterministically" {
     try std.testing.expectEqual(@as(usize, 2), grouped.groups.len);
     try std.testing.expectEqual(@as(u32, 0), grouped.groups[0].symbol.terminal);
     try std.testing.expectEqual(@as(usize, 2), grouped.groups[0].entries.len);
-    try std.testing.expect(switch (grouped.groups[0].entries[0].action) { .shift => true, else => false });
-    try std.testing.expect(switch (grouped.groups[0].entries[1].action) { .reduce => true, else => false });
+    try std.testing.expect(switch (grouped.groups[0].entries[0].action) {
+        .shift => true,
+        else => false,
+    });
+    try std.testing.expect(switch (grouped.groups[0].entries[1].action) {
+        .reduce => true,
+        else => false,
+    });
     try std.testing.expectEqual(@as(u32, 1), grouped.groups[1].symbol.external);
 }
 

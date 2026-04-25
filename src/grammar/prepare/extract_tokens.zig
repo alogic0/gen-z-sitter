@@ -815,7 +815,7 @@ test "extractTokens carries external token metadata into syntax grammar" {
                 .rule = 2,
             },
         },
-        .rules = &.{.{ .blank = {} }, .{ .blank = {} }, .{ .blank = {} }},
+        .rules = &.{ .{ .blank = {} }, .{ .blank = {} }, .{ .blank = {} } },
         .symbols = &.{
             .{
                 .id = ir_symbols.SymbolId.nonTerminal(0),
@@ -875,7 +875,7 @@ test "extractTokens rejects external supertype symbols" {
                 .rule = 1,
             },
         },
-        .rules = &.{.{ .blank = {} }, .{ .blank = {} }},
+        .rules = &.{ .{ .blank = {} }, .{ .blank = {} } },
         .symbols = &.{
             .{
                 .id = ir_symbols.SymbolId.nonTerminal(0),

@@ -4,10 +4,6 @@ const syntax_ir = @import("../ir/syntax_grammar.zig");
 const item = @import("item.zig");
 const state = @import("state.zig");
 
-fn testLog(name: []const u8) void {
-    std.debug.print("[parse_table/conflicts] {s}\n", .{name});
-}
-
 pub fn detectConflicts(
     allocator: std.mem.Allocator,
     productions: anytype,
@@ -194,7 +190,6 @@ fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
 }
 
 test "detectConflicts reports shift/reduce and reduce/reduce conflicts deterministically" {
-    testLog("detectConflicts reports shift/reduce and reduce/reduce conflicts deterministically");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -252,7 +247,6 @@ test "detectConflicts reports shift/reduce and reduce/reduce conflicts determini
 }
 
 test "detectConflicts does not report duplicate reductions for the same production core" {
-    testLog("detectConflicts does not report duplicate reductions for the same production core");
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -282,7 +276,6 @@ test "detectConflicts does not report duplicate reductions for the same producti
 }
 
 test "detectConflictsFromActions derives shift-reduce conflicts from competing actions" {
-    testLog("detectConflictsFromActions derives shift-reduce conflicts from competing actions");
     const allocator = std.testing.allocator;
 
     var parse_items = [_]item.ParseItemSetEntry{
@@ -314,7 +307,6 @@ test "detectConflictsFromActions derives shift-reduce conflicts from competing a
 }
 
 test "detectConflictsFromActions derives reduce-reduce conflicts from competing reduces" {
-    testLog("detectConflictsFromActions derives reduce-reduce conflicts from competing reduces");
     const allocator = std.testing.allocator;
 
     var parse_items = [_]item.ParseItemSetEntry{

@@ -8,8 +8,10 @@ const json_loader = @import("../grammar/json_loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
+/// Errors produced while serializing the extracted lexical grammar.
 pub const SerializeError = std.mem.Allocator.Error;
 
+/// Serialized form of one lexical rule.
 pub const SerializedLexicalForm = union(enum) {
     string: []const u8,
     pattern: struct {
@@ -18,6 +20,7 @@ pub const SerializedLexicalForm = union(enum) {
     },
 };
 
+/// Runtime-oriented lexical variable metadata.
 pub const SerializedLexicalVariable = struct {
     name: []const u8,
     kind: lexical_ir.VariableKind,
@@ -28,21 +31,25 @@ pub const SerializedLexicalVariable = struct {
     start_state: u32,
 };
 
+/// Separator rule that the current lexer serialization boundary cannot emit.
 pub const UnsupportedSeparator = struct {
     rule: ir_rules.RuleId,
 };
 
+/// External token that requires scanner support outside this boundary.
 pub const UnsupportedExternalToken = struct {
     name: []const u8,
     kind: syntax_ir.VariableKind,
 };
 
+/// Lexer mode entry consumed by generated parser metadata.
 pub const SerializedLexMode = struct {
     lex_state: u16,
     external_lex_state: u16 = 0,
     reserved_word_set_id: u16 = 0,
 };
 
+/// Build parser-state-indexed lexer modes from serialized parse states.
 pub fn buildLexModesAlloc(
     allocator: std.mem.Allocator,
     states: anytype,
@@ -56,6 +63,7 @@ pub fn buildLexModesAlloc(
     return modes;
 }
 
+/// Serialized lexical grammar plus boundary blockers.
 pub const SerializedLexicalGrammar = struct {
     variables: []const SerializedLexicalVariable,
     unsupported_separators: []const UnsupportedSeparator,
@@ -72,6 +80,7 @@ const LexicalMetadata = struct {
     immediate: bool = false,
 };
 
+/// Serialize extracted lexical grammar metadata into the local boundary model.
 pub fn serializeExtractedLexicalGrammar(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,

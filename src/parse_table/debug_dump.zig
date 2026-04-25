@@ -5,10 +5,6 @@ const resolution = @import("resolution.zig");
 const serialize = @import("serialize.zig");
 const state = @import("state.zig");
 
-fn testLog(name: []const u8) void {
-    std.debug.print("[parse_table/debug_dump] {s}\n", .{name});
-}
-
 pub const DebugDumpError = std.mem.Allocator.Error || std.Io.Writer.Error;
 
 pub fn dumpStatesAlloc(
@@ -326,7 +322,6 @@ fn writeSymbol(writer: anytype, symbol: @import("../ir/syntax_grammar.zig").Symb
 }
 
 test "dumpStatesAlloc formats parser states deterministically" {
-    testLog("dumpStatesAlloc formats parser states deterministically");
     const allocator = std.testing.allocator;
     const conflict_items = [_]item.ParseItem{
         item.ParseItem.init(0, 1),
@@ -373,7 +368,6 @@ test "dumpStatesAlloc formats parser states deterministically" {
 }
 
 test "dumpStatesWithActionsAlloc formats parser actions deterministically" {
-    testLog("dumpStatesWithActionsAlloc formats parser actions deterministically");
     const allocator = std.testing.allocator;
     var state_items = [_]item.ParseItemSetEntry{
         try item.ParseItemSetEntry.initEmpty(allocator, 0, 0, item.ParseItem.init(0, 0)),
@@ -417,7 +411,6 @@ test "dumpStatesWithActionsAlloc formats parser actions deterministically" {
 }
 
 test "dumpActionTableAlloc formats action tables deterministically" {
-    testLog("dumpActionTableAlloc formats action tables deterministically");
     const allocator = std.testing.allocator;
     const states = [_]state.ParseState{
         .{
@@ -465,7 +458,6 @@ test "dumpActionTableAlloc formats action tables deterministically" {
 }
 
 test "dumpGroupedActionTableAlloc groups actions by symbol deterministically" {
-    testLog("dumpGroupedActionTableAlloc groups actions by symbol deterministically");
     const allocator = std.testing.allocator;
     const states = [_]state.ParseState{
         .{

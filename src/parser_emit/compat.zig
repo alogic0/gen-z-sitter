@@ -1,16 +1,24 @@
 const std = @import("std");
 
+/// ABI language version emitted into generated parser C.
 pub const language_version: u16 = 15;
+
+/// Minimum runtime ABI version accepted by the generated parser C.
 pub const min_compatible_language_version: u16 = 13;
 
+/// Header comment written at the top of generated parser C.
 pub const generated_parser_comment = "/* generated parser.c */\n";
+
+/// Header comment identifying the local runtime ABI layout.
 pub const layout_comment = "/* tree-sitter runtime ABI layout */\n";
 
+/// Runtime ABI version pair used by the generated C contract.
 pub const RuntimeCompatibilityInfo = struct {
     language_version: u16,
     min_compatible_language_version: u16,
 };
 
+/// Return the ABI versions supported by this emitter.
 pub fn currentRuntimeCompatibility() RuntimeCompatibilityInfo {
     return .{
         .language_version = language_version,
@@ -18,6 +26,7 @@ pub fn currentRuntimeCompatibility() RuntimeCompatibilityInfo {
     };
 }
 
+/// Write generated C includes and header comments.
 pub fn writeContractPrelude(writer: anytype, info: RuntimeCompatibilityInfo) !void {
     _ = info;
     try writer.writeAll(generated_parser_comment);
@@ -27,6 +36,7 @@ pub fn writeContractPrelude(writer: anytype, info: RuntimeCompatibilityInfo) !vo
     try writer.writeAll("#include <stdlib.h>\n\n");
 }
 
+/// Write the self-contained runtime ABI types and constants used by parser C.
 pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilityInfo) !void {
     try writer.print("#define LANGUAGE_VERSION {d}\n", .{info.language_version});
     try writer.print("#define MIN_COMPATIBLE_LANGUAGE_VERSION {d}\n\n", .{info.min_compatible_language_version});

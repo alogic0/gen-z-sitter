@@ -13,10 +13,6 @@ const runtime_io = @import("../support/runtime_io.zig");
 threadlocal var scoped_progress_enabled: bool = false;
 threadlocal var current_transition_context: ?TransitionContext = null;
 
-fn testLog(name: []const u8) void {
-    std.debug.print("[parse_table/build] {s}\n", .{name});
-}
-
 const TransitionContext = struct {
     source_state_id: state.StateId,
     symbol: syntax_ir.SymbolRef,
@@ -2343,7 +2339,6 @@ fn collectProductions(
 }
 
 test "ParseItemSetBuilder precomputes transitive closure additions with propagated follow sets" {
-    testLog("ParseItemSetBuilder precomputes transitive closure additions with propagated follow sets");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -2853,7 +2848,6 @@ fn constructStates(
 }
 
 test "buildStates records LR(0)-style conflicts for an ambiguous expression grammar" {
-    testLog("buildStates records LR(0)-style conflicts for an ambiguous expression grammar");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -3046,7 +3040,6 @@ fn appendOrMergeClosureEntry(
 }
 
 test "buildStates constructs deterministic LR(0)-style states for a tiny grammar" {
-    testLog("buildStates constructs deterministic LR(0)-style states for a tiny grammar");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -3080,7 +3073,6 @@ test "buildStates constructs deterministic LR(0)-style states for a tiny grammar
 }
 
 test "buildStates propagates terminal lookaheads through nullable suffix closure" {
-    testLog("buildStates propagates terminal lookaheads through nullable suffix closure");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -3132,7 +3124,6 @@ fn hasTerminalLookahead(parse_item: item.ParseItemSetEntry, terminal_index: u32)
 }
 
 test "buildStates allows inert step metadata in the current supported subset" {
-    testLog("buildStates allows inert step metadata in the current supported subset");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -3167,7 +3158,6 @@ test "buildStates allows inert step metadata in the current supported subset" {
 }
 
 test "buildStates accepts dynamic precedence metadata in the current supported subset" {
-    testLog("buildStates accepts dynamic precedence metadata in the current supported subset");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -3197,7 +3187,6 @@ test "buildStates accepts dynamic precedence metadata in the current supported s
 }
 
 test "buildStates keeps named-precedence reductions on the suffix symbol, not the inherited terminal" {
-    testLog("buildStates keeps named-precedence reductions on the suffix symbol, not the inherited terminal");
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 

@@ -1036,7 +1036,7 @@ test "computeNodeTypes computes visible supertype subtypes" {
     const syntax = syntax_ir.SyntaxGrammar{
         .variables = &.{
             .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = root_steps[0..] }} },
-            .{ .name = "expression", .kind = .named, .productions = &.{.{ .steps = super_prod_a[0..] }, .{ .steps = super_prod_b[0..] }} },
+            .{ .name = "expression", .kind = .named, .productions = &.{ .{ .steps = super_prod_a[0..] }, .{ .steps = super_prod_b[0..] } } },
             .{ .name = "binary_expression", .kind = .named, .productions = &.{.{ .steps = &.{} }} },
             .{ .name = "identifier", .kind = .named, .productions = &.{.{ .steps = &.{} }} },
         },
@@ -1163,8 +1163,8 @@ test "computeNodeTypes aggregates fields and visible children" {
     const syntax = syntax_ir.SyntaxGrammar{
         .variables = &.{
             .{ .name = "source_file", .kind = .named, .productions = &.{ .{ .steps = prod1[0..] }, .{ .steps = prod2[0..] } } },
-            .{ .name = "expr", .kind = .named, .productions = &.{ .{ .steps = expr_steps[0..] } } },
-            .{ .name = "term", .kind = .named, .productions = &.{ .{ .steps = term_steps[0..] } } },
+            .{ .name = "expr", .kind = .named, .productions = &.{.{ .steps = expr_steps[0..] }} },
+            .{ .name = "term", .kind = .named, .productions = &.{.{ .steps = term_steps[0..] }} },
         },
         .external_tokens = &.{},
         .extra_symbols = &.{},
