@@ -1276,6 +1276,7 @@ fn reservedWordSetIdForParseState(
 
 pub const ProductionInfo = struct {
     lhs: u32,
+    lhs_kind: syntax_ir.VariableKind = .named,
     steps: []const syntax_ir.ProductionStep,
     lhs_is_repeat_auxiliary: bool = false,
     augmented: bool = false,
@@ -2528,6 +2529,7 @@ fn collectProductions(
         for (variable.productions) |production| {
             try productions.append(.{
                 .lhs = @intCast(variable_index),
+                .lhs_kind = variable.kind,
                 .steps = production.steps,
                 .lhs_is_repeat_auxiliary = variable.kind == .auxiliary and std.mem.indexOf(u8, variable.name, "_repeat") != null,
                 .dynamic_precedence = production.dynamic_precedence,

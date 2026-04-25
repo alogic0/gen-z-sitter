@@ -1404,7 +1404,7 @@ test "emitParserCAlloc emits serialized field map tables" {
             },
             .entries = &[_]serialize.SerializedFieldMapEntry{
                 .{ .field_id = 1, .child_index = 0, .inherited = false },
-                .{ .field_id = 2, .child_index = 2, .inherited = false },
+                .{ .field_id = 2, .child_index = 2, .inherited = true },
             },
             .slices = &[_]serialize.SerializedFieldMapSlice{
                 .{ .index = 0, .length = 2 },
@@ -1433,7 +1433,7 @@ test "emitParserCAlloc emits serialized field map tables" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = \"right\\\"field\",\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSFieldMapEntry ts_field_map_entries[] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .field_id = 1, .child_index = 0, .inherited = false },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .field_id = 2, .child_index = 2, .inherited = false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .field_id = 2, .child_index = 2, .inherited = true },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSMapSlice ts_field_map_slices[] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .index = 0, .length = 2 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .field_count = FIELD_COUNT,\n"));

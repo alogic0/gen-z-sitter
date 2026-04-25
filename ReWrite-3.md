@@ -112,7 +112,7 @@ a propagated following reserved-word set.
 - [x] During parse-state construction, assign the state reserved-word set when the
   state sees `word_token` as the next symbol or lookahead.
 - [x] Preserve that ID through lex-state assignment and state minimization.
-- [ ] Remove or simplify the temporary serialization-side derivation once builder-level
+- [x] Remove or simplify the temporary serialization-side derivation once builder-level
   tracking is authoritative.
 - [x] Add focused tests for:
   - direct `word_token` next-step context
@@ -152,7 +152,12 @@ still need a real parser-side EOF/end symbol so start-item lookaheads can produc
 reduce/accept actions. This phase is the missing prerequisite for replacing the
 serialized no-external runtime fixture with a real generated-from-grammar fixture.
 
-- [ ] Study and summarize the upstream parser EOF/end-symbol path in:
+Upstream reference check: `rules.rs` models EOF as `SymbolType::End` with a distinct
+`Symbol::end()` and a dedicated `TokenSet.eof` bit. `build_parse_table.rs` seeds the
+starting item with `Symbol::end()` as its lookahead, and render/display code maps both
+EOF-like end symbols to `EOF` without treating them as normal grammar terminals.
+
+- [x] Study and summarize the upstream parser EOF/end-symbol path in:
   - `build_tables/build_parse_table.rs`
   - `build_tables/item.rs`
   - `build_tables/item_set_builder.rs`
@@ -179,14 +184,19 @@ serialized no-external runtime fixture with a real generated-from-grammar fixtur
 RW-2 emits field map tables, but inherited field metadata is still always false because
 the local IR does not track inlined-field origin.
 
-- [ ] Identify where inlined rule expansion hoists field annotations into parent
+Upstream reference check: parse-table production info marks a field location as
+inherited when a production step is a non-visible nonterminal and that child variable's
+node-type metadata contains fields. The field location uses the hidden child step's
+index and sets `inherited = true`.
+
+- [x] Identify where hidden/inlined rule expansion hoists field annotations into parent
   productions.
-- [ ] Add an `inherited` flag to the local field/production-step metadata.
-- [ ] Preserve the flag through syntax extraction, flattening, parse-table production
+- [x] Add an `inherited` flag to the local field/production-step metadata.
+- [x] Preserve the flag through syntax extraction, flattening, parse-table production
   collection, and serialization.
-- [ ] Emit `TSFieldMapEntry.inherited = true` where appropriate.
+- [x] Emit `TSFieldMapEntry.inherited = true` where appropriate.
 - [ ] Add a fixture with an inlined rule that contributes a field.
-- [ ] Assert serialized field map entries and emitted `ts_field_map_entries[]` contain
+- [x] Assert serialized field map entries and emitted `ts_field_map_entries[]` contain
   at least one inherited entry.
 
 ---

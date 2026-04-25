@@ -35,6 +35,7 @@ pub const ProductionStep = struct {
     symbol: SymbolRef,
     alias: ?rules.Alias = null,
     field_name: ?[]const u8 = null,
+    field_inherited: bool = false,
     precedence: rules.PrecedenceValue = .none,
     associativity: rules.Assoc = .none,
     reserved_context_name: ?[]const u8 = null,
@@ -77,11 +78,13 @@ test "production step preserves metadata fields" {
     const step = ProductionStep{
         .symbol = .{ .non_terminal = 1 },
         .field_name = "lhs",
+        .field_inherited = true,
         .precedence = .{ .name = "sum" },
         .associativity = .left,
     };
 
     try std.testing.expectEqual(@as(u32, 1), step.symbol.non_terminal);
     try std.testing.expectEqualStrings("lhs", step.field_name.?);
+    try std.testing.expect(step.field_inherited);
     try std.testing.expectEqual(rules.Assoc.left, step.associativity);
 }

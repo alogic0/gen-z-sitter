@@ -158,6 +158,8 @@ pub const SerializedFieldMap = struct {
     slices: []const SerializedFieldMapSlice = &.{},
 };
 
+const FieldVisitState = enum { pending, visiting, done };
+
 /// One runtime supertype-map entry before final C symbol-id resolution.
 pub const SerializedSupertypeMapEntry = struct {
     symbol: syntax_ir.SymbolRef,
@@ -337,26 +339,13 @@ pub fn attachReservedWordLexModesAlloc(
     allocator: std.mem.Allocator,
     serialized: SerializedTable,
     parse_states: []const state.ParseState,
-    productions: []const build.ProductionInfo,
-    word_token: ?syntax_ir.SymbolRef,
-    reserved_word_sets: []const grammar_ir.ReservedWordSet,
 ) std.mem.Allocator.Error!SerializedTable {
-    if (word_token == null or reserved_word_sets.len == 0) return serialized;
-
     var result = serialized;
     const lex_modes = try allocator.alloc(lexer_serialize.SerializedLexMode, serialized.lex_modes.len);
     for (serialized.lex_modes, 0..) |mode, index| {
         lex_modes[index] = mode;
         if (index < parse_states.len) {
-            lex_modes[index].reserved_word_set_id = if (parse_states[index].reserved_word_set_id != 0)
-                parse_states[index].reserved_word_set_id
-            else
-                reservedWordSetIdForState(
-                    parse_states[index],
-                    productions,
-                    word_token.?,
-                    reserved_word_sets,
-                );
+            lex_modes[index].reserved_word_set_id = parse_states[index].reserved_word_set_id;
         }
     }
     result.lex_modes = lex_modes;
@@ -889,18 +878,30 @@ fn buildFieldMapAlloc(
     defer names.deinit();
     var entries = std.array_list.Managed(SerializedFieldMapEntry).init(allocator);
     defer entries.deinit();
+    const variable_fields = try buildInheritedFieldNamesAlloc(allocator, productions);
+    defer {
+        for (variable_fields) |fields| allocator.free(fields);
+        allocator.free(variable_fields);
+    }
 
     const slices = try allocator.alloc(SerializedFieldMapSlice, productions.len);
     for (productions, 0..) |production, production_id| {
         const start = entries.items.len;
         for (production.steps, 0..) |step, step_index| {
-            const field_name = step.field_name orelse continue;
-            const field_id = try internFieldName(&names, field_name);
-            try entries.append(.{
-                .field_id = field_id,
-                .child_index = @intCast(@min(step_index, std.math.maxInt(u8))),
-                .inherited = false,
-            });
+            const child_index: u8 = @intCast(@min(step_index, std.math.maxInt(u8)));
+            if (step.field_name) |field_name| {
+                try appendFieldMapEntry(&names, &entries, field_name, child_index, step.field_inherited);
+            }
+            switch (step.symbol) {
+                .non_terminal => |variable_index| {
+                    if (variable_index >= variable_fields.len) continue;
+                    if (variableIsVisible(productions, variable_index)) continue;
+                    for (variable_fields[variable_index]) |field_name| {
+                        try appendFieldMapEntry(&names, &entries, field_name, child_index, true);
+                    }
+                },
+                else => {},
+            }
         }
         slices[production_id] = .{
             .index = @intCast(@min(start, std.math.maxInt(u16))),
@@ -913,6 +914,108 @@ fn buildFieldMapAlloc(
         .entries = try entries.toOwnedSlice(),
         .slices = slices,
     };
+}
+
+fn appendFieldMapEntry(
+    names: *std.array_list.Managed(SerializedFieldName),
+    entries: *std.array_list.Managed(SerializedFieldMapEntry),
+    field_name: []const u8,
+    child_index: u8,
+    inherited: bool,
+) std.mem.Allocator.Error!void {
+    const field_id = try internFieldName(names, field_name);
+    try entries.append(.{
+        .field_id = field_id,
+        .child_index = child_index,
+        .inherited = inherited,
+    });
+}
+
+fn buildInheritedFieldNamesAlloc(
+    allocator: std.mem.Allocator,
+    productions: []const build.ProductionInfo,
+) std.mem.Allocator.Error![]const []const []const u8 {
+    const variable_count = variableCount(productions);
+    const fields = try allocator.alloc([]const []const u8, variable_count);
+    errdefer allocator.free(fields);
+    for (fields) |*entry| entry.* = &.{};
+
+    const states = try allocator.alloc(FieldVisitState, variable_count);
+    defer allocator.free(states);
+    @memset(states, .pending);
+
+    for (0..variable_count) |variable_index| {
+        try collectInheritedFieldNamesForVariable(allocator, productions, fields, states, @intCast(variable_index));
+    }
+
+    return fields;
+}
+
+fn collectInheritedFieldNamesForVariable(
+    allocator: std.mem.Allocator,
+    productions: []const build.ProductionInfo,
+    fields: [][]const []const u8,
+    states: []FieldVisitState,
+    variable_index: u32,
+) std.mem.Allocator.Error!void {
+    const index: usize = @intCast(variable_index);
+    switch (states[index]) {
+        .done, .visiting => return,
+        .pending => {},
+    }
+
+    states[index] = .visiting;
+    var names = std.array_list.Managed([]const u8).init(allocator);
+    defer names.deinit();
+
+    for (productions) |production| {
+        if (production.augmented or production.lhs != variable_index) continue;
+        for (production.steps) |step| {
+            if (step.field_name) |field_name| try appendUniqueFieldName(&names, field_name);
+            switch (step.symbol) {
+                .non_terminal => |child_index| {
+                    if (child_index >= fields.len) continue;
+                    if (variableIsVisible(productions, child_index)) continue;
+                    try collectInheritedFieldNamesForVariable(allocator, productions, fields, states, child_index);
+                    for (fields[child_index]) |field_name| {
+                        try appendUniqueFieldName(&names, field_name);
+                    }
+                },
+                else => {},
+            }
+        }
+    }
+
+    fields[index] = try names.toOwnedSlice();
+    states[index] = .done;
+}
+
+fn appendUniqueFieldName(
+    names: *std.array_list.Managed([]const u8),
+    field_name: []const u8,
+) std.mem.Allocator.Error!void {
+    for (names.items) |existing| {
+        if (std.mem.eql(u8, existing, field_name)) return;
+    }
+    try names.append(field_name);
+}
+
+fn variableCount(productions: []const build.ProductionInfo) usize {
+    var count: usize = 0;
+    for (productions) |production| {
+        if (production.augmented) continue;
+        const index: usize = @intCast(production.lhs);
+        count = @max(count, index + 1);
+    }
+    return count;
+}
+
+fn variableIsVisible(productions: []const build.ProductionInfo, variable_index: u32) bool {
+    for (productions) |production| {
+        if (production.augmented or production.lhs != variable_index) continue;
+        return production.lhs_kind == .named or production.lhs_kind == .anonymous;
+    }
+    return true;
 }
 
 fn internFieldName(
@@ -1083,39 +1186,6 @@ fn terminalRefForLexicalRule(
 ) ?syntax_ir.SymbolRef {
     for (lexical.variables, 0..) |variable, index| {
         if (variable.rule == rule_id) return .{ .terminal = @intCast(index) };
-    }
-    return null;
-}
-
-fn reservedWordSetIdForState(
-    parse_state: state.ParseState,
-    productions: []const build.ProductionInfo,
-    word_token: syntax_ir.SymbolRef,
-    reserved_word_sets: []const grammar_ir.ReservedWordSet,
-) u16 {
-    var result: u16 = 0;
-    for (parse_state.items) |entry| {
-        if (entry.item.production_id >= productions.len) continue;
-        const production = productions[entry.item.production_id];
-        if (entry.item.step_index >= production.steps.len) continue;
-        const step = production.steps[entry.item.step_index];
-        if (!symbolRefEql(step.symbol, word_token)) continue;
-        const context_name = step.reserved_context_name orelse continue;
-        if (reservedWordSetIdForContext(reserved_word_sets, context_name)) |set_id| {
-            result = @max(result, set_id);
-        }
-    }
-    return result;
-}
-
-fn reservedWordSetIdForContext(
-    reserved_word_sets: []const grammar_ir.ReservedWordSet,
-    context_name: []const u8,
-) ?u16 {
-    for (reserved_word_sets, 0..) |reserved_set, index| {
-        if (std.mem.eql(u8, reserved_set.context_name, context_name)) {
-            return @intCast(index + 1);
-        }
     }
     return null;
 }
@@ -1769,12 +1839,6 @@ test "attachReservedWordsAlloc serializes reserved word sets from lexical termin
 
 test "attachReservedWordLexModesAlloc serializes reserved word set ids" {
     const allocator = std.testing.allocator;
-    const steps = [_]syntax_ir.ProductionStep{
-        .{ .symbol = .{ .terminal = 1 }, .reserved_context_name = "global" },
-    };
-    const productions = [_]build.ProductionInfo{
-        .{ .lhs = 0, .steps = steps[0..] },
-    };
     const items = [_]@import("item.zig").ParseItemSetEntry{
         .{
             .item = .{ .production_id = 0, .step_index = 0 },
@@ -1782,12 +1846,8 @@ test "attachReservedWordLexModesAlloc serializes reserved word set ids" {
         },
     };
     const parse_states = [_]state.ParseState{
-        .{ .id = 0, .items = items[0..], .transitions = &.{} },
+        .{ .id = 0, .reserved_word_set_id = 2, .items = items[0..], .transitions = &.{} },
         .{ .id = 1, .items = &.{}, .transitions = &.{} },
-    };
-    const reserved_sets = [_]grammar_ir.ReservedWordSet{
-        .{ .context_name = "local", .members = &.{} },
-        .{ .context_name = "global", .members = &.{} },
     };
     const serialized = try attachReservedWordLexModesAlloc(allocator, .{
         .states = &.{},
@@ -1796,7 +1856,7 @@ test "attachReservedWordLexModesAlloc serializes reserved word set ids" {
             .{ .lex_state = 0 },
             .{ .lex_state = 1 },
         },
-    }, parse_states[0..], productions[0..], .{ .terminal = 1 }, reserved_sets[0..]);
+    }, parse_states[0..]);
     defer allocator.free(serialized.lex_modes);
 
     try std.testing.expectEqual(@as(u16, 2), serialized.lex_modes[0].reserved_word_set_id);
@@ -1892,6 +1952,31 @@ test "buildFieldMapAlloc serializes distinct field names and production slices" 
     try std.testing.expectEqual(SerializedFieldMapEntry{ .field_id = 1, .child_index = 0, .inherited = false }, field_map.entries[2]);
     try std.testing.expectEqual(SerializedFieldMapSlice{ .index = 0, .length = 2 }, field_map.slices[0]);
     try std.testing.expectEqual(SerializedFieldMapSlice{ .index = 2, .length = 1 }, field_map.slices[1]);
+}
+
+test "buildFieldMapAlloc marks fields inherited from hidden child variables" {
+    const allocator = std.testing.allocator;
+    const parent_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    const hidden_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 }, .field_name = "inner" },
+    };
+    const productions = [_]build.ProductionInfo{
+        .{ .lhs = 0, .lhs_kind = .named, .steps = parent_steps[0..] },
+        .{ .lhs = 1, .lhs_kind = .hidden, .steps = hidden_steps[0..] },
+    };
+
+    const field_map = try buildFieldMapAlloc(allocator, productions[0..]);
+    defer deinitFieldMap(allocator, field_map);
+
+    try std.testing.expectEqual(@as(usize, 1), field_map.names.len);
+    try std.testing.expectEqualStrings("inner", field_map.names[0].name);
+    try std.testing.expectEqual(@as(usize, 2), field_map.entries.len);
+    try std.testing.expectEqual(SerializedFieldMapEntry{ .field_id = 1, .child_index = 0, .inherited = true }, field_map.entries[0]);
+    try std.testing.expectEqual(SerializedFieldMapEntry{ .field_id = 1, .child_index = 0, .inherited = false }, field_map.entries[1]);
+    try std.testing.expectEqual(SerializedFieldMapSlice{ .index = 0, .length = 1 }, field_map.slices[0]);
+    try std.testing.expectEqual(SerializedFieldMapSlice{ .index = 1, .length = 1 }, field_map.slices[1]);
 }
 
 test "serializeBuildResult rejects blocked snapshots in strict mode" {

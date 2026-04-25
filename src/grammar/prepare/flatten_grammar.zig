@@ -85,6 +85,7 @@ fn stepEql(a: syntax_ir.ProductionStep, b: syntax_ir.ProductionStep) bool {
     return symbolRefEql(a.symbol, b.symbol) and
         aliasEql(a.alias, b.alias) and
         std.meta.eql(a.field_name, b.field_name) and
+        a.field_inherited == b.field_inherited and
         std.meta.eql(a.precedence, b.precedence) and
         a.associativity == b.associativity and
         std.meta.eql(a.reserved_context_name, b.reserved_context_name);

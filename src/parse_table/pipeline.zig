@@ -292,9 +292,6 @@ fn serializePreparedBuildResultAlloc(
         allocator,
         serialized,
         result.states,
-        result.productions,
-        extracted.syntax.word_token,
-        prepared.reserved_word_sets,
     );
     serialized = try serialize.attachKeywordLexTableAlloc(
         allocator,
