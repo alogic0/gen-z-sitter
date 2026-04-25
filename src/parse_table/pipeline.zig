@@ -254,6 +254,12 @@ fn serializePreparedBuildResultAlloc(
         prepared,
     );
     const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    serialized = try serialize.attachReservedWordsAlloc(
+        allocator,
+        serialized,
+        prepared,
+        extracted.lexical,
+    );
     serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesAlloc(
         allocator,
         prepared.rules,

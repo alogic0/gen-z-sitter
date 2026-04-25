@@ -6,6 +6,7 @@ const state = @import("state.zig");
 const grammar_ir = @import("../ir/grammar_ir.zig");
 const ir_rules = @import("../ir/rules.zig");
 const ir_symbols = @import("../ir/symbols.zig");
+const lexical_ir = @import("../ir/lexical_grammar.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
@@ -175,6 +176,12 @@ pub const SerializedSupertypeMap = struct {
     slices: []const SerializedSupertypeMapSlice = &.{},
 };
 
+/// Serialized reserved-word table. Set zero is the empty/default set.
+pub const SerializedReservedWords = struct {
+    sets: []const []const syntax_ir.SymbolRef = &.{},
+    max_size: u16 = 0,
+};
+
 /// Complete parse table model consumed by emitters.
 pub const SerializedTable = struct {
     states: []const SerializedState,
@@ -193,6 +200,7 @@ pub const SerializedTable = struct {
     lex_tables: []const lexer_serialize.SerializedLexTable = &.{},
     primary_state_ids: []const state.StateId = &.{},
     word_token: ?syntax_ir.SymbolRef = null,
+    reserved_words: SerializedReservedWords = .{},
 
     pub fn isSerializationReady(self: SerializedTable) bool {
         return !self.blocked;
@@ -302,6 +310,17 @@ pub fn attachPreparedMetadataAlloc(
     return result;
 }
 
+pub fn attachReservedWordsAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) std.mem.Allocator.Error!SerializedTable {
+    var result = serialized;
+    result.reserved_words = try buildReservedWordsAlloc(allocator, prepared, lexical);
+    return result;
+}
+
 pub fn buildParseActionListAlloc(
     allocator: std.mem.Allocator,
     states: []const SerializedState,
@@ -399,6 +418,11 @@ pub fn deinitSupertypeMap(allocator: std.mem.Allocator, supertype_map: Serialize
     allocator.free(supertype_map.symbols);
     allocator.free(supertype_map.entries);
     allocator.free(supertype_map.slices);
+}
+
+pub fn deinitReservedWords(allocator: std.mem.Allocator, reserved_words: SerializedReservedWords) void {
+    for (reserved_words.sets) |set| allocator.free(set);
+    allocator.free(reserved_words.sets);
 }
 
 pub fn deinitLexStateTerminalSets(
@@ -814,6 +838,53 @@ fn supertypeSliceLessThan(_: void, left: SerializedSupertypeMapSlice, right: Ser
     return symbolSortKey(left.supertype) < symbolSortKey(right.supertype);
 }
 
+fn buildReservedWordsAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) std.mem.Allocator.Error!SerializedReservedWords {
+    const sets = try allocator.alloc([]const syntax_ir.SymbolRef, prepared.reserved_word_sets.len + 1);
+    var initialized: usize = 0;
+    errdefer {
+        for (sets[0..initialized]) |set| allocator.free(set);
+        allocator.free(sets);
+    }
+
+    sets[0] = try allocator.alloc(syntax_ir.SymbolRef, 0);
+    initialized += 1;
+    var max_size: usize = 0;
+
+    for (prepared.reserved_word_sets, 0..) |reserved_set, index| {
+        var members = std.array_list.Managed(syntax_ir.SymbolRef).init(allocator);
+        defer members.deinit();
+
+        for (reserved_set.members) |member_rule| {
+            if (terminalRefForLexicalRule(lexical, member_rule)) |symbol| {
+                try appendUniqueSymbolRef(&members, symbol);
+            }
+        }
+        std.mem.sort(syntax_ir.SymbolRef, members.items, {}, symbolRefLessThan);
+        sets[index + 1] = try members.toOwnedSlice();
+        initialized += 1;
+        max_size = @max(max_size, sets[index + 1].len);
+    }
+
+    return .{
+        .sets = sets,
+        .max_size = @intCast(@min(max_size, std.math.maxInt(u16))),
+    };
+}
+
+fn terminalRefForLexicalRule(
+    lexical: lexical_ir.LexicalGrammar,
+    rule_id: ir_rules.RuleId,
+) ?syntax_ir.SymbolRef {
+    for (lexical.variables, 0..) |variable, index| {
+        if (variable.rule == rule_id) return .{ .terminal = @intCast(index) };
+    }
+    return null;
+}
+
 fn symbolRefFromPreparedSymbol(symbol: ir_symbols.SymbolId) syntax_ir.SymbolRef {
     return switch (symbol.kind) {
         .non_terminal => .{ .non_terminal = symbol.index },
@@ -1067,6 +1138,51 @@ test "attachPreparedMetadataAlloc serializes supertype map entries" {
     try std.testing.expectEqualStrings("identifier_alias", serialized.supertype_map.entries[1].alias_name.?);
     try std.testing.expect(serialized.supertype_map.entries[1].alias_named);
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 3 }, serialized.supertype_map.entries[2].symbol);
+}
+
+test "attachReservedWordsAlloc serializes reserved word sets from lexical terminals" {
+    const allocator = std.testing.allocator;
+    const rules = [_]ir_rules.Rule{
+        .{ .string = "if" },
+        .{ .string = "else" },
+        .{ .string = "identifier" },
+    };
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "reserved_fixture",
+        .variables = &.{},
+        .external_tokens = &.{},
+        .rules = rules[0..],
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{
+            .{ .context_name = "default", .members = &.{ 1, 0, 0 } },
+        },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "if", .kind = .anonymous, .rule = 0 },
+            .{ .name = "else", .kind = .anonymous, .rule = 1 },
+            .{ .name = "identifier", .kind = .named, .rule = 2 },
+        },
+        .separators = &.{},
+    };
+
+    const serialized = try attachReservedWordsAlloc(allocator, .{
+        .states = &.{},
+        .blocked = false,
+    }, prepared, lexical);
+    defer deinitReservedWords(allocator, serialized.reserved_words);
+
+    try std.testing.expectEqual(@as(usize, 2), serialized.reserved_words.sets.len);
+    try std.testing.expectEqual(@as(u16, 2), serialized.reserved_words.max_size);
+    try std.testing.expectEqual(@as(usize, 0), serialized.reserved_words.sets[0].len);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .terminal = 0 }, serialized.reserved_words.sets[1][0]);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .terminal = 1 }, serialized.reserved_words.sets[1][1]);
 }
 
 test "buildFieldMapAlloc serializes distinct field names and production slices" {

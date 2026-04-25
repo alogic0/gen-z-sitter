@@ -74,6 +74,7 @@ pub fn compactSerializedTableAlloc(
         .lex_tables = serialized.lex_tables,
         .primary_state_ids = primary_state_ids,
         .word_token = serialized.word_token,
+        .reserved_words = serialized.reserved_words,
     };
 }
 

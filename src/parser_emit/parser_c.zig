@@ -145,7 +145,8 @@ pub fn writeParserCWithOptions(
     try writer.print("#define PRODUCTION_ID_COUNT {d}\n", .{compacted.productions.len});
     try writer.print("#define FIELD_COUNT {d}\n", .{compacted.field_map.names.len});
     try writer.print("#define ALIAS_COUNT {d}\n", .{aliasSymbolCount(emitted_symbols)});
-    try writer.print("#define MAX_ALIAS_SEQUENCE_LENGTH {d}\n\n", .{maxAliasSequenceLength(compacted)});
+    try writer.print("#define MAX_ALIAS_SEQUENCE_LENGTH {d}\n", .{maxAliasSequenceLength(compacted)});
+    try writer.print("#define MAX_RESERVED_WORD_SET_SIZE {d}\n\n", .{compacted.reserved_words.max_size});
 
     const keyword_capture_id: u16 = if (compacted.word_token) |wt|
         symbolIdForRef(emitted_symbols, wt) orelse 0
@@ -323,6 +324,7 @@ pub fn writeParserCWithOptions(
         );
     }
     try writer.writeAll("};\n\n");
+    try writeReservedWords(writer, emitted_symbols, compacted.reserved_words);
 
     try writer.writeAll("static const TSLanguage ts_language = {\n");
     try writer.writeAll("  .abi_version = LANGUAGE_VERSION,\n");
@@ -363,6 +365,10 @@ pub fn writeParserCWithOptions(
         try writer.writeAll("  .supertype_map_slices = ts_supertype_map_slices,\n");
         try writer.writeAll("  .supertype_map_entries = ts_supertype_map_entries,\n");
     }
+    if (compacted.reserved_words.sets.len > 1) {
+        try writer.writeAll("  .reserved_words = &ts_reserved_words[0][0],\n");
+    }
+    try writer.print("  .max_reserved_word_set_size = {d},\n", .{compacted.reserved_words.max_size});
     try writer.writeAll("};\n\n");
     try writer.writeAll("const TSLanguage *tree_sitter_generated(void) {\n");
     try writer.writeAll("  return &ts_language;\n");
@@ -432,6 +438,30 @@ fn supertypeEntrySymbolId(
         return aliasSymbolIdForName(symbols, name, entry.alias_named);
     }
     return symbolIdForRef(symbols, entry.symbol);
+}
+
+fn writeReservedWords(
+    writer: anytype,
+    symbols: []const EmittedSymbol,
+    reserved_words: serialize.SerializedReservedWords,
+) EmitError!void {
+    if (reserved_words.sets.len <= 1) return;
+
+    try writer.writeAll("static const TSSymbol ts_reserved_words[][MAX_RESERVED_WORD_SET_SIZE > 0 ? MAX_RESERVED_WORD_SET_SIZE : 1] = {\n");
+    for (reserved_words.sets, 0..) |set, set_index| {
+        try writer.print("  [{d}] = {{", .{set_index});
+        const column_count = @max(@as(usize, reserved_words.max_size), 1);
+        for (0..column_count) |column| {
+            const symbol_id = if (column < set.len)
+                symbolIdForRef(symbols, set[column]) orelse return error.OutOfMemory
+            else
+                0;
+            if (column > 0) try writer.writeByte(',');
+            try writer.print(" {d}", .{symbol_id});
+        }
+        try writer.writeAll(" },\n");
+    }
+    try writer.writeAll("};\n\n");
 }
 
 const RuntimeLexTable = struct {
@@ -800,6 +830,11 @@ fn collectEmittedSymbols(
             try appendUniqueAliasSymbol(&symbols, name, entry.alias_named);
         } else {
             try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
+        }
+    }
+    for (serialized.reserved_words.sets) |set| {
+        for (set) |symbol| {
+            try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
         }
     }
 
@@ -1411,6 +1446,37 @@ test "emitParserCAlloc emits serialized lexer tables and remaps lex mode starts"
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_lex_fn = NULL,\n"));
+}
+
+test "emitParserCAlloc emits serialized reserved words" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .symbols = &[_]serialize.SerializedSymbolInfo{
+            .{ .ref = .{ .terminal = 0 }, .name = "if", .named = false, .visible = true, .supertype = false, .public_symbol = 0 },
+            .{ .ref = .{ .terminal = 1 }, .name = "else", .named = false, .visible = true, .supertype = false, .public_symbol = 1 },
+        },
+        .reserved_words = .{
+            .sets = &[_][]const syntax_grammar.SymbolRef{
+                &.{},
+                &.{ .{ .terminal = 0 }, .{ .terminal = 1 } },
+            },
+            .max_size = 2,
+        },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define MAX_RESERVED_WORD_SET_SIZE 2\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_reserved_words[][MAX_RESERVED_WORD_SET_SIZE > 0 ? MAX_RESERVED_WORD_SET_SIZE : 1] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { 0, 0 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 0, 1 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .reserved_words = &ts_reserved_words[0][0],\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .max_reserved_word_set_size = 2,\n"));
 }
 
 test "emitParserCAlloc emits primary state ids by parse state" {
