@@ -88,15 +88,18 @@ These changes are in `src/parser_emit/parser_c.zig` and
 Data source: `PreparedGrammar.symbols` (`[]SymbolInfo`) in `src/ir/grammar_ir.zig` and
 `src/ir/symbols.zig`.
 
-- [ ] Emit `static const char * const ts_symbol_names[] = { … };` — one C string per
+- [x] Emit `static const char * const ts_symbol_names[] = { … };` — one C string per
   symbol in symbol-ID order, matching `SymbolInfo.name`.
-  Partial: table is emitted from collected serialized refs; it is not yet sourced from `PreparedGrammar.symbols`.
-- [ ] Emit `static const TSSymbolMetadata ts_symbol_metadata[] = { … };` — `visible` and
+  Note: prepared non-terminal/external symbols now use `PreparedGrammar.symbols`; terminal-only
+  fallback symbols are still inferred from serialized parse-table refs until token metadata is modeled.
+- [x] Emit `static const TSSymbolMetadata ts_symbol_metadata[] = { … };` — `visible` and
   `named` from `SymbolInfo`, `supertype` from `SymbolInfo.supertype`.
-  Partial: table is emitted with inferred placeholder metadata; it is not yet sourced from `SymbolInfo`.
+  Note: prepared non-terminal/external symbols now use `SymbolInfo`; terminal-only fallback
+  symbols keep inferred metadata until token metadata is modeled.
 - [ ] Compute and emit `static const TSSymbol ts_symbol_map[] = { … };` — maps internal
   symbol IDs to the deduplicated public IDs (collapsing anonymous/alias duplicates).
-  Partial: identity map is emitted; public-ID deduplication is not done.
+  Partial: prepared symbols carry stable public IDs and fallback symbols are mapped after
+  final symbol ordering, but alias/anonymous public-ID deduplication is not done.
 - [x] Set `.symbol_count`, `.symbol_names`, `.symbol_metadata`, `.public_symbol_map` in
   the `ts_language` literal.
 
@@ -161,9 +164,8 @@ These fields are straightforward once Phases 1–6 are done.
   the lowest state ID where it is the leading production.  Set `.primary_state_ids`.
 - [x] Set `.abi_version = LANGUAGE_VERSION` (15), `.token_count`, `.external_token_count`,
   `.alias_count` in the `ts_language` literal.
-- [ ] Set `.name` to the grammar name string literal.  Leave `.metadata` zero-initialized
+- [x] Set `.name` to the grammar name string literal.  Leave `.metadata` zero-initialized
   (no semver yet).
-  Partial: `.name` is emitted as `"generated"`, not the grammar name yet.
 
 ---
 

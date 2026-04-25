@@ -56,6 +56,8 @@ pub fn compactSerializedTableAlloc(
     return .{
         .states = compacted_states,
         .blocked = serialized.blocked,
+        .grammar_name = serialized.grammar_name,
+        .symbols = serialized.symbols,
         .large_state_count = large_state_count,
         .productions = serialized.productions,
         .parse_action_list = parse_action_list,

@@ -1,6 +1,5 @@
 const std = @import("std");
 const grammar_ir = @import("../ir/grammar_ir.zig");
-const syntax_ir = @import("../ir/syntax_grammar.zig");
 const actions = @import("actions.zig");
 const debug_dump = @import("debug_dump.zig");
 const build = @import("build.zig");
@@ -176,7 +175,11 @@ pub fn generateSerializedTableDumpFromPrepared(
     mode: serialize.SerializeMode,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const serialized = try serialize.serializeBuildResult(allocator, result, mode);
+    const serialized = try serialize.attachPreparedMetadataAlloc(
+        allocator,
+        try serialize.serializeBuildResult(allocator, result, mode),
+        prepared,
+    );
     return try debug_dump.dumpSerializedTableAlloc(allocator, serialized);
 }
 
@@ -195,7 +198,11 @@ pub fn generateParserTableEmitterDumpFromPreparedWithOptions(
     options: emit_optimize.Options,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const serialized = try serialize.serializeBuildResult(allocator, result, mode);
+    const serialized = try serialize.attachPreparedMetadataAlloc(
+        allocator,
+        try serialize.serializeBuildResult(allocator, result, mode),
+        prepared,
+    );
     return try parser_tables_emit.emitSerializedTableAllocWithOptions(allocator, serialized, options);
 }
 
@@ -214,7 +221,11 @@ pub fn generateCTableEmitterDumpFromPreparedWithOptions(
     options: emit_optimize.Options,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const serialized = try serialize.serializeBuildResult(allocator, result, mode);
+    const serialized = try serialize.attachPreparedMetadataAlloc(
+        allocator,
+        try serialize.serializeBuildResult(allocator, result, mode),
+        prepared,
+    );
     return try c_tables_emit.emitCTableSkeletonAllocWithOptions(allocator, serialized, options);
 }
 
@@ -233,13 +244,11 @@ pub fn generateParserCEmitterDumpFromPreparedWithOptions(
     options: emit_optimize.Options,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    var serialized = try serialize.serializeBuildResult(allocator, result, mode);
-    if (prepared.word_token) |wt| {
-        serialized.word_token = switch (wt.kind) {
-            .non_terminal => syntax_ir.SymbolRef{ .non_terminal = wt.index },
-            .external => syntax_ir.SymbolRef{ .external = wt.index },
-        };
-    }
+    const serialized = try serialize.attachPreparedMetadataAlloc(
+        allocator,
+        try serialize.serializeBuildResult(allocator, result, mode),
+        prepared,
+    );
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, options);
 }
 
@@ -263,7 +272,11 @@ pub fn serializeTableFromPreparedWithBuildOptions(
     const timer = maybeStartTimer(progress_log);
     std.debug.print("[parse_table/pipeline] stage serialize_build_result\n", .{});
     if (progress_log) logPipelineStart("serialize_build_result");
-    const serialized = try serialize.serializeBuildResult(allocator, result, mode);
+    const serialized = try serialize.attachPreparedMetadataAlloc(
+        allocator,
+        try serialize.serializeBuildResult(allocator, result, mode),
+        prepared,
+    );
     if (progress_log) {
         maybeLogPipelineDone("serialize_build_result", timer);
         logPipelineSummary(

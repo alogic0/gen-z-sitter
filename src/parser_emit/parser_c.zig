@@ -148,22 +148,20 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("static const char * const ts_symbol_names[SYMBOL_COUNT] = {\n");
     for (emitted_symbols, 0..) |symbol, index| {
         try writer.print("  [{d}] = \"", .{index});
-        try writer.writeAll(symbol.label);
+        try writeCStringLiteralContents(writer, symbol.label);
         try writer.writeAll("\",\n");
     }
     try writer.writeAll("};\n\n");
 
     try writer.writeAll("static const TSSymbolMetadata ts_symbol_metadata[SYMBOL_COUNT] = {\n");
     for (emitted_symbols, 0..) |symbol, index| {
-        const visible = !symbolKindIsExternal(symbol.ref);
-        const named = !symbolKindIsTerminal(symbol.ref);
-        try writer.print("  [{d}] = {{ .visible = {}, .named = {}, .supertype = false }},\n", .{ index, visible, named });
+        try writer.print("  [{d}] = {{ .visible = {}, .named = {}, .supertype = {} }},\n", .{ index, symbol.visible, symbol.named, symbol.supertype });
     }
     try writer.writeAll("};\n\n");
 
     try writer.writeAll("static const TSSymbol ts_symbol_map[SYMBOL_COUNT] = {\n");
-    for (emitted_symbols, 0..) |_, index| {
-        try writer.print("  [{d}] = {d},\n", .{ index, index });
+    for (emitted_symbols, 0..) |symbol, index| {
+        try writer.print("  [{d}] = {d},\n", .{ index, symbol.public_symbol });
     }
     try writer.writeAll("};\n\n");
 
@@ -257,7 +255,9 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("  .lex_fn = ts_lex,\n");
     try writer.print("  .keyword_capture_token = {d},\n", .{keyword_capture_id});
     try writer.writeAll("  .primary_state_ids = ts_primary_state_ids,\n");
-    try writer.writeAll("  .name = \"generated\",\n");
+    try writer.writeAll("  .name = \"");
+    try writeCStringLiteralContents(writer, compacted.grammar_name);
+    try writer.writeAll("\",\n");
     try writer.writeAll("};\n\n");
     try writer.writeAll("const TSLanguage *tree_sitter_generated(void) {\n");
     try writer.writeAll("  return &ts_language;\n");
@@ -428,7 +428,12 @@ fn parseActionSlicesEql(
 
 const EmittedSymbol = struct {
     ref: syntax_grammar.SymbolRef,
-    label: []u8,
+    label: []const u8,
+    named: bool,
+    visible: bool,
+    supertype: bool,
+    public_symbol: u16,
+    owns_label: bool = false,
 };
 
 fn collectEmittedSymbols(
@@ -437,6 +442,17 @@ fn collectEmittedSymbols(
 ) EmitError![]EmittedSymbol {
     var symbols = std.array_list.Managed(EmittedSymbol).init(allocator);
     defer symbols.deinit();
+
+    for (serialized.symbols) |symbol| {
+        try appendUniqueEmittedSymbolWithMetadata(allocator, &symbols, .{
+            .ref = symbol.ref,
+            .label = symbol.name,
+            .named = symbol.named,
+            .visible = symbol.visible,
+            .supertype = symbol.supertype,
+            .public_symbol = symbol.public_symbol,
+        });
+    }
 
     for (serialized.states) |state| {
         for (state.actions) |entry| {
@@ -469,6 +485,9 @@ fn collectEmittedSymbols(
     }
 
     std.mem.sort(EmittedSymbol, symbols.items, {}, emittedSymbolLessThan);
+    for (symbols.items, 0..) |*symbol, index| {
+        if (symbol.owns_label) symbol.public_symbol = @intCast(index);
+    }
     return try symbols.toOwnedSlice();
 }
 
@@ -477,23 +496,59 @@ fn appendUniqueEmittedSymbol(
     symbols: *std.array_list.Managed(EmittedSymbol),
     symbol: syntax_grammar.SymbolRef,
 ) EmitError!void {
+    const index = symbols.items.len;
+    try appendUniqueEmittedSymbolWithMetadata(allocator, symbols, .{
+        .ref = symbol,
+        .label = try fallbackSymbolLabelAlloc(allocator, symbol),
+        .named = !symbolKindIsTerminal(symbol),
+        .visible = !symbolKindIsExternal(symbol),
+        .supertype = false,
+        .public_symbol = @intCast(index),
+        .owns_label = true,
+    });
+}
+
+fn appendUniqueEmittedSymbolWithMetadata(
+    allocator: std.mem.Allocator,
+    symbols: *std.array_list.Managed(EmittedSymbol),
+    symbol: EmittedSymbol,
+) EmitError!void {
     for (symbols.items) |existing| {
-        if (symbolRefEql(existing.ref, symbol)) return;
+        if (symbolRefEql(existing.ref, symbol.ref)) {
+            if (symbol.owns_label) allocator.free(symbol.label);
+            return;
+        }
     }
 
+    try symbols.append(symbol);
+}
+
+fn fallbackSymbolLabelAlloc(
+    allocator: std.mem.Allocator,
+    symbol: syntax_grammar.SymbolRef,
+) EmitError![]u8 {
     var buffer: std.Io.Writer.Allocating = .init(allocator);
     defer buffer.deinit();
     try common.writeSymbol(&buffer.writer, symbol);
+    return try buffer.toOwnedSlice();
+}
 
-    try symbols.append(.{
-        .ref = symbol,
-        .label = try buffer.toOwnedSlice(),
-    });
+fn writeCStringLiteralContents(writer: anytype, value: []const u8) !void {
+    for (value) |byte| {
+        switch (byte) {
+            '\\' => try writer.writeAll("\\\\"),
+            '"' => try writer.writeAll("\\\""),
+            '\n' => try writer.writeAll("\\n"),
+            '\r' => try writer.writeAll("\\r"),
+            '\t' => try writer.writeAll("\\t"),
+            else => try writer.writeByte(byte),
+        }
+    }
 }
 
 fn deinitEmittedSymbols(allocator: std.mem.Allocator, symbols: []EmittedSymbol) void {
     for (symbols) |symbol| {
-        allocator.free(symbol.label);
+        if (symbol.owns_label) allocator.free(symbol.label);
     }
     allocator.free(symbols);
 }
@@ -676,6 +731,55 @@ test "emitParserCAlloc compacts identical serialized states before row sharing" 
     try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSUnresolvedEntry ts_state_0_unresolved[] = {\n"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSParseActionEntry ts_parse_actions[] = {\n"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "[1] = { .entry = { .count = 1, .reusable = true } }"));
+}
+
+test "emitParserCAlloc emits prepared symbol metadata and grammar name" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_name = "quote\"grammar",
+        .symbols = &[_]serialize.SerializedSymbolInfo{
+            .{
+                .ref = .{ .terminal = 1 },
+                .name = "string\"token",
+                .named = true,
+                .visible = true,
+                .supertype = false,
+                .public_symbol = 4,
+            },
+            .{
+                .ref = .{ .non_terminal = 0 },
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+                .supertype = true,
+                .public_symbol = 0,
+            },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]serialize.SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 2 }, .action = .{ .shift = 1 } },
+                },
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAlloc(allocator, serialized);
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = \"source_file\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = \"string\\\"token\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = \"terminal:2\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .visible = true, .named = true, .supertype = true },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .visible = true, .named = true, .supertype = false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = { .visible = true, .named = false, .supertype = false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = 4,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .name = \"quote\\\"grammar\",\n"));
 }
 
 test "emitParserCAlloc emits self-contained C that compiles" {

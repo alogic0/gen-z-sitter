@@ -3,6 +3,8 @@ const actions = @import("actions.zig");
 const build = @import("build.zig");
 const resolution = @import("resolution.zig");
 const state = @import("state.zig");
+const grammar_ir = @import("../ir/grammar_ir.zig");
+const ir_symbols = @import("../ir/symbols.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const SerializeError = std.mem.Allocator.Error || error{
@@ -95,9 +97,20 @@ pub const SerializedSmallParseTable = struct {
     map: []const u32 = &.{},
 };
 
+pub const SerializedSymbolInfo = struct {
+    ref: syntax_ir.SymbolRef,
+    name: []const u8,
+    named: bool,
+    visible: bool,
+    supertype: bool,
+    public_symbol: u16,
+};
+
 pub const SerializedTable = struct {
     states: []const SerializedState,
     blocked: bool,
+    grammar_name: []const u8 = "generated",
+    symbols: []const SerializedSymbolInfo = &.{},
     large_state_count: usize = 0,
     productions: []const SerializedProductionInfo = &.{},
     parse_action_list: []const SerializedParseActionListEntry = &.{},
@@ -177,6 +190,32 @@ pub fn serializeBuildResult(
         .small_parse_table = try buildSmallParseTableAlloc(allocator, serialized_states, large_state_count, parse_action_list, productions),
         .alias_sequences = try alias_list.toOwnedSlice(allocator),
     };
+}
+
+pub fn attachPreparedMetadataAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    prepared: grammar_ir.PreparedGrammar,
+) std.mem.Allocator.Error!SerializedTable {
+    const serialized_symbols = try allocator.alloc(SerializedSymbolInfo, prepared.symbols.len);
+    for (prepared.symbols, 0..) |symbol, index| {
+        serialized_symbols[index] = .{
+            .ref = symbolRefFromPreparedSymbol(symbol.id),
+            .name = symbol.name,
+            .named = symbol.named,
+            .visible = symbol.visible,
+            .supertype = symbol.supertype,
+            .public_symbol = @intCast(index),
+        };
+    }
+
+    var result = serialized;
+    result.grammar_name = prepared.grammar_name;
+    result.symbols = serialized_symbols;
+    if (prepared.word_token) |word_token| {
+        result.word_token = symbolRefFromPreparedSymbol(word_token);
+    }
+    return result;
 }
 
 pub fn buildParseActionListAlloc(
@@ -476,6 +515,13 @@ fn appendUniqueSymbolRef(
     try symbols.append(symbol);
 }
 
+fn symbolRefFromPreparedSymbol(symbol: ir_symbols.SymbolId) syntax_ir.SymbolRef {
+    return switch (symbol.kind) {
+        .non_terminal => .{ .non_terminal = symbol.index },
+        .external => .{ .external = symbol.index },
+    };
+}
+
 fn symbolRefLessThan(_: void, left: syntax_ir.SymbolRef, right: syntax_ir.SymbolRef) bool {
     return symbolSortKey(left) < symbolSortKey(right);
 }
@@ -579,6 +625,62 @@ fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
             else => false,
         },
     };
+}
+
+test "attachPreparedMetadataAlloc adds grammar and symbol metadata" {
+    const allocator = std.testing.allocator;
+    const prepared_symbols = [_]ir_symbols.SymbolInfo{
+        .{
+            .id = .{ .kind = .non_terminal, .index = 0 },
+            .name = "source_file",
+            .named = true,
+            .visible = true,
+            .supertype = true,
+        },
+        .{
+            .id = .{ .kind = .external, .index = 1 },
+            .name = "external_token",
+            .named = false,
+            .visible = false,
+            .supertype = false,
+        },
+    };
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "metadata_fixture",
+        .variables = &.{},
+        .external_tokens = &.{},
+        .rules = &.{},
+        .symbols = prepared_symbols[0..],
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = .{ .kind = .external, .index = 1 },
+        .reserved_word_sets = &.{},
+    };
+
+    const serialized = try attachPreparedMetadataAlloc(allocator, .{
+        .states = &.{},
+        .blocked = false,
+    }, prepared);
+    defer allocator.free(serialized.symbols);
+
+    try std.testing.expectEqualStrings("metadata_fixture", serialized.grammar_name);
+    try std.testing.expectEqual(@as(usize, 2), serialized.symbols.len);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 0 }, serialized.symbols[0].ref);
+    try std.testing.expectEqualStrings("source_file", serialized.symbols[0].name);
+    try std.testing.expect(serialized.symbols[0].named);
+    try std.testing.expect(serialized.symbols[0].visible);
+    try std.testing.expect(serialized.symbols[0].supertype);
+    try std.testing.expectEqual(@as(u16, 0), serialized.symbols[0].public_symbol);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .external = 1 }, serialized.symbols[1].ref);
+    try std.testing.expectEqualStrings("external_token", serialized.symbols[1].name);
+    try std.testing.expect(!serialized.symbols[1].named);
+    try std.testing.expect(!serialized.symbols[1].visible);
+    try std.testing.expect(!serialized.symbols[1].supertype);
+    try std.testing.expectEqual(@as(u16, 1), serialized.symbols[1].public_symbol);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .external = 1 }, serialized.word_token.?);
 }
 
 test "serializeBuildResult rejects blocked snapshots in strict mode" {
