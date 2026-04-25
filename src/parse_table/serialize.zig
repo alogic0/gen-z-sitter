@@ -42,6 +42,7 @@ pub const SerializedUnresolvedEntry = struct {
 /// One parser state after build-time decisions have been applied.
 pub const SerializedState = struct {
     id: state.StateId,
+    core_id: u32 = 0,
     lex_state_id: state.LexStateId = 0,
     actions: []const SerializedActionEntry,
     gotos: []const SerializedGotoEntry,
@@ -164,6 +165,7 @@ pub const SerializedTable = struct {
     alias_sequences: []const SerializedAliasEntry = &.{},
     field_map: SerializedFieldMap = .{},
     lex_modes: []const lexer_serialize.SerializedLexMode = &.{},
+    primary_state_ids: []const state.StateId = &.{},
     word_token: ?syntax_ir.SymbolRef = null,
 
     pub fn isSerializationReady(self: SerializedTable) bool {
@@ -190,6 +192,7 @@ pub fn serializeBuildResult(
     for (result.states, 0..) |parse_state, index| {
         serialized_states[index] = .{
             .id = parse_state.id,
+            .core_id = parse_state.core_id,
             .lex_state_id = parse_state.lex_state_id,
             .actions = try collectActionsForState(allocator, snapshot.chosen, parse_state.id),
             .gotos = try collectGotosForState(allocator, parse_state),
@@ -225,6 +228,7 @@ pub fn serializeBuildResult(
     const parse_action_list = try buildParseActionListAlloc(allocator, serialized_states, productions);
     const field_map = try buildFieldMapAlloc(allocator, result.productions);
     const lex_modes = try lexer_serialize.buildLexModesAlloc(allocator, serialized_states);
+    const primary_state_ids = try buildPrimaryStateIdsAlloc(allocator, serialized_states);
     return .{
         .states = serialized_states,
         .blocked = blocked,
@@ -235,6 +239,7 @@ pub fn serializeBuildResult(
         .alias_sequences = try alias_list.toOwnedSlice(allocator),
         .field_map = field_map,
         .lex_modes = lex_modes,
+        .primary_state_ids = primary_state_ids,
     };
 }
 
@@ -355,6 +360,24 @@ pub fn deinitFieldMap(allocator: std.mem.Allocator, field_map: SerializedFieldMa
     allocator.free(field_map.names);
     allocator.free(field_map.entries);
     allocator.free(field_map.slices);
+}
+
+pub fn buildPrimaryStateIdsAlloc(
+    allocator: std.mem.Allocator,
+    states: []const SerializedState,
+) std.mem.Allocator.Error![]const state.StateId {
+    const ids = try allocator.alloc(state.StateId, states.len);
+    for (states, 0..) |serialized_state, index| {
+        var primary = serialized_state.id;
+        for (states[0..index]) |previous_state| {
+            if (previous_state.core_id == serialized_state.core_id) {
+                primary = previous_state.id;
+                break;
+            }
+        }
+        ids[index] = primary;
+    }
+    return ids;
 }
 
 pub fn computeLargeStateCountAlloc(
@@ -910,6 +933,7 @@ test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {
     defer deinitParseActionList(allocator, serialized.parse_action_list);
     defer deinitFieldMap(allocator, serialized.field_map);
     defer allocator.free(serialized.lex_modes);
+    defer allocator.free(serialized.primary_state_ids);
     defer allocator.free(serialized.states[0].unresolved);
     defer allocator.free(serialized.states[0].gotos);
     defer allocator.free(serialized.states[0].actions);
@@ -992,6 +1016,48 @@ test "computeLargeStateCountAlloc follows tree-sitter threshold prefix rule" {
         @as(usize, 2),
         try computeLargeStateCountAlloc(allocator, states[0..], &.{}),
     );
+}
+
+test "buildPrimaryStateIdsAlloc maps states to first matching core id" {
+    const allocator = std.testing.allocator;
+    const states = [_]SerializedState{
+        .{
+            .id = 0,
+            .core_id = 11,
+            .actions = &.{},
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+        .{
+            .id = 1,
+            .core_id = 22,
+            .actions = &.{},
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+        .{
+            .id = 2,
+            .core_id = 11,
+            .actions = &.{},
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+        .{
+            .id = 3,
+            .core_id = 22,
+            .actions = &.{},
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+    };
+
+    const ids = try buildPrimaryStateIdsAlloc(allocator, states[0..]);
+    defer allocator.free(ids);
+
+    try std.testing.expectEqual(@as(state.StateId, 0), ids[0]);
+    try std.testing.expectEqual(@as(state.StateId, 1), ids[1]);
+    try std.testing.expectEqual(@as(state.StateId, 0), ids[2]);
+    try std.testing.expectEqual(@as(state.StateId, 1), ids[3]);
 }
 
 test "buildSmallParseTableAlloc groups values and deduplicates rows" {

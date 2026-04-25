@@ -228,7 +228,15 @@ pub fn writeParserCWithOptions(
         }
     }
     try writer.writeAll("};\n\n");
-    try writer.writeAll("static const TSStateId ts_primary_state_ids[SYMBOL_COUNT] = { 0 };\n\n");
+    try writer.writeAll("static const TSStateId ts_primary_state_ids[STATE_COUNT] = {\n");
+    for (compacted.states, 0..) |serialized_state, index| {
+        const primary_state_id = if (index < compacted.primary_state_ids.len)
+            compacted.primary_state_ids[index]
+        else
+            serialized_state.id;
+        try writer.print("  [{d}] = {d},\n", .{ index, primary_state_id });
+    }
+    try writer.writeAll("};\n\n");
 
     try writer.writeAll("static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {\n");
     for (compacted.states[0..large_state_count_value], 0..) |serialized_state, index| {
@@ -1076,6 +1084,38 @@ test "emitParserCAlloc emits serialized lex modes" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 1 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .lex_state = 9, .external_lex_state = 2, .reserved_word_set_id = 0 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .lex_modes = ts_lex_modes,\n"));
+}
+
+test "emitParserCAlloc emits primary state ids by parse state" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .large_state_count = 3,
+        .symbols = &[_]serialize.SerializedSymbolInfo{
+            .{
+                .ref = .{ .terminal = 0 },
+                .name = "token",
+                .named = false,
+                .visible = true,
+                .supertype = false,
+                .public_symbol = 0,
+            },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .core_id = 4, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+            .{ .id = 1, .core_id = 9, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+            .{ .id = 2, .core_id = 4, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+        .primary_state_ids = &[_]@import("../parse_table/state.zig").StateId{ 0, 1, 0 },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSStateId ts_primary_state_ids[STATE_COUNT] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = 0,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = 1,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 0,\n"));
 }
 
 test "emitParserCAlloc emits full runtime parse action fields" {

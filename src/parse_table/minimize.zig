@@ -122,6 +122,7 @@ pub fn minimizeAlloc(
 
         out_states[out_idx] = .{
             .id = s.id,
+            .core_id = s.core_id,
             .lex_state_id = s.lex_state_id,
             .items = s.items,
             .transitions = new_transitions,

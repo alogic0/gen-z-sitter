@@ -23,6 +23,7 @@ pub const Conflict = struct {
 
 pub const ParseState = struct {
     id: StateId,
+    core_id: u32 = 0,
     lex_state_id: LexStateId = 0,
     items: []const item.ParseItemSetEntry,
     transitions: []const Transition,

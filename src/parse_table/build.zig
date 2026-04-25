@@ -1415,9 +1415,10 @@ const StateRegistry = struct {
     }
 
     fn appendInitialState(self: *@This(), item_set: item.ParseItemSet) !void {
-        _ = try self.core_key_store.internFromEntries(&self.core_ids_by_core, item_set.entries);
+        const core_id = try self.core_key_store.internFromEntries(&self.core_ids_by_core, item_set.entries);
         try self.states.append(.{
             .id = 0,
+            .core_id = @intCast(core_id),
             .items = item_set.entries,
             .transitions = &.{},
             .conflicts = &.{},
@@ -1434,9 +1435,10 @@ const StateRegistry = struct {
         }
 
         const new_id: state.StateId = @intCast(self.states.items.len);
-        _ = try self.core_key_store.internFromEntries(&self.core_ids_by_core, item_set.entries);
+        const core_id = try self.core_key_store.internFromEntries(&self.core_ids_by_core, item_set.entries);
         try self.states.append(.{
             .id = new_id,
+            .core_id = @intCast(core_id),
             .items = item_set.entries,
             .transitions = &.{},
             .conflicts = &.{},
