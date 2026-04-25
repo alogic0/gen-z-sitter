@@ -2,6 +2,7 @@ const std = @import("std");
 const parse_actions = @import("../parse_table/actions.zig");
 const serialize = @import("../parse_table/serialize.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
+const lexer_emit_c = @import("../lexer/emit_c.zig");
 const syntax_grammar = @import("../ir/syntax_grammar.zig");
 const common = @import("common.zig");
 const compat = @import("compat.zig");
@@ -131,6 +132,7 @@ pub fn writeParserCWithOptions(
         compacted.small_parse_table
     else
         try serialize.buildSmallParseTableAlloc(arena.allocator(), compacted.states, serializedLargeStateCount(compacted), parse_action_list, compacted.productions);
+    const runtime_lex = try buildRuntimeLexTableAlloc(arena.allocator(), compacted.lex_tables);
 
     try compat.writeContractPrelude(writer, compatibility);
     try compat.writeContractTypesAndConstants(writer, compatibility);
@@ -150,11 +152,24 @@ pub fn writeParserCWithOptions(
     else
         0;
 
-    try writer.writeAll("static bool ts_lex(TSLexer *lexer, TSStateId state) {\n");
-    try writer.writeAll("  (void)lexer;\n");
-    try writer.writeAll("  (void)state;\n");
-    try writer.writeAll("  return false;\n");
-    try writer.writeAll("}\n\n");
+    if (runtime_lex.table.states.len == 0) {
+        try writer.writeAll("static bool ts_lex(TSLexer *lexer, TSStateId state) {\n");
+        try writer.writeAll("  (void)lexer;\n");
+        try writer.writeAll("  (void)state;\n");
+        try writer.writeAll("  return false;\n");
+        try writer.writeAll("}\n\n");
+    } else {
+        const resolver_context = RuntimeSymbolResolverContext{ .symbols = emitted_symbols };
+        try lexer_emit_c.emitLexFunctionWithResolver(
+            writer,
+            "ts_lex",
+            runtime_lex.table,
+            .{
+                .context = &resolver_context,
+                .resolve = resolveRuntimeSymbol,
+            },
+        );
+    }
     try writer.writeAll("static const char * const ts_symbol_names[SYMBOL_COUNT] = {\n");
     for (emitted_symbols, 0..) |symbol, index| {
         try writer.print("  [{d}] = \"", .{index});
@@ -300,9 +315,10 @@ pub fn writeParserCWithOptions(
             compacted.lex_modes[index]
         else
             lexer_serialize.SerializedLexMode{ .lex_state = 0 };
+        const lex_state = runtimeLexStateForMode(runtime_lex.lex_state_starts, mode.lex_state);
         try writer.print(
             "  [{d}] = {{ .lex_state = {d}, .external_lex_state = {d}, .reserved_word_set_id = {d} }},\n",
-            .{ index, mode.lex_state, mode.external_lex_state, mode.reserved_word_set_id },
+            .{ index, lex_state, mode.external_lex_state, mode.reserved_word_set_id },
         );
     }
     try writer.writeAll("};\n\n");
@@ -334,6 +350,7 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("  .alias_sequences = &ts_alias_sequences[0][0],\n");
     try writer.writeAll("  .lex_modes = ts_lex_modes,\n");
     try writer.writeAll("  .lex_fn = ts_lex,\n");
+    try writer.writeAll("  .keyword_lex_fn = NULL,\n");
     try writer.print("  .keyword_capture_token = {d},\n", .{keyword_capture_id});
     try writer.writeAll("  .primary_state_ids = ts_primary_state_ids,\n");
     try writer.writeAll("  .name = \"");
@@ -365,6 +382,68 @@ fn writeRuntimeAction(
         .accept => try writer.writeAll("{ .action = { .type = TSParseActionTypeAccept } }"),
         .recover => try writer.writeAll("{ .action = { .type = TSParseActionTypeRecover } }"),
     }
+}
+
+const RuntimeLexTable = struct {
+    table: lexer_serialize.SerializedLexTable,
+    lex_state_starts: []const u16,
+};
+
+fn buildRuntimeLexTableAlloc(
+    allocator: std.mem.Allocator,
+    lex_tables: []const lexer_serialize.SerializedLexTable,
+) EmitError!RuntimeLexTable {
+    const starts = try allocator.alloc(u16, lex_tables.len);
+    var state_count: usize = 0;
+    for (lex_tables, 0..) |table, index| {
+        starts[index] = @intCast(state_count + table.start_state_id);
+        state_count += table.states.len;
+    }
+
+    const states = try allocator.alloc(lexer_serialize.SerializedLexState, state_count);
+    var state_index: usize = 0;
+    var offset: u32 = 0;
+    for (lex_tables) |table| {
+        for (table.states) |state_value| {
+            const transitions = try allocator.alloc(lexer_serialize.SerializedLexTransition, state_value.transitions.len);
+            for (state_value.transitions, 0..) |transition, transition_index| {
+                transitions[transition_index] = .{
+                    .ranges = transition.ranges,
+                    .next_state_id = transition.next_state_id + offset,
+                    .skip = transition.skip,
+                };
+            }
+            states[state_index] = .{
+                .accept_symbol = state_value.accept_symbol,
+                .eof_target = if (state_value.eof_target) |target| target + offset else null,
+                .transitions = transitions,
+            };
+            state_index += 1;
+        }
+        offset += @intCast(table.states.len);
+    }
+
+    return .{
+        .table = .{
+            .start_state_id = if (starts.len == 0) 0 else starts[0],
+            .states = states,
+        },
+        .lex_state_starts = starts,
+    };
+}
+
+fn runtimeLexStateForMode(lex_state_starts: []const u16, lex_state_id: u16) u16 {
+    if (lex_state_id >= lex_state_starts.len) return lex_state_id;
+    return lex_state_starts[lex_state_id];
+}
+
+const RuntimeSymbolResolverContext = struct {
+    symbols: []const EmittedSymbol,
+};
+
+fn resolveRuntimeSymbol(context: *const anyopaque, symbol: syntax_grammar.SymbolRef) ?u16 {
+    const typed: *const RuntimeSymbolResolverContext = @ptrCast(@alignCast(context));
+    return symbolIdForRef(typed.symbols, symbol);
 }
 
 fn serializedLargeStateCount(serialized: serialize.SerializedTable) usize {
@@ -653,6 +732,14 @@ fn collectEmittedSymbols(
             try appendUniqueEmittedSymbol(allocator, &symbols, alias.original_symbol);
         }
         try appendUniqueAliasSymbol(&symbols, alias.name, alias.named);
+    }
+
+    for (serialized.lex_tables) |lex_table| {
+        for (lex_table.states) |lex_state| {
+            if (lex_state.accept_symbol) |symbol| {
+                try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
+            }
+        }
     }
 
     std.mem.sort(EmittedSymbol, symbols.items, {}, emittedSymbolLessThan);
@@ -1142,6 +1229,87 @@ test "emitParserCAlloc emits serialized lex modes" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 1 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .lex_state = 9, .external_lex_state = 2, .reserved_word_set_id = 0 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .lex_modes = ts_lex_modes,\n"));
+}
+
+test "emitParserCAlloc emits serialized lexer tables and remaps lex mode starts" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .symbols = &[_]serialize.SerializedSymbolInfo{
+            .{
+                .ref = .{ .terminal = 0 },
+                .name = "letter_a",
+                .named = false,
+                .visible = true,
+                .supertype = false,
+                .public_symbol = 0,
+            },
+            .{
+                .ref = .{ .terminal = 1 },
+                .name = "letter_b",
+                .named = false,
+                .visible = true,
+                .supertype = false,
+                .public_symbol = 1,
+            },
+        },
+        .lex_modes = &[_]lexer_serialize.SerializedLexMode{
+            .{ .lex_state = 0 },
+            .{ .lex_state = 1 },
+        },
+        .lex_tables = &[_]lexer_serialize.SerializedLexTable{
+            .{
+                .start_state_id = 0,
+                .states = &[_]lexer_serialize.SerializedLexState{
+                    .{
+                        .transitions = &[_]lexer_serialize.SerializedLexTransition{
+                            .{
+                                .ranges = &[_]lexer_serialize.SerializedCharacterRange{
+                                    .{ .start = 'a', .end_inclusive = 'a' },
+                                },
+                                .next_state_id = 1,
+                                .skip = false,
+                            },
+                        },
+                    },
+                    .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
+                },
+            },
+            .{
+                .start_state_id = 0,
+                .states = &[_]lexer_serialize.SerializedLexState{
+                    .{
+                        .transitions = &[_]lexer_serialize.SerializedLexTransition{
+                            .{
+                                .ranges = &[_]lexer_serialize.SerializedCharacterRange{
+                                    .{ .start = 'b', .end_inclusive = 'b' },
+                                },
+                                .next_state_id = 1,
+                                .skip = false,
+                            },
+                        },
+                    },
+                    .{ .accept_symbol = .{ .terminal = 1 }, .transitions = &.{} },
+                },
+            },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+            .{ .id = 1, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_lex(TSLexer *lexer, TSStateId state) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    case 0:\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      if (lookahead == 97) ADVANCE(1);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    case 2:\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      if (lookahead == 98) ADVANCE(3);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_lex_fn = NULL,\n"));
 }
 
 test "emitParserCAlloc emits primary state ids by parse state" {

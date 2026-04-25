@@ -145,7 +145,7 @@ Implement tree-sitter's `render.rs::add_lex_function` and `add_lex_state` shape 
 ### 4a — New Emitter Module
 
 - [x] Create `src/lexer/emit_c.zig`.
-- [ ] Public entry point:
+- [x] Public entry point:
 
 ```zig
 pub fn emitLexFunction(
@@ -202,15 +202,15 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
 
 ## Phase 5 — Wire Lexer Emission into `parser_c.zig`
 
-- [ ] Replace the stub `ts_lex` body with `lexer/emit_c.zig` output for the serialized
+- [x] Replace the stub `ts_lex` body with `lexer/emit_c.zig` output for the serialized
   main lex table.
-- [ ] Keep `.lex_fn = ts_lex`.
-- [ ] Keep `.keyword_lex_fn = NULL` until Phase 6 unless `word_token` lexing is complete.
-- [ ] Emit `ts_lex_modes` from serialized lex modes:
+- [x] Keep `.lex_fn = ts_lex`.
+- [x] Keep `.keyword_lex_fn = NULL` until Phase 6 unless `word_token` lexing is complete.
+- [x] Emit `ts_lex_modes` from serialized lex modes:
   - `.lex_state`
-  - `.external_lex_state` only when non-zero
-  - `.reserved_word_set_id` only when non-zero
-- [ ] For now, support grammars with no external tokens. Grammars with externals should
+  - `.external_lex_state`
+  - `.reserved_word_set_id`
+- [x] For now, support grammars with no external tokens. Grammars with externals should
   remain blocked or compile-smoke-only until Phase 8.
 
 ---

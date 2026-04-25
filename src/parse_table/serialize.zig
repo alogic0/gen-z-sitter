@@ -269,6 +269,9 @@ pub fn attachPreparedMetadataAlloc(
     var result = serialized;
     result.grammar_name = prepared.grammar_name;
     result.symbols = serialized_symbols;
+    if (prepared.external_tokens.len != 0) {
+        result.blocked = true;
+    }
     if (prepared.word_token) |word_token| {
         result.word_token = symbolRefFromPreparedSymbol(word_token);
     }
@@ -838,6 +841,39 @@ test "attachPreparedMetadataAlloc adds grammar and symbol metadata" {
     try std.testing.expect(!serialized.symbols[1].supertype);
     try std.testing.expectEqual(@as(u16, 1), serialized.symbols[1].public_symbol);
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .external = 1 }, serialized.word_token.?);
+}
+
+test "attachPreparedMetadataAlloc blocks grammars that declare external tokens" {
+    const allocator = std.testing.allocator;
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "external_blocker",
+        .variables = &.{},
+        .external_tokens = &.{
+            .{
+                .name = "indent",
+                .symbol = .{ .kind = .external, .index = 0 },
+                .kind = .named,
+                .rule = 0,
+            },
+        },
+        .rules = &.{},
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    const serialized = try attachPreparedMetadataAlloc(allocator, .{
+        .states = &.{},
+        .blocked = false,
+    }, prepared);
+    defer allocator.free(serialized.symbols);
+
+    try std.testing.expect(!serialized.isSerializationReady());
 }
 
 test "buildFieldMapAlloc serializes distinct field names and production slices" {
