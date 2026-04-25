@@ -43,6 +43,7 @@ pub fn compactSerializedTableAlloc(
         if (state_owners[index] != index) continue;
         compacted_states[compacted_index] = .{
             .id = @intCast(compacted_index),
+            .lex_state_id = serialized_state.lex_state_id,
             .actions = try remapActionEntries(allocator, serialized.states, serialized_state.actions, state_owners, owner_new_ids),
             .gotos = try remapGotoEntries(allocator, serialized.states, serialized_state.gotos, state_owners, owner_new_ids),
             .unresolved = try remapUnresolvedEntries(allocator, serialized.states, serialized_state.unresolved, state_owners, owner_new_ids),
@@ -52,6 +53,7 @@ pub fn compactSerializedTableAlloc(
 
     const large_state_count = try serialize.computeLargeStateCountAlloc(allocator, compacted_states, serialized.productions);
     const parse_action_list = try serialize.buildParseActionListAlloc(allocator, compacted_states, serialized.productions);
+    const lex_modes = try @import("../lexer/serialize.zig").buildLexModesAlloc(allocator, compacted_states);
 
     return .{
         .states = compacted_states,
@@ -64,6 +66,7 @@ pub fn compactSerializedTableAlloc(
         .small_parse_table = try serialize.buildSmallParseTableAlloc(allocator, compacted_states, large_state_count, parse_action_list, serialized.productions),
         .alias_sequences = serialized.alias_sequences,
         .field_map = serialized.field_map,
+        .lex_modes = lex_modes,
         .word_token = serialized.word_token,
     };
 }

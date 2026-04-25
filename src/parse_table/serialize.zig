@@ -5,6 +5,7 @@ const resolution = @import("resolution.zig");
 const state = @import("state.zig");
 const grammar_ir = @import("../ir/grammar_ir.zig");
 const ir_symbols = @import("../ir/symbols.zig");
+const lexer_serialize = @import("../lexer/serialize.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const SerializeError = std.mem.Allocator.Error || error{
@@ -34,6 +35,7 @@ pub const SerializedUnresolvedEntry = struct {
 
 pub const SerializedState = struct {
     id: state.StateId,
+    lex_state_id: state.LexStateId = 0,
     actions: []const SerializedActionEntry,
     gotos: []const SerializedGotoEntry,
     unresolved: []const SerializedUnresolvedEntry,
@@ -139,6 +141,7 @@ pub const SerializedTable = struct {
     small_parse_table: SerializedSmallParseTable = .{},
     alias_sequences: []const SerializedAliasEntry = &.{},
     field_map: SerializedFieldMap = .{},
+    lex_modes: []const lexer_serialize.SerializedLexMode = &.{},
     word_token: ?syntax_ir.SymbolRef = null,
 
     pub fn isSerializationReady(self: SerializedTable) bool {
@@ -171,6 +174,7 @@ pub fn serializeBuildResult(
         }
         serialized_states[index] = .{
             .id = parse_state.id,
+            .lex_state_id = parse_state.lex_state_id,
             .actions = try collectActionsForState(allocator, snapshot.chosen, parse_state.id),
             .gotos = try collectGotosForState(allocator, parse_state),
             .unresolved = if (mode == .diagnostic)
@@ -204,6 +208,7 @@ pub fn serializeBuildResult(
     const large_state_count = try computeLargeStateCountAlloc(allocator, serialized_states, productions);
     const parse_action_list = try buildParseActionListAlloc(allocator, serialized_states, productions);
     const field_map = try buildFieldMapAlloc(allocator, result.productions);
+    const lex_modes = try lexer_serialize.buildLexModesAlloc(allocator, serialized_states);
     std.debug.print("[parse_table/serialize] serializeBuildResult done blocked={}\n", .{blocked});
     return .{
         .states = serialized_states,
@@ -214,6 +219,7 @@ pub fn serializeBuildResult(
         .small_parse_table = try buildSmallParseTableAlloc(allocator, serialized_states, large_state_count, parse_action_list, productions),
         .alias_sequences = try alias_list.toOwnedSlice(allocator),
         .field_map = field_map,
+        .lex_modes = lex_modes,
     };
 }
 
@@ -888,6 +894,7 @@ test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {
     defer deinitSmallParseTable(allocator, serialized.small_parse_table);
     defer deinitParseActionList(allocator, serialized.parse_action_list);
     defer deinitFieldMap(allocator, serialized.field_map);
+    defer allocator.free(serialized.lex_modes);
     defer allocator.free(serialized.states[0].unresolved);
     defer allocator.free(serialized.states[0].gotos);
     defer allocator.free(serialized.states[0].actions);

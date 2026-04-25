@@ -37,6 +37,25 @@ pub const UnsupportedExternalToken = struct {
     kind: syntax_ir.VariableKind,
 };
 
+pub const SerializedLexMode = struct {
+    lex_state: u16,
+    external_lex_state: u16 = 0,
+    reserved_word_set_id: u16 = 0,
+};
+
+pub fn buildLexModesAlloc(
+    allocator: std.mem.Allocator,
+    states: anytype,
+) SerializeError![]const SerializedLexMode {
+    const modes = try allocator.alloc(SerializedLexMode, states.len);
+    for (states, 0..) |parse_state, index| {
+        modes[index] = .{
+            .lex_state = @intCast(@min(parse_state.lex_state_id, std.math.maxInt(u16))),
+        };
+    }
+    return modes;
+}
+
 pub const SerializedLexicalGrammar = struct {
     variables: []const SerializedLexicalVariable,
     unsupported_separators: []const UnsupportedSeparator,
@@ -173,6 +192,22 @@ test "serializeExtractedLexicalGrammar serializes the ready pattern and string l
     });
     try std.testing.expectEqual(@as(usize, 0), serialized.unsupported_separators.len);
     try std.testing.expectEqual(@as(usize, 0), serialized.unsupported_externals.len);
+}
+
+test "buildLexModesAlloc serializes parse-state lex ids" {
+    const states = [_]struct {
+        lex_state_id: u32,
+    }{
+        .{ .lex_state_id = 0 },
+        .{ .lex_state_id = 7 },
+    };
+
+    const modes = try buildLexModesAlloc(std.testing.allocator, states[0..]);
+    defer std.testing.allocator.free(modes);
+
+    try std.testing.expectEqual(@as(usize, 2), modes.len);
+    try std.testing.expectEqual(SerializedLexMode{ .lex_state = 0 }, modes[0]);
+    try std.testing.expectEqual(SerializedLexMode{ .lex_state = 7 }, modes[1]);
 }
 
 test "serializeExtractedLexicalGrammar keeps token and immediate metadata on lexical rules" {

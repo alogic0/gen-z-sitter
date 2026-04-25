@@ -109,8 +109,10 @@ Data source: `PreparedGrammar.symbols` (`[]SymbolInfo`) in `src/ir/grammar_ir.zi
 
 Data source: `src/lexer/serialize.zig` (`SerializedLexTable`) and the lexer pipeline.
 
-- [ ] In `src/lexer/serialize.zig`, expose a `lex_modes` field: one `(lex_state,
+- [x] In `src/lexer/serialize.zig`, expose a `lex_modes` field: one `(lex_state,
   external_lex_state)` pair per parse state, in parse-state-ID order.
+  Note: serialized through `SerializedTable.lex_modes` from parse-state `lex_state_id`;
+  external lex states and reserved-word set IDs default to `0` until those sources are modeled.
 - [x] In `parser_c.zig`, emit `static const TSLexerMode ts_lex_modes[] = { … };`.
 - [x] Set `.lex_modes = ts_lex_modes` in the `ts_language` literal.
 - [x] Set `.lex_fn = ts_lex`, `.keyword_lex_fn = ts_lex_keywords` (NULL if no word token),

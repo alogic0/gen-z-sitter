@@ -1,6 +1,7 @@
 const std = @import("std");
 const parse_actions = @import("../parse_table/actions.zig");
 const serialize = @import("../parse_table/serialize.zig");
+const lexer_serialize = @import("../lexer/serialize.zig");
 const syntax_grammar = @import("../ir/syntax_grammar.zig");
 const common = @import("common.zig");
 const compat = @import("compat.zig");
@@ -278,7 +279,14 @@ pub fn writeParserCWithOptions(
 
     try writer.writeAll("static const TSLexerMode ts_lex_modes[STATE_COUNT] = {\n");
     for (compacted.states, 0..) |_, index| {
-        try writer.print("  [{d}] = {{ .lex_state = 0, .external_lex_state = 0 }},\n", .{index});
+        const mode = if (index < compacted.lex_modes.len)
+            compacted.lex_modes[index]
+        else
+            lexer_serialize.SerializedLexMode{ .lex_state = 0 };
+        try writer.print(
+            "  [{d}] = {{ .lex_state = {d}, .external_lex_state = {d}, .reserved_word_set_id = {d} }},\n",
+            .{ index, mode.lex_state, mode.external_lex_state, mode.reserved_word_set_id },
+        );
     }
     try writer.writeAll("};\n\n");
 
@@ -1001,6 +1009,39 @@ test "emitParserCAlloc emits runtime alias sequences" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "\"anon_alias\""));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { 0, 1, 0 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 1, 0, 2 },\n"));
+}
+
+test "emitParserCAlloc emits serialized lex modes" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .lex_modes = &[_]lexer_serialize.SerializedLexMode{
+            .{ .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 1 },
+            .{ .lex_state = 9, .external_lex_state = 2, .reserved_word_set_id = 0 },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+            .{
+                .id = 1,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSLexerMode ts_lex_modes[STATE_COUNT] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 1 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .lex_state = 9, .external_lex_state = 2, .reserved_word_set_id = 0 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .lex_modes = ts_lex_modes,\n"));
 }
 
 test "emitParserCAlloc emits self-contained C that compiles" {
