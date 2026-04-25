@@ -11,7 +11,6 @@ const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
 const parse_table_build = @import("../parse_table/build.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
-const c_tables_emit = @import("../parser_emit/c_tables.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const compat_checks = @import("../parser_emit/compat_checks.zig");
 const emit_optimize = @import("../parser_emit/optimize.zig");
@@ -335,7 +334,8 @@ pub fn runTarget(
     defer arena.deinit();
 
     std.debug.print("[compat/harness] stage load {s}\n", .{target.id});
-    const load_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "load");
+    const load_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+    if (detail_progress) logDetailStart(target.id, "load");
     var loaded = grammar_loader.loadGrammarFile(arena.allocator(), target.grammar_path) catch |err| {
         return failRun(
             &run,
@@ -350,7 +350,8 @@ pub fn runTarget(
     defer loaded.deinit();
 
     std.debug.print("[compat/harness] stage prepare {s}\n", .{target.id});
-    const prepare_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "prepare");
+    const prepare_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+    if (detail_progress) logDetailStart(target.id, "prepare");
     const prepared = parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar) catch |err| {
         const diagnostic = parse_grammar.errorDiagnostic(err);
         return failRun(
@@ -380,7 +381,8 @@ pub fn runTarget(
 
     if (target.boundary_kind == .parser_only and target.parser_boundary_check_mode == .serialize_only) {
         std.debug.print("[compat/harness] stage serialize {s}\n", .{target.id});
-            const serialize_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "routine_coarse_serialize_only");
+        const serialize_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+        if (detail_progress) logDetailStart(target.id, "routine_coarse_serialize_only");
         const serialized = parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
             arena.allocator(),
             prepared,
@@ -404,8 +406,9 @@ pub fn runTarget(
         }
         run.serialize.status = .passed;
         std.debug.print("[compat/harness] stage emit_parser_tables {s}\n", .{target.id});
-        const parser_tables_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "emit_parser_tables");
-            const parser_tables = parser_tables_emit.emitSerializedTableAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
+        const parser_tables_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+        if (detail_progress) logDetailStart(target.id, "emit_parser_tables");
+        const parser_tables = parser_tables_emit.emitSerializedTableAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
             return failRun(
                 &run,
                 .emit_parser_tables,
@@ -422,28 +425,10 @@ pub fn runTarget(
             );
         }
         run.emit_parser_tables.status = .passed;
-        std.debug.print("[compat/harness] stage emit_c_tables {s}\n", .{target.id});
-        const c_tables_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "emit_c_tables");
-            const c_tables = c_tables_emit.emitCTableSkeletonAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
-            return failRun(
-                &run,
-                .emit_c_tables,
-                .deferred_for_parser_boundary,
-                .routine_emitted_surface_proof_boundary,
-                try std.fmt.allocPrint(allocator, "routine C-table emission proof failed: {s}", .{@errorName(err)}),
-            );
-        };
-        if (detail_progress) {
-            logDetailDone(target.id, "emit_c_tables", c_tables_timer);
-            logDetailSummary(
-                "{s} emit_c_tables bytes={d}",
-                .{ target.id, c_tables.len },
-            );
-        }
-        run.emit_c_tables.status = .passed;
         std.debug.print("[compat/harness] stage emit_parser_c {s}\n", .{target.id});
-        const parser_c_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "emit_parser_c");
-            const parser_c = parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
+        const parser_c_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+        if (detail_progress) logDetailStart(target.id, "emit_parser_c");
+        const parser_c = parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
             return failRun(
                 &run,
                 .emit_parser_c,
@@ -461,8 +446,9 @@ pub fn runTarget(
         }
         run.emit_parser_c.status = .passed;
         std.debug.print("[compat/harness] stage compat_check {s}\n", .{target.id});
-        const compat_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "compat_check");
-            compat_checks.validateParserCCompatibilitySurface(parser_c) catch |err| {
+        const compat_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+        if (detail_progress) logDetailStart(target.id, "compat_check");
+        compat_checks.validateParserCCompatibilitySurface(parser_c) catch |err| {
             return failRun(
                 &run,
                 .compat_check,
@@ -474,8 +460,9 @@ pub fn runTarget(
         if (detail_progress) logDetailDone(target.id, "compat_check", compat_timer);
         run.compat_check.status = .passed;
         std.debug.print("[compat/harness] stage compile_smoke {s}\n", .{target.id});
-        const compile_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "compile_smoke");
-            var compile_result = compile_smoke.compileParserC(allocator, parser_c) catch |err| {
+        const compile_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+        if (detail_progress) logDetailStart(target.id, "compile_smoke");
+        var compile_result = compile_smoke.compileParserC(allocator, parser_c) catch |err| {
             return failRun(
                 &run,
                 .compile_smoke,
@@ -509,7 +496,6 @@ pub fn runTarget(
             .goto_entry_count = 0,
             .unresolved_entry_count = 0,
             .parser_tables_bytes = parser_tables.len,
-            .c_tables_bytes = c_tables.len,
             .parser_c_bytes = parser_c.len,
         };
 
@@ -517,8 +503,9 @@ pub fn runTarget(
     }
 
     if (target.boundary_kind == .scanner_external_scanner) {
-        const scanner_extract_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "scanner_extract_tokens");
-            const extracted = extract_tokens.extractTokens(arena.allocator(), prepared) catch |err| {
+        const scanner_extract_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+        if (detail_progress) logDetailStart(target.id, "scanner_extract_tokens");
+        const extracted = extract_tokens.extractTokens(arena.allocator(), prepared) catch |err| {
             return failRun(
                 &run,
                 .serialize,
@@ -535,8 +522,9 @@ pub fn runTarget(
             );
         }
 
-        const scanner_serialize_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "scanner_serialize_boundary");
-            const serialized_boundary = scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax) catch |err| {
+        const scanner_serialize_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+        if (detail_progress) logDetailStart(target.id, "scanner_serialize_boundary");
+        const serialized_boundary = scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax) catch |err| {
             return failRun(
                 &run,
                 .serialize,
@@ -597,7 +585,8 @@ pub fn runTarget(
                 );
             };
 
-            const sampled_external_valid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);            if (detail_progress) {
+            const sampled_external_valid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+            if (detail_progress) {
                 logDetailSummary("{s} scanner_valid_input bytes={d} path={s}", .{ target.id, valid_input.len, valid_input_path });
                 logDetailStart(target.id, "sampled_external_only_valid");
             }
@@ -641,7 +630,8 @@ pub fn runTarget(
                 );
             };
 
-            const sampled_external_invalid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);            if (detail_progress) {
+            const sampled_external_invalid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+            if (detail_progress) {
                 logDetailSummary("{s} scanner_invalid_input bytes={d} path={s}", .{ target.id, invalid_input.len, invalid_input_path });
                 logDetailStart(target.id, "sampled_external_only_invalid");
             }
@@ -705,8 +695,9 @@ pub fn runTarget(
             );
         }
 
-        const scanner_flatten_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "scanner_flatten");
-            const flattened = flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax) catch |err| {
+        const scanner_flatten_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+        if (detail_progress) logDetailStart(target.id, "scanner_flatten");
+        const flattened = flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax) catch |err| {
             return failRun(
                 &run,
                 .scanner_boundary_check,
@@ -730,8 +721,9 @@ pub fn runTarget(
             parse_table_pipeline.setScopedProgressEnabled(false);
         };
 
-        const scanner_build_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);    if (detail_progress) logDetailStart(target.id, "scanner_build_states");
-            var coarse_transitions_buf: [11]parse_table_build.CoarseTransitionSpec = undefined;
+        const scanner_build_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+        if (detail_progress) logDetailStart(target.id, "scanner_build_states");
+        var coarse_transitions_buf: [11]parse_table_build.CoarseTransitionSpec = undefined;
         var coarse_transition_count: usize = 0;
         const enable_haskell_start_layout = shouldEnableHaskellStartLayoutExperiment(target.id);
         const enable_haskell_state5_opener_family = shouldEnableHaskellState5OpenerFamilyExperiment(target.id);
@@ -851,7 +843,8 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "failed to read scanner valid input {s}: {s}", .{ valid_input_path, @errorName(err) }),
             );
         };
-        const sampled_behavioral_valid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);        if (detail_progress) {
+        const sampled_behavioral_valid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+        if (detail_progress) {
             logDetailSummary("{s} scanner_valid_input bytes={d} path={s}", .{ target.id, valid_input.len, valid_input_path });
             logDetailStart(target.id, "sampled_behavioral_valid");
         }
@@ -904,7 +897,8 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "failed to read scanner invalid input {s}: {s}", .{ invalid_input_path, @errorName(err) }),
             );
         };
-        const sampled_behavioral_invalid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);        if (detail_progress) {
+        const sampled_behavioral_invalid_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+        if (detail_progress) {
             logDetailSummary("{s} scanner_invalid_input bytes={d} path={s}", .{ target.id, invalid_input.len, invalid_input_path });
             logDetailStart(target.id, "sampled_behavioral_invalid");
         }
@@ -966,17 +960,6 @@ pub fn runTarget(
     };
     run.emit_parser_tables.status = .passed;
 
-    const c_tables = c_tables_emit.emitCTableSkeletonAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
-        return failRun(
-            &run,
-            .emit_c_tables,
-            .failed_due_to_parser_only_gap,
-            .emitted_surface_structural_gap,
-            try std.fmt.allocPrint(allocator, "C-table emission failed: {s}", .{@errorName(err)}),
-        );
-    };
-    run.emit_c_tables.status = .passed;
-
     const parser_c = parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
         return failRun(
             &run,
@@ -998,7 +981,6 @@ pub fn runTarget(
         .goto_entry_count = emission_stats.goto_entry_count,
         .unresolved_entry_count = emission_stats.unresolved_entry_count,
         .parser_tables_bytes = parser_tables.len,
-        .c_tables_bytes = c_tables.len,
         .parser_c_bytes = parser_c.len,
     };
     if (emission_stats.blocked) {
@@ -1139,7 +1121,6 @@ fn stepForName(run: *result_model.TargetRunResult, stage: result_model.StepName)
         .serialize => &run.serialize,
         .scanner_boundary_check => &run.scanner_boundary_check,
         .emit_parser_tables => &run.emit_parser_tables,
-        .emit_c_tables => &run.emit_c_tables,
         .emit_parser_c => &run.emit_parser_c,
         .compat_check => &run.compat_check,
         .compile_smoke => &run.compile_smoke,
@@ -1476,7 +1457,6 @@ test "runStagedTargetsAlloc executes the staged parser-only shortlist" {
         try std.testing.expectEqual(result_model.StepStatus.passed, run.prepare.status);
         try std.testing.expectEqual(result_model.StepStatus.passed, run.serialize.status);
         try std.testing.expectEqual(result_model.StepStatus.passed, run.emit_parser_tables.status);
-        try std.testing.expectEqual(result_model.StepStatus.passed, run.emit_c_tables.status);
         try std.testing.expectEqual(result_model.StepStatus.passed, run.emit_parser_c.status);
         try std.testing.expectEqual(result_model.StepStatus.passed, run.compat_check.status);
         try std.testing.expectEqual(result_model.StepStatus.passed, run.compile_smoke.status);
@@ -1582,7 +1562,6 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[4].serialize.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[4].emit_parser_tables.status);
-    try std.testing.expectEqual(result_model.StepStatus.passed, runs[4].emit_c_tables.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[4].emit_parser_c.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[4].compat_check.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[4].compile_smoke.status);
@@ -1591,7 +1570,6 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].serialize.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_parser_tables.status);
-    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_c_tables.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_parser_c.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].compat_check.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].compile_smoke.status);
@@ -1617,7 +1595,6 @@ test "runShortlistTargetsAlloc promotes tree_sitter_c through compile smoke" {
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].prepare.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].serialize.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_parser_tables.status);
-    try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_c_tables.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].emit_parser_c.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].compat_check.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[5].compile_smoke.status);

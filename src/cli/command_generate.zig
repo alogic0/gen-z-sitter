@@ -11,7 +11,6 @@ const parse_grammar = @import("../grammar/parse_grammar.zig");
 const node_type_pipeline = @import("../node_types/pipeline.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
-const c_tables_emit = @import("../parser_emit/c_tables.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const emit_optimize = @import("../parser_emit/optimize.zig");
 const fixtures = @import("../tests/fixtures.zig");
@@ -19,8 +18,6 @@ const fixtures = @import("../tests/fixtures.zig");
 const EmittedSizeStats = struct {
     parser_tables_baseline_bytes: usize,
     parser_tables_emitted_bytes: usize,
-    c_tables_baseline_bytes: usize,
-    c_tables_emitted_bytes: usize,
     parser_c_baseline_bytes: usize,
     parser_c_emitted_bytes: usize,
 };
@@ -241,8 +238,6 @@ fn generateJsonSummaryAlloc(
     try writer.writeAll("  \"emitted_bytes\": { ");
     try writer.print("\"parser_tables_baseline\": {d}, ", .{emitted_size_stats.parser_tables_baseline_bytes});
     try writer.print("\"parser_tables_emitted\": {d}, ", .{emitted_size_stats.parser_tables_emitted_bytes});
-    try writer.print("\"c_tables_baseline\": {d}, ", .{emitted_size_stats.c_tables_baseline_bytes});
-    try writer.print("\"c_tables_emitted\": {d}, ", .{emitted_size_stats.c_tables_emitted_bytes});
     try writer.print("\"parser_c_baseline\": {d}, ", .{emitted_size_stats.parser_c_baseline_bytes});
     try writer.print("\"parser_c_emitted\": {d}", .{emitted_size_stats.parser_c_emitted_bytes});
     try writer.writeAll(" },\n");
@@ -280,11 +275,6 @@ fn collectEmittedSizeStats(
     const parser_tables_emitted = try parser_tables_emit.emitSerializedTableAllocWithOptions(allocator, serialized, options);
     defer allocator.free(parser_tables_emitted);
 
-    const c_tables_baseline = try c_tables_emit.emitCTableSkeletonAllocWithOptions(allocator, serialized, baseline_options);
-    defer allocator.free(c_tables_baseline);
-    const c_tables_emitted = try c_tables_emit.emitCTableSkeletonAllocWithOptions(allocator, serialized, options);
-    defer allocator.free(c_tables_emitted);
-
     const parser_c_baseline = try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, baseline_options);
     defer allocator.free(parser_c_baseline);
     const parser_c_emitted = try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, options);
@@ -293,8 +283,6 @@ fn collectEmittedSizeStats(
     return .{
         .parser_tables_baseline_bytes = parser_tables_baseline.len,
         .parser_tables_emitted_bytes = parser_tables_emitted.len,
-        .c_tables_baseline_bytes = c_tables_baseline.len,
-        .c_tables_emitted_bytes = c_tables_emitted.len,
         .parser_c_baseline_bytes = parser_c_baseline.len,
         .parser_c_emitted_bytes = parser_c_emitted.len,
     };
@@ -459,7 +447,6 @@ test "collectEmittedSizeStats shows byte savings when compaction applies" {
     const size_stats = try collectEmittedSizeStats(stats_arena.allocator(), serialized, .{});
 
     try std.testing.expect(size_stats.parser_tables_emitted_bytes < size_stats.parser_tables_baseline_bytes);
-    try std.testing.expect(size_stats.c_tables_emitted_bytes < size_stats.c_tables_baseline_bytes);
     try std.testing.expect(size_stats.parser_c_emitted_bytes < size_stats.parser_c_baseline_bytes);
 }
 

@@ -31,7 +31,6 @@ fn printRunSummary(run: result_model.TargetRunResult) void {
     printStepSummary("prepare", run.prepare);
     printStepSummary("serialize", run.serialize);
     printStepSummary("emit_parser_tables", run.emit_parser_tables);
-    printStepSummary("emit_c_tables", run.emit_c_tables);
     printStepSummary("emit_parser_c", run.emit_parser_c);
     printStepSummary("scanner_boundary_check", run.scanner_boundary_check);
     printStepSummary("compat_check", run.compat_check);
@@ -39,7 +38,7 @@ fn printRunSummary(run: result_model.TargetRunResult) void {
 
     if (run.emission) |emission| {
         std.debug.print(
-            "[compat_target_runner] emission blocked={} serialized_states={d} emitted_states={d} merged_states={d} unresolved_entries={d} parser_tables_bytes={d} c_tables_bytes={d} parser_c_bytes={d}\n",
+            "[compat_target_runner] emission blocked={} serialized_states={d} emitted_states={d} merged_states={d} unresolved_entries={d} parser_tables_bytes={d} parser_c_bytes={d}\n",
             .{
                 emission.blocked,
                 emission.serialized_state_count,
@@ -47,7 +46,6 @@ fn printRunSummary(run: result_model.TargetRunResult) void {
                 emission.merged_state_count,
                 emission.unresolved_entry_count,
                 emission.parser_tables_bytes,
-                emission.c_tables_bytes,
                 emission.parser_c_bytes,
             },
         );

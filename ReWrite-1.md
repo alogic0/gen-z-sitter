@@ -176,7 +176,7 @@ These fields are straightforward once Phases 1–6 are done.
 
 ## Phase 8 — Cleanup and validation
 
-- [ ] Delete `src/parser_emit/c_tables.zig` (diagnostic skeleton superseded by the real
+- [x] Delete `src/parser_emit/c_tables.zig` (diagnostic skeleton superseded by the real
   emission).
 - [x] Remove all accessor functions from `parser_c.zig` (`ts_parser_find_symbol_id()`,
   `ts_parser_actions()`, etc.) — these are runtime functions, not emitted code.
