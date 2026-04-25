@@ -66,6 +66,11 @@ pub fn build(b: *std.Build) void {
     const behavioral_test_step = b.step("test-behavioral", "Run behavioral harness tests only");
     behavioral_test_step.dependOn(&run_behavioral_tests.step);
 
+    const default_runtime_link_filters = &.{
+        "linkAndRunNoExternalTinyParser",
+        "linkAndRunKeywordReservedParser",
+        "linkAndRunExternalScannerParser",
+    };
     const no_external_link_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/runtime_link_test_entry.zig"),
@@ -79,4 +84,18 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_no_external_link_tests.addArgs(args);
     const no_external_link_step = b.step("test-link-no-external", "Link and run a generated no-external parser with tree-sitter runtime");
     no_external_link_step.dependOn(&run_no_external_link_tests.step);
+
+    const runtime_link_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (test_filter) |f| &.{f} else default_runtime_link_filters,
+    });
+
+    const run_runtime_link_tests = b.addRunArtifact(runtime_link_tests);
+    if (b.args) |args| run_runtime_link_tests.addArgs(args);
+    const runtime_link_step = b.step("test-link-runtime", "Link and run generated parser fixtures with tree-sitter runtime");
+    runtime_link_step.dependOn(&run_runtime_link_tests.step);
 }

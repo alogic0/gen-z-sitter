@@ -303,5 +303,5 @@ External scanner support must be emitted as a complete set.
   and parse minimal valid input. Assert the root is not an ERROR node.
   - Implemented as a serialized runtime fixture so this gate validates emitted C/runtime ABI
     behavior without pulling builder-level EOF propagation forward from ReWrite-3.
-- [ ] Add a keyword/reserved-word link test after Phase 6.
-- [ ] Add an external-scanner compile/link test after Phase 8.
+- [x] Add a keyword/reserved-word link test after Phase 6.
+- [x] Add an external-scanner compile/link test after Phase 8.
