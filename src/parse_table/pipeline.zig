@@ -260,6 +260,12 @@ fn serializePreparedBuildResultAlloc(
         prepared,
         extracted.lexical,
     );
+    serialized = try serialize.attachKeywordLexTableAlloc(
+        allocator,
+        serialized,
+        prepared,
+        extracted.lexical,
+    );
     serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesAlloc(
         allocator,
         prepared.rules,

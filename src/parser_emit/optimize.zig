@@ -72,6 +72,7 @@ pub fn compactSerializedTableAlloc(
         .lex_modes = lex_modes,
         .lex_state_terminal_sets = serialized.lex_state_terminal_sets,
         .lex_tables = serialized.lex_tables,
+        .keyword_lex_table = serialized.keyword_lex_table,
         .primary_state_ids = primary_state_ids,
         .word_token = serialized.word_token,
         .reserved_words = serialized.reserved_words,

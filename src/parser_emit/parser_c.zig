@@ -171,6 +171,18 @@ pub fn writeParserCWithOptions(
             },
         );
     }
+    if (compacted.keyword_lex_table) |keyword_lex_table| {
+        const resolver_context = RuntimeSymbolResolverContext{ .symbols = emitted_symbols };
+        try lexer_emit_c.emitLexFunctionWithResolver(
+            writer,
+            "ts_lex_keywords",
+            keyword_lex_table,
+            .{
+                .context = &resolver_context,
+                .resolve = resolveRuntimeSymbol,
+            },
+        );
+    }
     try writer.writeAll("static const char * const ts_symbol_names[SYMBOL_COUNT] = {\n");
     for (emitted_symbols, 0..) |symbol, index| {
         try writer.print("  [{d}] = \"", .{index});
@@ -353,7 +365,11 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("  .alias_sequences = &ts_alias_sequences[0][0],\n");
     try writer.writeAll("  .lex_modes = ts_lex_modes,\n");
     try writer.writeAll("  .lex_fn = ts_lex,\n");
-    try writer.writeAll("  .keyword_lex_fn = NULL,\n");
+    if (compacted.keyword_lex_table != null) {
+        try writer.writeAll("  .keyword_lex_fn = ts_lex_keywords,\n");
+    } else {
+        try writer.writeAll("  .keyword_lex_fn = NULL,\n");
+    }
     try writer.print("  .keyword_capture_token = {d},\n", .{keyword_capture_id});
     try writer.writeAll("  .primary_state_ids = ts_primary_state_ids,\n");
     try writer.writeAll("  .name = \"");
@@ -816,6 +832,13 @@ fn collectEmittedSymbols(
 
     for (serialized.lex_tables) |lex_table| {
         for (lex_table.states) |lex_state| {
+            if (lex_state.accept_symbol) |symbol| {
+                try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
+            }
+        }
+    }
+    if (serialized.keyword_lex_table) |keyword_lex_table| {
+        for (keyword_lex_table.states) |lex_state| {
             if (lex_state.accept_symbol) |symbol| {
                 try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
             }
@@ -1477,6 +1500,47 @@ test "emitParserCAlloc emits serialized reserved words" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 0, 1 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .reserved_words = &ts_reserved_words[0][0],\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .max_reserved_word_set_size = 2,\n"));
+}
+
+test "emitParserCAlloc emits keyword lexer when serialized" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .symbols = &[_]serialize.SerializedSymbolInfo{
+            .{ .ref = .{ .terminal = 0 }, .name = "if", .named = false, .visible = true, .supertype = false, .public_symbol = 0 },
+            .{ .ref = .{ .terminal = 1 }, .name = "identifier", .named = true, .visible = true, .supertype = false, .public_symbol = 1 },
+        },
+        .word_token = .{ .terminal = 1 },
+        .keyword_lex_table = .{
+            .start_state_id = 0,
+            .states = &[_]lexer_serialize.SerializedLexState{
+                .{
+                    .transitions = &[_]lexer_serialize.SerializedLexTransition{
+                        .{
+                            .ranges = &[_]lexer_serialize.SerializedCharacterRange{
+                                .{ .start = 'i', .end_inclusive = 'i' },
+                            },
+                            .next_state_id = 1,
+                            .skip = false,
+                        },
+                    },
+                },
+                .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
+            },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      if (lookahead == 105) ADVANCE(1);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      ACCEPT_TOKEN(0);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_lex_fn = ts_lex_keywords,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_capture_token = 1,\n"));
 }
 
 test "emitParserCAlloc emits primary state ids by parse state" {

@@ -198,6 +198,7 @@ pub const SerializedTable = struct {
     lex_modes: []const lexer_serialize.SerializedLexMode = &.{},
     lex_state_terminal_sets: []const []const bool = &.{},
     lex_tables: []const lexer_serialize.SerializedLexTable = &.{},
+    keyword_lex_table: ?lexer_serialize.SerializedLexTable = null,
     primary_state_ids: []const state.StateId = &.{},
     word_token: ?syntax_ir.SymbolRef = null,
     reserved_words: SerializedReservedWords = .{},
@@ -318,6 +319,38 @@ pub fn attachReservedWordsAlloc(
 ) std.mem.Allocator.Error!SerializedTable {
     var result = serialized;
     result.reserved_words = try buildReservedWordsAlloc(allocator, prepared, lexical);
+    return result;
+}
+
+pub fn attachKeywordLexTableAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) (std.mem.Allocator.Error || lexer_serialize.SerializeError)!SerializedTable {
+    if (prepared.word_token == null or prepared.reserved_word_sets.len == 0) return serialized;
+
+    const terminal_set = try buildKeywordTerminalSetAlloc(allocator, prepared, lexical);
+    defer allocator.free(terminal_set);
+    var any_terminal = false;
+    for (terminal_set) |enabled| {
+        if (enabled) {
+            any_terminal = true;
+            break;
+        }
+    }
+    if (!any_terminal) return serialized;
+
+    const tables = try lexer_serialize.buildSerializedLexTablesAlloc(
+        allocator,
+        prepared.rules,
+        lexical,
+        &.{terminal_set},
+    );
+    defer allocator.free(tables);
+
+    var result = serialized;
+    result.keyword_lex_table = tables[0];
     return result;
 }
 
@@ -885,6 +918,26 @@ fn terminalRefForLexicalRule(
     return null;
 }
 
+fn buildKeywordTerminalSetAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) std.mem.Allocator.Error![]const bool {
+    const terminal_set = try allocator.alloc(bool, lexical.variables.len);
+    @memset(terminal_set, false);
+    for (prepared.reserved_word_sets) |reserved_set| {
+        for (reserved_set.members) |member_rule| {
+            if (terminalRefForLexicalRule(lexical, member_rule)) |symbol| switch (symbol) {
+                .terminal => |index| {
+                    if (index < terminal_set.len) terminal_set[index] = true;
+                },
+                else => {},
+            };
+        }
+    }
+    return terminal_set;
+}
+
 fn symbolRefFromPreparedSymbol(symbol: ir_symbols.SymbolId) syntax_ir.SymbolRef {
     return switch (symbol.kind) {
         .non_terminal => .{ .non_terminal = symbol.index },
@@ -1183,6 +1236,66 @@ test "attachReservedWordsAlloc serializes reserved word sets from lexical termin
     try std.testing.expectEqual(@as(usize, 0), serialized.reserved_words.sets[0].len);
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .terminal = 0 }, serialized.reserved_words.sets[1][0]);
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .terminal = 1 }, serialized.reserved_words.sets[1][1]);
+}
+
+test "attachKeywordLexTableAlloc builds keyword table from reserved words" {
+    const allocator = std.testing.allocator;
+    const rules = [_]ir_rules.Rule{
+        .{ .string = "if" },
+        .{ .string = "else" },
+        .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
+    };
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "keyword_fixture",
+        .variables = &.{},
+        .external_tokens = &.{},
+        .rules = rules[0..],
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = .{ .kind = .non_terminal, .index = 0 },
+        .reserved_word_sets = &.{
+            .{ .context_name = "default", .members = &.{ 0, 1 } },
+        },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "if", .kind = .anonymous, .rule = 0 },
+            .{ .name = "else", .kind = .anonymous, .rule = 1 },
+            .{ .name = "identifier", .kind = .named, .rule = 2 },
+        },
+        .separators = &.{},
+    };
+
+    const serialized = try attachKeywordLexTableAlloc(allocator, .{
+        .states = &.{},
+        .blocked = false,
+    }, prepared, lexical);
+    defer if (serialized.keyword_lex_table) |keyword_lex_table| {
+        lexer_serialize.deinitSerializedLexTable(allocator, keyword_lex_table);
+    };
+
+    try std.testing.expect(serialized.keyword_lex_table != null);
+    const keyword_lex_table = serialized.keyword_lex_table.?;
+    try std.testing.expect(keyword_lex_table.states.len > 0);
+    try std.testing.expect(lexTableAcceptsSymbol(keyword_lex_table, .{ .terminal = 0 }));
+    try std.testing.expect(lexTableAcceptsSymbol(keyword_lex_table, .{ .terminal = 1 }));
+    try std.testing.expect(!lexTableAcceptsSymbol(keyword_lex_table, .{ .terminal = 2 }));
+}
+
+fn lexTableAcceptsSymbol(
+    lex_table: lexer_serialize.SerializedLexTable,
+    symbol: syntax_ir.SymbolRef,
+) bool {
+    for (lex_table.states) |lex_state| {
+        if (lex_state.accept_symbol) |accept_symbol| {
+            if (symbolRefEql(accept_symbol, symbol)) return true;
+        }
+    }
+    return false;
 }
 
 test "buildFieldMapAlloc serializes distinct field names and production slices" {
