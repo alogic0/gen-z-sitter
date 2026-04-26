@@ -9,6 +9,35 @@ const lexer_model = @import("model.zig");
 const lexer_table = @import("table.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const fixtures = @import("../tests/fixtures.zig");
+const runtime_io = @import("../support/runtime_io.zig");
+
+threadlocal var profile_env_loaded: bool = false;
+threadlocal var profile_enabled: bool = false;
+
+fn profileEnabled() bool {
+    if (!profile_env_loaded) {
+        const value = std.process.Environ.getAlloc(
+            runtime_io.environ(),
+            std.heap.page_allocator,
+            "GEN_Z_SITTER_PARSE_TABLE_PROFILE",
+        ) catch "";
+        defer if (value.len != 0) std.heap.page_allocator.free(value);
+        profile_enabled = value.len != 0 and !std.mem.eql(u8, value, "0");
+        profile_env_loaded = true;
+    }
+    return profile_enabled;
+}
+
+fn profileTimer(enabled: bool) ?std.Io.Timestamp {
+    if (!enabled) return null;
+    return std.Io.Timestamp.now(runtime_io.get(), .awake);
+}
+
+fn profileElapsedNs(timer: ?std.Io.Timestamp) u64 {
+    const start = timer orelse return 0;
+    const duration = start.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake));
+    return @intCast(duration.nanoseconds);
+}
 
 /// Errors produced while serializing the extracted lexical grammar.
 pub const SerializeError = std.mem.Allocator.Error || lexer_model.ExpandError;
@@ -108,6 +137,8 @@ pub fn buildSerializedLexTablesWithEofAlloc(
     terminal_sets: []const []const bool,
     eof_valids: ?[]const bool,
 ) SerializeError![]const SerializedLexTable {
+    const profile_log = profileEnabled();
+    const total_timer = profileTimer(profile_log);
     var expanded = try lexer_model.expandExtractedLexicalGrammar(allocator, all_rules, lexical);
     defer expanded.deinit(allocator);
 
@@ -118,18 +149,74 @@ pub fn buildSerializedLexTablesWithEofAlloc(
         allocator.free(tables);
     }
 
+    var token_set_ns: u64 = 0;
+    var build_table_ns: u64 = 0;
+    var serialize_table_ns: u64 = 0;
+    var built_state_count: usize = 0;
+    var built_transition_count: usize = 0;
+    var serialized_state_count: usize = 0;
+    var serialized_transition_count: usize = 0;
+    var serialized_range_count: usize = 0;
+    var table_profile = lexer_table.BuildProfile{};
+
     for (terminal_sets, 0..) |terminal_set, index| {
+        const token_set_timer = profileTimer(profile_log);
         var allowed = try tokenIndexSetFromTerminalSet(allocator, expanded.variables.len, terminal_set);
+        token_set_ns += profileElapsedNs(token_set_timer);
         defer allowed.deinit(allocator);
 
         const eof_valid = if (eof_valids) |values| index < values.len and values[index] else false;
+        const build_timer = profileTimer(profile_log);
         var table = try lexer_table.buildLexTableForSetWithOptions(allocator, expanded, allowed, .{
             .eof_valid = eof_valid,
+            .profile = if (profile_log) &table_profile else null,
         });
+        build_table_ns += profileElapsedNs(build_timer);
         defer table.deinit();
+        built_state_count += table.states.len;
+        for (table.states) |lex_state| built_transition_count += lex_state.transitions.len;
 
+        const serialize_timer = profileTimer(profile_log);
         tables[index] = try serializeLexTableAlloc(allocator, table);
+        serialize_table_ns += profileElapsedNs(serialize_timer);
+        serialized_state_count += tables[index].states.len;
+        for (tables[index].states) |lex_state| {
+            serialized_transition_count += lex_state.transitions.len;
+            for (lex_state.transitions) |transition| serialized_range_count += transition.ranges.len;
+        }
         initialized += 1;
+    }
+
+    if (profile_log) {
+        std.debug.print(
+            "[lexer_serialize_profile] tables={d} built_states={d} built_transitions={d} serialized_states={d} serialized_transitions={d} serialized_ranges={d} token_set_ms={d:.2} build_table_ms={d:.2} serialize_table_ms={d:.2} total_ms={d:.2}\n",
+            .{
+                terminal_sets.len,
+                built_state_count,
+                built_transition_count,
+                serialized_state_count,
+                serialized_transition_count,
+                serialized_range_count,
+                @as(f64, @floatFromInt(token_set_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(build_table_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(serialize_table_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(profileElapsedNs(total_timer))) / @as(f64, std.time.ns_per_ms),
+            },
+        );
+        std.debug.print(
+            "[lexer_table_profile] start_closure_ms={d:.2} construct_ms={d:.2} minimize_ms={d:.2} sort_ms={d:.2} intern_calls={d} intern_new={d} intern_reused={d} next_closure_calls={d} next_closure_ms={d:.2}\n",
+            .{
+                @as(f64, @floatFromInt(table_profile.start_closure_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(table_profile.construct_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(table_profile.minimize_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(table_profile.sort_ns)) / @as(f64, std.time.ns_per_ms),
+                table_profile.intern_calls,
+                table_profile.intern_new,
+                table_profile.intern_reused,
+                table_profile.next_closure_calls,
+                @as(f64, @floatFromInt(table_profile.next_closure_ns)) / @as(f64, std.time.ns_per_ms),
+            },
+        );
     }
 
     return tables;

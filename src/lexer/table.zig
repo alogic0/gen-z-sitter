@@ -1,6 +1,18 @@
 const std = @import("std");
 const lexical_ir = @import("../ir/lexical_grammar.zig");
 const lexer_model = @import("model.zig");
+const runtime_io = @import("../support/runtime_io.zig");
+
+fn profileTimer(enabled: bool) ?std.Io.Timestamp {
+    if (!enabled) return null;
+    return std.Io.Timestamp.now(runtime_io.get(), .awake);
+}
+
+fn profileElapsedNs(timer: ?std.Io.Timestamp) u64 {
+    const start = timer orelse return 0;
+    const duration = start.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake));
+    return @intCast(duration.nanoseconds);
+}
 
 pub const LexTransition = struct {
     chars: lexer_model.CharacterSet,
@@ -185,6 +197,19 @@ pub fn buildLexTableForSet(
 
 pub const BuildOptions = struct {
     eof_valid: bool = false,
+    profile: ?*BuildProfile = null,
+};
+
+pub const BuildProfile = struct {
+    start_closure_ns: u64 = 0,
+    construct_ns: u64 = 0,
+    minimize_ns: u64 = 0,
+    sort_ns: u64 = 0,
+    intern_calls: usize = 0,
+    intern_reused: usize = 0,
+    intern_new: usize = 0,
+    next_closure_calls: usize = 0,
+    next_closure_ns: u64 = 0,
 };
 
 pub fn buildLexTableForSetWithOptions(
@@ -210,16 +235,20 @@ pub fn buildLexTableForSetWithOptions(
         };
     }
 
+    const start_closure_timer = profileTimer(options.profile != null);
     const closure = try epsilonClosureAlloc(allocator, grammar, start_states.items);
+    if (options.profile) |profile| profile.start_closure_ns += profileElapsedNs(start_closure_timer);
     defer allocator.free(closure);
 
     var builder = LexTableBuilder{
         .allocator = allocator,
         .grammar = grammar,
         .allowed_tokens = allowed_tokens,
+        .profile = options.profile,
     };
     errdefer builder.deinit();
 
+    const construct_timer = profileTimer(options.profile != null);
     const start_state_id = try builder.internState(closure, options.eof_valid);
     var table: LexTable = .{
         .allocator = allocator,
@@ -228,8 +257,13 @@ pub fn buildLexTableForSetWithOptions(
         .start_state_id = start_state_id,
         .states = try builder.states.toOwnedSlice(allocator),
     };
+    if (options.profile) |profile| profile.construct_ns += profileElapsedNs(construct_timer);
+    const minimize_timer = profileTimer(options.profile != null);
     try minimizeLexTable(&table);
+    if (options.profile) |profile| profile.minimize_ns += profileElapsedNs(minimize_timer);
+    const sort_timer = profileTimer(options.profile != null);
     try sortLexTable(&table);
+    if (options.profile) |profile| profile.sort_ns += profileElapsedNs(sort_timer);
     return table;
 }
 
@@ -271,6 +305,7 @@ const LexTableBuilder = struct {
     allocator: std.mem.Allocator,
     grammar: lexer_model.ExpandedLexicalGrammar,
     allowed_tokens: lexer_model.TokenIndexSet,
+    profile: ?*BuildProfile = null,
     states: std.ArrayListUnmanaged(LexState) = .empty,
 
     fn deinit(self: *LexTableBuilder) void {
@@ -284,10 +319,15 @@ const LexTableBuilder = struct {
     }
 
     fn internState(self: *LexTableBuilder, nfa_states: []const u32, eof_valid: bool) !usize {
+        if (self.profile) |profile| profile.intern_calls += 1;
         for (self.states.items, 0..) |state, index| {
             if (state.eof_valid != eof_valid) continue;
-            if (std.mem.eql(u32, state.nfa_states, nfa_states)) return index;
+            if (std.mem.eql(u32, state.nfa_states, nfa_states)) {
+                if (self.profile) |profile| profile.intern_reused += 1;
+                return index;
+            }
         }
+        if (self.profile) |profile| profile.intern_new += 1;
 
         const owned_states = try self.allocator.dupe(u32, nfa_states);
         errdefer self.allocator.free(owned_states);
@@ -320,7 +360,12 @@ const LexTableBuilder = struct {
         }
 
         for (transition_collection.transitions, 0..) |transition, index| {
+            const next_closure_timer = profileTimer(self.profile != null);
             const next_states = try epsilonClosureAlloc(self.allocator, self.grammar, &.{transition.target_state});
+            if (self.profile) |profile| {
+                profile.next_closure_calls += 1;
+                profile.next_closure_ns += profileElapsedNs(next_closure_timer);
+            }
             defer self.allocator.free(next_states);
             const next_state_id = try self.internState(next_states, eof_valid and transition.is_separator);
             transitions[index] = .{
@@ -575,19 +620,25 @@ fn minimizeLexTable(table: *LexTable) !void {
     const group_ids = try table.allocator.alloc(usize, table.states.len);
     defer table.allocator.free(group_ids);
     @memset(group_ids, 0);
+    const new_group_ids = try table.allocator.alloc(usize, table.states.len);
+    defer table.allocator.free(new_group_ids);
+    const signatures = try table.allocator.alloc(u64, table.states.len);
+    defer table.allocator.free(signatures);
     var changed = true;
 
     while (changed) {
         changed = false;
         var next_group_id: usize = 0;
-        var new_group_ids = try table.allocator.alloc(usize, table.states.len);
-        defer table.allocator.free(new_group_ids);
+        for (table.states, 0..) |_, index| {
+            signatures[index] = lexStateSignature(table.*, index, group_ids);
+        }
 
         var state_index: usize = 0;
         while (state_index < table.states.len) : (state_index += 1) {
             var matched_group: ?usize = null;
             var prior_index: usize = 0;
             while (prior_index < state_index) : (prior_index += 1) {
+                if (signatures[prior_index] != signatures[state_index]) continue;
                 if (lexStatesEquivalent(table, state_index, prior_index, group_ids)) {
                     matched_group = new_group_ids[prior_index];
                     break;
@@ -637,6 +688,44 @@ fn minimizeLexTable(table: *LexTable) !void {
     table.start_state_id = group_ids[table.start_state_id];
     table.allocator.free(old_states);
     table.states = new_states;
+}
+
+fn lexStateSignature(table: LexTable, state_id: usize, group_ids: []const usize) u64 {
+    const state = table.states[state_id];
+    var hasher = std.hash.Wyhash.init(0);
+    const is_start = state_id == table.start_state_id;
+    hasher.update(std.mem.asBytes(&is_start));
+    hashConflictCompletion(&hasher, state.completion);
+    hasher.update(std.mem.asBytes(&state.eof_valid));
+    hasher.update(std.mem.asBytes(&state.has_separator_transitions));
+    const eof_group = if (state.eof_target) |target| group_ids[target] else std.math.maxInt(usize);
+    hasher.update(std.mem.asBytes(&eof_group));
+    hasher.update(std.mem.asBytes(&state.transitions.len));
+    for (state.transitions) |transition| {
+        const target_group = group_ids[transition.next_state_id];
+        hasher.update(std.mem.asBytes(&target_group));
+        hasher.update(std.mem.asBytes(&transition.is_separator));
+        hasher.update(std.mem.asBytes(&transition.precedence));
+        hashCharacterSet(&hasher, transition.chars);
+    }
+    return hasher.final();
+}
+
+fn hashConflictCompletion(hasher: *std.hash.Wyhash, completion: ?ConflictCompletion) void {
+    const has_completion = completion != null;
+    hasher.update(std.mem.asBytes(&has_completion));
+    if (completion) |value| {
+        hasher.update(std.mem.asBytes(&value.variable_index));
+        hasher.update(std.mem.asBytes(&value.precedence));
+    }
+}
+
+fn hashCharacterSet(hasher: *std.hash.Wyhash, value: lexer_model.CharacterSet) void {
+    hasher.update(std.mem.asBytes(&value.ranges.items.len));
+    for (value.ranges.items) |range| {
+        hasher.update(std.mem.asBytes(&range.start));
+        hasher.update(std.mem.asBytes(&range.end));
+    }
 }
 
 fn sortLexTable(table: *LexTable) !void {

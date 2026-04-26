@@ -399,20 +399,35 @@ fn serializePreparedBuildResultAlloc(
     result: build.BuildResult,
     mode: serialize.SerializeMode,
 ) PipelineError!serialize.SerializedTable {
+    const profile_log = shouldProfilePipeline();
+    var stage_profile_timer = profileTimer(profile_log);
     const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    logProfileDone("serialize.extract_tokens", stage_profile_timer);
+    stage_profile_timer = profileTimer(profile_log);
     const default_aliases = try extract_default_aliases.extractDefaultAliases(allocator, extracted.syntax, extracted.lexical);
+    logProfileDone("serialize.extract_default_aliases", stage_profile_timer);
+    stage_profile_timer = profileTimer(profile_log);
     const flattened = try flatten_grammar.flattenGrammar(allocator, default_aliases.syntax);
+    logProfileDone("serialize.flatten_grammar", stage_profile_timer);
+    stage_profile_timer = profileTimer(profile_log);
     const first_sets = try first.computeFirstSets(allocator, flattened);
+    logProfileDone("serialize.compute_first_sets", stage_profile_timer);
+
+    stage_profile_timer = profileTimer(profile_log);
     var serialized = try serialize.attachPreparedMetadataAlloc(
         allocator,
         try serialize.serializeBuildResult(allocator, result, mode),
         prepared,
     );
+    logProfileDone("serialize.build_result_and_metadata", stage_profile_timer);
+    stage_profile_timer = profileTimer(profile_log);
     serialized = try serialize.attachExtraShiftMetadataAlloc(
         allocator,
         serialized,
         extracted.syntax.extra_symbols,
     );
+    logProfileDone("serialize.extra_shift_metadata", stage_profile_timer);
+    stage_profile_timer = profileTimer(profile_log);
     serialized = try serialize.attachRepetitionShiftMetadataWithFirstSetsAlloc(
         allocator,
         serialized,
@@ -420,17 +435,23 @@ fn serializePreparedBuildResultAlloc(
         result.productions,
         first_sets,
     );
+    logProfileDone("serialize.repetition_shift_metadata", stage_profile_timer);
+    stage_profile_timer = profileTimer(profile_log);
     serialized = try serialize.attachReservedWordsAlloc(
         allocator,
         serialized,
         prepared,
         extracted.lexical,
     );
+    logProfileDone("serialize.reserved_words", stage_profile_timer);
+    stage_profile_timer = profileTimer(profile_log);
     serialized = try serialize.attachReservedWordLexModesAlloc(
         allocator,
         serialized,
         result.states,
     );
+    logProfileDone("serialize.reserved_word_lex_modes", stage_profile_timer);
+    stage_profile_timer = profileTimer(profile_log);
     serialized = try serialize.attachNonTerminalExtraLexModesAlloc(
         allocator,
         serialized,
@@ -438,18 +459,23 @@ fn serializePreparedBuildResultAlloc(
         result.productions,
         extracted.syntax.extra_symbols,
     );
+    logProfileDone("serialize.non_terminal_extra_lex_modes", stage_profile_timer);
+    stage_profile_timer = profileTimer(profile_log);
     serialized = try serialize.attachKeywordLexTableAlloc(
         allocator,
         serialized,
         prepared,
         extracted.lexical,
     );
+    logProfileDone("serialize.keyword_lex_table", stage_profile_timer);
+    stage_profile_timer = profileTimer(profile_log);
     serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesAlloc(
         allocator,
         prepared.rules,
         extracted.lexical,
         serialized.lex_state_terminal_sets,
     );
+    logProfileDone("serialize.lex_tables", stage_profile_timer);
     return serialized;
 }
 

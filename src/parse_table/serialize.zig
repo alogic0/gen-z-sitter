@@ -92,6 +92,40 @@ pub const SerializedParseAction = struct {
     production_id: u16 = 0,
 };
 
+const SerializedParseActionContext = struct {
+    pub fn hash(_: @This(), value: SerializedParseAction) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        const kind: u8 = @intFromEnum(value.kind);
+        hasher.update(std.mem.asBytes(&kind));
+        switch (value.kind) {
+            .shift => {
+                hasher.update(std.mem.asBytes(&value.state));
+                hasher.update(std.mem.asBytes(&value.extra));
+                hasher.update(std.mem.asBytes(&value.repetition));
+            },
+            .reduce => {
+                hasher.update(std.mem.asBytes(&value.child_count));
+                hashSymbolRef(&hasher, value.symbol);
+                hasher.update(std.mem.asBytes(&value.dynamic_precedence));
+                hasher.update(std.mem.asBytes(&value.production_id));
+            },
+            .accept, .recover => {},
+        }
+        return hasher.final();
+    }
+
+    pub fn eql(_: @This(), left: SerializedParseAction, right: SerializedParseAction) bool {
+        return serializedParseActionEql(left, right);
+    }
+};
+
+const ParseActionListIndexMap = std.HashMap(
+    SerializedParseAction,
+    u16,
+    SerializedParseActionContext,
+    std.hash_map.default_max_load_percentage,
+);
+
 /// One deduplicated runtime parse-action list entry.
 pub const SerializedParseActionListEntry = struct {
     index: u16,
@@ -534,6 +568,8 @@ pub fn buildParseActionListAlloc(
 ) std.mem.Allocator.Error![]const SerializedParseActionListEntry {
     var entries = std.array_list.Managed(SerializedParseActionListEntry).init(allocator);
     defer entries.deinit();
+    var single_action_indexes = ParseActionListIndexMap.init(allocator);
+    defer single_action_indexes.deinit();
 
     try entries.append(.{
         .index = 0,
@@ -543,14 +579,24 @@ pub fn buildParseActionListAlloc(
 
     for (states) |serialized_state| {
         for (serialized_state.actions) |entry| {
-            if (parseActionListIndexForActionEntry(entries.items, entry, productions) != null) continue;
-
             const action_slice = try runtimeActionsFromActionEntryAlloc(allocator, entry, productions);
+            if (action_slice.len == 1) {
+                if (single_action_indexes.contains(action_slice[0])) {
+                    allocator.free(action_slice);
+                    continue;
+                }
+            } else if (parseActionListIndexForRuntimeActionSlice(entries.items, action_slice) != null) {
+                allocator.free(action_slice);
+                continue;
+            }
+
+            const index: u16 = @intCast(entries.items.len * 2 - 1);
             try entries.append(.{
-                .index = @intCast(entries.items.len * 2 - 1),
+                .index = index,
                 .reusable = true,
                 .actions = action_slice,
             });
+            if (action_slice.len == 1) try single_action_indexes.put(action_slice[0], index);
         }
     }
 
@@ -578,12 +624,14 @@ pub fn buildSmallParseTableAlloc(
 
     var unique_rows = std.array_list.Managed(SerializedSmallParseRow).init(allocator);
     defer unique_rows.deinit();
+    var action_indexes = try buildSingleParseActionIndexMapAlloc(allocator, parse_action_list);
+    defer action_indexes.deinit();
 
     const map = try allocator.alloc(u32, states.len - large_state_count);
     var next_offset: u32 = 0;
 
     for (states[large_state_count..], 0..) |serialized_state, small_index| {
-        const groups = try buildSmallParseGroupsAlloc(allocator, serialized_state, parse_action_list, productions);
+        const groups = try buildSmallParseGroupsAlloc(allocator, serialized_state, parse_action_list, &action_indexes, productions);
         if (findSmallParseRow(unique_rows.items, groups)) |existing_index| {
             map[small_index] = unique_rows.items[existing_index].offset;
             deinitSmallParseGroups(allocator, groups);
@@ -720,6 +768,7 @@ fn buildSmallParseGroupsAlloc(
     allocator: std.mem.Allocator,
     serialized_state: SerializedState,
     parse_action_list: []const SerializedParseActionListEntry,
+    single_action_indexes: *const ParseActionListIndexMap,
     productions: []const SerializedProductionInfo,
 ) std.mem.Allocator.Error![]const SerializedSmallParseGroup {
     var groups = std.array_list.Managed(SerializedSmallParseGroup).init(allocator);
@@ -729,7 +778,12 @@ fn buildSmallParseGroupsAlloc(
         try appendSmallParseSymbol(allocator, &groups, .state, @intCast(entry.state), entry.symbol);
     }
     for (serialized_state.actions) |entry| {
-        const action_index = parseActionListIndexForActionEntry(parse_action_list, entry, productions) orelse 0;
+        const action_index = parseActionListIndexForActionEntryWithMap(
+            parse_action_list,
+            single_action_indexes,
+            entry,
+            productions,
+        ) orelse 0;
         try appendSmallParseSymbol(allocator, &groups, .action, action_index, entry.symbol);
     }
 
@@ -739,6 +793,18 @@ fn buildSmallParseGroupsAlloc(
     std.mem.sort(SerializedSmallParseGroup, groups.items, {}, smallParseGroupLessThan);
 
     return try groups.toOwnedSlice();
+}
+
+fn buildSingleParseActionIndexMapAlloc(
+    allocator: std.mem.Allocator,
+    entries: []const SerializedParseActionListEntry,
+) std.mem.Allocator.Error!ParseActionListIndexMap {
+    var indexes = ParseActionListIndexMap.init(allocator);
+    for (entries) |entry| {
+        if (entry.actions.len != 1) continue;
+        try indexes.put(entry.actions[0], entry.index);
+    }
+    return indexes;
 }
 
 fn appendSmallParseSymbol(
@@ -835,6 +901,19 @@ pub fn parseActionListIndexForActionEntry(
         if (runtimeActionSlicesEql(candidate.actions, entry, productions)) return candidate.index;
     }
     return null;
+}
+
+fn parseActionListIndexForActionEntryWithMap(
+    entries: []const SerializedParseActionListEntry,
+    single_action_indexes: *const ParseActionListIndexMap,
+    entry: SerializedActionEntry,
+    productions: []const SerializedProductionInfo,
+) ?u16 {
+    if (!entry.repetition or entry.candidate_actions.len <= 1) {
+        const runtime_action = runtimeActionFromActionEntry(entry, productions);
+        if (single_action_indexes.get(runtime_action)) |index| return index;
+    }
+    return parseActionListIndexForActionEntry(entries, entry, productions);
 }
 
 pub fn runtimeActionFromActionEntry(
@@ -942,6 +1021,24 @@ fn parseActionListIndexForRuntimeAction(
     return null;
 }
 
+fn parseActionListIndexForRuntimeActionSlice(
+    entries: []const SerializedParseActionListEntry,
+    action_slice: []const SerializedParseAction,
+) ?u16 {
+    for (entries) |entry| {
+        if (entry.actions.len != action_slice.len) continue;
+        var equal = true;
+        for (entry.actions, action_slice) |left, right| {
+            if (!serializedParseActionEql(left, right)) {
+                equal = false;
+                break;
+            }
+        }
+        if (equal) return entry.index;
+    }
+    return null;
+}
+
 fn serializedParseActionEql(left: SerializedParseAction, right: SerializedParseAction) bool {
     if (left.kind != right.kind) return false;
     return switch (left.kind) {
@@ -954,6 +1051,22 @@ fn serializedParseActionEql(left: SerializedParseAction, right: SerializedParseA
             left.production_id == right.production_id,
         .accept, .recover => true,
     };
+}
+
+fn hashSymbolRef(hasher: *std.hash.Wyhash, symbol: syntax_ir.SymbolRef) void {
+    const tag: u8 = switch (symbol) {
+        .non_terminal => 0,
+        .terminal => 1,
+        .external => 2,
+        .end => 3,
+    };
+    hasher.update(std.mem.asBytes(&tag));
+    switch (symbol) {
+        .non_terminal => |index| hasher.update(std.mem.asBytes(&index)),
+        .terminal => |index| hasher.update(std.mem.asBytes(&index)),
+        .external => |index| hasher.update(std.mem.asBytes(&index)),
+        .end => {},
+    }
 }
 
 fn appendUniqueSymbolRef(
