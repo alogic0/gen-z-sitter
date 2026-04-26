@@ -33,13 +33,19 @@ fn recordSymbolSetAlloc(kind: enum { init_empty, clone }, terminals_len: usize, 
         .init_empty => symbol_set_profile.init_empty_count += 1,
         .clone => symbol_set_profile.clone_count += 1,
     }
-    symbol_set_profile.bool_alloc_bytes += (terminals_len + externals_len) * @sizeOf(bool);
+    symbol_set_profile.bool_alloc_bytes += packedSymbolBitsBytes(terminals_len) + packedSymbolBitsBytes(externals_len);
 }
 
 fn recordSymbolSetFree(terminals_len: usize, externals_len: usize) void {
     if (!symbol_set_profile_enabled) return;
     symbol_set_profile.free_count += 1;
-    symbol_set_profile.bool_free_bytes += (terminals_len + externals_len) * @sizeOf(bool);
+    symbol_set_profile.bool_free_bytes += packedSymbolBitsBytes(terminals_len) + packedSymbolBitsBytes(externals_len);
+}
+
+fn packedSymbolBitsBytes(bit_count: usize) usize {
+    const bits_per_mask = @bitSizeOf(std.DynamicBitSetUnmanaged.MaskInt);
+    const mask_count = (bit_count + bits_per_mask - 1) / bits_per_mask;
+    return mask_count * @sizeOf(std.DynamicBitSetUnmanaged.MaskInt);
 }
 
 pub const ParseItem = struct {
@@ -133,14 +139,14 @@ pub const ParseItemSetEntry = struct {
         if (isSymbolSetEmpty(self.lookaheads) and !self.lookaheads.includes_epsilon) return;
         try writer.writeAll(" [");
         var first_written = false;
-        for (self.lookaheads.terminals, 0..) |present, index| {
-            if (!present) continue;
+        var terminal_iter = self.lookaheads.terminals.bits.iterator(.{});
+        while (terminal_iter.next()) |index| {
             if (first_written) try writer.writeAll(", ");
             try writer.print("terminal:{d}", .{index});
             first_written = true;
         }
-        for (self.lookaheads.externals, 0..) |present, index| {
-            if (!present) continue;
+        var external_iter = self.lookaheads.externals.bits.iterator(.{});
+        while (external_iter.next()) |index| {
             if (first_written) try writer.writeAll(", ");
             try writer.print("external:{d}", .{index});
             first_written = true;
@@ -202,11 +208,12 @@ pub fn initEmptyLookaheadSet(
     terminals_len: usize,
     externals_len: usize,
 ) !first.SymbolSet {
-    const terminals = try allocator.alloc(bool, terminals_len);
-    errdefer allocator.free(terminals);
-    const externals = try allocator.alloc(bool, externals_len);
-    @memset(terminals, false);
-    @memset(externals, false);
+    const terminals = try first.SymbolBits.initEmpty(allocator, terminals_len);
+    errdefer {
+        var mutable = terminals;
+        mutable.deinit(allocator);
+    }
+    const externals = try first.SymbolBits.initEmpty(allocator, externals_len);
     recordSymbolSetAlloc(.init_empty, terminals_len, externals_len);
     return .{
         .terminals = terminals,
@@ -218,26 +225,28 @@ pub fn initEmptyLookaheadSet(
 
 pub fn cloneSymbolSet(allocator: std.mem.Allocator, source: first.SymbolSet) !first.SymbolSet {
     const cloned = first.SymbolSet{
-        .terminals = try allocator.dupe(bool, source.terminals),
-        .externals = try allocator.dupe(bool, source.externals),
+        .terminals = try source.terminals.clone(allocator),
+        .externals = try source.externals.clone(allocator),
         .includes_end = source.includes_end,
         .includes_epsilon = source.includes_epsilon,
     };
-    recordSymbolSetAlloc(.clone, source.terminals.len, source.externals.len);
+    recordSymbolSetAlloc(.clone, source.terminals.len(), source.externals.len());
     return cloned;
 }
 
 pub fn freeSymbolSet(allocator: std.mem.Allocator, symbol_set: first.SymbolSet) void {
-    recordSymbolSetFree(symbol_set.terminals.len, symbol_set.externals.len);
-    allocator.free(symbol_set.terminals);
-    allocator.free(symbol_set.externals);
+    recordSymbolSetFree(symbol_set.terminals.len(), symbol_set.externals.len());
+    var terminals = symbol_set.terminals;
+    var externals = symbol_set.externals;
+    terminals.deinit(allocator);
+    externals.deinit(allocator);
 }
 
 pub fn addLookahead(target: *first.SymbolSet, lookahead: syntax_ir.SymbolRef) void {
     switch (lookahead) {
         .end => target.includes_end = true,
-        .terminal => |index| target.terminals[index] = true,
-        .external => |index| target.externals[index] = true,
+        .terminal => |index| target.terminals.set(index),
+        .external => |index| target.externals.set(index),
         .non_terminal => {},
     }
 }
@@ -245,8 +254,8 @@ pub fn addLookahead(target: *first.SymbolSet, lookahead: syntax_ir.SymbolRef) vo
 pub fn containsLookahead(symbol_set: first.SymbolSet, lookahead: syntax_ir.SymbolRef) bool {
     return switch (lookahead) {
         .end => symbol_set.includes_end,
-        .terminal => |index| symbol_set.terminals[index],
-        .external => |index| symbol_set.externals[index],
+        .terminal => |index| symbol_set.terminals.get(index),
+        .external => |index| symbol_set.externals.get(index),
         .non_terminal => false,
     };
 }
@@ -257,18 +266,8 @@ pub fn mergeSymbolSetLookaheads(target: *first.SymbolSet, incoming: first.Symbol
         target.includes_end = true;
         changed = true;
     }
-    for (incoming.terminals, 0..) |present, index| {
-        if (present and !target.terminals[index]) {
-            target.terminals[index] = true;
-            changed = true;
-        }
-    }
-    for (incoming.externals, 0..) |present, index| {
-        if (present and !target.externals[index]) {
-            target.externals[index] = true;
-            changed = true;
-        }
-    }
+    changed = first.SymbolBits.merge(&target.terminals, incoming.terminals) or changed;
+    changed = first.SymbolBits.merge(&target.externals, incoming.externals) or changed;
     if (incoming.includes_epsilon and !target.includes_epsilon) {
         target.includes_epsilon = true;
         changed = true;
@@ -283,10 +282,16 @@ pub fn isSymbolSetEmpty(symbol_set: first.SymbolSet) bool {
 fn symbolSetLessThan(a: first.SymbolSet, b: first.SymbolSet) bool {
     if (a.includes_end != b.includes_end) return !a.includes_end and b.includes_end;
     if (a.includes_epsilon != b.includes_epsilon) return !a.includes_epsilon and b.includes_epsilon;
-    for (a.terminals, b.terminals) |left, right| {
+    var index: usize = 0;
+    while (index < a.terminals.len() and index < b.terminals.len()) : (index += 1) {
+        const left = a.terminals.get(index);
+        const right = b.terminals.get(index);
         if (left != right) return !left and right;
     }
-    for (a.externals, b.externals) |left, right| {
+    index = 0;
+    while (index < a.externals.len() and index < b.externals.len()) : (index += 1) {
+        const left = a.externals.get(index);
+        const right = b.externals.get(index);
         if (left != right) return !left and right;
     }
     return false;
@@ -372,7 +377,7 @@ test "mergeSymbolSetLookaheads unions terminals externals and epsilon" {
     incoming.includes_epsilon = true;
 
     try std.testing.expect(mergeSymbolSetLookaheads(&target, incoming));
-    try std.testing.expect(target.terminals[0]);
-    try std.testing.expect(target.externals[1]);
+    try std.testing.expect(target.terminals.get(0));
+    try std.testing.expect(target.externals.get(1));
     try std.testing.expect(target.includes_epsilon);
 }

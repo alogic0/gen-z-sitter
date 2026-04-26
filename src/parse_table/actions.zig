@@ -105,15 +105,15 @@ pub fn buildActionsForState(
         else
             .{ .reduce = parse_item.production_id };
 
-        for (entry.lookaheads.terminals, 0..) |present, index| {
-            if (!present) continue;
+        var terminal_iter = entry.lookaheads.terminals.bits.iterator(.{});
+        while (terminal_iter.next()) |index| {
             try appendUniqueAction(&entries, .{
                 .symbol = .{ .terminal = @intCast(index) },
                 .action = action,
             });
         }
-        for (entry.lookaheads.externals, 0..) |present, index| {
-            if (!present) continue;
+        var external_iter = entry.lookaheads.externals.bits.iterator(.{});
+        while (external_iter.next()) |index| {
             try appendUniqueAction(&entries, .{
                 .symbol = .{ .external = @intCast(index) },
                 .action = action,

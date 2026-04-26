@@ -3,37 +3,97 @@ const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const FirstError = std.mem.Allocator.Error;
 
+pub const SymbolBits = struct {
+    bits: std.DynamicBitSetUnmanaged = .{},
+
+    pub fn initEmpty(allocator: std.mem.Allocator, bit_count: usize) !SymbolBits {
+        return .{ .bits = try std.DynamicBitSetUnmanaged.initEmpty(allocator, bit_count) };
+    }
+
+    pub fn initFromSlice(allocator: std.mem.Allocator, values: []const bool) !SymbolBits {
+        var result = try initEmpty(allocator, values.len);
+        for (values, 0..) |present, index| {
+            if (present) result.set(index);
+        }
+        return result;
+    }
+
+    pub fn deinit(self: *SymbolBits, allocator: std.mem.Allocator) void {
+        self.bits.deinit(allocator);
+        self.* = .{};
+    }
+
+    pub fn clone(self: SymbolBits, allocator: std.mem.Allocator) !SymbolBits {
+        return .{ .bits = try self.bits.clone(allocator) };
+    }
+
+    pub fn len(self: SymbolBits) usize {
+        return self.bits.capacity();
+    }
+
+    pub fn get(self: SymbolBits, index: usize) bool {
+        return self.bits.isSet(index);
+    }
+
+    pub fn set(self: *SymbolBits, index: usize) void {
+        self.bits.set(index);
+    }
+
+    pub fn setValue(self: *SymbolBits, index: usize, value: bool) void {
+        self.bits.setValue(index, value);
+    }
+
+    pub fn count(self: SymbolBits) usize {
+        return self.bits.count();
+    }
+
+    pub fn eql(a: SymbolBits, b: SymbolBits) bool {
+        return a.bits.eql(b.bits);
+    }
+
+    pub fn merge(target: *SymbolBits, incoming: SymbolBits) bool {
+        var changed = false;
+        var iter = incoming.bits.iterator(.{});
+        while (iter.next()) |index| {
+            if (target.get(index)) continue;
+            target.set(index);
+            changed = true;
+        }
+        return changed;
+    }
+
+    pub fn maskBytes(self: SymbolBits) []const u8 {
+        const mask_count = (self.bits.bit_length + @bitSizeOf(std.DynamicBitSetUnmanaged.MaskInt) - 1) /
+            @bitSizeOf(std.DynamicBitSetUnmanaged.MaskInt);
+        return std.mem.sliceAsBytes(self.bits.masks[0..mask_count]);
+    }
+};
+
 pub const SymbolSet = struct {
-    terminals: []bool,
-    externals: []bool,
+    terminals: SymbolBits,
+    externals: SymbolBits,
     includes_end: bool = false,
     includes_epsilon: bool = false,
 
     pub fn containsTerminal(self: SymbolSet, index: u32) bool {
-        return self.terminals[index];
+        return self.terminals.get(index);
     }
 
     pub fn containsExternal(self: SymbolSet, index: u32) bool {
-        return self.externals[index];
+        return self.externals.get(index);
     }
 
     pub fn isEmpty(self: SymbolSet) bool {
         if (self.includes_end) return false;
         if (self.includes_epsilon) return false;
-        for (self.terminals) |present| {
-            if (present) return false;
-        }
-        for (self.externals) |present| {
-            if (present) return false;
-        }
-        return true;
+        return self.terminals.count() == 0 and self.externals.count() == 0;
     }
 
     pub fn eql(a: SymbolSet, b: SymbolSet) bool {
         return a.includes_end == b.includes_end and
             a.includes_epsilon == b.includes_epsilon and
-            std.mem.eql(bool, a.terminals, b.terminals) and
-            std.mem.eql(bool, a.externals, b.externals);
+            SymbolBits.eql(a.terminals, b.terminals) and
+            SymbolBits.eql(a.externals, b.externals);
     }
 };
 
@@ -64,13 +124,11 @@ pub fn computeFirstSets(
 
     for (per_variable) |*entry| {
         entry.* = .{
-            .terminals = try allocator.alloc(bool, counts.terminals),
-            .externals = try allocator.alloc(bool, counts.externals),
+            .terminals = try SymbolBits.initEmpty(allocator, counts.terminals),
+            .externals = try SymbolBits.initEmpty(allocator, counts.externals),
             .includes_end = false,
             .includes_epsilon = false,
         };
-        @memset(entry.terminals, false);
-        @memset(entry.externals, false);
     }
 
     var changed = true;
@@ -109,13 +167,11 @@ fn computeSequenceFirst(
     steps: []const syntax_ir.ProductionStep,
 ) FirstError!SymbolSet {
     var result = SymbolSet{
-        .terminals = try allocator.alloc(bool, terminals_len),
-        .externals = try allocator.alloc(bool, externals_len),
+        .terminals = try SymbolBits.initEmpty(allocator, terminals_len),
+        .externals = try SymbolBits.initEmpty(allocator, externals_len),
         .includes_end = false,
         .includes_epsilon = false,
     };
-    @memset(result.terminals, false);
-    @memset(result.externals, false);
 
     if (steps.len == 0) {
         result.includes_epsilon = true;
@@ -126,12 +182,12 @@ fn computeSequenceFirst(
     for (steps) |step| {
         switch (step.symbol) {
             .terminal => |index| {
-                result.terminals[index] = true;
+                result.terminals.set(index);
                 all_nullable = false;
                 break;
             },
             .external => |index| {
-                result.externals[index] = true;
+                result.externals.set(index);
                 all_nullable = false;
                 break;
             },
@@ -180,19 +236,8 @@ fn mergeSymbolSets(target: *SymbolSet, incoming: SymbolSet) bool {
         changed = true;
     }
 
-    for (incoming.terminals, 0..) |present, index| {
-        if (present and !target.terminals[index]) {
-            target.terminals[index] = true;
-            changed = true;
-        }
-    }
-
-    for (incoming.externals, 0..) |present, index| {
-        if (present and !target.externals[index]) {
-            target.externals[index] = true;
-            changed = true;
-        }
-    }
+    changed = SymbolBits.merge(&target.terminals, incoming.terminals) or changed;
+    changed = SymbolBits.merge(&target.externals, incoming.externals) or changed;
 
     return changed;
 }
@@ -205,19 +250,8 @@ fn changedMergeWithoutEpsilon(target: *SymbolSet, incoming: SymbolSet) bool {
         changed = true;
     }
 
-    for (incoming.terminals, 0..) |present, index| {
-        if (present and !target.terminals[index]) {
-            target.terminals[index] = true;
-            changed = true;
-        }
-    }
-
-    for (incoming.externals, 0..) |present, index| {
-        if (present and !target.externals[index]) {
-            target.externals[index] = true;
-            changed = true;
-        }
-    }
+    changed = SymbolBits.merge(&target.terminals, incoming.terminals) or changed;
+    changed = SymbolBits.merge(&target.externals, incoming.externals) or changed;
 
     return changed;
 }

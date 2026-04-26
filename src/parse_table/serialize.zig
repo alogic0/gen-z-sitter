@@ -2327,12 +2327,10 @@ test "attachReservedWordsAlloc serializes reserved word sets from lexical termin
 
 test "attachReservedWordLexModesAlloc serializes reserved word set ids" {
     const allocator = std.testing.allocator;
-    const items = [_]@import("item.zig").ParseItemSetEntry{
-        .{
-            .item = .{ .production_id = 0, .step_index = 0 },
-            .lookaheads = .{ .terminals = &.{}, .externals = &.{}, .includes_epsilon = false },
-        },
+    var items = [_]@import("item.zig").ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 0, 0, .{ .production_id = 0, .step_index = 0 }),
     };
+    defer for (items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const parse_states = [_]state.ParseState{
         .{ .id = 0, .reserved_word_set_id = 2, .items = items[0..], .transitions = &.{} },
         .{ .id = 1, .items = &.{}, .transitions = &.{} },
@@ -2364,11 +2362,9 @@ test "attachNonTerminalExtraLexModesAlloc marks extra end states with sentinel l
     };
     defer for (extra_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const normal_items = [_]item.ParseItemSetEntry{
-        .{
-            .item = .{ .production_id = 0, .step_index = 0 },
-            .lookaheads = .{ .terminals = &.{}, .externals = &.{}, .includes_epsilon = false },
-        },
+        try item.ParseItemSetEntry.initEmpty(allocator, 0, 0, .{ .production_id = 0, .step_index = 0 }),
     };
+    defer for (normal_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
     const parse_states = [_]state.ParseState{
         .{ .id = 0, .items = normal_items[0..], .transitions = &.{} },
         .{ .id = 1, .items = extra_items[0..], .transitions = &.{} },

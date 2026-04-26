@@ -1033,9 +1033,9 @@ fn mergeTokenIndexSet(target: *TokenIndexSet, incoming: TokenIndexSet) bool {
 
 fn mergeTokenIndexSetFromSymbolSet(target: *TokenIndexSet, incoming: first_sets.SymbolSet) bool {
     var changed = false;
-    const len = @min(target.values.len, incoming.terminals.len);
-    for (incoming.terminals[0..len], 0..) |present, index| {
-        if (!present or target.values[index]) continue;
+    var terminal_iter = incoming.terminals.bits.iterator(.{});
+    while (terminal_iter.next()) |index| {
+        if (index >= target.values.len or target.values[index]) continue;
         target.values[index] = true;
         changed = true;
     }
@@ -1043,8 +1043,10 @@ fn mergeTokenIndexSetFromSymbolSet(target: *TokenIndexSet, incoming: first_sets.
 }
 
 fn deinitSymbolSet(allocator: std.mem.Allocator, set: first_sets.SymbolSet) void {
-    allocator.free(set.terminals);
-    allocator.free(set.externals);
+    var terminals = set.terminals;
+    var externals = set.externals;
+    terminals.deinit(allocator);
+    externals.deinit(allocator);
 }
 
 fn deinitFirstSets(allocator: std.mem.Allocator, sets: first_sets.FirstSets) void {

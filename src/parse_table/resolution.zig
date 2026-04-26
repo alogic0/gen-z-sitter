@@ -677,8 +677,8 @@ fn symbolCanStartLookahead(
 
 fn symbolSetContainsRef(symbol_set: first_sets_mod.SymbolSet, symbol: syntax_ir.SymbolRef) bool {
     return switch (symbol) {
-        .terminal => |index| index < symbol_set.terminals.len and symbol_set.terminals[index],
-        .external => |index| index < symbol_set.externals.len and symbol_set.externals[index],
+        .terminal => |index| index < symbol_set.terminals.len() and symbol_set.terminals.get(index),
+        .external => |index| index < symbol_set.externals.len() and symbol_set.externals.get(index),
         .end => symbol_set.includes_end,
         .non_terminal => false,
     };
@@ -2214,12 +2214,27 @@ test "hasSameAuxiliaryRepeatConflictWithFirstSets matches upstream FIRST-set rul
         .{ .id = 6, .items = parse_items[0..], .transitions = &.{}, .conflicts = &.{} },
     };
 
-    var empty_terms = [_]bool{ false, false };
-    var child_terms = [_]bool{ true, false };
+    const empty_terms = [_]bool{ false, false };
+    const child_terms = [_]bool{ true, false };
     var per_variable = [_]first_sets_mod.SymbolSet{
-        .{ .terminals = empty_terms[0..], .externals = &.{} },
-        .{ .terminals = empty_terms[0..], .externals = &.{} },
-        .{ .terminals = child_terms[0..], .externals = &.{} },
+        .{
+            .terminals = try first_sets_mod.SymbolBits.initFromSlice(allocator, empty_terms[0..]),
+            .externals = try first_sets_mod.SymbolBits.initEmpty(allocator, 0),
+        },
+        .{
+            .terminals = try first_sets_mod.SymbolBits.initFromSlice(allocator, empty_terms[0..]),
+            .externals = try first_sets_mod.SymbolBits.initEmpty(allocator, 0),
+        },
+        .{
+            .terminals = try first_sets_mod.SymbolBits.initFromSlice(allocator, child_terms[0..]),
+            .externals = try first_sets_mod.SymbolBits.initEmpty(allocator, 0),
+        },
+    };
+    defer for (per_variable) |set| {
+        var terminals = set.terminals;
+        var externals = set.externals;
+        terminals.deinit(allocator);
+        externals.deinit(allocator);
     };
     const first_sets = first_sets_mod.FirstSets{
         .terminals_len = 2,

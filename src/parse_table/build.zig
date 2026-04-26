@@ -258,12 +258,8 @@ fn logConstructProfile() void {
     );
 }
 
-fn countPresent(values: []const bool) usize {
-    var count: usize = 0;
-    for (values) |present| {
-        if (present) count += 1;
-    }
-    return count;
+fn countPresent(values: first.SymbolBits) usize {
+    return values.count();
 }
 
 fn optionalSymbolRefFormat(value: ?syntax_ir.SymbolRef, writer: anytype) !void {
@@ -388,8 +384,8 @@ const ParseItemSliceContext = struct {
             hasher.update(std.mem.asBytes(&value.item.production_id));
             hasher.update(std.mem.asBytes(&value.item.step_index));
             hasher.update(std.mem.asBytes(&value.following_reserved_word_set_id));
-            hasher.update(std.mem.sliceAsBytes(value.lookaheads.terminals));
-            hasher.update(std.mem.sliceAsBytes(value.lookaheads.externals));
+            hasher.update(value.lookaheads.terminals.maskBytes());
+            hasher.update(value.lookaheads.externals.maskBytes());
             hasher.update(std.mem.asBytes(&value.lookaheads.includes_end));
             hasher.update(std.mem.asBytes(&value.lookaheads.includes_epsilon));
         }
@@ -864,8 +860,8 @@ fn mergeSymbolSetLookaheads(target: *first.SymbolSet, incoming: first.SymbolSet)
 fn addSymbolToSet(target: *first.SymbolSet, symbol: syntax_ir.SymbolRef) void {
     switch (symbol) {
         .end => target.includes_end = true,
-        .terminal => |index| target.terminals[index] = true,
-        .external => |index| target.externals[index] = true,
+        .terminal => |index| target.terminals.set(index),
+        .external => |index| target.externals.set(index),
         .non_terminal => {},
     }
 }
@@ -1304,14 +1300,14 @@ fn appendGeneratedItems(
         item.addLookahead(&generated_entry.lookaheads, .{ .end = {} });
     }
 
-    for (effective_suffix_follow.terminals, 0..) |present, index| {
-        if (!present) continue;
+    var effective_terminal_iter = effective_suffix_follow.terminals.bits.iterator(.{});
+    while (effective_terminal_iter.next()) |index| {
         item.addLookahead(&generated_entry.lookaheads, .{ .terminal = @intCast(index) });
         has_any_signal = true;
     }
 
-    for (effective_suffix_follow.externals, 0..) |present, index| {
-        if (!present) continue;
+    var effective_external_iter = effective_suffix_follow.externals.bits.iterator(.{});
+    while (effective_external_iter.next()) |index| {
         item.addLookahead(&generated_entry.lookaheads, .{ .external = @intCast(index) });
         has_any_signal = true;
     }
@@ -1320,18 +1316,18 @@ fn appendGeneratedItems(
         if (context.production_end_follow.includes_end and !item.containsLookahead(generated_entry.lookaheads, .{ .end = {} })) {
             item.addLookahead(&generated_entry.lookaheads, .{ .end = {} });
         }
-        for (context.production_end_follow.terminals, 0..) |present, index| {
-            if (!present) continue;
+        var production_terminal_iter = context.production_end_follow.terminals.bits.iterator(.{});
+        while (production_terminal_iter.next()) |index| {
             const lookahead: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
             if (!item.containsLookahead(generated_entry.lookaheads, lookahead)) item.addLookahead(&generated_entry.lookaheads, lookahead);
         }
-        for (context.production_end_follow.externals, 0..) |present, index| {
-            if (!present) continue;
+        var production_external_iter = context.production_end_follow.externals.bits.iterator(.{});
+        while (production_external_iter.next()) |index| {
             const lookahead: syntax_ir.SymbolRef = .{ .external = @intCast(index) };
             if (!item.containsLookahead(generated_entry.lookaheads, lookahead)) item.addLookahead(&generated_entry.lookaheads, lookahead);
         }
-        for (context.following_tokens.externals, 0..) |present, index| {
-            if (!present) continue;
+        var following_external_iter = context.following_tokens.externals.bits.iterator(.{});
+        while (following_external_iter.next()) |index| {
             const lookahead: syntax_ir.SymbolRef = .{ .external = @intCast(index) };
             if (!item.containsLookahead(generated_entry.lookaheads, lookahead)) item.addLookahead(&generated_entry.lookaheads, lookahead);
         }
@@ -3133,12 +3129,12 @@ test "buildClosureExpansionItemsAlloc preserves inherited and propagated follow 
     const generated = try buildClosureExpansionItemsAlloc(arena.allocator(), item_set_builder, 1, blk: {
         var context_follow = try initEmptySymbolSet(arena.allocator(), first_sets.terminals_len, first_sets.externals_len);
         context_follow.includes_epsilon = true;
-        context_follow.terminals[0] = true;
+        context_follow.terminals.set(0);
         break :blk ClosureContext{
             .following_tokens = context_follow,
             .production_end_follow = production_end: {
                 var production_end_follow = try initEmptySymbolSet(arena.allocator(), first_sets.terminals_len, first_sets.externals_len);
-                production_end_follow.terminals[0] = true;
+                production_end_follow.terminals.set(0);
                 break :production_end production_end_follow;
             },
             .following_reserved_word_set_id = 0,
@@ -3240,21 +3236,21 @@ test "closureContextFollowSet merges inherited lookahead only through nullable s
     defer arena.deinit();
 
     var inherited = try initEmptySymbolSet(arena.allocator(), 3, 0);
-    inherited.terminals[2] = true;
+    inherited.terminals.set(2);
     var suffix = try initEmptySymbolSet(arena.allocator(), 3, 0);
-    suffix.terminals[1] = true;
+    suffix.terminals.set(1);
     suffix.includes_epsilon = true;
 
     const merged = try closureContextFollowSet(arena.allocator(), suffix, inherited);
-    try std.testing.expect(merged.terminals[1]);
-    try std.testing.expect(merged.terminals[2]);
+    try std.testing.expect(merged.terminals.get(1));
+    try std.testing.expect(merged.terminals.get(2));
     try std.testing.expect(merged.includes_epsilon);
 
     var non_nullable = try initEmptySymbolSet(arena.allocator(), 3, 0);
-    non_nullable.terminals[1] = true;
+    non_nullable.terminals.set(1);
     const unchanged = try closureContextFollowSet(arena.allocator(), non_nullable, inherited);
-    try std.testing.expect(unchanged.terminals[1]);
-    try std.testing.expect(!unchanged.terminals[2]);
+    try std.testing.expect(unchanged.terminals.get(1));
+    try std.testing.expect(!unchanged.terminals.get(2));
     try std.testing.expect(!unchanged.includes_epsilon);
 }
 
@@ -3263,29 +3259,29 @@ test "ClosureContext projects nullable-suffix follow from merged follow and prod
     defer arena.deinit();
 
     var inherited = try initEmptySymbolSet(arena.allocator(), 3, 0);
-    inherited.terminals[2] = true;
+    inherited.terminals.set(2);
     var suffix = try initEmptySymbolSet(arena.allocator(), 3, 0);
-    suffix.terminals[1] = true;
+    suffix.terminals.set(1);
     suffix.includes_epsilon = true;
 
     const context = try ClosureContext.init(arena.allocator(), suffix, 0, inherited, 0);
     defer context.deinit(arena.allocator());
 
-    try std.testing.expect(context.following_tokens.terminals[1]);
-    try std.testing.expect(context.following_tokens.terminals[2]);
+    try std.testing.expect(context.following_tokens.terminals.get(1));
+    try std.testing.expect(context.following_tokens.terminals.get(2));
     try std.testing.expect(context.nullableSuffixNeedsContextFollow());
-    try std.testing.expect(context.production_end_follow.terminals[2]);
-    try std.testing.expect(!context.production_end_follow.terminals[1]);
+    try std.testing.expect(context.production_end_follow.terminals.get(2));
+    try std.testing.expect(!context.production_end_follow.terminals.get(1));
 
     var non_nullable = try initEmptySymbolSet(arena.allocator(), 3, 0);
-    non_nullable.terminals[1] = true;
+    non_nullable.terminals.set(1);
     const non_nullable_context = try ClosureContext.init(arena.allocator(), non_nullable, 0, inherited, 0);
     defer non_nullable_context.deinit(arena.allocator());
 
-    try std.testing.expect(non_nullable_context.following_tokens.terminals[1]);
-    try std.testing.expect(!non_nullable_context.following_tokens.terminals[2]);
+    try std.testing.expect(non_nullable_context.following_tokens.terminals.get(1));
+    try std.testing.expect(!non_nullable_context.following_tokens.terminals.get(2));
     try std.testing.expect(!non_nullable_context.nullableSuffixNeedsContextFollow());
-    try std.testing.expect(non_nullable_context.production_end_follow.terminals[2]);
+    try std.testing.expect(non_nullable_context.production_end_follow.terminals.get(2));
 }
 
 fn findParseItem(items: []const item.ParseItemSetEntry, needle: item.ParseItem, lookahead: syntax_ir.SymbolRef) ?usize {
