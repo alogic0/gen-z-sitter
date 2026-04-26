@@ -107,8 +107,22 @@ pub fn build(b: *std.Build) void {
 
     const run_compat_heavy_tests = b.addRunArtifact(compat_heavy_tests);
     if (b.args) |args| run_compat_heavy_tests.addArgs(args);
-    const compat_heavy_test_step = b.step("test-compat-heavy", "Run heavy compatibility harness and inventory tests");
+    const compat_heavy_test_step = b.step("test-compat-heavy", "Run bounded compatibility metadata and smoke tests");
     compat_heavy_test_step.dependOn(&run_compat_heavy_tests.step);
+
+    const compat_full_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/compat_full_test_entry.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (test_filter) |f| &.{f} else &.{"compat."},
+    });
+
+    const run_compat_full_tests = b.addRunArtifact(compat_full_tests);
+    if (b.args) |args| run_compat_full_tests.addArgs(args);
+    const compat_full_test_step = b.step("test-compat-full", "Run full compatibility harness and inventory tests");
+    compat_full_test_step.dependOn(&run_compat_full_tests.step);
 
     const default_runtime_link_filters = &.{
         "linkAndRunNoExternalTinyParser",
