@@ -1,8 +1,8 @@
 # Zig Tree-sitter Generator Rewrite
 
-This repository is a Zig rewrite of the Tree-sitter generator pipeline. The goal is to reproduce the practical behavior of `tree-sitter generate` while keeping the existing ecosystem contract: load `grammar.json` or `grammar.js`, compute the same core grammar artifacts, and eventually emit parser output that remains compatible with the current C runtime expectations.
+This repository is a Zig rewrite of the Tree-sitter generator pipeline. The goal is to reproduce the practical behavior of `tree-sitter generate` while keeping the existing ecosystem contract: load `grammar.json` or `grammar.js`, compute the same core grammar artifacts, and emit parser output that remains compatible with the current C runtime expectations.
 
-The codebase is past the early planning-only stage. It contains a working compiler-style pipeline, tests, and a CLI for loading grammars, inspecting prepared IR, and generating `node-types.json`. It also contains a large set of milestone and architecture documents that track the broader rewrite plan.
+The codebase is past the early planning-only stage. It contains a working compiler-style pipeline, parser table and parser C emitters, compatibility fixtures, runtime-link proofs, tests, and a CLI for loading grammars, inspecting prepared IR, and generating `node-types.json`.
 
 ## Current Status
 
@@ -14,7 +14,9 @@ What is implemented in the current code:
 - lexer/scanner pipeline modules
 - parse-table construction, resolution, serialization, and emitter layers
 - `node-types.json` generation
-- ABI/compatibility-oriented parser emission modules
+- ABI/compatibility-oriented parser C emission
+- serialized runtime parse-action, large/small parse-table, symbol metadata, field, alias, supertype, reserved-word, lex-mode, lexer, keyword-lexer, and external-scanner surfaces
+- parser C compatibility helpers, large-lexer compile pragmas, and compact large character-set emission
 - emitted-surface optimization and JSON summary reporting for parser tables and parser output
 - unit and golden-test coverage across the pipeline
 
@@ -31,7 +33,7 @@ What this means in practice:
 - the repo now also carries a dedicated checked-in real external scanner inventory under `compat_targets/`
 - the repo is still an in-progress rewrite rather than a drop-in replacement for upstream Tree-sitter
 
-What is still not a first-class top-level product surface:
+What is still not a first-class top-level CLI product surface:
 
 - emitted `parser.c`
 - emitted `grammar.json`
@@ -42,16 +44,17 @@ What is still not a first-class top-level product surface:
 
 The immediate next goals are:
 
+- keep the fast local test split bounded and predictable
 - keep the now-proven parser-only and multi-family staged scanner boundaries explicit and defensible in checked-in compatibility artifacts
 - treat `parse_table_conflict_json` as an intentional frozen control fixture rather than a live promotion gap
 - broaden compatibility evidence without overstating runtime parity now that a second scanner family is promoted
-- keep parser-output optimization measurable while deeper parse-table compression/minimization remains future work
+- reduce parse-table construction memory and time for the remaining heavy real grammars
 
 ## Quick Start
 
 Requirements:
 
-- Zig 0.15.x
+- Zig 0.16.x
 - `node` available on `PATH` if you want to load `grammar.js`
 
 Common commands:
@@ -59,6 +62,7 @@ Common commands:
 ```bash
 zig build
 zig build test
+zig build test-pipeline
 zig build run -- help
 zig build run -- generate path/to/grammar.json
 zig build run -- generate --debug-prepared path/to/grammar.json
@@ -66,6 +70,17 @@ zig build run -- generate --debug-node-types path/to/grammar.json
 zig build run -- generate --output out path/to/grammar.json
 zig build run -- generate --json-summary path/to/grammar.json
 ```
+
+Bounded test commands:
+
+```bash
+zig build test
+zig build test-pipeline
+zig build test-link-runtime
+zig build test-compat-heavy
+```
+
+`test` and `test-pipeline` are the fast local gates. `test-compat-heavy` is intentionally separate because it exercises larger compatibility targets and can take substantially longer.
 
 Expected current behavior:
 
@@ -102,99 +117,24 @@ Not every flag currently maps to a fully surfaced end-user feature. The most dir
 
 Current staged compatibility boundary:
 
-- proof layers are currently staged, not all equivalent:
-  - curated fixture proof:
-    - lower-level emitter, golden, compile-smoke, structural-compatibility, and behavioral-harness tests
-  - parser-only shortlist proof:
-    - versioned checked-in artifacts under `compat_targets/`
-  - staged scanner-boundary proof:
-    - the promoted scanner-wave entries in the same checked-in compatibility artifacts
-- parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
-- real external snapshot proof is also exposed separately under `compat_targets/`:
-  - `compat_targets/external_repo_inventory.json`
-  - this keeps the promoted real external parser-only evidence visible without mixing it into staged fixture-only summaries
-  - it now records the current mixed real-evidence state explicitly: 2 passing external parser-only snapshots, 1 deferred external parser-only snapshot, and 2 passing sampled real external scanner snapshots
-- real external scanner proof is now exposed separately under `compat_targets/`:
-  - `compat_targets/external_scanner_repo_inventory.json`
-  - it now records two passing real external scanner targets: `tree_sitter_haskell_json` and `tree_sitter_bash_json`
-  - it now also records machine-readable `proof_scope` values so the narrower sampled scanner claims are visible without relying only on prose notes
-  - the Haskell target currently passes within a sampled external-sequence boundary, not full scanner.c runtime equivalence
-  - the Bash target now passes a narrow sampled expansion path built around `_bare_dollar` and `variable_name`, not broader heredoc handling or full scanner.c runtime equivalence
-  - the currently checked-out `tree-sitter-c` and `tree-sitter-zig` repos still do not change that scanner story, because their available snapshots have `externals: []` and no scanner implementation files
-- parser-only shortlist proof currently comes from the versioned checked-in artifacts under `compat_targets/`:
+- Proof layers are staged, not all equivalent:
+  - curated fixture proof: lower-level emitter, golden, compile-smoke, structural-compatibility, runtime-link, and behavioral tests
+  - parser-only shortlist proof: versioned checked-in artifacts under `compat_targets/`
+  - staged scanner-boundary proof: promoted scanner-wave entries in the checked-in compatibility artifacts
+  - real external scanner proof: sampled Haskell and Bash runtime-link fixtures, not full scanner.c runtime equivalence
+- The main machine-readable compatibility surfaces are:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`
   - `compat_targets/shortlist_report.json`
-- `compat_targets/README.md` describes how the shortlist, inventory, mismatch, and coverage-decision artifacts relate to the current staged boundary
-- `compat_targets/README.md` also describes how `external_repo_inventory.json` and `external_scanner_repo_inventory.json` separate real external evidence from the staged fixture-driven shortlist surfaces
-- the shortlist inventory and full report now expose family-level coverage so the current staged boundary is readable by grammar family, not only by flat target counts
-- the currently represented parser-only families are:
-  - `parse_table_tiny`
-  - `behavioral_config`
-  - `repeat_choice_seq`
-  - `ziggy`
-  - `ziggy_schema`
-  - `c`
-  - `parse_table_conflict`
-- the currently proven first-wave parser-only boundary is a 5-target set across 5 passing parser-only families:
-  - `parse_table_tiny_json`
-  - `behavioral_config_json`
-  - `repeat_choice_seq_js`
-  - `tree_sitter_ziggy_json`
-  - `tree_sitter_ziggy_schema_json`
-- the shortlist now carries one intentionally deferred parser-only control fixture:
-  - `parse_table_conflict_json`
-  - it remains blocked on purpose as a known ambiguity boundary without precedence annotations
-  - the checked-in reports now classify it explicitly as a `frozen_control_fixture` rather than counting it as a normal staged pass
-- the real external parser-only evidence now includes three passing snapshots:
-  - `tree_sitter_c_json`
-  - it currently proves `load`, `prepare`, routine coarse `serialize_only`, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke
-  - it is now classified as `passed_within_current_boundary`
-  - the main shortlist and external-repo inventory artifacts now also expose its standalone parser-proof scope directly:
-    - current standalone parser proof is `coarse_serialize_only`
-    - this keeps the narrower passing probe visible outside `parser_boundary_probe.json` even after the routine promotion
-- the currently represented scanner/external-scanner families are:
-  - `hidden_external_fields`
-  - `mixed_semantics`
-  - `haskell`
-  - `bash`
-- the shortlist now also carries a promoted multi-family scanner wave with explicit family-level coverage in the checked-in artifacts:
-  - `hidden_external_fields_json`
-  - `hidden_external_fields_js`
-  - `mixed_semantics_json`
-  - `mixed_semantics_js`
-  - `tree_sitter_haskell_json`
-  - `tree_sitter_bash_json`
-  - together they currently prove load, prepare, and one of:
-    - staged compatibility-safe valid-path behavior with weaker invalid-path progress
-    - sampled real external scanner proof for the real external Haskell and Bash snapshots
-  - `mixed_semantics` specifically keeps extras elsewhere in the grammar while proving a narrower first-boundary path that does not depend on them
-- the top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs
-- routine compatibility artifacts are now indexed machine-readably in `compat_targets/artifact_manifest.json`
-  - routine refreshes come from `update_compat_artifacts.zig`
-  - heavier deferred parser-boundary probing remains separate in `update_parser_boundary_probe.zig`
-- the current standalone parser probe remains machine-readable in `compat_targets/parser_boundary_hypothesis.json` and `compat_targets/parser_boundary_probe.json`
-  - the narrower standalone probe still exists to keep heavier parser-boundary investigation separate from the routine refresh path
-  - the current standalone probe result in `compat_targets/parser_boundary_probe.json` now shows that a coarse `serialize_only` parser proof passes for `tree_sitter_c_json`
-  - that standalone proof uses lookahead-insensitive closure expansion and currently serializes `2336` states with `blocked = false`
-  - it remains intentionally narrower than the now-promoted routine parser-only boundary
-  - the main shortlist and external-repo inventories still carry that standalone parser-proof scope so readers can see the narrower supporting proof without leaving the central compatibility summaries
-- the current supported behavioral subset is still staged:
-  - `behavioral_config` and `hidden_external_fields` now have compatibility-safe valid-path checks
-  - `hidden_external_fields` also proves that the invalid path makes less progress than the valid path through the first staged scanner boundary
-  - `repeat_choice_seq` still preserves deterministic JSON/JS parity and progress, but it now rejects on the staged blocked path as `missing_action` rather than advancing into a promoted parser-only pass
-- scanner/external-scanner proof is staged as a narrow promoted multi-family wave rather than left entirely out of the shortlist
-- real external scanner evidence is now no longer empty, and it now includes two passing sampled real external scanner snapshots
-- that real external scanner boundary is now explicit:
-  - structural first-boundary extraction remains the lower proof layer
-  - sampled external-sequence proof now passes for `tree_sitter_haskell_json`
-  - sampled expansion-path proof now passes for `tree_sitter_bash_json`
-  - the Bash proof is intentionally narrower than Haskell’s and does not yet claim sampled heredoc behavior
-  - full runtime scanner equivalence is still out of scope
-- the key distinction is:
-  - staged scanner proof lives in the shortlist artifacts and covers promoted in-repo scanner families
-  - real external scanner proof lives in `external_scanner_repo_inventory.json` and covers the promoted Haskell and Bash snapshots
-- the current checked-in coverage decision now points back to broader compatibility polish, because the larger `tree_sitter_c_json` snapshot has been promoted and the only remaining deferred parser-only target is the intentional control fixture
+  - `compat_targets/external_repo_inventory.json`
+  - `compat_targets/external_scanner_repo_inventory.json`
+  - `compat_targets/artifact_manifest.json`
+- The current parser-only boundary includes staged fixtures plus promoted real C JSON coverage. `parse_table_conflict_json` remains an intentional frozen control fixture for an ambiguity that requires precedence/conflict annotations.
+- The current scanner boundary includes staged scanner fixtures and sampled real external scanner proofs for `tree_sitter_haskell_json` and `tree_sitter_bash_json`. The Haskell proof covers a sampled external-sequence path; the Bash proof covers a narrower sampled expansion path, not heredoc behavior.
+- Routine compatibility artifacts are refreshed by `zig run update_compat_artifacts.zig`. Heavier parser-boundary probing is kept separate in `zig run update_parser_boundary_probe.zig`.
+- The top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs.
+
+The current heavy compatibility path is bounded and separated from the fast default tests. It is useful before broader compatibility changes, but it is not required for every small local edit.
 
 ## Repository Layout
 
@@ -206,6 +146,7 @@ docs/
   architecture/            architecture notes
 src/
   main.zig                 process entry point
+  *_test_entry.zig         Zig test entry points kept in src for module-boundary reasons
   cli/                     argument parsing and command dispatch
   grammar/                 loading, validation, normalization, preparation
   ir/                      core grammar and symbol IR
@@ -219,6 +160,9 @@ src/
   behavioral/              behavioral harness support
 compat_targets/            checked-in compatibility fixtures and reports
 tools/                     small local debugging utilities
+update_compat_artifacts.zig
+update_parser_boundary_probe.zig
+                           root-level update scripts kept runnable with `zig run`
 ```
 
 ## Key Documents
@@ -229,6 +173,7 @@ Start here:
 - [zig-generator-architecture.md](./docs/architecture/zig-generator-architecture.md): architecture notes
 - [compatibility-matrix.md](./docs/audits/compatibility-matrix.md): compatibility targets and gaps
 - [test-strategy.md](./docs/plans/test-strategy.md): testing approach
+- [GAPS_260425.md](./docs/audits/GAPS_260425.md): current known implementation gaps
 
 Implementation history and milestone tracking:
 
