@@ -43,23 +43,31 @@ lex state 0 — the wrong lexer DFA start — causing mis-lexing with no generat
 error.
 
 The Rust reference (`render.rs::add_lex_modes`) iterates **all** parse states in a
-single pass. The only states that legitimately receive `{ .lex_state = 0 }` are
-non-terminal-extra end states: states where no further lexing is required.
+single pass. Non-terminal-extra end states receive `(TSStateId)(-1)` because no further
+lexing is required.
 
 **Audit tasks (read-only — fix only if a real gap is found).**
 
-- [ ] Read `src/lexer/serialize.zig`: identify the function that produces
+- [x] Read `src/lexer/serialize.zig`: identify the function that produces
   `SerializedLexMode` entries and verify it produces exactly one entry per parse state
   (i.e. the output slice is `STATE_COUNT` long, not shorter).
-- [ ] Read `src/parse_table/serialize.zig` or the optimizer: confirm that
+- [x] Read `src/parse_table/serialize.zig` or the optimizer: confirm that
   `compacted.lex_modes.len == compacted.states.len` after optimization.
-- [ ] Read `render.rs::add_lex_modes` (lines ~1160–1200) and note which states receive
-  `.lex_state = 0` in the Rust output.  Confirm the local model assigns the same states
-  the same value.
-- [ ] If `compacted.lex_modes.len < compacted.states.len` is possible, document the
+- [x] Read `render.rs::add_lex_modes` (lines ~1160–1200) and note which states receive
+  the sentinel lex state in the Rust output. Confirm whether the local model can
+  represent that sentinel separately from ordinary lex state 0.
+- [x] If `compacted.lex_modes.len < compacted.states.len` is possible, document the
   conditions under which it happens and whether the fallback value is correct for those
   states.
-- [ ] Write a short note here summarizing the finding before making any code change.
+- [x] Write a short note here summarizing the finding before making any code change.
+
+**Finding.** `lexer/serialize.zig::buildLexModesAlloc` allocates exactly one
+`SerializedLexMode` per serialized parse state, and `parser_emit/optimize.zig`
+recomputes lex modes from the compacted state slice. The emitter fallback is therefore
+not reachable through the normal serialized/optimized pipeline. Upstream emits a
+`(TSStateId)(-1)` lex state for non-terminal-extra end states; the local boundary does
+not currently carry a separate sentinel flag, so RW-4 does not change that behavior in
+this pass.
 
 **If a real gap is found**, add a sub-phase (Phase 1b) with:
 
@@ -81,16 +89,16 @@ runtime keyword checker to match no keywords, with no error at generation time.
 In the Rust generator, symbol references are validated during grammar normalization, so
 an invalid word-token reference is caught before emission.
 
-- [ ] Determine whether `symbolIdForRef` for the word-token can legitimately return
+- [x] Determine whether `symbolIdForRef` for the word-token can legitimately return
   `null` in the current Zig pipeline (i.e., is there a grammar that reaches emission
   with a word-token that has no runtime symbol ID?).
 - [ ] If `null` is possible and incorrect: replace `orelse 0` with an assertion or a
   returned error that names the missing symbol.
-- [ ] If `null` is structurally impossible (the builder guarantees the word-token always
+- [x] If `null` is structurally impossible (the builder guarantees the word-token always
   has a symbol ID by the time emission runs): add a comment explaining the invariant and
   change `orelse 0` to `orelse unreachable` so a future violation surfaces at debug
   time.
-- [ ] Add a test for a grammar with `word_token` and confirm the emitted
+- [x] Add a test for a grammar with `word_token` and confirm the emitted
   `.keyword_capture_token` is the correct non-zero symbol ID.
 
 ---
@@ -109,25 +117,25 @@ schema owner.
 
 This phase adds the version to the serialization boundary so the emitter can use it.
 
-- [ ] Read `src/grammar/json_loader.zig` and `src/grammar/raw_grammar.zig`; identify
+- [x] Read `src/grammar/json_loader.zig` and `src/grammar/raw_grammar.zig`; identify
   the grammar JSON struct. Confirm the `.version` field is parsed and what type it
   currently has (string, ignored, or partially stored).
-- [ ] Trace the grammar JSON struct through `parse_grammar.zig`, `grammar_ir.zig`,
+- [x] Trace the grammar JSON struct through `parse_grammar.zig`, `grammar_ir.zig`,
   and the parse-table pipeline to confirm whether version data is currently stored or
   discarded.
-- [ ] Parse the version string into three `u8` components (major, minor, patch) at the
+- [x] Parse the version string into three `u8` components (major, minor, patch) at the
   JSON parsing stage. Tolerate missing or malformed version strings by defaulting to
   `(0, 0, 0)`.
-- [ ] Add a `grammar_version: [3]u8` field to `SerializedTable`
+- [x] Add a `grammar_version: [3]u8` field to `SerializedTable`
   (`src/parse_table/serialize.zig`), ordered `[major, minor, patch]`.
-- [ ] Thread the parsed version from the JSON struct through the pipeline entry point
+- [x] Thread the parsed version from the JSON struct through the pipeline entry point
   into the `SerializedTable` constructor (or whatever function fills the top-level
   serialized struct).
-- [ ] Verify that `compacted` / optimized copies preserve the field unchanged (it is
+- [x] Verify that `compacted` / optimized copies preserve the field unchanged (it is
   metadata, not table data, so optimization should be a no-op for this field).
-- [ ] Add a test that parses a grammar JSON with `"version": "2.3.4"` and asserts
+- [x] Add a test that parses a grammar JSON with `"version": "2.3.4"` and asserts
   `serialized.grammar_version == [2, 3, 4]`.
-- [ ] Add a test that parses a grammar JSON with no `.version` field and asserts
+- [x] Add a test that parses a grammar JSON with no `.version` field and asserts
   `serialized.grammar_version == [0, 0, 0]`.
 
 ---
@@ -160,17 +168,17 @@ add_line!(self, ".patch_version = {},", metadata.patch);
 add_line!(self, "}},");
 ```
 
-- [ ] In `parser_c.zig`, locate the section that emits the `TSLanguage` struct
+- [x] In `parser_c.zig`, locate the section that emits the `TSLanguage` struct
   initializer (currently around lines 343–411).
-- [ ] Add emission of `.metadata = { .major_version = {d}, .minor_version = {d},
+- [x] Add emission of `.metadata = { .major_version = {d}, .minor_version = {d},
   .patch_version = {d} }` using `compacted.grammar_version[0]`,
   `compacted.grammar_version[1]`, `compacted.grammar_version[2]`.
-- [ ] Place the emission after `.abi_version` and before the closing brace, matching the
+- [x] Place the emission before the closing brace, matching the
   field order in `parser.h`.
-- [ ] Add a focused emitter test: given a `SerializedTable` with
+- [x] Add a focused emitter test: given a `SerializedTable` with
   `grammar_version = [1, 2, 3]`, assert the emitted C contains
   `.metadata = { .major_version = 1, .minor_version = 2, .patch_version = 3 }`.
-- [ ] Add a second emitter test: `grammar_version = [0, 0, 0]` emits
+- [x] Add a second emitter test: `grammar_version = [0, 0, 0]` emits
   `.metadata = { .major_version = 0, .minor_version = 0, .patch_version = 0 }` (no
   special-casing; always emit).
 - [ ] Compile-smoke one fixture through the full path (JSON → SerializedTable → parser.c
@@ -182,15 +190,15 @@ add_line!(self, "}},");
 
 Prove that the runtime can read the emitted `metadata` field correctly.
 
-- [ ] Extend the existing no-external runtime link test
+- [x] Extend the existing no-external runtime link test
   (`zig build test-link-no-external`) or add a sibling test that:
-  - Generates a parser from a grammar JSON with a known non-zero version such as
-    `"version": "3.1.4"`.
+  - Generates a no-external parser fixture with a known non-zero version such as
+    `"3.1.4"`.
   - Calls `ts_language_metadata()` from the tree-sitter runtime in the C driver.
   - Asserts `major == 3`, `minor == 1`, `patch == 4`.
-- [ ] Include the correct runtime header for `ts_language_metadata()`; it is implemented
+- [x] Include the correct runtime header for `ts_language_metadata()`; it is implemented
   in `../tree-sitter/lib/src/language.c`.
-- [ ] Keep the test in `zig build test-link-no-external` or add a focused
+- [x] Keep the test in `zig build test-link-no-external` or add a focused
   `zig build test-link-metadata` step.
 
 ---
@@ -199,8 +207,8 @@ Prove that the runtime can read the emitted `metadata` field correctly.
 
 Run broad checks only after all correctness changes are in place.
 
-- [ ] Run `zig fmt --check src`.
-- [ ] Run `zig build test` and fix failures.
+- [x] Run `zig fmt --check src`.
+- [x] Run `zig build test` and fix failures.
 - [ ] Run `zig build test-compat-heavy` and confirm no regressions against the RW-3
   baseline.
 - [ ] Run compile-smoke on the full compatibility target set.

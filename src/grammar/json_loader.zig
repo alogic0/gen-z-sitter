@@ -97,6 +97,7 @@ pub fn parseTopLevel(allocator: std.mem.Allocator, value: std.json.Value) LoadEr
 
     return .{
         .name = try expectString(name_value),
+        .version = parseVersion(object.get("version")),
         .rules = try parseRuleEntries(allocator, rules_value),
         .precedences = try parsePrecedences(allocator, object.get("precedences")),
         .conflicts = try parseConflicts(allocator, object.get("conflicts")),
@@ -107,6 +108,23 @@ pub fn parseTopLevel(allocator: std.mem.Allocator, value: std.json.Value) LoadEr
         .word = if (object.get("word")) |word| try expectString(word) else null,
         .reserved = try parseReservedSets(allocator, object.get("reserved")),
     };
+}
+
+fn parseVersion(value: ?std.json.Value) [3]u8 {
+    const raw_version = if (value) |version_value| switch (version_value) {
+        .string => |str| str,
+        else => return .{ 0, 0, 0 },
+    } else return .{ 0, 0, 0 };
+
+    var parts = std.mem.splitScalar(u8, raw_version, '.');
+    var parsed: [3]u8 = undefined;
+    for (&parsed) |*part| {
+        const text = parts.next() orelse return .{ 0, 0, 0 };
+        if (text.len == 0) return .{ 0, 0, 0 };
+        part.* = std.fmt.parseUnsigned(u8, text, 10) catch return .{ 0, 0, 0 };
+    }
+    if (parts.next() != null) return .{ 0, 0, 0 };
+    return parsed;
 }
 
 fn parseRuleEntries(allocator: std.mem.Allocator, value: std.json.Value) LoadError![]const raw.RawRuleEntry {
@@ -441,4 +459,40 @@ test "loadGrammarJsonFromSlice loads a valid grammar document" {
 
     try std.testing.expectEqualStrings("basic", loaded.grammar.name);
     try std.testing.expectEqual(@as(usize, 1), loaded.grammar.ruleCount());
+}
+
+test "loadGrammarJsonFromSlice parses semantic grammar version" {
+    const contents =
+        \\{
+        \\  "name": "versioned",
+        \\  "version": "2.3.4",
+        \\  "rules": {
+        \\    "source_file": { "type": "BLANK" }
+        \\  }
+        \\}
+    ;
+    var loaded = try loadGrammarJsonFromSlice(std.testing.allocator, contents);
+    defer loaded.deinit();
+
+    try std.testing.expectEqual([3]u8{ 2, 3, 4 }, loaded.grammar.version);
+}
+
+test "loadGrammarJsonFromSlice defaults missing and malformed semantic versions" {
+    var missing = try loadGrammarJsonFromSlice(std.testing.allocator, fixtures.validBlankGrammarJson().contents);
+    defer missing.deinit();
+    try std.testing.expectEqual([3]u8{ 0, 0, 0 }, missing.grammar.version);
+
+    const contents =
+        \\{
+        \\  "name": "malformed_version",
+        \\  "version": "2.x.4",
+        \\  "rules": {
+        \\    "source_file": { "type": "BLANK" }
+        \\  }
+        \\}
+    ;
+    var malformed = try loadGrammarJsonFromSlice(std.testing.allocator, contents);
+    defer malformed.deinit();
+
+    try std.testing.expectEqual([3]u8{ 0, 0, 0 }, malformed.grammar.version);
 }

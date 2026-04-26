@@ -198,6 +198,7 @@ pub const SerializedTable = struct {
     states: []const SerializedState,
     blocked: bool,
     grammar_name: []const u8 = "generated",
+    grammar_version: [3]u8 = .{ 0, 0, 0 },
     symbols: []const SerializedSymbolInfo = &.{},
     large_state_count: usize = 0,
     productions: []const SerializedProductionInfo = &.{},
@@ -312,6 +313,7 @@ pub fn attachPreparedMetadataAlloc(
 
     var result = serialized;
     result.grammar_name = prepared.grammar_name;
+    result.grammar_version = prepared.grammar_version;
     result.symbols = serialized_symbols;
     result.supertype_map = try buildSupertypeMapAlloc(allocator, prepared);
     result = try attachExternalScannerAlloc(allocator, result, prepared);
@@ -1502,6 +1504,7 @@ test "attachPreparedMetadataAlloc adds grammar and symbol metadata" {
     defer deinitExternalScanner(allocator, serialized.external_scanner);
 
     try std.testing.expectEqualStrings("metadata_fixture", serialized.grammar_name);
+    try std.testing.expectEqual([3]u8{ 0, 0, 0 }, serialized.grammar_version);
     try std.testing.expectEqual(@as(usize, 2), serialized.symbols.len);
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 0 }, serialized.symbols[0].ref);
     try std.testing.expectEqualStrings("source_file", serialized.symbols[0].name);
@@ -1516,6 +1519,35 @@ test "attachPreparedMetadataAlloc adds grammar and symbol metadata" {
     try std.testing.expect(!serialized.symbols[1].supertype);
     try std.testing.expectEqual(@as(u16, 1), serialized.symbols[1].public_symbol);
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .external = 1 }, serialized.word_token.?);
+}
+
+test "attachPreparedMetadataAlloc carries semantic grammar version" {
+    const allocator = std.testing.allocator;
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "versioned_fixture",
+        .grammar_version = .{ 2, 3, 4 },
+        .variables = &.{},
+        .external_tokens = &.{},
+        .rules = &.{},
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    const serialized = try attachPreparedMetadataAlloc(allocator, .{
+        .states = &.{},
+        .blocked = false,
+    }, prepared);
+    defer allocator.free(serialized.symbols);
+    defer deinitSupertypeMap(allocator, serialized.supertype_map);
+    defer deinitExternalScanner(allocator, serialized.external_scanner);
+
+    try std.testing.expectEqual([3]u8{ 2, 3, 4 }, serialized.grammar_version);
 }
 
 test "attachPreparedMetadataAlloc blocks grammars that declare external tokens" {

@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub const RawGrammar = struct {
     name: []const u8,
+    version: [3]u8 = .{ 0, 0, 0 },
     rules: []const RawRuleEntry,
     precedences: []const PrecedenceList,
     conflicts: []const ConflictSet,
@@ -116,6 +117,7 @@ test "raw grammar holds top-level counts" {
     };
     const grammar = RawGrammar{
         .name = "basic",
+        .version = .{ 1, 2, 3 },
         .rules = &.{entry},
         .precedences = &.{},
         .conflicts = &.{},
@@ -128,4 +130,5 @@ test "raw grammar holds top-level counts" {
     };
 
     try std.testing.expectEqual(@as(usize, 1), grammar.ruleCount());
+    try std.testing.expectEqual([3]u8{ 1, 2, 3 }, grammar.version);
 }

@@ -23,6 +23,7 @@ pub fn linkAndRunNoExternalTinyParser(allocator: std.mem.Allocator) RuntimeLinkE
     try linkAndRunGeneratedParser(allocator, .{
         .parser_c = parser_c,
         .input = "x",
+        .expected_metadata = .{ 3, 1, 4 },
     });
 }
 
@@ -86,6 +87,7 @@ fn emitTinyParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
         .{ .ref = .{ .non_terminal = 0 }, .name = "source_file", .named = true, .visible = true, .supertype = false, .public_symbol = 2 },
     };
     serialized.grammar_name = "generated";
+    serialized.grammar_version = .{ 3, 1, 4 };
     serialized.symbols = symbols[0..];
     const eof_valids = try eofValidLexStatesAlloc(allocator, serialized);
     serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesWithEofAlloc(
@@ -342,6 +344,7 @@ const GeneratedParserRun = struct {
     parser_c: []const u8,
     input: []const u8,
     scanner_c: ?[]const u8 = null,
+    expected_metadata: ?[3]u8 = null,
 };
 
 fn linkAndRunGeneratedParser(
@@ -361,7 +364,7 @@ fn linkAndRunGeneratedParser(
             .data = scanner_c,
         });
     }
-    const driver_source = try driverSourceAlloc(allocator, generated.input);
+    const driver_source = try driverSourceAlloc(allocator, generated.input, generated.expected_metadata);
     defer allocator.free(driver_source);
     try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "driver.c",
@@ -461,7 +464,24 @@ fn externalScannerSource() []const u8 {
     ;
 }
 
-fn driverSourceAlloc(allocator: std.mem.Allocator, input: []const u8) RuntimeLinkError![]const u8 {
+fn driverSourceAlloc(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+    expected_metadata: ?[3]u8,
+) RuntimeLinkError![]const u8 {
+    const metadata_check = if (expected_metadata) |metadata|
+        try std.fmt.allocPrint(allocator,
+            \\  const TSLanguageMetadata *metadata = ts_language_metadata(language);
+            \\  if (!metadata) return 14;
+            \\  if (metadata->major_version != {d}) return 15;
+            \\  if (metadata->minor_version != {d}) return 16;
+            \\  if (metadata->patch_version != {d}) return 17;
+            \\
+        , .{ metadata[0], metadata[1], metadata[2] })
+    else
+        "";
+    defer if (expected_metadata != null) allocator.free(metadata_check);
+
     return try std.fmt.allocPrint(allocator,
         \\#include <stdbool.h>
         \\#include <stdint.h>
@@ -483,9 +503,11 @@ fn driverSourceAlloc(allocator: std.mem.Allocator, input: []const u8) RuntimeLin
         \\int main(void) {{
         \\  alarm(2);
         \\  const char *input = "{s}";
+        \\  const TSLanguage *language = tree_sitter_generated();
+        \\{s}
         \\  TSParser *parser = ts_parser_new();
         \\  if (!parser) return 10;
-        \\  if (!ts_parser_set_language(parser, tree_sitter_generated())) return 11;
+        \\  if (!ts_parser_set_language(parser, language)) return 11;
         \\  uint32_t log_count = 0;
         \\  ts_parser_set_logger(parser, (TSLogger){{ .payload = &log_count, .log = log_parser }});
         \\  TSTree *tree = ts_parser_parse_string(parser, 0, input, (uint32_t)strlen(input));
@@ -499,7 +521,7 @@ fn driverSourceAlloc(allocator: std.mem.Allocator, input: []const u8) RuntimeLin
         \\  return is_error ? 13 : 0;
         \\}}
         \\
-    , .{input});
+    , .{ input, metadata_check });
 }
 
 fn ensureTreeSitterRuntimeAvailable() RuntimeLinkError!void {

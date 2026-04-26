@@ -1213,6 +1213,56 @@ test "generateSerializedTableDumpFromPrepared matches the conflict diagnostic se
     try std.testing.expectEqualStrings(fixtures.parseTableConflictSerializedDump().contents, dump);
 }
 
+test "serializeTableFromPrepared preserves semantic grammar version from json" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    const contents =
+        \\{
+        \\  "name": "versioned",
+        \\  "version": "2.3.4",
+        \\  "rules": {
+        \\    "source_file": { "type": "BLANK" }
+        \\  }
+        \\}
+    ;
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), contents, .{});
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const serialized = try serializeTableFromPrepared(pipeline_arena.allocator(), prepared, .strict);
+
+    try std.testing.expectEqual([3]u8{ 2, 3, 4 }, serialized.grammar_version);
+}
+
+test "serializeTableFromPrepared defaults missing semantic grammar version" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.validBlankGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const serialized = try serializeTableFromPrepared(pipeline_arena.allocator(), prepared, .strict);
+
+    try std.testing.expectEqual([3]u8{ 0, 0, 0 }, serialized.grammar_version);
+}
+
 test "serializeTableFromPrepared marks fields inherited from inline hidden fixture" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();

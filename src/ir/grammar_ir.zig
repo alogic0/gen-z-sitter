@@ -39,6 +39,7 @@ pub const ReservedWordSet = struct {
 
 pub const PreparedGrammar = struct {
     grammar_name: []const u8,
+    grammar_version: [3]u8 = .{ 0, 0, 0 },
     variables: []const Variable,
     external_tokens: []const ExternalToken,
     rules: []const rules.Rule,
@@ -55,6 +56,7 @@ pub const PreparedGrammar = struct {
 test "prepared grammar can be instantiated minimally" {
     const grammar = PreparedGrammar{
         .grammar_name = "basic",
+        .grammar_version = .{ 1, 2, 3 },
         .variables = &.{},
         .external_tokens = &.{},
         .rules = &.{},
@@ -69,4 +71,5 @@ test "prepared grammar can be instantiated minimally" {
     };
 
     try std.testing.expectEqualStrings("basic", grammar.grammar_name);
+    try std.testing.expectEqual([3]u8{ 1, 2, 3 }, grammar.grammar_version);
 }

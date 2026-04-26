@@ -143,6 +143,7 @@ const Builder = struct {
 
         return .{
             .grammar_name = self.grammar.name,
+            .grammar_version = self.grammar.version,
             .variables = variables,
             .external_tokens = external_tokens,
             .rules = try self.lowered_rules.toOwnedSlice(),

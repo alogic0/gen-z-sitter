@@ -148,8 +148,9 @@ pub fn writeParserCWithOptions(
     try writer.print("#define MAX_ALIAS_SEQUENCE_LENGTH {d}\n", .{maxAliasSequenceLength(compacted)});
     try writer.print("#define MAX_RESERVED_WORD_SET_SIZE {d}\n\n", .{compacted.reserved_words.max_size});
 
+    // Grammar lowering validates `word_token`; by emission it must have a runtime symbol ID.
     const keyword_capture_id: u16 = if (compacted.word_token) |wt|
-        symbolIdForRef(emitted_symbols, wt) orelse 0
+        symbolIdForRef(emitted_symbols, wt) orelse unreachable
     else
         0;
 
@@ -409,6 +410,10 @@ pub fn writeParserCWithOptions(
         try writer.writeAll("  .reserved_words = &ts_reserved_words[0][0],\n");
     }
     try writer.print("  .max_reserved_word_set_size = {d},\n", .{compacted.reserved_words.max_size});
+    try writer.print(
+        "  .metadata = {{ .major_version = {d}, .minor_version = {d}, .patch_version = {d} }},\n",
+        .{ compacted.grammar_version[0], compacted.grammar_version[1], compacted.grammar_version[2] },
+    );
     try writer.writeAll("};\n\n");
     try writer.writeAll("const TSLanguage *tree_sitter_generated(void) {\n");
     try writer.writeAll("  return &ts_language;\n");
@@ -1351,6 +1356,48 @@ test "emitParserCAlloc emits prepared symbol metadata and grammar name" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = 1,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .name = \"quote\\\"grammar\",\n"));
+}
+
+test "emitParserCAlloc emits semantic grammar metadata" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_version = .{ 1, 2, 3 },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(
+        u8,
+        emitted,
+        1,
+        "  .metadata = { .major_version = 1, .minor_version = 2, .patch_version = 3 },\n",
+    ));
+}
+
+test "emitParserCAlloc emits zero semantic grammar metadata" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_version = .{ 0, 0, 0 },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(
+        u8,
+        emitted,
+        1,
+        "  .metadata = { .major_version = 0, .minor_version = 0, .patch_version = 0 },\n",
+    ));
 }
 
 test "emitParserCAlloc emits serialized supertype tables" {
