@@ -2,7 +2,7 @@ const std = @import("std");
 const lexical_serialize = @import("serialize.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
-pub const EmitError = std.Io.Writer.Error;
+pub const EmitError = std.Io.Writer.Error || std.mem.Allocator.Error;
 const advance_map_threshold = 8;
 const large_character_range_threshold = 8;
 
@@ -30,6 +30,28 @@ pub fn emitLexFunctionWithResolver(
     resolver: ?SymbolResolver,
 ) EmitError!void {
     const large_sets = LargeCharacterSets{ .lex_table = lex_table };
+    try emitLexFunctionWithLargeSets(writer, fn_name, lex_table, resolver, large_sets);
+}
+
+pub fn emitLexFunctionWithResolverAlloc(
+    allocator: std.mem.Allocator,
+    writer: anytype,
+    fn_name: []const u8,
+    lex_table: lexical_serialize.SerializedLexTable,
+    resolver: ?SymbolResolver,
+) EmitError!void {
+    const large_sets = try LargeCharacterSetIndex.initAlloc(allocator, lex_table);
+    defer large_sets.deinit(allocator);
+    try emitLexFunctionWithLargeSets(writer, fn_name, lex_table, resolver, large_sets);
+}
+
+fn emitLexFunctionWithLargeSets(
+    writer: anytype,
+    fn_name: []const u8,
+    lex_table: lexical_serialize.SerializedLexTable,
+    resolver: ?SymbolResolver,
+    large_sets: anytype,
+) EmitError!void {
     try large_sets.emitDeclarations(writer, fn_name);
 
     try writer.print("static bool {s}(TSLexer *lexer, TSStateId state) {{\n", .{fn_name});
@@ -70,6 +92,65 @@ pub fn emitLexFunctionWithResolver(
     try writer.writeAll("      return false;\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("}\n\n");
+}
+
+const LargeCharacterSetEntry = struct {
+    ranges: []const lexical_serialize.SerializedCharacterRange,
+};
+
+const LargeCharacterSetIndex = struct {
+    entries: []const LargeCharacterSetEntry,
+
+    fn initAlloc(
+        allocator: std.mem.Allocator,
+        lex_table: lexical_serialize.SerializedLexTable,
+    ) std.mem.Allocator.Error!LargeCharacterSetIndex {
+        var entries = std.array_list.Managed(LargeCharacterSetEntry).init(allocator);
+        errdefer entries.deinit();
+
+        for (lex_table.states) |state_value| {
+            const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
+            for (state_value.transitions[advance_map_end..]) |transition| {
+                if (!isLargeCharacterSet(transition.ranges)) continue;
+                if (findInEntries(entries.items, transition.ranges) != null) continue;
+                try entries.append(.{ .ranges = transition.ranges });
+            }
+        }
+
+        return .{ .entries = try entries.toOwnedSlice() };
+    }
+
+    fn deinit(self: LargeCharacterSetIndex, allocator: std.mem.Allocator) void {
+        allocator.free(self.entries);
+    }
+
+    fn emitDeclarations(
+        self: LargeCharacterSetIndex,
+        writer: anytype,
+        fn_name: []const u8,
+    ) EmitError!void {
+        for (self.entries, 0..) |entry, set_id| {
+            try writer.print("static const TSCharacterRange {s}_character_set_{d}[] = {{\n", .{ fn_name, set_id });
+            for (entry.ranges) |range| {
+                try writer.print("  {{ {d}, {d} }},\n", .{ range.start, range.end_inclusive });
+            }
+            try writer.writeAll("};\n\n");
+        }
+    }
+
+    fn find(self: LargeCharacterSetIndex, ranges: []const lexical_serialize.SerializedCharacterRange) ?usize {
+        return findInEntries(self.entries, ranges);
+    }
+};
+
+fn findInEntries(
+    entries: []const LargeCharacterSetEntry,
+    ranges: []const lexical_serialize.SerializedCharacterRange,
+) ?usize {
+    for (entries, 0..) |entry, index| {
+        if (rangeSetsEqual(entry.ranges, ranges)) return index;
+    }
+    return null;
 }
 
 const LargeCharacterSets = struct {

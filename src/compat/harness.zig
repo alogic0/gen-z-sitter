@@ -16,6 +16,7 @@ const compat_checks = @import("../parser_emit/compat_checks.zig");
 const emit_optimize = @import("../parser_emit/optimize.zig");
 const scanner_serialize = @import("../scanner/serialize.zig");
 const behavioral_harness = @import("../behavioral/harness.zig");
+const runtime_link = @import("runtime_link.zig");
 
 pub const RunOptions = struct {
     optimize: emit_optimize.Options = .{},
@@ -120,6 +121,19 @@ fn shouldLogDetailProgress(options: RunOptions) bool {
     if (value.len == 0) return false;
     if (std.mem.eql(u8, value, "0")) return false;
     return true;
+}
+
+fn runScannerRuntimeLinkProof(allocator: std.mem.Allocator, target_id: []const u8) !void {
+    if (std.mem.eql(u8, target_id, "bracket_lang_json")) {
+        return try runtime_link.linkAndRunBracketLangParser(allocator);
+    }
+    if (std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) {
+        return try runtime_link.linkAndRunHaskellParserWithRealExternalScanner(allocator);
+    }
+    if (std.mem.eql(u8, target_id, "tree_sitter_bash_json")) {
+        return try runtime_link.linkAndRunBashParserWithRealExternalScanner(allocator);
+    }
+    return error.UnsupportedRuntimeLinkTarget;
 }
 
 fn shouldStopAfter(options: RunOptions, stage: result_model.StepName) bool {
@@ -576,6 +590,18 @@ pub fn runTarget(
         if (shouldStopAfter(options, .serialize)) return run;
 
         if (target.scanner_boundary_check_mode == .full_runtime_link) {
+            const runtime_link_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+            if (detail_progress) logDetailStart(target.id, "scanner_runtime_link");
+            runScannerRuntimeLinkProof(allocator, target.id) catch |err| {
+                return failRun(
+                    &run,
+                    .scanner_boundary_check,
+                    .deferred_for_scanner_boundary,
+                    .scanner_external_scanner_boundary_gap,
+                    try std.fmt.allocPrint(allocator, "scanner runtime-link proof failed for {s}: {s}", .{ target.id, @errorName(err) }),
+                );
+            };
+            if (detail_progress) logDetailDone(target.id, "scanner_runtime_link", runtime_link_timer);
             run.scanner_boundary_check.status = .passed;
             return run;
         }
@@ -1651,7 +1677,7 @@ test "runShortlistTargetsAlloc promotes tree_sitter_c through compile smoke" {
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[5].mismatch_category);
 }
 
-test "runShortlistTargetsAlloc promotes tree_sitter_haskell through the sampled external-sequence boundary" {
+test "runShortlistTargetsAlloc promotes tree_sitter_haskell through runtime link" {
     const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqualStrings("tree_sitter_haskell_json", runs[6].id);
@@ -1662,10 +1688,12 @@ test "runShortlistTargetsAlloc promotes tree_sitter_haskell through the sampled 
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[6].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[6].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[6].mismatch_category);
-    try std.testing.expect(std.mem.indexOf(u8, runs[6].success_criteria, "external-sequence path") != null);
+    try std.testing.expectEqual(targets.BoundaryKind.scanner_external_scanner, runs[6].boundary_kind);
+    try std.testing.expectEqual(targets.RealExternalScannerProofScope.full_runtime_link, runs[6].real_external_scanner_proof_scope);
+    try std.testing.expect(std.mem.indexOf(u8, runs[6].success_criteria, "runtime-link fixture") != null);
 }
 
-test "runShortlistTargetsAlloc promotes tree_sitter_bash through a sampled expansion path" {
+test "runShortlistTargetsAlloc promotes tree_sitter_bash through runtime link" {
     const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqualStrings("tree_sitter_bash_json", runs[7].id);
@@ -1676,7 +1704,9 @@ test "runShortlistTargetsAlloc promotes tree_sitter_bash through a sampled expan
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[7].mismatch_category);
-    try std.testing.expect(std.mem.indexOf(u8, runs[7].notes, "_bare_dollar and variable_name") != null);
+    try std.testing.expectEqual(targets.BoundaryKind.scanner_external_scanner, runs[7].boundary_kind);
+    try std.testing.expectEqual(targets.RealExternalScannerProofScope.full_runtime_link, runs[7].real_external_scanner_proof_scope);
+    try std.testing.expect(std.mem.indexOf(u8, runs[7].success_criteria, "runtime-link fixture") != null);
 }
 
 test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked control case" {
