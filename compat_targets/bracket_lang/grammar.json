@@ -1,0 +1,19 @@
+{
+  "name": "bracket_lang",
+  "version": "1.0.0",
+  "externals": [
+    { "type": "SYMBOL", "name": "open_bracket" },
+    { "type": "SYMBOL", "name": "close_bracket" }
+  ],
+  "rules": {
+    "source": {
+      "type": "SEQ",
+      "members": [
+        { "type": "SYMBOL", "name": "open_bracket" },
+        { "type": "SYMBOL", "name": "open_bracket" },
+        { "type": "SYMBOL", "name": "close_bracket" },
+        { "type": "SYMBOL", "name": "close_bracket" }
+      ]
+    }
+  }
+}

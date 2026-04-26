@@ -4,6 +4,7 @@ const ir_rules = @import("../ir/rules.zig");
 const lexical_grammar = @import("../ir/lexical_grammar.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
+const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const serialize = @import("../parse_table/serialize.zig");
 const process_support = @import("../support/process.zig");
 const syntax_grammar = @import("../ir/syntax_grammar.zig");
@@ -12,6 +13,8 @@ pub const RuntimeLinkError = anyerror;
 
 const tree_sitter_runtime_dir = "../tree-sitter/lib/src";
 const tree_sitter_include_dir = "../tree-sitter/lib/include";
+const bracket_lang_grammar_path = "compat_targets/bracket_lang/grammar.json";
+const bracket_lang_scanner_path = "compat_targets/bracket_lang/scanner.c";
 
 pub fn linkAndRunNoExternalTinyParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
@@ -95,6 +98,28 @@ pub fn linkAndRunStatefulExternalScannerParser(allocator: std.mem.Allocator) Run
         \\  if (tree_sitter_stateful_external_grammar_max_depth() != 2) return 32;
         \\
         ,
+    });
+}
+
+pub fn linkAndRunBracketLangParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitBracketLangParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
+        bracket_lang_scanner_path,
+        arena.allocator(),
+        .limited(64 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .input = "(())",
+        .expected_root_type = "source",
+        .expected_tree_string = "(source (open_bracket) (open_bracket) (close_bracket) (close_bracket))",
     });
 }
 
@@ -575,6 +600,18 @@ fn emitStatefulExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLinkE
     });
 }
 
+fn emitBracketLangParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    var serialized = try parse_table_pipeline.serializeRuntimeTableFromGrammarPath(
+        allocator,
+        bracket_lang_grammar_path,
+        .strict,
+    );
+    serialized = try offsetRuntimeStartStateAlloc(allocator, serialized);
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+    });
+}
+
 const GeneratedParserRun = struct {
     parser_c: []const u8,
     input: []const u8,
@@ -968,4 +1005,8 @@ test "linkAndRunMultiTokenExternalScannerParser links generated multi-token exte
 
 test "linkAndRunStatefulExternalScannerParser links generated stateful external scanner parser with tree-sitter runtime" {
     try linkAndRunStatefulExternalScannerParser(std.testing.allocator);
+}
+
+test "linkAndRunBracketLangParser links generated bracket-lang parser with tree-sitter runtime" {
+    try linkAndRunBracketLangParser(std.testing.allocator);
 }

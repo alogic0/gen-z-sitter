@@ -1367,6 +1367,11 @@ fn buildExternalScannerStatesAlloc(
     var unique_states = std.array_list.Managed([]const bool).init(allocator);
     defer unique_states.deinit();
     const state_ids = try allocator.alloc(u16, states.len);
+    errdefer allocator.free(state_ids);
+
+    const empty_set = try allocator.alloc(bool, symbols.len);
+    @memset(empty_set, false);
+    try unique_states.append(empty_set);
 
     for (states, 0..) |serialized_state, state_index| {
         const set = try allocator.alloc(bool, symbols.len);
@@ -1781,6 +1786,67 @@ test "attachPreparedMetadataAlloc derives external scanner state sets from actio
     try std.testing.expectEqual(@as(u16, 0), serialized.lex_modes[0].external_lex_state);
     try std.testing.expectEqual(@as(u16, 1), serialized.lex_modes[1].external_lex_state);
     try std.testing.expectEqual(@as(u16, 2), serialized.lex_modes[2].external_lex_state);
+}
+
+test "attachPreparedMetadataAlloc reserves all-false external scanner state zero" {
+    const allocator = std.testing.allocator;
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "external_starts",
+        .variables = &.{},
+        .external_tokens = &.{
+            .{ .name = "OPEN", .symbol = .{ .kind = .external, .index = 0 }, .kind = .named, .rule = 0 },
+            .{ .name = "CLOSE", .symbol = .{ .kind = .external, .index = 1 }, .kind = .named, .rule = 1 },
+        },
+        .rules = &.{},
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+    const lex_modes = [_]lexer_serialize.SerializedLexMode{
+        .{ .lex_state = 0 },
+        .{ .lex_state = 0 },
+    };
+    const serialized = try attachPreparedMetadataAlloc(allocator, .{
+        .states = &[_]SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]SerializedActionEntry{
+                    .{ .symbol = .{ .external = 0 }, .action = .{ .shift = 1 } },
+                },
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+            .{
+                .id = 1,
+                .actions = &[_]SerializedActionEntry{
+                    .{ .symbol = .{ .external = 1 }, .action = .{ .shift = 2 } },
+                },
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+        .blocked = false,
+        .lex_modes = lex_modes[0..],
+    }, prepared);
+    defer allocator.free(serialized.symbols);
+    defer allocator.free(serialized.lex_modes);
+    defer deinitSupertypeMap(allocator, serialized.supertype_map);
+    defer deinitExternalScanner(allocator, serialized.external_scanner);
+
+    try std.testing.expectEqual(@as(usize, 3), serialized.external_scanner.states.len);
+    try std.testing.expect(!serialized.external_scanner.states[0][0]);
+    try std.testing.expect(!serialized.external_scanner.states[0][1]);
+    try std.testing.expect(serialized.external_scanner.states[1][0]);
+    try std.testing.expect(!serialized.external_scanner.states[1][1]);
+    try std.testing.expect(!serialized.external_scanner.states[2][0]);
+    try std.testing.expect(serialized.external_scanner.states[2][1]);
+    try std.testing.expectEqual(@as(u16, 1), serialized.lex_modes[0].external_lex_state);
+    try std.testing.expectEqual(@as(u16, 2), serialized.lex_modes[1].external_lex_state);
 }
 
 test "attachExtraShiftMetadataAlloc marks terminal extra shifts" {

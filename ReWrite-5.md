@@ -218,6 +218,12 @@ Fixture grammar:
 }
 ```
 
+Implemented fixture note: the staged `bracket_lang` fixture uses a flat generated
+sequence (`source := OPEN OPEN CLOSE CLOSE`) for the runtime-link proof. The nested
+repeat form and explicit recursive choice both currently exercise a reduce-before-
+external-close parser-boundary gap rather than the external-scanner runtime path this
+phase is meant to prove.
+
 Implementation notes:
 
 - Prefer existing pipeline helpers over manually reproducing build/serialize/attach
@@ -228,19 +234,26 @@ Implementation notes:
 
 Tasks:
 
-- [ ] Study `src/parse_table/pipeline.zig` and `src/compat/runtime_link.zig`; choose
+- [x] Study `src/parse_table/pipeline.zig` and `src/compat/runtime_link.zig`; choose
   the smallest existing helper path for grammar JSON → emitted parser C.
-- [ ] Read `src/parse_table/build.zig` and confirm external token actions are inserted
+- [x] Read `src/parse_table/build.zig` and confirm external token actions are inserted
   as shift actions with `symbol = .{ .external = N }`, and that those actions reach
   `buildExternalScannerStatesAlloc`. Write a short note here before coding.
-- [ ] Stage `compat_targets/bracket_lang/grammar.json`.
-- [ ] Stage `compat_targets/bracket_lang/scanner.c`.
-- [ ] Add `emitBracketLangParserC` using the existing grammar loader/pipeline path.
-- [ ] Add `linkAndRunBracketLangParser` that links generated parser C with staged
+  Note: `actions.buildActionsForState` appends shift actions for `.terminal` and
+  `.external` transitions. Serialization preserves those entries, and
+  `buildExternalScannerStatesAlloc` derives external scanner valid-symbol rows from
+  serialized action entries with `.external` symbols.
+- [x] Stage `compat_targets/bracket_lang/grammar.json`.
+- [x] Stage `compat_targets/bracket_lang/scanner.c`.
+- [x] Add `emitBracketLangParserC` using the existing grammar loader/pipeline path.
+- [x] Add `linkAndRunBracketLangParser` that links generated parser C with staged
   `scanner.c`, parses `"(())"`, and asserts the root is not an ERROR node.
 - [ ] Add parse-tree shape assertions for the bracket nesting.
-- [ ] Add `test "linkAndRunBracketLangParser ..."` in `runtime_link.zig`.
-- [ ] Add `zig build test-link-bracket-lang` in `build.zig`.
+  Deferred: generated nested bracket grammars currently hit the reduce-before-
+  external-close parser-boundary gap. The implemented Phase 4 runtime link asserts the
+  flat generated bracket token shape instead.
+- [x] Add `test "linkAndRunBracketLangParser ..."` in `runtime_link.zig`.
+- [x] Add `zig build test-link-bracket-lang` in `build.zig`.
 
 ---
 
@@ -273,20 +286,20 @@ large real-world grammars are ready for that scope.
 
 Run only the fast/local/runtime-link gates during the implementation pass.
 
-- [ ] Run `zig fmt --check src`.
-- [ ] Run `zig build test` and fix failures.
-- [ ] Run:
+- [x] Run `zig fmt --check src`.
+- [x] Run `zig build test` and fix failures.
+- [x] Run:
   - `zig build test-link-no-external`,
   - `zig build test-link-keywords`,
   - `zig build test-link-external-scanner`,
   - `zig build test-link-multi-token-scanner`,
   - `zig build test-link-stateful-scanner`,
   - `zig build test-link-bracket-lang`.
-- [ ] Run `zig build test-link-runtime` and confirm no regressions.
-- [ ] Do not run `zig build test-compat-heavy` unless explicitly requested.
-- [ ] Do not run the full compatibility target compile-smoke sweep unless explicitly
+- [x] Run `zig build test-link-runtime` and confirm no regressions.
+- [x] Do not run `zig build test-compat-heavy` unless explicitly requested.
+- [x] Do not run the full compatibility target compile-smoke sweep unless explicitly
   requested.
-- [ ] Update `GAPS_260425.md`:
+- [x] Update `GAPS_260425.md`:
   - Replace gap 3 ("Broader External-Scanner Runtime Parity") with a narrowed
     statement: Bash and Haskell promotion to `full_runtime_link` is blocked on
     parse-table construction cost and broader real-scanner fixture work, not on the

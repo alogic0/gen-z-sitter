@@ -245,6 +245,68 @@ pub fn generateParserCEmitterDumpFromPreparedWithOptions(
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, options);
 }
 
+pub fn generateParserCEmitterDumpFromGrammarPath(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    mode: serialize.SerializeMode,
+    options: emit_optimize.Options,
+) (PipelineError || grammar_loader.LoaderError || parse_grammar.ParseGrammarError)![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFile(allocator, path);
+    defer loaded.deinit();
+    const prepared = try parse_grammar.parseRawGrammar(allocator, &loaded.json.grammar);
+    return try generateParserCEmitterDumpFromPreparedWithOptions(allocator, prepared, mode, options);
+}
+
+pub fn serializeTableFromGrammarPath(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    mode: serialize.SerializeMode,
+) (PipelineError || grammar_loader.LoaderError || parse_grammar.ParseGrammarError)!serialize.SerializedTable {
+    var loaded = try grammar_loader.loadGrammarFile(allocator, path);
+    defer loaded.deinit();
+    const prepared = try parse_grammar.parseRawGrammar(allocator, &loaded.json.grammar);
+    return try serializeTableFromPrepared(allocator, prepared, mode);
+}
+
+pub fn serializeRuntimeTableFromGrammarPath(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    mode: serialize.SerializeMode,
+) (PipelineError || grammar_loader.LoaderError || parse_grammar.ParseGrammarError)!serialize.SerializedTable {
+    var loaded = try grammar_loader.loadGrammarFile(allocator, path);
+    defer loaded.deinit();
+    const prepared = try parse_grammar.parseRawGrammar(allocator, &loaded.json.grammar);
+    var serialized = try serializeTableFromPrepared(allocator, prepared, mode);
+    const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    const eof_valids = try eofValidLexStatesAlloc(allocator, serialized);
+    serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesWithEofAlloc(
+        allocator,
+        prepared.rules,
+        extracted.lexical,
+        serialized.lex_state_terminal_sets,
+        eof_valids,
+    );
+    return serialized;
+}
+
+fn eofValidLexStatesAlloc(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+) std.mem.Allocator.Error![]const bool {
+    const values = try allocator.alloc(bool, serialized.lex_state_terminal_sets.len);
+    @memset(values, false);
+    for (serialized.states) |state_value| {
+        if (state_value.lex_state_id >= values.len) continue;
+        for (state_value.actions) |entry| {
+            if (entry.symbol == .end) {
+                values[state_value.lex_state_id] = true;
+                break;
+            }
+        }
+    }
+    return values;
+}
+
 pub fn serializeTableFromPrepared(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,

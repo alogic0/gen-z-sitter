@@ -116,6 +116,7 @@ pub fn build(b: *std.Build) void {
         "linkAndRunExternalScannerParser",
         "linkAndRunMultiTokenExternalScannerParser",
         "linkAndRunStatefulExternalScannerParser",
+        "linkAndRunBracketLangParser",
     };
     const no_external_link_tests = b.addTest(.{
         .root_module = b.createModule(.{
@@ -186,6 +187,20 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_stateful_scanner_link_tests.addArgs(args);
     const stateful_scanner_link_step = b.step("test-link-stateful-scanner", "Link and run a generated stateful external-scanner parser with tree-sitter runtime");
     stateful_scanner_link_step.dependOn(&run_stateful_scanner_link_tests.step);
+
+    const bracket_lang_link_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunBracketLangParser"},
+    });
+
+    const run_bracket_lang_link_tests = b.addRunArtifact(bracket_lang_link_tests);
+    if (b.args) |args| run_bracket_lang_link_tests.addArgs(args);
+    const bracket_lang_link_step = b.step("test-link-bracket-lang", "Link and run generated bracket-lang parser with tree-sitter runtime");
+    bracket_lang_link_step.dependOn(&run_bracket_lang_link_tests.step);
 
     const runtime_link_tests = b.addTest(.{
         .root_module = b.createModule(.{
