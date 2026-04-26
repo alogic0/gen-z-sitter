@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) void {
     const compat_stop_after = b.option([]const u8, "compat-stop-after", "Stop run-compat-target after this stage");
 
     const exe = b.addExecutable(.{
-        .name = "zig-tree-sit",
+        .name = "gen-z-sitter",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) void {
         run_cmd.addArgs(args);
     }
 
-    const run_step = b.step("run", "Run the zig-tree-sit executable");
+    const run_step = b.step("run", "Run the gen-z-sitter executable");
     run_step.dependOn(&run_cmd.step);
 
     const unit_tests = b.addTest(.{

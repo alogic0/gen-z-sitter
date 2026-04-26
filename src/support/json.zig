@@ -14,7 +14,7 @@ pub fn stringifyAlloc(allocator: std.mem.Allocator, value: anytype) ![]u8 {
 test "stringifyAlloc renders stable JSON" {
     const allocator = std.testing.allocator;
     const json = try stringifyAlloc(allocator, .{
-        .name = "zig-tree-sit",
+        .name = "gen-z-sitter",
         .version = "0.0.0",
     });
     defer allocator.free(json);

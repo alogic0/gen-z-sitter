@@ -122,11 +122,11 @@ fn parseGenerateArgs(args: []const []const u8) ParseError!GenerateOptions {
 
 pub fn helpText() []const u8 {
     return
-    \\zig-tree-sit
+    \\gen-z-sitter
     \\
     \\Usage:
-    \\  zig-tree-sit help
-    \\  zig-tree-sit generate [options] <grammar-path>
+    \\  gen-z-sitter help
+    \\  gen-z-sitter generate [options] <grammar-path>
     \\
     \\Generate options:
     \\  --output <dir>
@@ -143,30 +143,30 @@ pub fn helpText() []const u8 {
 }
 
 test "parse help when no subcommand is provided" {
-    const cli = try parseArgs(std.testing.allocator, &.{"zig-tree-sit"});
+    const cli = try parseArgs(std.testing.allocator, &.{"gen-z-sitter"});
     try std.testing.expect(cli.command == .help);
 }
 
 test "parse generate command with required grammar path" {
-    const cli = try parseArgs(std.testing.allocator, &.{ "zig-tree-sit", "generate", "grammar.json" });
+    const cli = try parseArgs(std.testing.allocator, &.{ "gen-z-sitter", "generate", "grammar.json" });
     try std.testing.expect(cli.command == .generate);
     try std.testing.expectEqualStrings("grammar.json", cli.command.generate.grammar_path);
     try std.testing.expectEqual(@as(u32, 15), cli.command.generate.abi_version);
 }
 
 test "parse generate command with debug prepared flag" {
-    const cli = try parseArgs(std.testing.allocator, &.{ "zig-tree-sit", "generate", "--debug-prepared", "grammar.json" });
+    const cli = try parseArgs(std.testing.allocator, &.{ "gen-z-sitter", "generate", "--debug-prepared", "grammar.json" });
     try std.testing.expect(cli.command == .generate);
     try std.testing.expect(cli.command.generate.debug_prepared);
 }
 
 test "parse generate command with debug node types flag" {
-    const cli = try parseArgs(std.testing.allocator, &.{ "zig-tree-sit", "generate", "--debug-node-types", "grammar.json" });
+    const cli = try parseArgs(std.testing.allocator, &.{ "gen-z-sitter", "generate", "--debug-node-types", "grammar.json" });
     try std.testing.expect(cli.command == .generate);
     try std.testing.expect(cli.command.generate.debug_node_types);
 }
 
 test "reject missing grammar path" {
-    try std.testing.expectError(error.InvalidArguments, parseArgs(std.testing.allocator, &.{ "zig-tree-sit", "generate" }));
+    try std.testing.expectError(error.InvalidArguments, parseArgs(std.testing.allocator, &.{ "gen-z-sitter", "generate" }));
     try std.testing.expect(last_error_message != null);
 }

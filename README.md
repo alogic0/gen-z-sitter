@@ -92,13 +92,13 @@ Expected current behavior:
 
 ## CLI
 
-The executable is `zig-tree-sit`.
+The executable is `gen-z-sitter`.
 
 Usage:
 
 ```text
-zig-tree-sit help
-zig-tree-sit generate [options] <grammar-path>
+gen-z-sitter help
+gen-z-sitter generate [options] <grammar-path>
 ```
 
 Supported generate options:

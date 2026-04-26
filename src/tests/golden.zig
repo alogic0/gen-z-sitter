@@ -5,5 +5,5 @@ pub fn expectContains(haystack: []const u8, needle: []const u8) !void {
 }
 
 test "expectContains succeeds for present substring" {
-    try expectContains("zig-tree-sit", "tree");
+    try expectContains("gen-z-sitter", "sitter");
 }
