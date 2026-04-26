@@ -1770,18 +1770,20 @@ test "emitParserCAlloc emits external scanner symbols and declarations" {
         .blocked = true,
         .grammar_name = "external grammar",
         .symbols = &[_]serialize.SerializedSymbolInfo{
-            .{ .ref = .{ .external = 0 }, .name = "_indent", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
-            .{ .ref = .{ .external = 1 }, .name = "dedent-token", .named = false, .visible = false, .supertype = false, .public_symbol = 1 },
+            .{ .ref = .{ .external = 0 }, .name = "OPEN", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
+            .{ .ref = .{ .external = 1 }, .name = "CLOSE", .named = false, .visible = false, .supertype = false, .public_symbol = 1 },
+            .{ .ref = .{ .external = 2 }, .name = "ERROR_SENTINEL", .named = false, .visible = false, .supertype = false, .public_symbol = 2 },
         },
         .external_scanner = .{
             .symbols = &[_]syntax_grammar.SymbolRef{
                 .{ .external = 0 },
                 .{ .external = 1 },
+                .{ .external = 2 },
             },
             .states = &[_][]const bool{
-                &.{ false, false },
-                &.{ true, false },
-                &.{ true, true },
+                &.{ false, false, false },
+                &.{ true, false, false },
+                &.{ true, true, false },
             },
         },
         .states = &[_]serialize.SerializedState{
@@ -1792,14 +1794,17 @@ test "emitParserCAlloc emits external scanner symbols and declarations" {
     const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
     defer allocator.free(emitted);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define EXTERNAL_TOKEN_COUNT 2\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define EXTERNAL_TOKEN_COUNT 3\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "enum ts_external_scanner_symbol_identifiers {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token__indent = 0,\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_dedent_token = 1,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_OPEN = 0,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_CLOSE = 1,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_ERROR_SENTINEL = 2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_external_scanner_symbol_map[EXTERNAL_TOKEN_COUNT] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const bool ts_external_scanner_states[][EXTERNAL_TOKEN_COUNT] = {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { true, false },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = { true, true },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { false, false, false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { true, false, false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = { true, true, false },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "extern void *tree_sitter_external_grammar_external_scanner_create(void);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "extern bool tree_sitter_external_grammar_external_scanner_scan(void *, TSLexer *, const bool *);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .states = &ts_external_scanner_states[0][0],\n"));

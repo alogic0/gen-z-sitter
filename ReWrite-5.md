@@ -78,25 +78,25 @@ inventory/proof-scope reporting.
 **Why first.** This is the smallest and most deterministic gap. It tests the exact
 serialized data that the runtime scanner consumes without designing a full parser.
 
-- [ ] Read `buildExternalScannerStatesAlloc` in `src/parse_table/serialize.zig` and
+- [x] Read `buildExternalScannerStatesAlloc` in `src/parse_table/serialize.zig` and
   confirm how it:
   - collects external symbols from parse-state action entries,
   - deduplicates bool rows,
   - assigns `external_lex_state` per parse state,
   - keeps all-false state 0 for parse states with no external-token action.
-- [ ] Add a focused unit test in `serialize.zig` that builds hand-crafted serialized
+- [x] Add a focused unit test in `serialize.zig` that builds hand-crafted serialized
   states:
   - State A has action for `external 0` only.
   - State B has actions for `external 0` and `external 1`.
   - State C has no external actions.
   - The serialized symbol metadata declares three external symbols:
     `OPEN`, `CLOSE`, and `ERROR_SENTINEL`.
-- [ ] Assert the produced matrix:
+- [x] Assert the produced matrix:
   - State A maps to `{ true, false, false }`.
   - State B maps to `{ true, true, false }`.
   - State C maps to all-false state 0.
   - `ERROR_SENTINEL` is false in every row.
-- [ ] Add a focused parser C emitter test that emits `ts_external_scanner_states` and
+- [x] Add a focused parser C emitter test that emits `ts_external_scanner_states` and
   `ts_external_scanner_symbol_map` for the same matrix and asserts the expected rows
   appear in generated C.
 

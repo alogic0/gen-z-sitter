@@ -1718,8 +1718,9 @@ test "attachPreparedMetadataAlloc derives external scanner state sets from actio
         .grammar_name = "external_states",
         .variables = &.{},
         .external_tokens = &.{
-            .{ .name = "indent", .symbol = .{ .kind = .external, .index = 0 }, .kind = .named, .rule = 0 },
-            .{ .name = "dedent", .symbol = .{ .kind = .external, .index = 1 }, .kind = .named, .rule = 1 },
+            .{ .name = "OPEN", .symbol = .{ .kind = .external, .index = 0 }, .kind = .named, .rule = 0 },
+            .{ .name = "CLOSE", .symbol = .{ .kind = .external, .index = 1 }, .kind = .named, .rule = 1 },
+            .{ .name = "ERROR_SENTINEL", .symbol = .{ .kind = .external, .index = 2 }, .kind = .named, .rule = 2 },
         },
         .rules = &.{},
         .symbols = &.{},
@@ -1766,13 +1767,17 @@ test "attachPreparedMetadataAlloc derives external scanner state sets from actio
     defer deinitSupertypeMap(allocator, serialized.supertype_map);
     defer deinitExternalScanner(allocator, serialized.external_scanner);
 
-    try std.testing.expectEqual(@as(usize, 2), serialized.external_scanner.symbols.len);
+    try std.testing.expectEqual(@as(usize, 3), serialized.external_scanner.symbols.len);
     try std.testing.expectEqual(@as(usize, 3), serialized.external_scanner.states.len);
     try std.testing.expect(!serialized.external_scanner.states[0][0]);
+    try std.testing.expect(!serialized.external_scanner.states[0][1]);
+    try std.testing.expect(!serialized.external_scanner.states[0][2]);
     try std.testing.expect(serialized.external_scanner.states[1][0]);
     try std.testing.expect(!serialized.external_scanner.states[1][1]);
+    try std.testing.expect(!serialized.external_scanner.states[1][2]);
     try std.testing.expect(serialized.external_scanner.states[2][0]);
     try std.testing.expect(serialized.external_scanner.states[2][1]);
+    try std.testing.expect(!serialized.external_scanner.states[2][2]);
     try std.testing.expectEqual(@as(u16, 0), serialized.lex_modes[0].external_lex_state);
     try std.testing.expectEqual(@as(u16, 1), serialized.lex_modes[1].external_lex_state);
     try std.testing.expectEqual(@as(u16, 2), serialized.lex_modes[2].external_lex_state);
