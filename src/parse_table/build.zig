@@ -572,10 +572,6 @@ const ClosureResultCache = struct {
         self.entries.deinit();
     }
 
-    fn len(self: @This()) usize {
-        return self.entries.items.len;
-    }
-
     fn getOrBuild(
         self: *@This(),
         variables: []const syntax_ir.SyntaxVariable,
@@ -2759,16 +2755,6 @@ const ClosureRun = struct {
         return generated;
     }
 };
-
-fn findClosureResultCache(
-    entries: []const ClosureResultCacheEntry,
-    seed_items: item.ParseItemSet,
-) ?item.ParseItemSet {
-    for (entries) |entry| {
-        if (itemsEql(entry.seed_items.entries, seed_items.entries)) return entry.closed_items;
-    }
-    return null;
-}
 
 fn countDistinctSeedCores(entries: []const ClosureResultCacheEntry, seed_items: item.ParseItemSet) usize {
     var count: usize = 0;

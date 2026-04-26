@@ -103,6 +103,26 @@ The replacement must carry its own fixed-point guarantee: keep a visited set
 during closure iteration keyed by `(item_core, lookaheads)` and stop when no
 new items are added.
 
+**Current branch note.**
+
+The local builder already precomputes transitive closure additions per
+non-terminal. A direct experiment that removed the full `ClosureResultCache`
+kept output correct but made `tree_sitter_zig_json` serialize in about 31s
+instead of the normal single-digit-second range. That means the next safe
+implementation step is not bare cache removal. It is to move the per-closure
+`ClosureExpansionCache` into a shared item-set-builder cache, so repeated
+`(non_terminal, context_follow, reserved_word_set)` expansions are reused
+without storing whole closed successor item sets.
+
+Do this before removing `ClosureResultCache`:
+
+- [ ] Add a shared closure-expansion cache owned by `ParseItemSetBuilder` or an
+  adjacent item-set-construction context.
+- [ ] Reuse generated additions across successor closures.
+- [ ] Keep the existing full-closure cache until `tree_sitter_zig_json`
+  serialize time stays in the previous range.
+- [ ] Then remove `ClosureResultCache` and rerun state/action regression checks.
+
 ---
 
 ## Phase 2 — Multi-action Table
