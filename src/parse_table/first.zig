@@ -52,20 +52,29 @@ pub const SymbolBits = struct {
     }
 
     pub fn merge(target: *SymbolBits, incoming: SymbolBits) bool {
+        std.debug.assert(target.bits.bit_length == incoming.bits.bit_length);
+
         var changed = false;
-        var iter = incoming.bits.iterator(.{});
-        while (iter.next()) |index| {
-            if (target.get(index)) continue;
-            target.set(index);
+
+        const masks_len = maskCount(target.bits.bit_length);
+        for (target.bits.masks[0..masks_len], incoming.bits.masks[0..masks_len]) |*target_mask, incoming_mask| {
+            const merged = target_mask.* | incoming_mask;
+            if (merged == target_mask.*) continue;
+            target_mask.* = merged;
             changed = true;
         }
+
         return changed;
     }
 
     pub fn maskBytes(self: SymbolBits) []const u8 {
-        const mask_count = (self.bits.bit_length + @bitSizeOf(std.DynamicBitSetUnmanaged.MaskInt) - 1) /
-            @bitSizeOf(std.DynamicBitSetUnmanaged.MaskInt);
+        const mask_count = maskCount(self.bits.bit_length);
         return std.mem.sliceAsBytes(self.bits.masks[0..mask_count]);
+    }
+
+    fn maskCount(bit_count: usize) usize {
+        const bits_per_mask = @bitSizeOf(std.DynamicBitSetUnmanaged.MaskInt);
+        return (bit_count + bits_per_mask - 1) / bits_per_mask;
     }
 };
 
@@ -344,6 +353,27 @@ test "computeFirstSets handles terminals and nullable prefixes deterministically
     try std.testing.expect(source_first.includes_epsilon);
     try std.testing.expect(expr_first.containsTerminal(0));
     try std.testing.expect(expr_first.includes_epsilon);
+}
+
+test "SymbolBits.merge unions masks and reports changes" {
+    const bit_count = @bitSizeOf(std.DynamicBitSetUnmanaged.MaskInt) * 2 + 7;
+    var target = try SymbolBits.initEmpty(std.testing.allocator, bit_count);
+    defer target.deinit(std.testing.allocator);
+    var incoming = try SymbolBits.initEmpty(std.testing.allocator, bit_count);
+    defer incoming.deinit(std.testing.allocator);
+
+    target.set(1);
+    incoming.set(1);
+    incoming.set(@bitSizeOf(std.DynamicBitSetUnmanaged.MaskInt) + 3);
+    incoming.set(bit_count - 1);
+
+    try std.testing.expect(SymbolBits.merge(&target, incoming));
+    try std.testing.expect(target.get(1));
+    try std.testing.expect(target.get(@bitSizeOf(std.DynamicBitSetUnmanaged.MaskInt) + 3));
+    try std.testing.expect(target.get(bit_count - 1));
+    try std.testing.expect(!target.get(bit_count - 2));
+
+    try std.testing.expect(!SymbolBits.merge(&target, incoming));
 }
 
 test "firstOfSequence carries terminals across nullable non-terminals" {
