@@ -1,6 +1,6 @@
 # Zig Tree-sitter Generator Rewrite
 
-This repository is a Zig rewrite of the Tree-sitter generator pipeline. The goal is to reproduce the practical behavior of `tree-sitter generate` while keeping the existing ecosystem contract: load `grammar.json` or `grammar.js`, compute the same core grammar artifacts, and emit parser output that remains compatible with the current C runtime expectations.
+This repository is a Zig rewrite of the [Tree-sitter](https://github.com/tree-sitter/tree-sitter) generator pipeline. The goal is to reproduce the practical behavior of `tree-sitter generate` while keeping the existing ecosystem contract: load `grammar.json` or `grammar.js`, compute the same core grammar artifacts, and emit parser output that remains compatible with the current C runtime expectations.
 
 The codebase is past the early planning-only stage. It contains a working compiler-style pipeline, parser table and parser C emitters, compatibility fixtures, runtime-link proofs, tests, and a CLI for loading grammars, inspecting prepared IR, and generating `node-types.json`.
 
