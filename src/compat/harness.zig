@@ -387,6 +387,16 @@ pub fn runTarget(
     }
 
     if (target.boundary_kind == .parser_only and target.parser_boundary_check_mode == .serialize_only) {
+        const scoped_parse_table_progress = shouldEnableParseTableScopedProgress(target.id);
+        if (scoped_parse_table_progress) {
+            parse_table_build.setScopedProgressEnabled(true);
+            parse_table_pipeline.setScopedProgressEnabled(true);
+        }
+        defer if (scoped_parse_table_progress) {
+            parse_table_build.setScopedProgressEnabled(false);
+            parse_table_pipeline.setScopedProgressEnabled(false);
+        };
+
         std.debug.print("[compat/harness] stage serialize {s}\n", .{target.id});
         const serialize_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
         if (detail_progress) logDetailStart(target.id, "routine_coarse_serialize_only");

@@ -753,6 +753,7 @@ fn findClosureExpansionCache(
     for (entries) |entry| {
         if (entry.non_terminal != non_terminal) continue;
         if (entry.closure_lookahead_mode != closure_lookahead_mode) continue;
+        if (closure_lookahead_mode == .none) return entry.generated_items;
         if (!first.SymbolSet.eql(entry.context_follow, context_follow)) continue;
         if (entry.following_reserved_word_set_id != following_reserved_word_set_id) continue;
         if (entry.production_end_reserved_word_set_id != production_end_reserved_word_set_id) continue;
@@ -3272,30 +3273,26 @@ fn closure(
     const reporter = ClosureReporter.init(run.progress_log, run.trace_current_closure);
     reporter.logStart(seed_items.len);
 
-    var changed = true;
-    var round: usize = 0;
-    while (changed) {
-        round += 1;
-        changed = false;
-        const round_start_len = run.items.items.len;
-        reporter.logRoundStart(round, round_start_len);
-        var cursor: usize = 0;
-        while (cursor < run.items.items.len) : (cursor += 1) {
-            reporter.logCursorProgress(round, cursor, run.items.items.len);
-            changed = try run.expandCursor(&stats, round, cursor, options) or changed;
-        }
-        state.sortItems(run.items.items);
-        reporter.logRoundDone(
-            variables,
-            &stats,
-            round,
-            run.items.items.len,
-            run.items.items.len - round_start_len,
-            changed,
-        );
+    const seed_count = run.items.items.len;
+    const round: usize = 1;
+    const round_start_len = run.items.items.len;
+    reporter.logRoundStart(round, round_start_len);
+    var cursor: usize = 0;
+    while (cursor < seed_count) : (cursor += 1) {
+        reporter.logCursorProgress(round, cursor, seed_count);
+        _ = try run.expandCursor(&stats, round, cursor, options);
     }
+    state.sortItems(run.items.items);
+    reporter.logRoundDone(
+        variables,
+        &stats,
+        round,
+        run.items.items.len,
+        run.items.items.len - round_start_len,
+        false,
+    );
 
-    reporter.logComplete(round, run.items.items.len, run.effective_closure_lookahead_mode);
+    reporter.logComplete(1, run.items.items.len, run.effective_closure_lookahead_mode);
 
     return try run.toOwnedSlice();
 }

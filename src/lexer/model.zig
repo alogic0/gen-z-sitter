@@ -446,6 +446,7 @@ const TokenConflictPairState = struct {
 
 const PatternQuantifier = enum {
     once,
+    optional,
     zero_or_more,
     one_or_more,
 };
@@ -457,6 +458,190 @@ const PatternAtom = struct {
     fn deinit(self: *PatternAtom, allocator: std.mem.Allocator) void {
         self.chars.deinit(allocator);
         self.* = undefined;
+    }
+};
+
+const RegexRepeat = union(enum) {
+    optional,
+    zero_or_more,
+    one_or_more,
+    range: struct {
+        min: usize,
+        max: usize,
+    },
+};
+
+const RegexNode = union(enum) {
+    empty,
+    chars: CharacterSet,
+    sequence: []RegexNode,
+    choice: []RegexNode,
+    repeat: struct {
+        node: *RegexNode,
+        quantifier: RegexRepeat,
+    },
+
+    fn deinit(self: *RegexNode, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .empty => {},
+            .chars => |*chars| chars.deinit(allocator),
+            .sequence, .choice => |nodes| {
+                for (nodes) |*node| node.deinit(allocator);
+                allocator.free(nodes);
+            },
+            .repeat => |repeat| {
+                repeat.node.deinit(allocator);
+                allocator.destroy(repeat.node);
+            },
+        }
+        self.* = undefined;
+    }
+};
+
+const RegexParser = struct {
+    allocator: std.mem.Allocator,
+    value: []const u8,
+    flags: ?[]const u8,
+    index: usize = 0,
+
+    fn parse(self: *RegexParser) ExpandError!RegexNode {
+        var node = try self.parseChoice();
+        errdefer node.deinit(self.allocator);
+        if (self.index != self.value.len) return error.UnsupportedPattern;
+        return node;
+    }
+
+    fn parseChoice(self: *RegexParser) ExpandError!RegexNode {
+        var alternatives = std.ArrayListUnmanaged(RegexNode).empty;
+        errdefer {
+            for (alternatives.items) |*node| node.deinit(self.allocator);
+            alternatives.deinit(self.allocator);
+        }
+
+        try alternatives.append(self.allocator, try self.parseSequence());
+        while (self.index < self.value.len and self.value[self.index] == '|') {
+            self.index += 1;
+            try alternatives.append(self.allocator, try self.parseSequence());
+        }
+
+        if (alternatives.items.len == 1) {
+            const node = alternatives.items[0];
+            alternatives.deinit(self.allocator);
+            return node;
+        }
+
+        return .{ .choice = try alternatives.toOwnedSlice(self.allocator) };
+    }
+
+    fn parseSequence(self: *RegexParser) ExpandError!RegexNode {
+        var nodes = std.ArrayListUnmanaged(RegexNode).empty;
+        errdefer {
+            for (nodes.items) |*node| node.deinit(self.allocator);
+            nodes.deinit(self.allocator);
+        }
+
+        while (self.index < self.value.len and self.value[self.index] != ')' and self.value[self.index] != '|') {
+            try nodes.append(self.allocator, try self.parseRepeat());
+        }
+
+        if (nodes.items.len == 0) return .empty;
+        if (nodes.items.len == 1) {
+            const node = nodes.items[0];
+            nodes.deinit(self.allocator);
+            return node;
+        }
+
+        return .{ .sequence = try nodes.toOwnedSlice(self.allocator) };
+    }
+
+    fn parseRepeat(self: *RegexParser) ExpandError!RegexNode {
+        var node = try self.parsePrimary();
+        errdefer node.deinit(self.allocator);
+
+        if (self.index >= self.value.len) return node;
+        const quantifier: ?RegexRepeat = switch (self.value[self.index]) {
+            '?' => blk: {
+                self.index += 1;
+                break :blk .optional;
+            },
+            '*' => blk: {
+                self.index += 1;
+                break :blk .zero_or_more;
+            },
+            '+' => blk: {
+                self.index += 1;
+                break :blk .one_or_more;
+            },
+            '{' => try self.parseRangeQuantifier(),
+            else => null,
+        };
+        if (quantifier == null) return node;
+
+        const inner = try self.allocator.create(RegexNode);
+        inner.* = node;
+        return .{ .repeat = .{
+            .node = inner,
+            .quantifier = quantifier.?,
+        } };
+    }
+
+    fn parsePrimary(self: *RegexParser) ExpandError!RegexNode {
+        if (self.index >= self.value.len) return error.UnsupportedPattern;
+        return switch (self.value[self.index]) {
+            '(' => blk: {
+                self.index += 1;
+                var node = try self.parseChoice();
+                errdefer node.deinit(self.allocator);
+                if (self.index >= self.value.len or self.value[self.index] != ')') return error.UnsupportedPattern;
+                self.index += 1;
+                break :blk node;
+            },
+            '[' => blk: {
+                const atom = try parseBracketClassAtom(self.allocator, self.value, &self.index, self.flags);
+                break :blk .{ .chars = atom.chars };
+            },
+            '.' => blk: {
+                self.index += 1;
+                var chars = try CharacterSet.full(self.allocator);
+                try chars.removeCodepointRange(self.allocator, '\n', '\n' + 1);
+                break :blk .{ .chars = chars };
+            },
+            '\\' => blk: {
+                const atom = try parseEscapedAtom(self.allocator, self.value, &self.index);
+                break :blk .{ .chars = atom.chars };
+            },
+            ')', '|', '?', '*', '+', '{' => error.UnsupportedPattern,
+            else => blk: {
+                const chars = try CharacterSet.fromChar(self.allocator, self.value[self.index]);
+                self.index += 1;
+                break :blk .{ .chars = chars };
+            },
+        };
+    }
+
+    fn parseRangeQuantifier(self: *RegexParser) ExpandError!?RegexRepeat {
+        std.debug.assert(self.value[self.index] == '{');
+        self.index += 1;
+        const min = try self.parseUnsigned();
+        var max = min;
+        if (self.index < self.value.len and self.value[self.index] == ',') {
+            self.index += 1;
+            max = try self.parseUnsigned();
+        }
+        if (self.index >= self.value.len or self.value[self.index] != '}') return error.UnsupportedPattern;
+        self.index += 1;
+        if (max < min) return error.UnsupportedPattern;
+        return .{ .range = .{ .min = min, .max = max } };
+    }
+
+    fn parseUnsigned(self: *RegexParser) ExpandError!usize {
+        const start = self.index;
+        var value: usize = 0;
+        while (self.index < self.value.len and std.ascii.isDigit(self.value[self.index])) : (self.index += 1) {
+            value = value * 10 + (self.value[self.index] - '0');
+        }
+        if (self.index == start) return error.UnsupportedPattern;
+        return value;
     }
 };
 
@@ -684,28 +869,107 @@ const Builder = struct {
     }
 
     fn expandSequencePattern(self: *Builder, pattern: rules.Pattern, next_state_id: u32) ExpandError!bool {
-        var atoms = std.ArrayListUnmanaged(PatternAtom).empty;
-        defer {
-            for (atoms.items) |*atom| atom.deinit(self.allocator);
-            atoms.deinit(self.allocator);
-        }
+        var parser = RegexParser{
+            .allocator = self.allocator,
+            .value = pattern.value,
+            .flags = pattern.flags,
+        };
+        var node = try parser.parse();
+        defer node.deinit(self.allocator);
+        _ = try self.expandRegexNode(node, next_state_id);
+        return node != .empty;
+    }
 
-        try parsePatternAtoms(self.allocator, pattern, &atoms);
-        if (atoms.items.len == 0) return false;
+    fn expandRegexNode(self: *Builder, node: RegexNode, next_state_id: u32) ExpandError!u32 {
+        return switch (node) {
+            .empty => next_state_id,
+            .chars => |chars| self.expandPatternAtom(.{ .chars = chars }, next_state_id),
+            .sequence => |nodes| blk: {
+                var next = next_state_id;
+                var i = nodes.len;
+                while (i > 0) {
+                    i -= 1;
+                    next = try self.expandRegexNode(nodes[i], next);
+                }
+                break :blk next;
+            },
+            .choice => |nodes| blk: {
+                var alternative_states = std.ArrayListUnmanaged(u32).empty;
+                defer alternative_states.deinit(self.allocator);
+                for (nodes) |alternative| {
+                    try alternative_states.append(self.allocator, try self.expandRegexNode(alternative, next_state_id));
+                }
+                std.mem.sort(u32, alternative_states.items, {}, std.sort.asc(u32));
+                var last: ?u32 = null;
+                for (alternative_states.items) |state_id| {
+                    if (last != null and last.? == state_id) continue;
+                    last = state_id;
+                    if (state_id != self.nfa.lastStateId()) {
+                        try self.pushSplit(state_id, self.nfa.lastStateId());
+                    }
+                }
+                break :blk self.nfa.lastStateId();
+            },
+            .repeat => |repeat| self.expandRegexRepeat(repeat.node.*, repeat.quantifier, next_state_id),
+        };
+    }
 
-        var next = next_state_id;
-        var i = atoms.items.len;
-        while (i > 0) {
-            i -= 1;
-            next = try self.expandPatternAtom(atoms.items[i], next);
-        }
-        return true;
+    fn expandRegexRepeat(self: *Builder, node: RegexNode, quantifier: RegexRepeat, next_state_id: u32) ExpandError!u32 {
+        return switch (quantifier) {
+            .optional => blk: {
+                const inner_start = try self.expandRegexNode(node, next_state_id);
+                try self.pushSplit(inner_start, next_state_id);
+                break :blk self.nfa.lastStateId();
+            },
+            .zero_or_more => blk: {
+                try self.nfa.states.append(self.allocator, .{
+                    .split = .{ .left = next_state_id, .right = next_state_id },
+                });
+                const loop_split_state_id = self.nfa.lastStateId();
+                const inner_start = try self.expandRegexNode(node, loop_split_state_id);
+                self.nfa.states.items[loop_split_state_id] = .{
+                    .split = .{ .left = inner_start, .right = next_state_id },
+                };
+                try self.pushSplit(inner_start, next_state_id);
+                break :blk self.nfa.lastStateId();
+            },
+            .one_or_more => blk: {
+                try self.nfa.states.append(self.allocator, .{
+                    .split = .{ .left = next_state_id, .right = next_state_id },
+                });
+                const loop_split_state_id = self.nfa.lastStateId();
+                const inner_start = try self.expandRegexNode(node, loop_split_state_id);
+                self.nfa.states.items[loop_split_state_id] = .{
+                    .split = .{ .left = inner_start, .right = next_state_id },
+                };
+                try self.pushSplit(inner_start, next_state_id);
+                break :blk inner_start;
+            },
+            .range => |range| blk: {
+                var next = next_state_id;
+                var optional_count = range.max - range.min;
+                while (optional_count > 0) : (optional_count -= 1) {
+                    next = try self.expandRegexRepeat(node, .optional, next);
+                }
+                var required_count = range.min;
+                while (required_count > 0) : (required_count -= 1) {
+                    next = try self.expandRegexNode(node, next);
+                }
+                break :blk next;
+            },
+        };
     }
 
     fn expandPatternAtom(self: *Builder, atom: PatternAtom, next_state_id: u32) !u32 {
         return switch (atom.quantifier) {
             .once => blk: {
                 try self.pushAdvance(try cloneCharacterSet(self.allocator, atom.chars), next_state_id);
+                break :blk self.nfa.lastStateId();
+            },
+            .optional => blk: {
+                try self.pushAdvance(try cloneCharacterSet(self.allocator, atom.chars), next_state_id);
+                const advance_state = self.nfa.lastStateId();
+                try self.pushSplit(advance_state, next_state_id);
                 break :blk self.nfa.lastStateId();
             },
             .zero_or_more => blk: {
@@ -802,6 +1066,10 @@ fn parsePatternAtoms(
         errdefer atom.deinit(allocator);
         if (index < value.len) {
             atom.quantifier = switch (value[index]) {
+                '?' => blk: {
+                    index += 1;
+                    break :blk PatternQuantifier.optional;
+                },
                 '*' => blk: {
                     index += 1;
                     break :blk PatternQuantifier.zero_or_more;
@@ -941,7 +1209,8 @@ fn parseEscapedAtom(
     index.* += 1;
     if (index.* >= value.len) return error.UnsupportedPattern;
 
-    const chars = switch (value[index.*]) {
+    const escaped = value[index.*];
+    const chars = switch (escaped) {
         'n' => try CharacterSet.fromChar(allocator, '\n'),
         'r' => try CharacterSet.fromChar(allocator, '\r'),
         't' => try CharacterSet.fromChar(allocator, '\t'),
@@ -958,10 +1227,26 @@ fn parseEscapedAtom(
             try set.addRange(allocator, '\r', '\r');
             break :blk set;
         },
+        'S' => blk: {
+            var set = try CharacterSet.full(allocator);
+            try set.removeCodepointRange(allocator, ' ', ' ' + 1);
+            try set.removeCodepointRange(allocator, '\t', '\t' + 1);
+            try set.removeCodepointRange(allocator, '\n', '\n' + 1);
+            try set.removeCodepointRange(allocator, '\r', '\r' + 1);
+            break :blk set;
+        },
+        'w' => blk: {
+            var set = CharacterSet.empty();
+            try set.addRange(allocator, 'a', 'z');
+            try set.addRange(allocator, 'A', 'Z');
+            try set.addRange(allocator, '0', '9');
+            try set.addRange(allocator, '_', '_');
+            break :blk set;
+        },
         'p' => try parseUnicodePropertySet(allocator, value, index),
         else => try CharacterSet.fromChar(allocator, value[index.*]),
     };
-    if (value[index.*] != 'p') index.* += 1;
+    if (escaped != 'p') index.* += 1;
     return .{ .chars = chars };
 }
 
@@ -1011,6 +1296,21 @@ fn parseUnicodePropertySet(
     if (std.mem.eql(u8, property_name, "L")) {
         try set.addRange(allocator, 'A', 'Z');
         try set.addRange(allocator, 'a', 'z');
+        try set.addCodepointRange(allocator, 0x80, 0x110000);
+        return set;
+    }
+    if (std.mem.eql(u8, property_name, "XID_Start")) {
+        try set.addRange(allocator, 'A', 'Z');
+        try set.addRange(allocator, 'a', 'z');
+        try set.addRange(allocator, '_', '_');
+        try set.addCodepointRange(allocator, 0x80, 0x110000);
+        return set;
+    }
+    if (std.mem.eql(u8, property_name, "XID_Continue")) {
+        try set.addRange(allocator, 'A', 'Z');
+        try set.addRange(allocator, 'a', 'z');
+        try set.addRange(allocator, '0', '9');
+        try set.addRange(allocator, '_', '_');
         try set.addCodepointRange(allocator, 0x80, 0x110000);
         return set;
     }
@@ -2421,6 +2721,63 @@ test "buildTokenConflictMapAlloc marks same-string conflicts for identical liter
     try std.testing.expect(conflict_map.status(0, 1).matches_same_string);
     try std.testing.expect(!conflict_map.status(1, 0).matches_same_string);
     try std.testing.expect(conflict_map.status(0, 1).starting_overlap);
+}
+
+test "expandExtractedLexicalGrammar supports optional regex atoms" {
+    const all_rules = [_]rules.Rule{
+        .{ .pattern = .{ .value = "\\r?\\n", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "line_end", .kind = .anonymous, .rule = 0 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(?usize, 1), try matchVariable(std.testing.allocator, expanded, 0, "\n"));
+    try std.testing.expectEqual(@as(?usize, 2), try matchVariable(std.testing.allocator, expanded, 0, "\r\n"));
+}
+
+test "expandExtractedLexicalGrammar supports C grammar regex forms" {
+    const all_rules = [_]rules.Rule{
+        .{ .pattern = .{ .value = "#[ \t]*define", .flags = null } },
+        .{ .pattern = .{ .value = "#[ \\t]*[a-zA-Z0-9]\\w*", .flags = null } },
+        .{ .pattern = .{ .value = "[^\\\\\"\\n]+", .flags = null } },
+        .{ .pattern = .{ .value = "x[0-9a-fA-F]{1,4}", .flags = null } },
+        .{ .pattern = .{ .value = "\\d{2,3}", .flags = null } },
+        .{ .pattern = .{ .value = "(\\\\+(.|\\r?\\n)|[^\\\\\\n])*", .flags = null } },
+        .{ .pattern = .{ .value = "[^*]*\\*+([^/*][^*]*\\*+)*", .flags = null } },
+        .{ .pattern = .{
+            .value = "(\\p{XID_Start}|\\$|_|\\\\u[0-9A-Fa-f]{4}|\\\\U[0-9A-Fa-f]{8})(\\p{XID_Continue}|\\$|\\\\u[0-9A-Fa-f]{4}|\\\\U[0-9A-Fa-f]{8})*",
+            .flags = null,
+        } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "preproc", .kind = .anonymous, .rule = 0 },
+            .{ .name = "directive", .kind = .anonymous, .rule = 1 },
+            .{ .name = "string_content", .kind = .anonymous, .rule = 2 },
+            .{ .name = "hex_escape", .kind = .anonymous, .rule = 3 },
+            .{ .name = "digits", .kind = .anonymous, .rule = 4 },
+            .{ .name = "escaped_string", .kind = .anonymous, .rule = 5 },
+            .{ .name = "block_comment_tail", .kind = .anonymous, .rule = 6 },
+            .{ .name = "identifier", .kind = .named, .rule = 7 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(?usize, 8), try matchVariable(std.testing.allocator, expanded, 0, "# define"));
+    try std.testing.expectEqual(@as(?usize, 10), try matchVariable(std.testing.allocator, expanded, 1, "# pragma42"));
+    try std.testing.expectEqual(@as(?usize, 4), try matchVariable(std.testing.allocator, expanded, 3, "x1afz"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 4, "1234"));
+    try std.testing.expectEqual(@as(?usize, 5), try matchVariable(std.testing.allocator, expanded, 7, "alpha+"));
+    try std.testing.expectEqual(@as(?usize, 6), try matchVariable(std.testing.allocator, expanded, 7, "\\u1234+"));
 }
 
 test "buildTokenConflictMapAlloc marks literal prefix and identifier continuation" {
