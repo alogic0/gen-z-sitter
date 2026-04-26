@@ -7,6 +7,7 @@ const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const serialize = @import("../parse_table/serialize.zig");
 const process_support = @import("../support/process.zig");
+const runtime_io = @import("../support/runtime_io.zig");
 const syntax_grammar = @import("../ir/syntax_grammar.zig");
 
 pub const RuntimeLinkError = anyerror;
@@ -117,7 +118,7 @@ pub fn linkAndRunBracketLangParser(allocator: std.mem.Allocator) RuntimeLinkErro
 
     const parser_c = try emitBracketLangParserC(arena.allocator());
     const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
-        std.testing.io,
+        runtime_io.get(),
         bracket_lang_scanner_path,
         arena.allocator(),
         .limited(64 * 1024),
@@ -140,7 +141,7 @@ pub fn linkAndRunBashParserWithRealExternalScanner(allocator: std.mem.Allocator)
 
     const parser_c = try emitBashBareDollarParserC(arena.allocator());
     const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
-        std.testing.io,
+        runtime_io.get(),
         bash_scanner_path,
         arena.allocator(),
         .limited(512 * 1024),
@@ -163,7 +164,7 @@ pub fn linkAndRunHaskellParserWithRealExternalScanner(allocator: std.mem.Allocat
 
     const parser_c = try emitHaskellVarsymParserC(arena.allocator());
     const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
-        std.testing.io,
+        runtime_io.get(),
         haskell_scanner_path,
         arena.allocator(),
         .limited(1024 * 1024),
@@ -974,36 +975,46 @@ fn linkAndRunGeneratedParser(
     allocator: std.mem.Allocator,
     generated: GeneratedParserRun,
 ) RuntimeLinkError!void {
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
+    const timestamp = std.Io.Timestamp.now(runtime_io.get(), .awake);
+    const tmp_path = try std.fmt.allocPrint(
+        allocator,
+        ".zig-cache/runtime-link-{d}",
+        .{timestamp.nanoseconds},
+    );
+    defer allocator.free(tmp_path);
+    try std.Io.Dir.cwd().createDirPath(runtime_io.get(), tmp_path);
+    defer std.Io.Dir.cwd().deleteTree(runtime_io.get(), tmp_path) catch {};
 
-    try tmp.dir.writeFile(std.testing.io, .{
+    var tmp_dir = try std.Io.Dir.cwd().openDir(runtime_io.get(), tmp_path, .{});
+    defer tmp_dir.close(runtime_io.get());
+
+    try tmp_dir.writeFile(runtime_io.get(), .{
         .sub_path = "parser.c",
         .data = generated.parser_c,
     });
     if (generated.scanner_c) |scanner_c| {
-        try tmp.dir.writeFile(std.testing.io, .{
+        try tmp_dir.writeFile(runtime_io.get(), .{
             .sub_path = "scanner.c",
             .data = scanner_c,
         });
     }
     const driver_source = try driverSourceAlloc(allocator, generated);
     defer allocator.free(driver_source);
-    try tmp.dir.writeFile(std.testing.io, .{
+    try tmp_dir.writeFile(runtime_io.get(), .{
         .sub_path = "driver.c",
         .data = driver_source,
     });
 
-    const parser_path = try tmp.dir.realPathFileAlloc(std.testing.io, "parser.c", allocator);
+    const parser_path = try tmp_dir.realPathFileAlloc(runtime_io.get(), "parser.c", allocator);
     defer allocator.free(parser_path);
-    const driver_path = try tmp.dir.realPathFileAlloc(std.testing.io, "driver.c", allocator);
+    const driver_path = try tmp_dir.realPathFileAlloc(runtime_io.get(), "driver.c", allocator);
     defer allocator.free(driver_path);
     const scanner_path = if (generated.scanner_c != null)
-        try tmp.dir.realPathFileAlloc(std.testing.io, "scanner.c", allocator)
+        try tmp_dir.realPathFileAlloc(runtime_io.get(), "scanner.c", allocator)
     else
         null;
     defer if (scanner_path) |path| allocator.free(path);
-    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    const dir_path = try tmp_dir.realPathFileAlloc(runtime_io.get(), ".", allocator);
     defer allocator.free(dir_path);
     const exe_path = try std.fs.path.join(allocator, &.{ dir_path, "driver" });
     defer allocator.free(exe_path);
@@ -1368,12 +1379,12 @@ fn cStringLiteralAlloc(allocator: std.mem.Allocator, value: []const u8) RuntimeL
 }
 
 fn ensureTreeSitterRuntimeAvailable() RuntimeLinkError!void {
-    std.Io.Dir.cwd().access(std.testing.io, tree_sitter_runtime_dir ++ "/lib.c", .{}) catch return error.TreeSitterRuntimeMissing;
-    std.Io.Dir.cwd().access(std.testing.io, tree_sitter_include_dir ++ "/tree_sitter/api.h", .{}) catch return error.TreeSitterRuntimeMissing;
+    std.Io.Dir.cwd().access(runtime_io.get(), tree_sitter_runtime_dir ++ "/lib.c", .{}) catch return error.TreeSitterRuntimeMissing;
+    std.Io.Dir.cwd().access(runtime_io.get(), tree_sitter_include_dir ++ "/tree_sitter/api.h", .{}) catch return error.TreeSitterRuntimeMissing;
 }
 
 fn ensureFileAvailableOrSkip(path: []const u8) RuntimeLinkError!void {
-    std.Io.Dir.cwd().access(std.testing.io, path, .{}) catch return error.SkipZigTest;
+    std.Io.Dir.cwd().access(runtime_io.get(), path, .{}) catch return error.SkipZigTest;
 }
 
 test "linkAndRunNoExternalTinyParser links generated parser with tree-sitter runtime" {

@@ -16,6 +16,7 @@ const compat_checks = @import("../parser_emit/compat_checks.zig");
 const emit_optimize = @import("../parser_emit/optimize.zig");
 const scanner_serialize = @import("../scanner/serialize.zig");
 const behavioral_harness = @import("../behavioral/harness.zig");
+const runtime_link = @import("runtime_link.zig");
 
 pub const RunOptions = struct {
     optimize: emit_optimize.Options = .{},
@@ -120,6 +121,19 @@ fn shouldLogDetailProgress(options: RunOptions) bool {
     if (value.len == 0) return false;
     if (std.mem.eql(u8, value, "0")) return false;
     return true;
+}
+
+fn runScannerRuntimeLinkProof(allocator: std.mem.Allocator, target_id: []const u8) !void {
+    if (std.mem.eql(u8, target_id, "bracket_lang_json")) {
+        return try runtime_link.linkAndRunBracketLangParser(allocator);
+    }
+    if (std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) {
+        return try runtime_link.linkAndRunHaskellParserWithRealExternalScanner(allocator);
+    }
+    if (std.mem.eql(u8, target_id, "tree_sitter_bash_json")) {
+        return try runtime_link.linkAndRunBashParserWithRealExternalScanner(allocator);
+    }
+    return error.UnsupportedRuntimeLinkTarget;
 }
 
 fn shouldStopAfter(options: RunOptions, stage: result_model.StepName) bool {
@@ -576,6 +590,18 @@ pub fn runTarget(
         if (shouldStopAfter(options, .serialize)) return run;
 
         if (target.scanner_boundary_check_mode == .full_runtime_link) {
+            const runtime_link_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+            if (detail_progress) logDetailStart(target.id, "scanner_runtime_link");
+            runScannerRuntimeLinkProof(allocator, target.id) catch |err| {
+                return failRun(
+                    &run,
+                    .scanner_boundary_check,
+                    .deferred_for_scanner_boundary,
+                    .scanner_external_scanner_boundary_gap,
+                    try std.fmt.allocPrint(allocator, "scanner runtime-link proof failed for {s}: {s}", .{ target.id, @errorName(err) }),
+                );
+            };
+            if (detail_progress) logDetailDone(target.id, "scanner_runtime_link", runtime_link_timer);
             run.scanner_boundary_check.status = .passed;
             return run;
         }
