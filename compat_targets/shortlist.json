@@ -176,6 +176,24 @@
       "success_means": "remain explicitly blocked as a control case unless a later milestone intentionally broadens conflict-resolution policy"
     },
     {
+      "id": "bracket_lang_json",
+      "family": "bracket_lang",
+      "boundary_kind": "scanner_external_scanner",
+      "parser_boundary_check_mode": "full_pipeline",
+      "scanner_boundary_check_mode": "full_runtime_link",
+      "real_external_scanner_proof_scope": "full_runtime_link",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
+      "status": "intended_scanner_wave",
+      "source_kind": "grammar_json",
+      "origin_kind": "staged_in_repo",
+      "grammar_path": "compat_targets/bracket_lang/grammar.json",
+      "upstream_repository": null,
+      "upstream_revision": null,
+      "upstream_grammar_path": null,
+      "why": "staged small external-scanner runtime fixture that proves generated scanner tables through a full parser C link without claiming broad real-scanner promotion",
+      "success_means": "load grammar.json, prepare, emit parser.c, compile with scanner.c, link against the tree-sitter runtime, parse (()), and assert the root is not an ERROR node"
+    },
+    {
       "id": "hidden_external_fields_json",
       "family": "hidden_external_fields",
       "boundary_kind": "scanner_external_scanner",

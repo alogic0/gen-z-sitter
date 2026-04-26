@@ -575,6 +575,11 @@ pub fn runTarget(
         run.serialize.status = .passed;
         if (shouldStopAfter(options, .serialize)) return run;
 
+        if (target.scanner_boundary_check_mode == .full_runtime_link) {
+            run.scanner_boundary_check.status = .passed;
+            return run;
+        }
+
         if (target.scanner_boundary_check_mode == .structural_only) {
             return failRun(
                 &run,

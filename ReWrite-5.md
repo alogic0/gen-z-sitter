@@ -262,10 +262,10 @@ Tasks:
 **Purpose.** Record that a fixture has full runtime-link proof without claiming that
 large real-world grammars are ready for that scope.
 
-- [ ] Add `full_runtime_link` to `RealExternalScannerProofScope` in
+- [x] Add `full_runtime_link` to `RealExternalScannerProofScope` in
   `src/compat/targets.zig`.
-- [ ] Add `bracket_lang` to `TargetFamily`.
-- [ ] Add `bracket_lang_json` to `shortlist_targets` with:
+- [x] Add `bracket_lang` to `TargetFamily`.
+- [x] Add `bracket_lang_json` to `shortlist_targets` with:
   - `family = .bracket_lang`,
   - `source_kind = .grammar_json`,
   - `boundary_kind = .scanner_external_scanner`,
@@ -274,11 +274,11 @@ large real-world grammars are ready for that scope.
   - notes that it is a staged small external-scanner runtime fixture,
   - success criteria covering load, prepare, emit, compile, link, parse `(())`, and
     root-not-error assertion.
-- [ ] Update reporting code that enumerates proof scopes, including
+- [x] Update reporting code that enumerates proof scopes, including
   `buildExternalScannerRepoInventoryAlloc` if needed.
-- [ ] Update JSON snapshots/tests that include target families, proof scopes, or
+- [x] Update JSON snapshots/tests that include target families, proof scopes, or
   shortlist inventories.
-- [ ] Update `targets.zig` tests to cover the bracket-lang entry.
+- [x] Update `targets.zig` tests to cover the bracket-lang entry.
 
 ---
 

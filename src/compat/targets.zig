@@ -20,12 +20,14 @@ pub const ScannerBoundaryCheckMode = enum {
     sampled_behavioral,
     sampled_external_only,
     structural_only,
+    full_runtime_link,
 };
 
 pub const RealExternalScannerProofScope = enum {
     none,
     sampled_external_sequence,
     sampled_expansion_path,
+    full_runtime_link,
 };
 
 pub const StandaloneParserProofScope = enum {
@@ -43,6 +45,7 @@ pub const TargetFamily = enum {
     haskell,
     bash,
     parse_table_conflict,
+    bracket_lang,
     hidden_external_fields,
     mixed_semantics,
 };
@@ -242,6 +245,22 @@ pub const shortlist_targets = [_]Target{
         .success_criteria = "remain explicitly blocked as a control case unless a later milestone intentionally broadens conflict-resolution policy",
     },
     .{
+        .id = "bracket_lang_json",
+        .display_name = "Bracket Lang (JSON)",
+        .grammar_path = "compat_targets/bracket_lang/grammar.json",
+        .family = .bracket_lang,
+        .source_kind = .grammar_json,
+        .boundary_kind = .scanner_external_scanner,
+        .scanner_boundary_check_mode = .full_runtime_link,
+        .real_external_scanner_proof_scope = .full_runtime_link,
+        .standalone_parser_proof_scope = .coarse_serialize_only,
+        .provenance = .{ .origin_kind = .staged_in_repo },
+        .candidate_status = .intended_scanner_wave,
+        .expected_blocked = false,
+        .notes = "staged small external-scanner runtime fixture that proves generated scanner tables through a full parser C link without claiming broad real-scanner promotion",
+        .success_criteria = "load grammar.json, prepare, emit parser.c, compile with scanner.c, link against the tree-sitter runtime, parse (()), and assert the root is not an ERROR node",
+    },
+    .{
         .id = "hidden_external_fields_json",
         .display_name = "Hidden External Fields (JSON)",
         .grammar_path = "compat_targets/hidden_external_fields/grammar.json",
@@ -321,7 +340,7 @@ pub fn firstWaveTargets() []const Target {
 
 test "stagedTargets exposes a small versioned shortlist" {
     const shortlist = shortlistTargets();
-    try std.testing.expectEqual(@as(usize, 13), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 14), shortlist.len);
     try std.testing.expect(shortlist[0].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
@@ -344,15 +363,19 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[7].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[7].scanner_invalid_input_path != null);
     try std.testing.expect(shortlist[8].candidate_status == .deferred_control_fixture);
-    try std.testing.expect(shortlist[9].candidate_status == .intended_scanner_wave);
-    try std.testing.expect(shortlist[10].boundary_kind == .scanner_external_scanner);
-    try std.testing.expect(shortlist[10].scanner_valid_input_path != null);
-    try std.testing.expect(shortlist[10].scanner_invalid_input_path != null);
-    try std.testing.expect(shortlist[11].candidate_status == .intended_scanner_wave);
-    try std.testing.expect(shortlist[11].family == .mixed_semantics);
+    try std.testing.expect(shortlist[9].family == .bracket_lang);
+    try std.testing.expect(shortlist[9].scanner_boundary_check_mode == .full_runtime_link);
+    try std.testing.expect(shortlist[9].real_external_scanner_proof_scope == .full_runtime_link);
+    try std.testing.expect(shortlist[9].standalone_parser_proof_scope == .coarse_serialize_only);
+    try std.testing.expect(shortlist[10].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[11].boundary_kind == .scanner_external_scanner);
     try std.testing.expect(shortlist[11].scanner_valid_input_path != null);
-    try std.testing.expect(shortlist[12].source_kind == .grammar_js);
+    try std.testing.expect(shortlist[11].scanner_invalid_input_path != null);
+    try std.testing.expect(shortlist[12].candidate_status == .intended_scanner_wave);
     try std.testing.expect(shortlist[12].family == .mixed_semantics);
+    try std.testing.expect(shortlist[12].scanner_valid_input_path != null);
+    try std.testing.expect(shortlist[13].source_kind == .grammar_js);
+    try std.testing.expect(shortlist[13].family == .mixed_semantics);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {
