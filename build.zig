@@ -114,6 +114,7 @@ pub fn build(b: *std.Build) void {
         "linkAndRunNoExternalTinyParser",
         "linkAndRunKeywordReservedParser",
         "linkAndRunExternalScannerParser",
+        "linkAndRunMultiTokenExternalScannerParser",
     };
     const no_external_link_tests = b.addTest(.{
         .root_module = b.createModule(.{
@@ -156,6 +157,20 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_external_scanner_link_tests.addArgs(args);
     const external_scanner_link_step = b.step("test-link-external-scanner", "Link and run a generated external-scanner parser with tree-sitter runtime");
     external_scanner_link_step.dependOn(&run_external_scanner_link_tests.step);
+
+    const multi_token_scanner_link_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunMultiTokenExternalScannerParser"},
+    });
+
+    const run_multi_token_scanner_link_tests = b.addRunArtifact(multi_token_scanner_link_tests);
+    if (b.args) |args| run_multi_token_scanner_link_tests.addArgs(args);
+    const multi_token_scanner_link_step = b.step("test-link-multi-token-scanner", "Link and run a generated multi-token external-scanner parser with tree-sitter runtime");
+    multi_token_scanner_link_step.dependOn(&run_multi_token_scanner_link_tests.step);
 
     const runtime_link_tests = b.addTest(.{
         .root_module = b.createModule(.{

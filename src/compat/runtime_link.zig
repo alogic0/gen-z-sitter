@@ -54,6 +54,22 @@ pub fn linkAndRunExternalScannerParser(allocator: std.mem.Allocator) RuntimeLink
     });
 }
 
+pub fn linkAndRunMultiTokenExternalScannerParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitMultiTokenExternalScannerParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = multiTokenScannerSource(),
+        .input = "()",
+        .expected_root_type = "source_file",
+        .expected_child_types = &.{ "OPEN", "CLOSE" },
+    });
+}
+
 fn emitTinyParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
     const rules = [_]ir_rules.Rule{
         .{ .string = "x" },
@@ -340,11 +356,94 @@ fn emitExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLinkError![]c
     });
 }
 
+fn emitMultiTokenExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    const symbols = [_]serialize.SerializedSymbolInfo{
+        .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
+        .{ .ref = .{ .external = 0 }, .name = "OPEN", .named = false, .visible = true, .supertype = false, .public_symbol = 1 },
+        .{ .ref = .{ .external = 1 }, .name = "CLOSE", .named = false, .visible = true, .supertype = false, .public_symbol = 2 },
+        .{ .ref = .{ .external = 2 }, .name = "ERROR_SENTINEL", .named = false, .visible = false, .supertype = false, .public_symbol = 3 },
+        .{ .ref = .{ .non_terminal = 0 }, .name = "source_file", .named = true, .visible = true, .supertype = false, .public_symbol = 4 },
+    };
+    const productions = [_]serialize.SerializedProductionInfo{
+        .{ .lhs = 0, .child_count = 2, .dynamic_precedence = 0 },
+    };
+    const start_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .external = 0 }, .action = .{ .shift = 2 } },
+    };
+    const start_gotos = [_]serialize.SerializedGotoEntry{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 4 },
+    };
+    const close_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .external = 1 }, .action = .{ .shift = 3 } },
+    };
+    const reduce_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+    };
+    const accept_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
+    };
+    const states = [_]serialize.SerializedState{
+        .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = start_actions[0..], .gotos = start_gotos[0..], .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = close_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 3, .lex_state_id = 0, .actions = reduce_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 4, .lex_state_id = 0, .actions = accept_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+    };
+    const lex_states = [_]lexer_serialize.SerializedLexState{
+        .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
+    };
+    const lex_tables = [_]lexer_serialize.SerializedLexTable{
+        .{ .start_state_id = 0, .states = lex_states[0..] },
+    };
+    const lex_modes = [_]lexer_serialize.SerializedLexMode{
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 2 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+    };
+    const primary_state_ids = [_]u32{ 0, 1, 2, 3, 4 };
+    const external_symbols = [_]syntax_grammar.SymbolRef{
+        .{ .external = 0 },
+        .{ .external = 1 },
+        .{ .external = 2 },
+    };
+    const external_state_0 = [_]bool{ false, false, false };
+    const external_state_1 = [_]bool{ true, false, false };
+    const external_state_2 = [_]bool{ false, true, false };
+    const external_states = [_][]const bool{
+        external_state_0[0..],
+        external_state_1[0..],
+        external_state_2[0..],
+    };
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_name = "multi_external_grammar",
+        .symbols = symbols[0..],
+        .large_state_count = states.len,
+        .productions = productions[0..],
+        .lex_modes = lex_modes[0..],
+        .lex_tables = lex_tables[0..],
+        .external_scanner = .{
+            .symbols = external_symbols[0..],
+            .states = external_states[0..],
+        },
+        .primary_state_ids = primary_state_ids[0..],
+        .states = states[0..],
+    };
+
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+    });
+}
+
 const GeneratedParserRun = struct {
     parser_c: []const u8,
     input: []const u8,
     scanner_c: ?[]const u8 = null,
     expected_metadata: ?[3]u8 = null,
+    expected_root_type: ?[]const u8 = null,
+    expected_child_types: []const []const u8 = &.{},
 };
 
 fn linkAndRunGeneratedParser(
@@ -364,7 +463,7 @@ fn linkAndRunGeneratedParser(
             .data = scanner_c,
         });
     }
-    const driver_source = try driverSourceAlloc(allocator, generated.input, generated.expected_metadata);
+    const driver_source = try driverSourceAlloc(allocator, generated);
     defer allocator.free(driver_source);
     try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "driver.c",
@@ -464,12 +563,55 @@ fn externalScannerSource() []const u8 {
     ;
 }
 
+fn multiTokenScannerSource() []const u8 {
+    return
+    \\#include <stdbool.h>
+    \\#include "parser.h"
+    \\
+    \\enum TokenType {
+    \\  OPEN = 0,
+    \\  CLOSE = 1,
+    \\  ERROR_SENTINEL = 2,
+    \\};
+    \\
+    \\void *tree_sitter_multi_external_grammar_external_scanner_create(void) { return 0; }
+    \\void tree_sitter_multi_external_grammar_external_scanner_destroy(void *payload) { (void)payload; }
+    \\unsigned tree_sitter_multi_external_grammar_external_scanner_serialize(void *payload, char *buffer) {
+    \\  (void)payload;
+    \\  (void)buffer;
+    \\  return 0;
+    \\}
+    \\void tree_sitter_multi_external_grammar_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
+    \\  (void)payload;
+    \\  (void)buffer;
+    \\  (void)length;
+    \\}
+    \\bool tree_sitter_multi_external_grammar_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
+    \\  (void)payload;
+    \\  if (valid_symbols[ERROR_SENTINEL]) return false;
+    \\  if (valid_symbols[OPEN] && lexer->lookahead == '(') {
+    \\    lexer->result_symbol = OPEN;
+    \\    lexer->advance(lexer, false);
+    \\    lexer->mark_end(lexer);
+    \\    return true;
+    \\  }
+    \\  if (valid_symbols[CLOSE] && lexer->lookahead == ')') {
+    \\    lexer->result_symbol = CLOSE;
+    \\    lexer->advance(lexer, false);
+    \\    lexer->mark_end(lexer);
+    \\    return true;
+    \\  }
+    \\  return false;
+    \\}
+    \\
+    ;
+}
+
 fn driverSourceAlloc(
     allocator: std.mem.Allocator,
-    input: []const u8,
-    expected_metadata: ?[3]u8,
+    generated: GeneratedParserRun,
 ) RuntimeLinkError![]const u8 {
-    const metadata_check = if (expected_metadata) |metadata|
+    const metadata_check = if (generated.expected_metadata) |metadata|
         try std.fmt.allocPrint(allocator,
             \\  const TSLanguageMetadata *metadata = ts_language_metadata(language);
             \\  if (!metadata) return 14;
@@ -480,7 +622,10 @@ fn driverSourceAlloc(
         , .{ metadata[0], metadata[1], metadata[2] })
     else
         "";
-    defer if (expected_metadata != null) allocator.free(metadata_check);
+    defer if (generated.expected_metadata != null) allocator.free(metadata_check);
+
+    const tree_check = try treeAssertionSourceAlloc(allocator, generated.expected_root_type, generated.expected_child_types);
+    defer allocator.free(tree_check);
 
     return try std.fmt.allocPrint(allocator,
         \\#include <stdbool.h>
@@ -516,12 +661,50 @@ fn driverSourceAlloc(
         \\  bool is_error = ts_node_is_error(root);
         \\  const char *type = ts_node_type(root);
         \\  printf("%s\n", type ? type : "<null>");
+        \\{s}
         \\  ts_tree_delete(tree);
         \\  ts_parser_delete(parser);
         \\  return is_error ? 13 : 0;
         \\}}
         \\
-    , .{ input, metadata_check });
+    , .{ generated.input, metadata_check, tree_check });
+}
+
+fn treeAssertionSourceAlloc(
+    allocator: std.mem.Allocator,
+    expected_root_type: ?[]const u8,
+    expected_child_types: []const []const u8,
+) RuntimeLinkError![]const u8 {
+    if (expected_root_type == null and expected_child_types.len == 0) {
+        return try allocator.dupe(u8, "");
+    }
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    const writer = &out.writer;
+
+    if (expected_root_type) |root_type| {
+        try writer.print(
+            \\  if (!type || strcmp(type, "{s}") != 0) return 18;
+            \\
+        , .{root_type});
+    }
+    if (expected_child_types.len != 0) {
+        try writer.print(
+            \\  if (ts_node_child_count(root) != {d}) return 19;
+            \\
+        , .{expected_child_types.len});
+        for (expected_child_types, 0..) |child_type, index| {
+            try writer.print(
+                \\  TSNode child_{d} = ts_node_child(root, {d});
+                \\  const char *child_type_{d} = ts_node_type(child_{d});
+                \\  if (!child_type_{d} || strcmp(child_type_{d}, "{s}") != 0) return {d};
+                \\
+            , .{ index, index, index, index, index, index, child_type, 20 + index });
+        }
+    }
+
+    return try out.toOwnedSlice();
 }
 
 fn ensureTreeSitterRuntimeAvailable() RuntimeLinkError!void {
@@ -539,4 +722,8 @@ test "linkAndRunKeywordReservedParser links generated keyword parser with tree-s
 
 test "linkAndRunExternalScannerParser links generated external scanner parser with tree-sitter runtime" {
     try linkAndRunExternalScannerParser(std.testing.allocator);
+}
+
+test "linkAndRunMultiTokenExternalScannerParser links generated multi-token external scanner parser with tree-sitter runtime" {
+    try linkAndRunMultiTokenExternalScannerParser(std.testing.allocator);
 }

@@ -117,24 +117,24 @@ OPEN and CLOSE are external tokens
 ERROR_SENTINEL is declared but never valid
 ```
 
-- [ ] Add `emitMultiTokenExternalScannerParserC` in `runtime_link.zig`.
-- [ ] The serialized table must include three external symbols:
+- [x] Add `emitMultiTokenExternalScannerParserC` in `runtime_link.zig`.
+- [x] The serialized table must include three external symbols:
   `OPEN`, `CLOSE`, and `ERROR_SENTINEL`.
-- [ ] Use at least two parse states with different external lex states:
+- [x] Use at least two parse states with different external lex states:
   - start state: `OPEN` valid, `CLOSE` false, `ERROR_SENTINEL` false,
   - after `OPEN`: `CLOSE` valid, `OPEN` false unless the grammar intentionally allows
     nesting, `ERROR_SENTINEL` false.
-- [ ] Add `multiTokenScannerSource()` with:
+- [x] Add `multiTokenScannerSource()` with:
   - `enum TokenType { OPEN, CLOSE, ERROR_SENTINEL }`,
   - a hard assertion/failure path if `valid_symbols[ERROR_SENTINEL]` is true,
   - `scan` that advances over `(` for `OPEN` and `)` for `CLOSE`.
-- [ ] Add `linkAndRunMultiTokenExternalScannerParser` that links the parser, scanner,
+- [x] Add `linkAndRunMultiTokenExternalScannerParser` that links the parser, scanner,
   and tree-sitter runtime, parses `"()"`, and asserts the root is not an ERROR node.
-- [ ] Add a driver assertion that the parse tree has the expected root and child token
+- [x] Add a driver assertion that the parse tree has the expected root and child token
   types using `ts_node_child_count` and `ts_node_type`.
-- [ ] Add `test "linkAndRunMultiTokenExternalScannerParser ..."` in
+- [x] Add `test "linkAndRunMultiTokenExternalScannerParser ..."` in
   `runtime_link.zig`.
-- [ ] Add `zig build test-link-multi-token-scanner` in `build.zig`.
+- [x] Add `zig build test-link-multi-token-scanner` in `build.zig`.
 
 ---
 
