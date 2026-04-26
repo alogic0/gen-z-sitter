@@ -1105,14 +1105,37 @@ test "buildStatesFromPrepared rejects unresolved conflict grammar in strict seri
     );
 }
 
-test "serializeTableFromPrepared attaches serialized lex tables" {
+test "serializeTableFromPrepared attaches serialized lex tables for an unambiguous grammar" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
+
+    const contents =
+        \\{
+        \\  "name": "lex_table_ready",
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        { "type": "SYMBOL", "name": "identifier" },
+        \\        { "type": "SYMBOL", "name": "number_literal" }
+        \\      ]
+        \\    },
+        \\    "identifier": {
+        \\      "type": "TOKEN",
+        \\      "content": { "type": "PATTERN", "value": "[a-z]+" }
+        \\    },
+        \\    "number_literal": {
+        \\      "type": "STRING",
+        \\      "value": "42"
+        \\    }
+        \\  }
+        \\}
+    ;
 
     var parsed = try std.json.parseFromSlice(
         std.json.Value,
         arena.allocator(),
-        fixtures.repeatChoiceSeqGrammarJson().contents,
+        contents,
         .{},
     );
     defer parsed.deinit();
@@ -1127,13 +1150,6 @@ test "serializeTableFromPrepared attaches serialized lex tables" {
     for (serialized.lex_tables) |lex_table| {
         try std.testing.expect(lex_table.start_state_id < lex_table.states.len);
     }
-    var saw_repetition_shift = false;
-    for (serialized.states) |serialized_state| {
-        for (serialized_state.actions) |entry| {
-            if (entry.repetition) saw_repetition_shift = true;
-        }
-    }
-    try std.testing.expect(saw_repetition_shift);
 }
 
 test "serializeTableFromPrepared excludes default aliases from alias sequences" {

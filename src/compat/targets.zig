@@ -125,8 +125,8 @@ pub const shortlist_targets = [_]Target{
         .provenance = .{ .origin_kind = .staged_in_repo },
         .candidate_status = .deferred_parser_wave,
         .expected_blocked = true,
-        .notes = "staged parser-only JS fixture kept deferred because its _entry alternatives intentionally allow the next identifier/number token to be parsed either as more of the current repeated tail or as the start of the next source_file entry",
-        .success_criteria = "load through node and keep the current 2-entry shift/reduce parser-boundary signature stable unless a later milestone intentionally broadens ambiguity handling for this staged fixture",
+        .notes = "staged parser-only JS fixture intentionally mirrors an upstream-rejected ambiguity: tree-sitter reports an unresolved _entry shift/reduce conflict and requires associativity or an explicit conflict declaration",
+        .success_criteria = "load through node and keep the upstream-rejected 2-entry _entry shift/reduce parser-boundary signature stable; this fixture must not be used as a parser-generation promotion target",
     },
     .{
         .id = "tree_sitter_ziggy_json",

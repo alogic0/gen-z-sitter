@@ -1,9 +1,10 @@
 # ReWrite-4.1: Same-Auxiliary Repeat Conflict Resolution
 
-**Goal**: implement the upstream Tree-sitter repeat-conflict shortcut that resolves a
+**Goal**: implement the upstream Tree-sitter repeat-conflict shortcut that handles a
 shift/reduce conflict when all conflicting items belong to the same auxiliary parent
-symbol. This should unblock the `repeat_choice_seq_js` parser-boundary target without
-broadening precedence rules or changing unrelated conflict behavior.
+symbol. This does not unblock `repeat_choice_seq_js`: that staged grammar is rejected
+by upstream Tree-sitter because its remaining conflict reduces `_entry` while shifting
+into an internal repeat, so it must stay an explicit blocked compatibility fixture.
 
 **Scope rule**: keep the project self-contained Zig. Do not copy tree-sitter source
 files into this project. Use `../tree-sitter` only as a reference.
@@ -30,8 +31,8 @@ The upstream algorithm does this before normal precedence/associativity resoluti
 2. If the parse-table entry contains a shift action, inspect the parent variable of the
    collected conflicting items.
 3. If every conflicting item has the same parent variable and that variable is
-   auxiliary, resolve this intentional repeat ambiguity by keeping the shift and setting
-   the shift action's `is_repetition` flag.
+   auxiliary, keep the multi-action parse entry and set the shift action's
+   `is_repetition` flag. At runtime, reductions are tried before `SHIFT_REPEAT`.
 4. Return immediately, before precedence logic.
 
 Important nuance: upstream checks `variable.is_auxiliary()`, not just whether the reduce
@@ -54,23 +55,22 @@ Current Zig behavior already handles two narrower cases:
 - prefer shift when the reduce production has `lhs_is_repeat_auxiliary = true`,
 - prefer shift when the shift candidate continues a repeat auxiliary production.
 
-It misses the upstream same-parent-auxiliary case. In `repeat_choice_seq_js`, the reduce
-production is `_entry -> identifier number_literal*`, so `lhs_is_repeat_auxiliary` is
-false. But the conflicting items are all associated with the same auxiliary parent from
-the hidden repeated `_entry` body. Upstream treats that as intentional repeat ambiguity
-and marks the shift as repetition.
+It misses the upstream same-parent-auxiliary case in focused valid repeat fixtures.
+`repeat_choice_seq_js` is not such a case: upstream rejects it outright with an
+unresolved `_entry` shift/reduce conflict and suggests associativity or an explicit
+conflict declaration.
 
 Local complication: `actions.ParseAction.shift` does not carry a repetition flag.
 Zig chooses the action during resolution, then later attaches `.repetition = true` in
 serialization. Therefore the fix has two required parts:
 
-1. Resolution must choose the shift for same-auxiliary conflicts.
-2. Serialization must mark the chosen shift action with `.repetition = true` for the
-   same broader conflict class.
+1. Resolution/diagnostics must identify the same-auxiliary conflict class using
+   upstream's FIRST-set rule.
+2. Serialization must emit a runtime parse-action list that keeps reductions before
+   a `.repetition = true` shift for that conflict class.
 
-Implementing only one side is incomplete: choosing shift without repetition loses the
-runtime flag, while marking repetition without resolving the conflict leaves the state
-blocked.
+Implementing only a chosen shift is incomplete because upstream keeps the reduce action
+in the runtime action list.
 
 ---
 
@@ -101,13 +101,14 @@ blocked.
 - [x] In `resolveShiftReduce`, run the same-auxiliary helper before dynamic precedence,
   named precedence, integer precedence, associativity, and the existing repeat-auxiliary
   fallbacks.
-- [x] If the helper returns true, return the shift action immediately.
+- [x] If the helper returns true, keep the table route on the shift action while
+  preserving candidate actions for runtime serialization.
 - [x] Keep existing precedence behavior unchanged for non-auxiliary conflicts.
-- [x] Add a focused `resolution.zig` test for the `repeat_choice_seq_js` shape:
+- [x] Add a focused `resolution.zig` test for a valid same-auxiliary shape:
   - an auxiliary parent production such as `_entry` with a completed reduce item;
   - a shift item from the same auxiliary parent on the same lookahead;
   - reduce production itself must have `lhs_is_repeat_auxiliary = false`;
-  - assert the resolved action is the shift and the conflict is not left unresolved.
+  - assert the helper matches upstream's FIRST-set conflict predicate.
 - [x] Add a negative test where conflicting items have different LHS values and assert
   the conflict remains unresolved unless another existing rule resolves it.
 - [x] Add a negative test where the common LHS is not auxiliary and assert existing
@@ -121,8 +122,9 @@ blocked.
   same-auxiliary conflict predicate rather than requiring every completed reduce item to
   have `lhs_is_repeat_auxiliary = true`.
 - [x] Keep existing support for true repeat-auxiliary productions.
-- [x] Ensure `attachRepetitionShiftMetadataAlloc` marks the chosen shift action with
-  `.repetition = true` for the same conflict shape that resolution now resolves.
+- [x] Ensure `attachRepetitionShiftMetadataAlloc` marks the shifted entry with
+  `.repetition = true` for the same conflict shape and that parse-action lists preserve
+  reductions before `SHIFT_REPEAT`.
 - [x] Add a focused serialization test mirroring the resolution fixture:
   - chosen shift on the conflict symbol;
   - same auxiliary parent;
@@ -135,19 +137,12 @@ blocked.
 
 ## Phase 4 — Pipeline Fixture Coverage
 
-- [x] Add or reuse a small grammar fixture matching the `repeat_choice_seq_js` shape:
-
-```text
-source_file := REPEAT1(_entry)
-_entry      := (identifier number_literal*) | (number_literal identifier+)
-```
-
-- [x] Run it through the existing grammar loader / prepare / parse-table pipeline in a
-  focused test, not through the heavy compatibility harness.
-- [x] Assert the serialized table is no longer blocked by unresolved shift/reduce
-  decisions.
-- [x] Assert at least one emitted parse action has `.repetition = true` for the relevant
-  shift.
+- [x] Do not use `repeat_choice_seq_js` as promotion evidence; it is an upstream-rejected
+  blocked fixture.
+- [x] Keep pipeline lex-table tests on an unambiguous grammar so they cannot mask this
+  rejected target.
+- [x] Assert same-auxiliary repetition behavior in focused resolver/serializer unit
+  tests instead of relying on the blocked compatibility fixture.
 - [x] If an exact golden exists and would require unrelated EOF/golden churn, prefer a
   focused behavioral/assertion test over refreshing broad string goldens.
 
@@ -156,9 +151,8 @@ _entry      := (identifier number_literal*) | (number_literal identifier+)
 ## Phase 5 — Plan and Gap Documentation
 
 - [x] Update `ReWrite-4_1.md` checkboxes as phases are completed.
-- [x] Update `GAPS_260425.md` or the relevant gap note to say the
-  `repeat_choice_seq_js` same-auxiliary repeat conflict is no longer a missing
-  algorithm once the focused tests pass.
+- [x] Update target/test notes so `repeat_choice_seq_js` is documented as an
+  upstream-rejected control fixture, not a missing same-auxiliary algorithm.
 - [x] Do not claim broad compatibility-heavy completion unless the user explicitly asks
   to run that manual gate.
 

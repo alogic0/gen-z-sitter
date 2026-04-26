@@ -156,9 +156,14 @@ fn remapActionEntries(
 ) std.mem.Allocator.Error![]const serialize.SerializedActionEntry {
     const remapped = try allocator.alloc(serialize.SerializedActionEntry, entries.len);
     for (entries, 0..) |entry, index| {
+        const candidate_actions = try allocator.alloc(parse_actions.ParseAction, entry.candidate_actions.len);
+        for (entry.candidate_actions, 0..) |candidate_action, candidate_index| {
+            candidate_actions[candidate_index] = remapParseAction(states, candidate_action, state_owners, owner_new_ids);
+        }
         remapped[index] = .{
             .symbol = entry.symbol,
             .action = remapParseAction(states, entry.action, state_owners, owner_new_ids),
+            .candidate_actions = candidate_actions,
             .extra = entry.extra,
             .repetition = entry.repetition,
         };
@@ -243,6 +248,7 @@ fn actionEntrySlicesEql(left: []const serialize.SerializedActionEntry, right: []
     for (left, right) |left_entry, right_entry| {
         if (!symbolRefEql(left_entry.symbol, right_entry.symbol)) return false;
         if (!parseActionEql(left_entry.action, right_entry.action)) return false;
+        if (!parseActionSliceEql(left_entry.candidate_actions, right_entry.candidate_actions)) return false;
         if (left_entry.extra != right_entry.extra) return false;
         if (left_entry.repetition != right_entry.repetition) return false;
     }

@@ -2175,7 +2175,7 @@ test "resolveActionTable prefers shift for same auxiliary repeat conflicts" {
     try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
 }
 
-test "resolveActionTable uses FIRST sets for same auxiliary repeat conflicts" {
+test "hasSameAuxiliaryRepeatConflictWithFirstSets matches upstream FIRST-set rule" {
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -2227,41 +2227,12 @@ test "resolveActionTable uses FIRST sets for same auxiliary repeat conflicts" {
         .per_variable = per_variable[0..],
     };
 
-    const grouped = actions.GroupedActionTable{
-        .states = &[_]actions.GroupedStateActions{
-            .{
-                .state_id = 6,
-                .groups = &[_]actions.ActionGroup{
-                    .{
-                        .symbol = .{ .terminal = 0 },
-                        .entries = &[_]actions.ActionEntry{
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
-                        },
-                    },
-                },
-            },
-        },
-    };
-
-    const resolved = try resolveActionTableWithFirstSetsContext(
-        allocator,
+    try std.testing.expect(hasSameAuxiliaryRepeatConflictWithFirstSets(
         productions[0..],
-        &.{},
-        &.{},
-        parse_states[0..],
+        parse_states[0],
         first_sets,
-        grouped,
-    );
-    defer {
-        for (resolved.states) |resolved_state| {
-            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
-            allocator.free(resolved_state.groups);
-        }
-        allocator.free(resolved.states);
-    }
-
-    try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
+        .{ .terminal = 0 },
+    ));
 }
 
 test "resolveActionTable leaves mixed auxiliary repeat conflicts unresolved" {

@@ -277,7 +277,7 @@ pub fn writeParserCWithOptions(
         }
         for (serialized_state.actions) |entry| {
             const symbol_id = symbolIdForRef(emitted_symbols, entry.symbol) orelse return error.OutOfMemory;
-            const action_index = serialize.parseActionListIndexForParseAction(parse_action_list, entry.action, compacted.productions) orelse return error.OutOfMemory;
+            const action_index = serialize.parseActionListIndexForActionEntry(parse_action_list, entry, compacted.productions) orelse return error.OutOfMemory;
             try writer.print("    [{d}] = ACTIONS({d}),\n", .{ symbol_id, action_index });
         }
         try writer.writeAll("  },\n");

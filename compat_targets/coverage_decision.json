@@ -9,7 +9,7 @@
     "id": "repeat_choice_seq_js",
     "display_name": "Repeat Choice Seq (JS)",
     "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
-    "notes": "staged parser-only JS fixture kept deferred because its _entry alternatives intentionally allow the next identifier/number token to be parsed either as more of the current repeated tail or as the start of the next source_file entry"
+    "notes": "staged parser-only JS fixture intentionally mirrors an upstream-rejected ambiguity: tree-sitter reports an unresolved _entry shift/reduce conflict and requires associativity or an explicit conflict declaration"
   },
   "standalone_parser_probe_pass_count": 0,
   "proven_boundary": [
@@ -24,7 +24,7 @@
       "id": "repeat_choice_seq_js",
       "display_name": "Repeat Choice Seq (JS)",
       "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
-      "notes": "staged parser-only JS fixture kept deferred because its _entry alternatives intentionally allow the next identifier/number token to be parsed either as more of the current repeated tail or as the start of the next source_file entry"
+      "notes": "staged parser-only JS fixture intentionally mirrors an upstream-rejected ambiguity: tree-sitter reports an unresolved _entry shift/reduce conflict and requires associativity or an explicit conflict declaration"
     },
     {
       "id": "parse_table_conflict_json",

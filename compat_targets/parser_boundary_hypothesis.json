@@ -14,7 +14,7 @@
       "routine_refresh_safe": false,
       "routine_boundary_hypothesis": "no_safe_routine_step_yet",
       "routine_refresh_candidate_mode": null,
-      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for repeat_choice_seq_js; the current full-pipeline blocker is an intentional 2-entry shift/reduce ambiguity where the next identifier/number token can either continue the current _entry tail or start the next repeated source_file entry, so the target stays deferred unless a later milestone deliberately broadens ambiguity handling",
+      "routine_refresh_blocker": "repeat_choice_seq_js intentionally mirrors an upstream-rejected 2-entry _entry shift/reduce ambiguity, so it stays deferred as a parser-boundary control fixture rather than a parser-generation promotion target",
       "singleton_parser_wave": true,
       "current_proven_steps": [
         "load",
@@ -27,7 +27,7 @@
       "standalone_probe_detail": null,
       "measured_standalone_serialized_state_count": null,
       "decision": "keep_standalone_probe",
-      "rationale": "the next named proof step for repeat_choice_seq_js is not a broader routine refresh; it remains scoped to standalone_probe because the staged grammar intentionally keeps the current 2-entry shift/reduce ambiguity as a parser-boundary fixture rather than an upstream-mismatch candidate"
+      "rationale": "the next named proof step for repeat_choice_seq_js is not a broader routine refresh; it remains scoped to standalone_probe because the staged grammar intentionally mirrors an upstream-rejected _entry shift/reduce ambiguity"
     }
   ]
 }

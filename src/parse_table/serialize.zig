@@ -28,6 +28,7 @@ pub const SerializeMode = enum {
 pub const SerializedActionEntry = struct {
     symbol: syntax_ir.SymbolRef,
     action: actions.ParseAction,
+    candidate_actions: []const actions.ParseAction = &.{},
     extra: bool = false,
     repetition: bool = false,
 };
@@ -542,11 +543,9 @@ pub fn buildParseActionListAlloc(
 
     for (states) |serialized_state| {
         for (serialized_state.actions) |entry| {
-            const runtime_action = runtimeActionFromActionEntry(entry, productions);
-            if (parseActionListIndexForRuntimeAction(entries.items, runtime_action) != null) continue;
+            if (parseActionListIndexForActionEntry(entries.items, entry, productions) != null) continue;
 
-            const action_slice = try allocator.alloc(SerializedParseAction, 1);
-            action_slice[0] = runtime_action;
+            const action_slice = try runtimeActionsFromActionEntryAlloc(allocator, entry, productions);
             try entries.append(.{
                 .index = @intCast(entries.items.len * 2 - 1),
                 .reusable = true,
@@ -832,7 +831,10 @@ pub fn parseActionListIndexForActionEntry(
     entry: SerializedActionEntry,
     productions: []const SerializedProductionInfo,
 ) ?u16 {
-    return parseActionListIndexForRuntimeAction(entries, runtimeActionFromActionEntry(entry, productions));
+    for (entries) |candidate| {
+        if (runtimeActionSlicesEql(candidate.actions, entry, productions)) return candidate.index;
+    }
+    return null;
 }
 
 pub fn runtimeActionFromActionEntry(
@@ -845,6 +847,60 @@ pub fn runtimeActionFromActionEntry(
         runtime_action.repetition = entry.repetition;
     }
     return runtime_action;
+}
+
+fn runtimeActionsFromActionEntryAlloc(
+    allocator: std.mem.Allocator,
+    entry: SerializedActionEntry,
+    productions: []const SerializedProductionInfo,
+) std.mem.Allocator.Error![]const SerializedParseAction {
+    if (!entry.repetition or entry.candidate_actions.len <= 1) {
+        const action_slice = try allocator.alloc(SerializedParseAction, 1);
+        action_slice[0] = runtimeActionFromActionEntry(entry, productions);
+        return action_slice;
+    }
+
+    const action_slice = try allocator.alloc(SerializedParseAction, entry.candidate_actions.len);
+    var index: usize = 0;
+    for (entry.candidate_actions) |candidate| {
+        if (candidate == .shift) continue;
+        action_slice[index] = runtimeActionFromParseAction(candidate, productions);
+        index += 1;
+    }
+    for (entry.candidate_actions) |candidate| {
+        if (candidate != .shift) continue;
+        action_slice[index] = runtimeActionFromParseAction(candidate, productions);
+        action_slice[index].repetition = true;
+        index += 1;
+    }
+    return action_slice[0..index];
+}
+
+fn runtimeActionSlicesEql(
+    actions_slice: []const SerializedParseAction,
+    entry: SerializedActionEntry,
+    productions: []const SerializedProductionInfo,
+) bool {
+    if (!entry.repetition or entry.candidate_actions.len <= 1) {
+        return actions_slice.len == 1 and runtimeActionEql(actions_slice[0], runtimeActionFromActionEntry(entry, productions));
+    }
+
+    var cursor: usize = 0;
+    for (entry.candidate_actions) |candidate| {
+        if (candidate == .shift) continue;
+        if (cursor >= actions_slice.len) return false;
+        if (!runtimeActionEql(actions_slice[cursor], runtimeActionFromParseAction(candidate, productions))) return false;
+        cursor += 1;
+    }
+    for (entry.candidate_actions) |candidate| {
+        if (candidate != .shift) continue;
+        if (cursor >= actions_slice.len) return false;
+        var expected = runtimeActionFromParseAction(candidate, productions);
+        expected.repetition = true;
+        if (!runtimeActionEql(actions_slice[cursor], expected)) return false;
+        cursor += 1;
+    }
+    return cursor == actions_slice.len;
 }
 
 pub fn runtimeActionFromParseAction(
@@ -1423,6 +1479,7 @@ fn collectActionsForState(
         entries[index] = .{
             .symbol = entry.symbol,
             .action = entry.action,
+            .candidate_actions = entry.candidate_actions,
             .extra = shiftActionIsExtra(parse_state.transitions, entry.symbol, entry.action),
         };
         index += 1;
@@ -1517,6 +1574,17 @@ fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
             else => false,
         },
     };
+}
+
+fn runtimeActionEql(a: SerializedParseAction, b: SerializedParseAction) bool {
+    return a.kind == b.kind and
+        a.state == b.state and
+        a.extra == b.extra and
+        a.repetition == b.repetition and
+        a.child_count == b.child_count and
+        symbolRefEql(a.symbol, b.symbol) and
+        a.dynamic_precedence == b.dynamic_precedence and
+        a.production_id == b.production_id;
 }
 
 test "attachPreparedMetadataAlloc adds grammar and symbol metadata" {
@@ -2429,6 +2497,44 @@ test "buildParseActionListAlloc deduplicates runtime actions" {
     try std.testing.expectEqual(@as(u8, 3), list[2].actions[0].child_count);
     try std.testing.expectEqual(@as(i16, 4), list[2].actions[0].dynamic_precedence);
     try std.testing.expectEqual(@as(u32, 2), list[2].actions[0].symbol.non_terminal);
+}
+
+test "buildParseActionListAlloc keeps reductions before repetition shifts" {
+    const allocator = std.testing.allocator;
+    const productions = [_]SerializedProductionInfo{
+        .{ .lhs = 1, .child_count = 1, .dynamic_precedence = 0 },
+    };
+    const states = [_]SerializedState{
+        .{
+            .id = 0,
+            .actions = &[_]SerializedActionEntry{
+                .{
+                    .symbol = .{ .terminal = 0 },
+                    .action = .{ .shift = 7 },
+                    .candidate_actions = &[_]actions.ParseAction{
+                        .{ .shift = 7 },
+                        .{ .reduce = 0 },
+                    },
+                    .repetition = true,
+                },
+            },
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+    };
+
+    const list = try buildParseActionListAlloc(allocator, states[0..], productions[0..]);
+    defer deinitParseActionList(allocator, list);
+
+    try std.testing.expectEqual(@as(usize, 2), list.len);
+    try std.testing.expectEqual(@as(usize, 2), list[1].actions.len);
+    try std.testing.expectEqual(SerializedParseActionKind.reduce, list[1].actions[0].kind);
+    try std.testing.expectEqual(SerializedParseActionKind.shift, list[1].actions[1].kind);
+    try std.testing.expect(list[1].actions[1].repetition);
+    try std.testing.expectEqual(
+        list[1].index,
+        parseActionListIndexForActionEntry(list, states[0].actions[0], productions[0..]).?,
+    );
 }
 
 test "computeLargeStateCountAlloc follows tree-sitter threshold prefix rule" {
