@@ -22,7 +22,7 @@ It is about the internal tokenizer architecture that both scanner-free and exter
 
 ## Why This Is The Right Next Step
 
-From the M42 comparison against `/home/oleg/prog/tree-sitter`:
+From the M42 comparison against `~/prog/tree-sitter`:
 
 - upstream expands lexical rules into an NFA
 - upstream computes token conflicts, prefix/continuation overlap, separator interactions, and precedence

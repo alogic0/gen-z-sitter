@@ -1,7 +1,7 @@
 # MILESTONES 45 — Parse Table Algorithm Convergence with tree-sitter
 
 This milestone is about closing the algorithmic gap between gen-z-sitter's parse table
-generator and the upstream tree-sitter implementation in `/home/oleg/prog/tree-sitter`.
+generator and the upstream tree-sitter implementation in `~/prog/tree-sitter`.
 
 It is not about lexer or scanner parity — those are covered by M43/M44.
 It is specifically about the LR item-set construction, action table structure,

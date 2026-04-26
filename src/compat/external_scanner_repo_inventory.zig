@@ -178,7 +178,7 @@ fn collectCurrentLimitationsAlloc(
         return try duplicateStringSliceAlloc(allocator, &.{
             "no real external scanner or external-scanner snapshots are currently represented in the local compatibility shortlist",
             "the current workspace does not contain additional checked-out real scanner grammar repos beyond the already snapshotted parser-only Ziggy sources",
-            "the checked-out tree-sitter-c and tree-sitter-zig repos under /home/oleg/prog/tree-sitter-grammars do not currently help for this milestone because their grammar.json snapshots declare externals as [] and they do not include scanner implementation files",
+            "the checked-out tree-sitter-c and tree-sitter-zig repos under ~/prog/tree-sitter-grammars do not currently help for this milestone because their grammar.json snapshots declare externals as [] and they do not include scanner implementation files",
             "the repo has staged scanner-boundary proof, but it does not yet have real external scanner-family evidence",
         });
     }

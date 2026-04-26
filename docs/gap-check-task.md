@@ -2,10 +2,10 @@
 
 ## Context
 
-`/home/oleg/prog/gen-z-sitter` is a Zig reimplementation of the tree-sitter **parser
+`~/prog/gen-z-sitter` is a Zig reimplementation of the tree-sitter **parser
 generator** (the tool that takes a `grammar.js` / `grammar.json` and produces a
 `parser.c`). The reference implementation is the Rust generator in
-`/home/oleg/prog/tree-sitter`.
+`~/prog/tree-sitter`.
 
 Approach this as a fresh audit. Examine both codebases independently and report what
 you find.
@@ -84,23 +84,23 @@ Suggested approach:
 
 ```bash
 # Recent changes in the Zig repo
-git -C /home/oleg/prog/gen-z-sitter log --oneline -20
+git -C ~/prog/gen-z-sitter log --oneline -20
 
 # What does parser_c.zig currently emit?
 grep -n "ts_language\|lex_fn\|keyword_lex\|external_scanner\|reserved_word\|supertype\|primary_state\|alias_map" \
-  /home/oleg/prog/gen-z-sitter/src/parser_emit/parser_c.zig | head -60
+  ~/prog/gen-z-sitter/src/parser_emit/parser_c.zig | head -60
 
 # What fields does SerializedTable have?
 grep -n "pub const Serialized" \
-  /home/oleg/prog/gen-z-sitter/src/parse_table/serialize.zig | head -30
+  ~/prog/gen-z-sitter/src/parse_table/serialize.zig | head -30
 
 # What does the Rust reference render?
 grep -n "^    fn add_" \
-  /home/oleg/prog/tree-sitter/crates/generate/src/render.rs | head -40
+  ~/prog/tree-sitter/crates/generate/src/render.rs | head -40
 
 # Check for any stub zeros in serialization
 grep -n "= 0\|= null\|= false\|= &.{}" \
-  /home/oleg/prog/gen-z-sitter/src/parse_table/serialize.zig | head -30
+  ~/prog/gen-z-sitter/src/parse_table/serialize.zig | head -30
 ```
 
 ---

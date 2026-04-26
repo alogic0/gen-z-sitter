@@ -135,7 +135,7 @@ Acceptance:
 
 ## Current PR 2 Note
 
-- the local real grammar repos currently available under `/home/oleg/prog/tree-sitter-grammars` are:
+- the local real grammar repos currently available under `~/prog/tree-sitter-grammars` are:
   - `tree-sitter-c`
   - `tree-sitter-zig`
   - `tree-sitter-haskell`

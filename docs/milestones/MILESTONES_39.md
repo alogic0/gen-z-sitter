@@ -31,8 +31,8 @@ The part that matters for this milestone is step 3.
 
 The relevant upstream files are:
 
-- [/home/oleg/prog/tree-sitter/crates/generate/src/build_tables/build_parse_table.rs](/home/oleg/prog/tree-sitter/crates/generate/src/build_tables/build_parse_table.rs)
-- [/home/oleg/prog/tree-sitter/crates/generate/src/build_tables/item_set_builder.rs](/home/oleg/prog/tree-sitter/crates/generate/src/build_tables/item_set_builder.rs)
+- [~/prog/tree-sitter/crates/generate/src/build_tables/build_parse_table.rs](~/prog/tree-sitter/crates/generate/src/build_tables/build_parse_table.rs)
+- [~/prog/tree-sitter/crates/generate/src/build_tables/item_set_builder.rs](~/prog/tree-sitter/crates/generate/src/build_tables/item_set_builder.rs)
 
 Upstream does not repeatedly rediscover closure expansions from scratch for every state. Instead it introduces an explicit item-set builder that precomputes reusable closure additions.
 
@@ -124,7 +124,7 @@ The implementation should not be considered correct just because it compiles or 
 
 The code should clearly contain:
 
-- an explicit item-set-builder layer in [src/parse_table](/home/oleg/prog/gen-z-sitter/src/parse_table)
+- an explicit item-set-builder layer in [src/parse_table](~/prog/gen-z-sitter/src/parse_table)
 - precomputed transitive closure additions per non-terminal
 - reuse of those additions during closure construction
 - a call path where `buildStatesWithOptions(...)` uses that builder instead of reconstructing all closure expansions live
@@ -350,7 +350,7 @@ Out of scope:
 
 ### PR 2: Implement The Item-Set Builder
 
-- [ ] add an explicit item-set-builder layer in [src/parse_table](/home/oleg/prog/gen-z-sitter/src/parse_table)
+- [ ] add an explicit item-set-builder layer in [src/parse_table](~/prog/gen-z-sitter/src/parse_table)
 - [ ] precompute transitive closure additions per non-terminal
 - [ ] thread the builder through the current state-construction path
 
