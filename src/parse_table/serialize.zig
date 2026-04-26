@@ -354,6 +354,27 @@ pub fn attachReservedWordLexModesAlloc(
     return result;
 }
 
+pub fn attachNonTerminalExtraLexModesAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    parse_states: []const state.ParseState,
+    productions: []const build.ProductionInfo,
+    extra_symbols: []const syntax_ir.SymbolRef,
+) std.mem.Allocator.Error!SerializedTable {
+    if (extra_symbols.len == 0) return serialized;
+
+    var result = serialized;
+    const lex_modes = try allocator.alloc(lexer_serialize.SerializedLexMode, serialized.lex_modes.len);
+    for (serialized.lex_modes, 0..) |mode, index| {
+        lex_modes[index] = mode;
+        if (index < parse_states.len and isNonTerminalExtraEndState(parse_states[index], productions, extra_symbols)) {
+            lex_modes[index].lex_state = std.math.maxInt(u16);
+        }
+    }
+    result.lex_modes = lex_modes;
+    return result;
+}
+
 pub fn attachExtraShiftMetadataAlloc(
     allocator: std.mem.Allocator,
     serialized: SerializedTable,
@@ -1322,6 +1343,21 @@ fn symbolRefIn(symbols: []const syntax_ir.SymbolRef, symbol: syntax_ir.SymbolRef
     } else false;
 }
 
+fn isNonTerminalExtraEndState(
+    parse_state: state.ParseState,
+    productions: []const build.ProductionInfo,
+    extra_symbols: []const syntax_ir.SymbolRef,
+) bool {
+    for (parse_state.items) |entry| {
+        if (!item.containsLookahead(entry.lookaheads, .{ .end = {} })) continue;
+        if (entry.item.production_id >= productions.len) continue;
+        const production = productions[entry.item.production_id];
+        if (entry.item.step_index != production.steps.len) continue;
+        if (symbolRefIn(extra_symbols, .{ .non_terminal = production.lhs })) return true;
+    }
+    return false;
+}
+
 fn findBoolSet(sets: []const []const bool, target: []const bool) ?usize {
     for (sets, 0..) |set, index| {
         if (std.mem.eql(bool, set, target)) return index;
@@ -1948,6 +1984,43 @@ test "attachReservedWordLexModesAlloc serializes reserved word set ids" {
 
     try std.testing.expectEqual(@as(u16, 2), serialized.lex_modes[0].reserved_word_set_id);
     try std.testing.expectEqual(@as(u16, 0), serialized.lex_modes[1].reserved_word_set_id);
+}
+
+test "attachNonTerminalExtraLexModesAlloc marks extra end states with sentinel lex state" {
+    const allocator = std.testing.allocator;
+    const production_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    const productions = [_]build.ProductionInfo{
+        .{ .lhs = 1, .steps = production_steps[0..] },
+    };
+    var extra_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 0, .step_index = 1 }, .{ .end = {} }),
+    };
+    defer for (extra_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+    const normal_items = [_]item.ParseItemSetEntry{
+        .{
+            .item = .{ .production_id = 0, .step_index = 0 },
+            .lookaheads = .{ .terminals = &.{}, .externals = &.{}, .includes_epsilon = false },
+        },
+    };
+    const parse_states = [_]state.ParseState{
+        .{ .id = 0, .items = normal_items[0..], .transitions = &.{} },
+        .{ .id = 1, .items = extra_items[0..], .transitions = &.{} },
+    };
+
+    const serialized = try attachNonTerminalExtraLexModesAlloc(allocator, .{
+        .states = &.{},
+        .blocked = false,
+        .lex_modes = &[_]lexer_serialize.SerializedLexMode{
+            .{ .lex_state = 0 },
+            .{ .lex_state = 1 },
+        },
+    }, parse_states[0..], productions[0..], &[_]syntax_ir.SymbolRef{.{ .non_terminal = 1 }});
+    defer allocator.free(serialized.lex_modes);
+
+    try std.testing.expectEqual(@as(u16, 0), serialized.lex_modes[0].lex_state);
+    try std.testing.expectEqual(std.math.maxInt(u16), serialized.lex_modes[1].lex_state);
 }
 
 test "attachKeywordLexTableAlloc builds keyword table from reserved words" {

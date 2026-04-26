@@ -307,6 +307,13 @@ fn serializePreparedBuildResultAlloc(
         serialized,
         result.states,
     );
+    serialized = try serialize.attachNonTerminalExtraLexModesAlloc(
+        allocator,
+        serialized,
+        result.states,
+        result.productions,
+        extracted.syntax.extra_symbols,
+    );
     serialized = try serialize.attachKeywordLexTableAlloc(
         allocator,
         serialized,
@@ -1261,6 +1268,49 @@ test "serializeTableFromPrepared defaults missing semantic grammar version" {
     const serialized = try serializeTableFromPrepared(pipeline_arena.allocator(), prepared, .strict);
 
     try std.testing.expectEqual([3]u8{ 0, 0, 0 }, serialized.grammar_version);
+}
+
+test "generateParserCEmitterDumpFromPrepared compiles versioned grammar metadata" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    const contents =
+        \\{
+        \\  "name": "versioned",
+        \\  "version": "2.3.4",
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        { "type": "STRING", "value": "x" }
+        \\      ]
+        \\    }
+        \\  }
+        \\}
+    ;
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), contents, .{});
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateParserCEmitterDumpFromPrepared(
+        pipeline_arena.allocator(),
+        prepared,
+        .strict,
+    );
+
+    try std.testing.expect(std.mem.containsAtLeast(
+        u8,
+        dump,
+        1,
+        "  .metadata = { .major_version = 2, .minor_version = 3, .patch_version = 4 },\n",
+    ));
+    try compat_checks.validateParserCCompatibilitySurface(dump);
+    try expectParserCDumpCompiles(dump);
 }
 
 test "serializeTableFromPrepared marks fields inherited from inline hidden fixture" {

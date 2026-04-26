@@ -95,6 +95,7 @@ fn compactLexModeExternalStates(
     for (original_states, 0..) |_, index| {
         if (state_owners[index] != index) continue;
         if (index < original_lex_modes.len and compacted_index < compacted_lex_modes.len) {
+            compacted_lex_modes[compacted_index].lex_state = original_lex_modes[index].lex_state;
             compacted_lex_modes[compacted_index].external_lex_state = original_lex_modes[index].external_lex_state;
             compacted_lex_modes[compacted_index].reserved_word_set_id = original_lex_modes[index].reserved_word_set_id;
         }

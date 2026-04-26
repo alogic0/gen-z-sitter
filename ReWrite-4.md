@@ -16,6 +16,10 @@ including `zig build test-compat-heavy`.
 goldens unless a RW-4 change directly touches that output. Those goldens are a separate
 post-RW-3 cleanup item recorded in `GAPS_260425.md`.
 
+**Deferred verification**: do not run `zig build test-compat-heavy` during the current
+RW-4 implementation pass. It is intentionally expensive and remains a separate manual
+compatibility gate to run only when explicitly requested.
+
 **Reference algorithms**:
 - `../tree-sitter/lib/src/parser.h`: `TSLanguageMetadata` struct (lines 21–25),
   `TSLanguage.metadata` field (line 151).
@@ -66,15 +70,18 @@ lexing is required.
 recomputes lex modes from the compacted state slice. The emitter fallback is therefore
 not reachable through the normal serialized/optimized pipeline. Upstream emits a
 `(TSStateId)(-1)` lex state for non-terminal-extra end states; the local boundary does
-not currently carry a separate sentinel flag, so RW-4 does not change that behavior in
-this pass.
+not previously carry a separate sentinel value, so RW-4 now marks those end states with
+`std.math.maxInt(u16)` before emission.
 
 **If a real gap is found**, add a sub-phase (Phase 1b) with:
 
-- [ ] Fix `serialize.zig` to emit one `SerializedLexMode` per state.
-- [ ] Add a test that verifies `lex_modes.len == states.len` for a fixture with both
-  normal states and non-terminal-extra end states.
+- [x] Fix `serialize.zig` to preserve one `SerializedLexMode` per state and mark
+  non-terminal-extra end states with the runtime sentinel lex state.
+- [x] Add a test that verifies normal states keep their lex state while
+  non-terminal-extra end states receive the sentinel.
 - [ ] Re-run `zig build test-compat-heavy` and confirm no regressions.
+  Deferred: manual compatibility gate; do not run during the current RW-4 pass unless
+  explicitly requested.
 
 ---
 
@@ -92,8 +99,10 @@ an invalid word-token reference is caught before emission.
 - [x] Determine whether `symbolIdForRef` for the word-token can legitimately return
   `null` in the current Zig pipeline (i.e., is there a grammar that reaches emission
   with a word-token that has no runtime symbol ID?).
-- [ ] If `null` is possible and incorrect: replace `orelse 0` with an assertion or a
+- [x] If `null` is possible and incorrect: replace `orelse 0` with an assertion or a
   returned error that names the missing symbol.
+  Not applicable: the lowering path guarantees this symbol; RW-4 uses
+  `orelse unreachable` to surface invariant violations.
 - [x] If `null` is structurally impossible (the builder guarantees the word-token always
   has a symbol ID by the time emission runs): add a comment explaining the invariant and
   change `orelse 0` to `orelse unreachable` so a future violation surfaces at debug
@@ -181,7 +190,7 @@ add_line!(self, "}},");
 - [x] Add a second emitter test: `grammar_version = [0, 0, 0]` emits
   `.metadata = { .major_version = 0, .minor_version = 0, .patch_version = 0 }` (no
   special-casing; always emit).
-- [ ] Compile-smoke one fixture through the full path (JSON → SerializedTable → parser.c
+- [x] Compile-smoke one fixture through the full path (JSON → SerializedTable → parser.c
   → `zig cc`) and confirm the output compiles without warnings.
 
 ---
@@ -211,6 +220,8 @@ Run broad checks only after all correctness changes are in place.
 - [x] Run `zig build test` and fix failures.
 - [ ] Run `zig build test-compat-heavy` and confirm no regressions against the RW-3
   baseline.
+  Deferred: manual compatibility gate; do not run during the current RW-4 pass unless
+  explicitly requested.
 - [ ] Run compile-smoke on the full compatibility target set.
-- [ ] Update `GAPS_260425.md`: move Gap 1 (metadata) to "No Longer Gaps"; update or
+- [x] Update `GAPS_260425.md`: move Gap 1 (metadata) to "No Longer Gaps"; update or
   close Audit Items A, B, C depending on findings from Phases 1 and 2.

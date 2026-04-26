@@ -1583,6 +1583,34 @@ test "emitParserCAlloc emits serialized lex modes" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .lex_modes = ts_lex_modes,\n"));
 }
 
+test "emitParserCAlloc emits non-terminal extra lex-mode sentinel" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .lex_modes = &[_]lexer_serialize.SerializedLexMode{
+            .{ .lex_state = std.math.maxInt(u16) },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(
+        u8,
+        emitted,
+        1,
+        "  [0] = { .lex_state = 65535, .external_lex_state = 0, .reserved_word_set_id = 0 },\n",
+    ));
+}
+
 test "emitParserCAlloc emits serialized lexer tables and remaps lex mode starts" {
     const allocator = std.testing.allocator;
     const serialized = serialize.SerializedTable{
