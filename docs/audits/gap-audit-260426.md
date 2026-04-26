@@ -1,6 +1,6 @@
 # Gap Audit Reevaluation — 2026-04-26
 
-Reevaluates `docs/gap-audit-260425.md` against `GAPS_260425.md` (updated through RW-5)
+Reevaluates `docs/audits/gap-audit-260425.md` against `GAPS_260425.md` (updated through RW-5)
 and the current state of both codebases.
 
 ---

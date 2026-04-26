@@ -27,11 +27,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const unit_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/fast_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/fast_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{},
     });
 
@@ -41,11 +37,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests.step);
 
     const pt_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/parse_table_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/parse_table_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{},
     });
 
@@ -55,11 +47,7 @@ pub fn build(b: *std.Build) void {
     pt_test_step.dependOn(&run_pt_tests.step);
 
     const pipeline_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/pipeline_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/pipeline_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{},
     });
 
@@ -69,11 +57,7 @@ pub fn build(b: *std.Build) void {
     pipeline_test_step.dependOn(&run_pipeline_tests.step);
 
     const cli_generate_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/cli_generate_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/cli_generate_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{},
     });
 
@@ -83,11 +67,7 @@ pub fn build(b: *std.Build) void {
     cli_generate_test_step.dependOn(&run_cli_generate_tests.step);
 
     const behavioral_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/behavioral_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/behavioral_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{},
     });
 
@@ -97,11 +77,7 @@ pub fn build(b: *std.Build) void {
     behavioral_test_step.dependOn(&run_behavioral_tests.step);
 
     const compat_heavy_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/compat_heavy_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/compat_heavy_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{"compat."},
     });
 
@@ -111,11 +87,7 @@ pub fn build(b: *std.Build) void {
     compat_heavy_test_step.dependOn(&run_compat_heavy_tests.step);
 
     const compat_full_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/compat_full_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/compat_full_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{"compat."},
     });
 
@@ -135,11 +107,7 @@ pub fn build(b: *std.Build) void {
         "linkAndRunHaskellParserWithRealExternalScanner",
     };
     const no_external_link_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/runtime_link_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunNoExternalTinyParser"},
     });
 
@@ -149,11 +117,7 @@ pub fn build(b: *std.Build) void {
     no_external_link_step.dependOn(&run_no_external_link_tests.step);
 
     const keyword_link_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/runtime_link_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunKeywordReservedParser"},
     });
 
@@ -163,11 +127,7 @@ pub fn build(b: *std.Build) void {
     keyword_link_step.dependOn(&run_keyword_link_tests.step);
 
     const external_scanner_link_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/runtime_link_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunExternalScannerParser"},
     });
 
@@ -177,11 +137,7 @@ pub fn build(b: *std.Build) void {
     external_scanner_link_step.dependOn(&run_external_scanner_link_tests.step);
 
     const multi_token_scanner_link_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/runtime_link_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunMultiTokenExternalScannerParser"},
     });
 
@@ -191,11 +147,7 @@ pub fn build(b: *std.Build) void {
     multi_token_scanner_link_step.dependOn(&run_multi_token_scanner_link_tests.step);
 
     const stateful_scanner_link_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/runtime_link_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunStatefulExternalScannerParser"},
     });
 
@@ -205,11 +157,7 @@ pub fn build(b: *std.Build) void {
     stateful_scanner_link_step.dependOn(&run_stateful_scanner_link_tests.step);
 
     const bracket_lang_link_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/runtime_link_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunBracketLangParser"},
     });
 
@@ -219,11 +167,7 @@ pub fn build(b: *std.Build) void {
     bracket_lang_link_step.dependOn(&run_bracket_lang_link_tests.step);
 
     const bash_real_scanner_link_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/runtime_link_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunBashParserWithRealExternalScanner"},
     });
 
@@ -233,11 +177,7 @@ pub fn build(b: *std.Build) void {
     bash_real_scanner_link_step.dependOn(&run_bash_real_scanner_link_tests.step);
 
     const haskell_real_scanner_link_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/runtime_link_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunHaskellParserWithRealExternalScanner"},
     });
 
@@ -247,11 +187,7 @@ pub fn build(b: *std.Build) void {
     haskell_real_scanner_link_step.dependOn(&run_haskell_real_scanner_link_tests.step);
 
     const runtime_link_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = createTestModule(b, "src/runtime_link_test_entry.zig", target, optimize),
         .filters = if (test_filter) |f| &.{f} else default_runtime_link_filters,
     });
 
@@ -277,4 +213,18 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_compat_target.addArgs(args);
     const compat_target_step = b.step("run-compat-target", "Run one compatibility target through the harness");
     compat_target_step.dependOn(&run_compat_target.step);
+}
+
+fn createTestModule(
+    b: *std.Build,
+    root_source_file: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) *std.Build.Module {
+    const module = b.createModule(.{
+        .root_source_file = b.path(root_source_file),
+        .target = target,
+        .optimize = optimize,
+    });
+    return module;
 }

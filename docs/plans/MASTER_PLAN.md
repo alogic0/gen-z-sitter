@@ -800,7 +800,7 @@ This checklist covers only work that is still outstanding from the current proje
 The longer-tail generator work is tracked separately in:
 
 - [MASTER_PLAN_2.md](./MASTER_PLAN_2.md)
-- [MILESTONES_21.md](./MILESTONES_21.md)
+- [MILESTONES_21.md](../milestones/MILESTONES_21.md)
 
 ## Risks
 
@@ -848,11 +848,11 @@ Mitigation:
 
 The following files remain as detailed area plans:
 
-- [zig-generator-architecture.md](./zig-generator-architecture.md)
-- [compatibility-matrix.md](./compatibility-matrix.md)
+- [zig-generator-architecture.md](../architecture/zig-generator-architecture.md)
+- [compatibility-matrix.md](../audits/compatibility-matrix.md)
 - [prepared-grammar-ir.md](./prepared-grammar-ir.md)
 - [parse-table-algorithm-plan.md](./parse-table-algorithm-plan.md)
 - [test-strategy.md](./test-strategy.md)
-- [milestone-0-task-list.md](./milestone-0-task-list.md)
+- [milestone-0-task-list.md](../milestones/milestone-0-task-list.md)
 
 Use this `MASTER_PLAN.md` as the primary entry point.

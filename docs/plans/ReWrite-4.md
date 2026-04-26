@@ -2,7 +2,7 @@
 
 **Goal**: close the one confirmed correctness gap left by RW-3 (grammar semantic version
 not propagated or emitted), resolve three uncertain items from the April 2026 gap audit
-(`docs/gap-audit-260425.md`), and leave the generator output accurately matching the
+(`docs/audits/gap-audit-260425.md`), and leave the generator output accurately matching the
 reference for all fields that a grammar consumer can inspect at runtime.
 
 **Scope rule**: keep the project self-contained Zig. Do not copy tree-sitter source

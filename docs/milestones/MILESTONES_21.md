@@ -2,7 +2,7 @@
 
 This milestone covers the longer-tail generator work that remains after the currently active milestone sequence.
 
-Use this file for follow-on implementation once the active milestone work in [MASTER_PLAN.md](./MASTER_PLAN.md) and [MASTER_PLAN_2.md](./MASTER_PLAN_2.md) has moved far enough that broader generator parity and optimization become the immediate priority.
+Use this file for follow-on implementation once the active milestone work in [MASTER_PLAN.md](../plans/MASTER_PLAN.md) and [MASTER_PLAN_2.md](../plans/MASTER_PLAN_2.md) has moved far enough that broader generator parity and optimization become the immediate priority.
 
 ## Fuller Generator Parity
 

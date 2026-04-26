@@ -199,6 +199,11 @@ Current staged compatibility boundary:
 ## Repository Layout
 
 ```text
+docs/
+  plans/                   roadmap and rewrite plans
+  milestones/              historical milestone checklists and closeouts
+  audits/                  gap audits and compatibility matrix
+  architecture/            architecture notes
 src/
   main.zig                 process entry point
   cli/                     argument parsing and command dispatch
@@ -212,56 +217,58 @@ src/
   support/                 generic helpers
   tests/                   fixtures and golden helpers
   behavioral/              behavioral harness support
+compat_targets/            checked-in compatibility fixtures and reports
+tools/                     small local debugging utilities
 ```
 
 ## Key Documents
 
 Start here:
 
-- [MASTER_PLAN.md](./MASTER_PLAN.md): primary roadmap and project framing
-- [zig-generator-architecture.md](./zig-generator-architecture.md): architecture notes
-- [compatibility-matrix.md](./compatibility-matrix.md): compatibility targets and gaps
-- [test-strategy.md](./test-strategy.md): testing approach
+- [MASTER_PLAN.md](./docs/plans/MASTER_PLAN.md): primary roadmap and project framing
+- [zig-generator-architecture.md](./docs/architecture/zig-generator-architecture.md): architecture notes
+- [compatibility-matrix.md](./docs/audits/compatibility-matrix.md): compatibility targets and gaps
+- [test-strategy.md](./docs/plans/test-strategy.md): testing approach
 
 Implementation history and milestone tracking:
 
-- [MILESTONE_1_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_1_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_2_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_2_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_3_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_3_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_4_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_4_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_5_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_5_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_6_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_6_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_7_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_7_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_8_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_8_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_9_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_9_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_10_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_10_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_11_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_11_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_12_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_12_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_13_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_13_IMPLEMENTATION_CHECKLIST.md)
-- [MILESTONE_15_IMPLEMENTATION_CHECKLIST.md](./MILESTONE_15_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_1_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_1_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_2_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_2_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_3_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_3_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_4_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_4_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_5_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_5_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_6_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_6_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_7_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_7_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_8_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_8_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_9_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_9_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_10_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_10_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_11_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_11_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_12_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_12_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_13_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_13_IMPLEMENTATION_CHECKLIST.md)
+- [MILESTONE_15_IMPLEMENTATION_CHECKLIST.md](./docs/milestones/MILESTONE_15_IMPLEMENTATION_CHECKLIST.md)
 
 Focused supporting notes:
 
-- [MASTER_PLAN_2.md](./MASTER_PLAN_2.md)
-- [MILESTONES_16.md](./MILESTONES_16.md)
-- [MILESTONES_17.md](./MILESTONES_17.md)
-- [MILESTONES_18.md](./MILESTONES_18.md)
-- [MILESTONES_19.md](./MILESTONES_19.md)
-- [MILESTONES_20.md](./MILESTONES_20.md)
-- [MILESTONES_21.md](./MILESTONES_21.md)
-- [MILESTONES_22.md](./MILESTONES_22.md)
-- [prepared-grammar-ir.md](./prepared-grammar-ir.md)
-- [parse-table-algorithm-plan.md](./parse-table-algorithm-plan.md)
-- [milestone-0-task-list.md](./milestone-0-task-list.md)
+- [MASTER_PLAN_2.md](./docs/plans/MASTER_PLAN_2.md)
+- [MILESTONES_16.md](./docs/milestones/MILESTONES_16.md)
+- [MILESTONES_17.md](./docs/milestones/MILESTONES_17.md)
+- [MILESTONES_18.md](./docs/milestones/MILESTONES_18.md)
+- [MILESTONES_19.md](./docs/milestones/MILESTONES_19.md)
+- [MILESTONES_20.md](./docs/milestones/MILESTONES_20.md)
+- [MILESTONES_21.md](./docs/milestones/MILESTONES_21.md)
+- [MILESTONES_22.md](./docs/milestones/MILESTONES_22.md)
+- [prepared-grammar-ir.md](./docs/plans/prepared-grammar-ir.md)
+- [parse-table-algorithm-plan.md](./docs/plans/parse-table-algorithm-plan.md)
+- [milestone-0-task-list.md](./docs/milestones/milestone-0-task-list.md)
 
 ## Recommended Reading Order
 
-1. [MASTER_PLAN.md](./MASTER_PLAN.md)
-2. [zig-generator-architecture.md](./zig-generator-architecture.md)
-3. [compatibility-matrix.md](./compatibility-matrix.md)
-4. [test-strategy.md](./test-strategy.md)
-5. [MILESTONES_23.md](./MILESTONES_23.md) for the expanded parser-only proven boundary
-6. [MILESTONES_26.md](./MILESTONES_26.md) for the current second-wave scanner boundary and closeout state
-7. [MILESTONES_24.md](./MILESTONES_24.md) for broader compatibility polish background
-8. [MILESTONES_21.md](./MILESTONES_21.md) for current optimization/parity follow-on work
+1. [MASTER_PLAN.md](./docs/plans/MASTER_PLAN.md)
+2. [zig-generator-architecture.md](./docs/architecture/zig-generator-architecture.md)
+3. [compatibility-matrix.md](./docs/audits/compatibility-matrix.md)
+4. [test-strategy.md](./docs/plans/test-strategy.md)
+5. [MILESTONES_23.md](./docs/milestones/MILESTONES_23.md) for the expanded parser-only proven boundary
+6. [MILESTONES_26.md](./docs/milestones/MILESTONES_26.md) for the current second-wave scanner boundary and closeout state
+7. [MILESTONES_24.md](./docs/milestones/MILESTONES_24.md) for broader compatibility polish background
+8. [MILESTONES_21.md](./docs/milestones/MILESTONES_21.md) for current optimization/parity follow-on work
 9. the milestone checklist for the subsystem you care about

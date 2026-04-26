@@ -12,7 +12,7 @@ The goal remains the same: bias the project toward real generated-parser usefuln
 - [x] compare parse behavior and failure behavior, not only emitted file shape
 - [x] add corpus-oriented checks that exercise generated parsers end to end
 - [x] document the current behavioral-equivalence boundary and known gaps
-- detail: [MILESTONES_16.md](./MILESTONES_16.md)
+- detail: [MILESTONES_16.md](../milestones/MILESTONES_16.md)
 
 Current completed boundary:
 - first staged behavioral equivalence is now in place for a scanner-free real-language-style grammar
@@ -28,14 +28,14 @@ Current completed boundary:
 - [x] reduce the remaining gap between the current diagnostic-friendly emitter and a real generated parser translation unit
 - [x] define concrete exit criteria for “closer to upstream `parser.c`” so the work can be marked complete objectively
 - [x] keep exact ready/blocked emission goldens stable while the parser surface becomes more realistic
-- detail: [MILESTONES_17.md](./MILESTONES_17.md)
+- detail: [MILESTONES_17.md](../milestones/MILESTONES_17.md)
 
 ## MILESTONES 18 (Lexer / Scanner Path)
 
 - [x] implement lexer/scanner emission beyond parser-table-only coverage
 - [x] prove the lexer/scanner path on real grammar cases that cannot be covered by the current parser-only boundary
 - [x] document staged compatibility limits in the emitted scanner/runtime surface
-- detail: [MILESTONES_18.md](./MILESTONES_18.md)
+- detail: [MILESTONES_18.md](../milestones/MILESTONES_18.md)
 
 Execution notes:
 - [x] use this milestone as the active implementation plan before compatibility hardening
@@ -49,7 +49,7 @@ Execution notes:
 - [x] add external scanner integration support beyond the first blocked-only lexical boundary
 - [x] prove the external-scanner path on real grammar cases that require external-token handling
 - [x] document staged compatibility limits in the emitted external-scanner/runtime surface
-- detail: [MILESTONES_19.md](./MILESTONES_19.md)
+- detail: [MILESTONES_19.md](../milestones/MILESTONES_19.md)
 
 ## MILESTONES 20 (Compatibility Hardening)
 
@@ -57,7 +57,7 @@ Execution notes:
 - [ ] shrink the emitted compatibility gaps that still block credible runtime use
 - [ ] make ABI and compatibility-layer boundaries explicit and testable
 - [ ] add compatibility-oriented checks for the richer emitted parser surface
-- detail: [MILESTONES_20.md](./MILESTONES_20.md)
+- detail: [MILESTONES_20.md](../milestones/MILESTONES_20.md)
 
 Current staged boundary being hardened in this milestone:
 
@@ -71,7 +71,7 @@ Current staged boundary being hardened in this milestone:
 - [ ] implement parse-table compression and/or minimization only after correctness is credible
 - [ ] avoid performance-oriented rewrites that blur unresolved correctness and compatibility gaps
 - [ ] document the intended optimization boundary before changing table layout materially
-- detail: [MILESTONES_21.md](./MILESTONES_21.md)
+- detail: [MILESTONES_21.md](../milestones/MILESTONES_21.md)
 
 Current parser-only shortlist boundary before broader real-repo onboarding:
 
