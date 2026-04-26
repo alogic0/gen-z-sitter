@@ -18,12 +18,14 @@ The current code is much closer to tree-sitter than before:
 - valid-token selection already uses combined-state traversal
 - combined lexer states are now interned during selection
 
-But the main remaining gap is structural:
+The original structural gap was:
 
 - tree-sitter builds lex tables once and reuses them
-- we still perform ad hoc lexer traversal during behavioral simulation
+- behavioral simulation still performed ad hoc lexer traversal
 
-This milestone closes that gap.
+That gap is now mostly closed for scanner-free and sampled external-boundary
+paths. The remaining M44 work is narrower: keyword/reserved-word lexing and
+cleaner external-scanner integration.
 
 ## Scope
 
@@ -43,40 +45,40 @@ Out of scope:
 
 ## Exit Criteria
 
-- [ ] A lexer-state builder exists for valid token sets, analogous in role to tree-sitter `build_lex_table.rs`
-- [ ] Parse states can be assigned stable `lex_state_id`s
-- [ ] Main behavioral tokenization runs through lexer states instead of `selectBestTokenForSet(...)`
-- [ ] Existing `lexer.model`, `behavioral`, and full `zig build test` suites pass
-- [ ] The remaining lexer mismatch with tree-sitter is mainly keyword/external-scanner integration, not ad hoc token probing
+- [x] A lexer-state builder exists for valid token sets, analogous in role to tree-sitter `build_lex_table.rs`
+- [x] Parse states can be assigned stable `lex_state_id`s
+- [x] Main behavioral tokenization runs through lexer states instead of `selectBestTokenForSet(...)`
+- [x] Existing `lexer.model`, `behavioral`, and full `zig build test` suites pass
+- [x] The remaining lexer mismatch with tree-sitter is mainly keyword/external-scanner integration, not ad hoc token probing
 
 ## PR 1: Lex Table Builder
 
-- [ ] Add a lexer-state builder module in the lexer layer
-- [ ] Input is expanded lexical grammar plus a valid token set
-- [ ] Output is interned lexer states with:
-  - [ ] accept action
-  - [ ] advance transitions
-  - [ ] EOF handling
-- [ ] Reuse the current combined-state machinery instead of re-deriving the algorithm again
-- [ ] Add focused tests for:
-  - [ ] same-string token preference
-  - [ ] separator-sensitive completion vs continuation
-  - [ ] stable reuse of identical combined states
+- [x] Add a lexer-state builder module in the lexer layer
+- [x] Input is expanded lexical grammar plus a valid token set
+- [x] Output is interned lexer states with:
+  - [x] accept action
+  - [x] advance transitions
+  - [x] EOF handling
+- [x] Reuse the current combined-state machinery instead of re-deriving the algorithm again
+- [x] Add focused tests for:
+  - [x] same-string token preference
+  - [x] separator-sensitive completion vs continuation
+  - [x] stable reuse of identical combined states
 
 ## PR 2: Parse State to Lex State Assignment
 
-- [ ] Derive valid token sets from parse states
-- [ ] Assign each parse state a stable `lex_state_id`
-- [ ] Reuse lex states across parse states with equivalent valid token sets
-- [ ] Add tests that verify deterministic `lex_state_id` assignment on small grammars
+- [x] Derive valid token sets from parse states
+- [x] Assign each parse state a stable `lex_state_id`
+- [x] Reuse lex states across parse states with equivalent valid token sets
+- [x] Add tests that verify deterministic `lex_state_id` assignment on small grammars
 
 ## PR 3: Behavioral Harness on Lex States
 
-- [ ] Replace main behavioral lexical selection with lexer-state execution
-- [ ] Scanner-free path uses `lex_state_id` instead of probing valid terminals individually
-- [ ] First-external-boundary path uses the same lexer-state execution for lexical tokens
-- [ ] Sampled external-only path also uses lexer states where syntax grammar is available
-- [ ] Keep old helper paths only where still required for unsupported features, and isolate them clearly
+- [x] Replace main behavioral lexical selection with lexer-state execution
+- [x] Scanner-free path uses `lex_state_id` instead of probing valid terminals individually
+- [x] First-external-boundary path uses the same lexer-state execution for lexical tokens
+- [x] Sampled external-only path also uses lexer states where syntax grammar is available
+- [x] Keep old helper paths only where still required for unsupported features, and isolate them clearly
 
 ## PR 4: Keyword / Word Token Boundary
 
@@ -93,10 +95,9 @@ Out of scope:
 
 ## Verification
 
-- [ ] `zig test src/main.zig --test-filter "lexer.model"`
-- [ ] `zig test src/main.zig --test-filter "behavioral"`
-- [ ] targeted compat-harness scanner-wave checks
-- [ ] `zig build test`
+- [x] `zig build test --summary all`
+- [x] `zig build test-behavioral --summary all`
+- [x] targeted scanner-wave runtime-link check: `zig build test-link-runtime --summary all`
 
 ## Completion Notes
 
