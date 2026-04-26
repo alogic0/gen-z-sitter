@@ -1116,11 +1116,19 @@ test "serializeTableFromPrepared attaches serialized lex tables" {
     const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &raw);
     const serialized = try serializeTableFromPrepared(arena.allocator(), prepared, .strict);
 
+    try std.testing.expect(!serialized.blocked);
     try std.testing.expect(serialized.lex_tables.len > 0);
     try std.testing.expectEqual(serialized.lex_state_terminal_sets.len, serialized.lex_tables.len);
     for (serialized.lex_tables) |lex_table| {
         try std.testing.expect(lex_table.start_state_id < lex_table.states.len);
     }
+    var saw_repetition_shift = false;
+    for (serialized.states) |serialized_state| {
+        for (serialized_state.actions) |entry| {
+            if (entry.repetition) saw_repetition_shift = true;
+        }
+    }
+    try std.testing.expect(saw_repetition_shift);
 }
 
 test "serializeTableFromPrepared excludes default aliases from alias sequences" {
