@@ -241,10 +241,10 @@ itself a non-terminal remain unsupported locally for now.
 Run broad checks only after the focused runtime link tests and high-risk correctness
 changes are in place.
 
-- [ ] Run `zig build test` and fix failures.
-- [ ] Run compile-smoke on the full compatibility target set.
-- [ ] Run the behavioral harness and compare against the pre-RW-3 baseline.
-- [ ] Update `GAPS_260425.md`: move closed items to "No Longer Gaps" and refresh the
+- [x] Run `zig build test` and fix failures.
+- [x] Run compile-smoke on the full compatibility target set.
+- [x] Run the behavioral harness and compare against the pre-RW-3 baseline.
+- [x] Update `GAPS_260425.md`: move closed items to "No Longer Gaps" and refresh the
   remaining open items.
 
 ---

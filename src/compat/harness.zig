@@ -1611,7 +1611,7 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[7].blocked_boundary);
     try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[8].mismatch_category);
     try std.testing.expect(runs[8].blocked_boundary != null);
-    try std.testing.expectEqual(@as(usize, 1), runs[8].blocked_boundary.?.reasons.shift_reduce);
+    try std.testing.expectEqual(@as(usize, 2), runs[8].blocked_boundary.?.reasons.shift_reduce);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[9].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[10].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[11].mismatch_category);
@@ -1671,7 +1671,7 @@ test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked
     try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[8].mismatch_category);
     try std.testing.expectEqual(true, runs[8].expected_blocked);
     try std.testing.expect(runs[8].blocked_boundary != null);
-    try std.testing.expectEqual(@as(usize, 1), runs[8].blocked_boundary.?.unresolved_entry_count);
+    try std.testing.expectEqual(@as(usize, 2), runs[8].blocked_boundary.?.unresolved_entry_count);
     try std.testing.expectEqualStrings("expr", runs[8].blocked_boundary.?.samples[0].symbol_name);
     try std.testing.expect(std.mem.indexOf(u8, runs[8].blocked_boundary.?.samples[0].candidate_actions_summary, "reduce:2(expr)") != null);
     try std.testing.expect(std.mem.indexOf(u8, runs[8].notes, "intentionally ambiguous") != null);

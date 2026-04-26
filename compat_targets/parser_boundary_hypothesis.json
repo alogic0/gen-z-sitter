@@ -20,8 +20,7 @@
         "load",
         "prepare",
         "serialize",
-        "emit_parser_tables",
-        "emit_c_tables"
+        "emit_parser_tables"
       ],
       "deferred_from_step": "emit_parser_c",
       "standalone_probe_status": "not_implemented",

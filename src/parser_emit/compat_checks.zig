@@ -1,6 +1,14 @@
 const std = @import("std");
 
 pub const CompatibilityCheckError = error{
+    MissingAbiLanguageVersion,
+    MissingMinimumCompatibleLanguageVersionConstant,
+    MissingRuntimeLanguageStruct,
+    MissingParseTablePointer,
+    MissingParseActionsPointer,
+    MissingLexFunction,
+    MissingLanguageAbiInitializer,
+    MissingLanguageEntryPoint,
     MissingLanguageVersion,
     MissingMinimumCompatibleLanguageVersion,
     MissingSymbolCount,
@@ -45,6 +53,10 @@ pub const CompatibilityCheckError = error{
 };
 
 pub fn validateParserCCompatibilitySurface(contents: []const u8) CompatibilityCheckError!void {
+    if (std.mem.indexOf(u8, contents, "#define LANGUAGE_VERSION ") != null) {
+        return validateRuntimeParserSurface(contents);
+    }
+
     try requireSubstring(contents, "#define TS_LANGUAGE_VERSION ", error.MissingLanguageVersion);
     try requireSubstring(contents, "#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION ", error.MissingMinimumCompatibleLanguageVersion);
     try requireSubstring(contents, "#define TS_SYMBOL_COUNT ", error.MissingSymbolCount);
@@ -86,6 +98,17 @@ pub fn validateParserCCompatibilitySurface(contents: []const u8) CompatibilityCh
     try requireSubstring(contents, "bool ts_parser_has_action(uint16_t state_id, const char *symbol)", error.MissingHasActionAccessor);
     try requireSubstring(contents, "bool ts_parser_has_goto(uint16_t state_id, const char *symbol)", error.MissingHasGotoAccessor);
     try requireSubstring(contents, "bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol)", error.MissingHasUnresolvedAccessor);
+}
+
+fn validateRuntimeParserSurface(contents: []const u8) CompatibilityCheckError!void {
+    try requireSubstring(contents, "#define LANGUAGE_VERSION ", error.MissingAbiLanguageVersion);
+    try requireSubstring(contents, "#define MIN_COMPATIBLE_LANGUAGE_VERSION ", error.MissingMinimumCompatibleLanguageVersionConstant);
+    try requireSubstring(contents, "struct TSLanguage {\n", error.MissingRuntimeLanguageStruct);
+    try requireSubstring(contents, "  const uint16_t *parse_table;\n", error.MissingParseTablePointer);
+    try requireSubstring(contents, "  const TSParseActionEntry *parse_actions;\n", error.MissingParseActionsPointer);
+    try requireSubstring(contents, "static bool ts_lex(TSLexer *lexer, TSStateId state)", error.MissingLexFunction);
+    try requireSubstring(contents, "  .abi_version = LANGUAGE_VERSION,\n", error.MissingLanguageAbiInitializer);
+    try requireSubstring(contents, "const TSLanguage *tree_sitter_generated(void)", error.MissingLanguageEntryPoint);
 }
 
 fn requireSubstring(contents: []const u8, needle: []const u8, err: CompatibilityCheckError) CompatibilityCheckError!void {
@@ -152,6 +175,26 @@ test "validateParserCCompatibilitySurface accepts a compatibility-oriented parse
         \\bool ts_parser_has_action(uint16_t state_id, const char *symbol) { return ts_parser_find_action(state_id, symbol) != 0; }
         \\bool ts_parser_has_goto(uint16_t state_id, const char *symbol) { return ts_parser_find_goto(state_id, symbol) != 0; }
         \\bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) { return ts_parser_find_unresolved(state_id, symbol) != 0; }
+    );
+}
+
+test "validateParserCCompatibilitySurface accepts runtime ABI parser surface" {
+    try validateParserCCompatibilitySurface(
+        \\#define LANGUAGE_VERSION 15
+        \\#define MIN_COMPATIBLE_LANGUAGE_VERSION 13
+        \\typedef struct TSLanguage TSLanguage;
+        \\typedef uint16_t TSStateId;
+        \\typedef union { uint8_t type; } TSParseActionEntry;
+        \\typedef struct TSLexer TSLexer;
+        \\struct TSLanguage {
+        \\  const uint16_t *parse_table;
+        \\  const TSParseActionEntry *parse_actions;
+        \\};
+        \\static bool ts_lex(TSLexer *lexer, TSStateId state) { return false; }
+        \\static const TSLanguage ts_language = {
+        \\  .abi_version = LANGUAGE_VERSION,
+        \\};
+        \\const TSLanguage *tree_sitter_generated(void) { return &ts_language; }
     );
 }
 

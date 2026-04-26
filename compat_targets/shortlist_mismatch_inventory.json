@@ -8,7 +8,7 @@
       "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
       "candidate_status": "deferred_parser_wave",
       "first_failed_stage": "emit_parser_c",
-      "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:17, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:14, reduce:2(_entry)] count=1], samples=[state 13 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:14, reduce:2(_entry)]; state 16 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:17, reduce:3(_entry)]]",
+      "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:16, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:13, reduce:2(_entry)] count=1], samples=[state 12 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:13, reduce:2(_entry)]; state 15 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:16, reduce:3(_entry)]]",
       "notes": "staged parser-only JS fixture kept deferred because its _entry alternatives intentionally allow the next identifier/number token to be parsed either as more of the current repeated tail or as the start of the next source_file entry"
     }
   ],

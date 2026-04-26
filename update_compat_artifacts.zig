@@ -13,99 +13,84 @@ const coverage_decision = @import("src/compat/coverage_decision.zig");
 const shift_reduce_profile = @import("src/compat/shift_reduce_profile.zig");
 const external_repo_inventory = @import("src/compat/external_repo_inventory.zig");
 const external_scanner_repo_inventory = @import("src/compat/external_scanner_repo_inventory.zig");
+const runtime_io = @import("src/support/runtime_io.zig");
 
 fn logStepStart(name: []const u8) void {
     std.debug.print("[update_compat_artifacts] start {s}\n", .{name});
 }
 
-fn logStepDone(name: []const u8, timer: *std.time.Timer) void {
-    const elapsed_ms = @as(f64, @floatFromInt(timer.read())) / @as(f64, std.time.ns_per_ms);
-    std.debug.print("[update_compat_artifacts] done  {s} ({d:.2} ms)\n", .{ name, elapsed_ms });
+fn logStepDone(name: []const u8) void {
+    std.debug.print("[update_compat_artifacts] done  {s}\n", .{name});
 }
 
 fn writeArtifact(path: []const u8, contents: []const u8) !void {
-    var timer = try std.time.Timer.start();
     logStepStart(path);
     try fs_support.writeFile(path, contents);
-    logStepDone(path, &timer);
+    logStepDone(path);
 }
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    runtime_io.set(init.io, init.minimal.environ);
 
-    const allocator = gpa.allocator();
-
-    var timer = try std.time.Timer.start();
     logStepStart("artifact_manifest");
     const manifest = try artifact_manifest.renderArtifactManifestAlloc(allocator);
-    logStepDone("artifact_manifest", &timer);
+    logStepDone("artifact_manifest");
     defer allocator.free(manifest);
 
-    timer = try std.time.Timer.start();
     logStepStart("shortlist");
     const shortlist = try shortlist_json.renderShortlistArtifactAlloc(allocator);
-    logStepDone("shortlist", &timer);
+    logStepDone("shortlist");
     defer allocator.free(shortlist);
 
-    timer = try std.time.Timer.start();
     logStepStart("run_shortlist_targets");
     const runs = try harness.runShortlistTargetsAlloc(allocator, .{ .progress_log = true });
-    logStepDone("run_shortlist_targets", &timer);
+    logStepDone("run_shortlist_targets");
     defer result_model.deinitRunResults(allocator, runs);
 
-    timer = try std.time.Timer.start();
     logStepStart("inventory_report");
     const inventory_json = try inventory.renderInventoryReportAlloc(allocator, runs);
-    logStepDone("inventory_report", &timer);
+    logStepDone("inventory_report");
     defer allocator.free(inventory_json);
 
-    timer = try std.time.Timer.start();
     logStepStart("run_report");
     const report = try report_json.renderRunReportAlloc(allocator, runs);
-    logStepDone("run_report", &timer);
+    logStepDone("run_report");
     defer allocator.free(report);
 
-    timer = try std.time.Timer.start();
     logStepStart("mismatch_inventory");
     const mismatch = try mismatch_inventory.renderMismatchInventoryAlloc(allocator, runs);
-    logStepDone("mismatch_inventory", &timer);
+    logStepDone("mismatch_inventory");
     defer allocator.free(mismatch);
 
-    timer = try std.time.Timer.start();
     logStepStart("parser_boundary_profile");
     const parser_boundary = try parser_boundary_profile.renderParserBoundaryProfileAlloc(allocator, runs);
-    logStepDone("parser_boundary_profile", &timer);
+    logStepDone("parser_boundary_profile");
     defer allocator.free(parser_boundary);
 
-    timer = try std.time.Timer.start();
     logStepStart("parser_boundary_hypothesis");
     const parser_boundary_hypothesis_json = try parser_boundary_hypothesis.renderParserBoundaryHypothesisAlloc(allocator, runs);
-    logStepDone("parser_boundary_hypothesis", &timer);
+    logStepDone("parser_boundary_hypothesis");
     defer allocator.free(parser_boundary_hypothesis_json);
 
-    timer = try std.time.Timer.start();
     logStepStart("coverage_decision");
     const decision = try coverage_decision.renderCoverageDecisionAlloc(allocator, runs);
-    logStepDone("coverage_decision", &timer);
+    logStepDone("coverage_decision");
     defer allocator.free(decision);
 
-    timer = try std.time.Timer.start();
     logStepStart("shift_reduce_profile");
     const shift_reduce = try shift_reduce_profile.renderShiftReduceProfileAlloc(allocator, runs);
-    logStepDone("shift_reduce_profile", &timer);
+    logStepDone("shift_reduce_profile");
     defer allocator.free(shift_reduce);
 
-    timer = try std.time.Timer.start();
     logStepStart("external_repo_inventory");
     const external_repo = try external_repo_inventory.renderExternalRepoInventoryAlloc(allocator, runs);
-    logStepDone("external_repo_inventory", &timer);
+    logStepDone("external_repo_inventory");
     defer allocator.free(external_repo);
 
-    timer = try std.time.Timer.start();
     logStepStart("external_scanner_repo_inventory");
     const external_scanner_repo = try external_scanner_repo_inventory.renderExternalScannerRepoInventoryAlloc(allocator, runs);
-    logStepDone("external_scanner_repo_inventory", &timer);
+    logStepDone("external_scanner_repo_inventory");
     defer allocator.free(external_scanner_repo);
 
     try writeArtifact("compat_targets/artifact_manifest.json", manifest);

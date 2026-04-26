@@ -102,7 +102,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         }),
-        .filters = if (test_filter) |f| &.{f} else &.{},
+        .filters = if (test_filter) |f| &.{f} else &.{"compat."},
     });
 
     const run_compat_heavy_tests = b.addRunArtifact(compat_heavy_tests);

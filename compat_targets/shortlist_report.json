@@ -175,10 +175,6 @@
         "status": "passed",
         "detail": null
       },
-      "emit_c_tables": {
-        "status": "passed",
-        "detail": null
-      },
       "emit_parser_c": {
         "status": "passed",
         "detail": null
@@ -198,14 +194,13 @@
       "emission": {
         "blocked": false,
         "serialized_state_count": 4,
-        "emitted_state_count": 2,
-        "merged_state_count": 2,
-        "action_entry_count": 1,
+        "emitted_state_count": 4,
+        "merged_state_count": 0,
+        "action_entry_count": 4,
         "goto_entry_count": 2,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 142,
-        "c_tables_bytes": 438,
-        "parser_c_bytes": 13853
+        "parser_tables_bytes": 232,
+        "parser_c_bytes": 8916
       },
       "blocked_boundary": null
     },
@@ -248,10 +243,6 @@
         "status": "passed",
         "detail": null
       },
-      "emit_c_tables": {
-        "status": "passed",
-        "detail": null
-      },
       "emit_parser_c": {
         "status": "passed",
         "detail": null
@@ -271,14 +262,13 @@
       "emission": {
         "blocked": false,
         "serialized_state_count": 23,
-        "emitted_state_count": 10,
-        "merged_state_count": 13,
-        "action_entry_count": 33,
+        "emitted_state_count": 23,
+        "merged_state_count": 0,
+        "action_entry_count": 47,
         "goto_entry_count": 11,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 1368,
-        "c_tables_bytes": 2794,
-        "parser_c_bytes": 18850
+        "parser_tables_bytes": 1881,
+        "parser_c_bytes": 21563
       },
       "blocked_boundary": null
     },
@@ -321,13 +311,9 @@
         "status": "passed",
         "detail": null
       },
-      "emit_c_tables": {
-        "status": "passed",
-        "detail": null
-      },
       "emit_parser_c": {
         "status": "failed",
-        "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:17, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:14, reduce:2(_entry)] count=1], samples=[state 13 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:14, reduce:2(_entry)]; state 16 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:17, reduce:3(_entry)]]"
+        "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:16, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:13, reduce:2(_entry)] count=1], samples=[state 12 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:13, reduce:2(_entry)]; state 15 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:16, reduce:3(_entry)]]"
       },
       "scanner_boundary_check": {
         "status": "not_run",
@@ -343,15 +329,14 @@
       },
       "emission": {
         "blocked": true,
-        "serialized_state_count": 23,
-        "emitted_state_count": 23,
+        "serialized_state_count": 22,
+        "emitted_state_count": 22,
         "merged_state_count": 0,
-        "action_entry_count": 28,
+        "action_entry_count": 33,
         "goto_entry_count": 20,
         "unresolved_entry_count": 2,
-        "parser_tables_bytes": 1758,
-        "c_tables_bytes": 4717,
-        "parser_c_bytes": 22694
+        "parser_tables_bytes": 1837,
+        "parser_c_bytes": 16521
       },
       "blocked_boundary": {
         "unresolved_state_count": 2,
@@ -359,40 +344,41 @@
         "reasons": {
           "shift_reduce": 2,
           "reduce_reduce_deferred": 0,
+          "reduce_reduce_expected": 0,
           "multiple_candidates": 0,
           "unsupported_action_mix": 0
         },
         "samples": [
           {
-            "state_id": 13,
+            "state_id": 12,
             "symbol_kind": "terminal",
             "symbol_index": 1,
             "symbol_name": "number_literal",
             "reason": "shift_reduce",
             "candidate_count": 2,
-            "candidate_actions_summary": "shift:14, reduce:2(_entry)"
+            "candidate_actions_summary": "shift:13, reduce:2(_entry)"
           },
           {
-            "state_id": 16,
+            "state_id": 15,
             "symbol_kind": "terminal",
             "symbol_index": 0,
             "symbol_name": "identifier",
             "reason": "shift_reduce",
             "candidate_count": 2,
-            "candidate_actions_summary": "shift:17, reduce:3(_entry)"
+            "candidate_actions_summary": "shift:16, reduce:3(_entry)"
           }
         ],
         "dominant_signatures": [
           {
             "symbol_name": "identifier",
             "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:17, reduce:3(_entry)",
+            "candidate_actions_summary": "shift:16, reduce:3(_entry)",
             "count": 1
           },
           {
             "symbol_name": "number_literal",
             "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:14, reduce:2(_entry)",
+            "candidate_actions_summary": "shift:13, reduce:2(_entry)",
             "count": 1
           }
         ]
@@ -437,10 +423,6 @@
         "status": "passed",
         "detail": null
       },
-      "emit_c_tables": {
-        "status": "passed",
-        "detail": null
-      },
       "emit_parser_c": {
         "status": "passed",
         "detail": null
@@ -459,15 +441,14 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 1802,
-        "emitted_state_count": 1747,
-        "merged_state_count": 55,
-        "action_entry_count": 4917,
-        "goto_entry_count": 1533,
+        "serialized_state_count": 1377,
+        "emitted_state_count": 1327,
+        "merged_state_count": 50,
+        "action_entry_count": 3668,
+        "goto_entry_count": 1116,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 220457,
-        "c_tables_bytes": 457883,
-        "parser_c_bytes": 756024
+        "parser_tables_bytes": 162543,
+        "parser_c_bytes": 689669
       },
       "blocked_boundary": null
     },
@@ -510,10 +491,6 @@
         "status": "passed",
         "detail": null
       },
-      "emit_c_tables": {
-        "status": "passed",
-        "detail": null
-      },
       "emit_parser_c": {
         "status": "passed",
         "detail": null
@@ -532,15 +509,14 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 374,
-        "emitted_state_count": 334,
-        "merged_state_count": 40,
-        "action_entry_count": 780,
-        "goto_entry_count": 388,
+        "serialized_state_count": 292,
+        "emitted_state_count": 254,
+        "merged_state_count": 38,
+        "action_entry_count": 581,
+        "goto_entry_count": 330,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 38529,
-        "c_tables_bytes": 83164,
-        "parser_c_bytes": 152518
+        "parser_tables_bytes": 29628,
+        "parser_c_bytes": 139196
       },
       "blocked_boundary": null
     },
@@ -583,10 +559,6 @@
         "status": "passed",
         "detail": null
       },
-      "emit_c_tables": {
-        "status": "passed",
-        "detail": null
-      },
       "emit_parser_c": {
         "status": "passed",
         "detail": null
@@ -611,9 +583,8 @@
         "action_entry_count": 0,
         "goto_entry_count": 0,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 613527,
-        "c_tables_bytes": 924104,
-        "parser_c_bytes": 667031
+        "parser_tables_bytes": 613619,
+        "parser_c_bytes": 3981989
       },
       "blocked_boundary": null
     },
@@ -653,10 +624,6 @@
         "detail": null
       },
       "emit_parser_tables": {
-        "status": "not_run",
-        "detail": null
-      },
-      "emit_c_tables": {
         "status": "not_run",
         "detail": null
       },
@@ -718,10 +685,6 @@
         "status": "not_run",
         "detail": null
       },
-      "emit_c_tables": {
-        "status": "not_run",
-        "detail": null
-      },
       "emit_parser_c": {
         "status": "not_run",
         "detail": null
@@ -780,10 +743,6 @@
         "status": "passed",
         "detail": null
       },
-      "emit_c_tables": {
-        "status": "passed",
-        "detail": null
-      },
       "emit_parser_c": {
         "status": "passed",
         "detail": null
@@ -802,22 +761,22 @@
       },
       "emission": {
         "blocked": true,
-        "serialized_state_count": 6,
-        "emitted_state_count": 6,
+        "serialized_state_count": 9,
+        "emitted_state_count": 9,
         "merged_state_count": 0,
-        "action_entry_count": 4,
-        "goto_entry_count": 3,
-        "unresolved_entry_count": 1,
-        "parser_tables_bytes": 352,
-        "c_tables_bytes": 1149,
-        "parser_c_bytes": 15412
+        "action_entry_count": 10,
+        "goto_entry_count": 4,
+        "unresolved_entry_count": 2,
+        "parser_tables_bytes": 608,
+        "parser_c_bytes": 10508
       },
       "blocked_boundary": {
-        "unresolved_state_count": 1,
-        "unresolved_entry_count": 1,
+        "unresolved_state_count": 2,
+        "unresolved_entry_count": 2,
         "reasons": {
-          "shift_reduce": 1,
+          "shift_reduce": 2,
           "reduce_reduce_deferred": 0,
+          "reduce_reduce_expected": 0,
           "multiple_candidates": 0,
           "unsupported_action_mix": 0
         },
@@ -829,15 +788,24 @@
             "symbol_name": "expr",
             "reason": "shift_reduce",
             "candidate_count": 2,
-            "candidate_actions_summary": "shift:4, reduce:2(expr)"
+            "candidate_actions_summary": "shift:7, reduce:2(expr)"
+          },
+          {
+            "state_id": 8,
+            "symbol_kind": "terminal",
+            "symbol_index": 0,
+            "symbol_name": "expr",
+            "reason": "shift_reduce",
+            "candidate_count": 2,
+            "candidate_actions_summary": "shift:7, reduce:2(expr)"
           }
         ],
         "dominant_signatures": [
           {
             "symbol_name": "expr",
             "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:4, reduce:2(expr)",
-            "count": 1
+            "candidate_actions_summary": "shift:7, reduce:2(expr)",
+            "count": 2
           }
         ]
       }
@@ -878,10 +846,6 @@
         "detail": null
       },
       "emit_parser_tables": {
-        "status": "not_run",
-        "detail": null
-      },
-      "emit_c_tables": {
         "status": "not_run",
         "detail": null
       },
@@ -943,10 +907,6 @@
         "status": "not_run",
         "detail": null
       },
-      "emit_c_tables": {
-        "status": "not_run",
-        "detail": null
-      },
       "emit_parser_c": {
         "status": "not_run",
         "detail": null
@@ -1005,10 +965,6 @@
         "status": "not_run",
         "detail": null
       },
-      "emit_c_tables": {
-        "status": "not_run",
-        "detail": null
-      },
       "emit_parser_c": {
         "status": "not_run",
         "detail": null
@@ -1064,10 +1020,6 @@
         "detail": null
       },
       "emit_parser_tables": {
-        "status": "not_run",
-        "detail": null
-      },
-      "emit_c_tables": {
         "status": "not_run",
         "detail": null
       },
