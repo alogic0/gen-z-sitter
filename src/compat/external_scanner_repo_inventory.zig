@@ -243,7 +243,7 @@ test "buildExternalScannerRepoInventoryAlloc summarizes the current real externa
     try std.testing.expectEqual(@as(usize, 2), report.passed_external_scanner_targets);
     try std.testing.expectEqual(@as(usize, 2), report.proof_scope_coverage.len);
     try std.testing.expectEqual(targets.RealExternalScannerProofScope.sampled_external_sequence, report.proof_scope_coverage[0].proof_scope);
-    try std.testing.expectEqual(targets.RealExternalScannerProofScope.sampled_expansion_path, report.proof_scope_coverage[1].proof_scope);
+    try std.testing.expectEqual(targets.RealExternalScannerProofScope.full_runtime_link, report.proof_scope_coverage[1].proof_scope);
     try std.testing.expectEqual(@as(usize, 3), report.current_limitations.len);
     try std.testing.expectEqual(ExternalScannerEvidenceNextStep.broader_compatibility_polish, report.recommended_next_step);
     try std.testing.expectEqual(@as(usize, 2), report.targets.len);

@@ -15,6 +15,9 @@ const tree_sitter_runtime_dir = "../tree-sitter/lib/src";
 const tree_sitter_include_dir = "../tree-sitter/lib/include";
 const bracket_lang_grammar_path = "compat_targets/bracket_lang/grammar.json";
 const bracket_lang_scanner_path = "compat_targets/bracket_lang/scanner.c";
+const bash_scanner_path = "../tree-sitter-grammars/tree-sitter-bash/src/scanner.c";
+const bash_scanner_include_dir = "../tree-sitter-grammars/tree-sitter-bash/src";
+const bash_bare_dollar_external_id = 15;
 
 pub fn linkAndRunNoExternalTinyParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
@@ -120,6 +123,29 @@ pub fn linkAndRunBracketLangParser(allocator: std.mem.Allocator) RuntimeLinkErro
         .input = "(())",
         .expected_root_type = "source",
         .expected_tree_string = "(source (item (open_bracket) (item (open_bracket) (close_bracket)) (close_bracket)))",
+    });
+}
+
+pub fn linkAndRunBashParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(bash_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitBashBareDollarParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
+        bash_scanner_path,
+        arena.allocator(),
+        .limited(512 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{bash_scanner_include_dir},
+        .input = "$\n",
+        .expected_root_type = "program",
     });
 }
 
@@ -409,6 +435,130 @@ fn emitExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLinkError![]c
     });
 }
 
+fn emitBashBareDollarParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    const external_names = [_][]const u8{
+        "heredoc_start",
+        "simple_heredoc_body",
+        "heredoc_body_beginning",
+        "heredoc_content",
+        "heredoc_end",
+        "file_descriptor",
+        "empty_value",
+        "concat",
+        "variable_name",
+        "test_operator",
+        "regex",
+        "regex_no_slash",
+        "regex_no_space",
+        "expansion_word",
+        "extglob_pattern",
+        "bare_dollar",
+        "brace_start",
+        "immediate_double_hash",
+        "external_expansion_sym_hash",
+        "external_expansion_sym_bang",
+        "external_expansion_sym_equal",
+        "closing_brace",
+        "closing_bracket",
+        "heredoc_arrow",
+        "heredoc_arrow_dash",
+        "newline",
+        "opening_paren",
+        "esac",
+        "error_recovery",
+    };
+
+    var symbols = try allocator.alloc(serialize.SerializedSymbolInfo, external_names.len + 2);
+    symbols[0] = .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 };
+    for (external_names, 0..) |name, index| {
+        symbols[index + 1] = .{
+            .ref = .{ .external = @intCast(index) },
+            .name = name,
+            .named = true,
+            .visible = true,
+            .supertype = false,
+            .public_symbol = @intCast(index + 1),
+        };
+    }
+    symbols[symbols.len - 1] = .{
+        .ref = .{ .non_terminal = 0 },
+        .name = "program",
+        .named = true,
+        .visible = true,
+        .supertype = false,
+        .public_symbol = @intCast(symbols.len - 1),
+    };
+
+    const productions = try allocator.dupe(serialize.SerializedProductionInfo, &.{
+        .{ .lhs = 0, .child_count = 1, .dynamic_precedence = 0 },
+    });
+    const start_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = bash_bare_dollar_external_id }, .action = .{ .shift = 2 } },
+    });
+    const start_gotos = try allocator.dupe(serialize.SerializedGotoEntry, &.{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
+    });
+    const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+    });
+    const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
+    });
+    const states = try allocator.dupe(serialize.SerializedState, &.{
+        .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = start_actions, .gotos = start_gotos, .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = reduce_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 3, .lex_state_id = 0, .actions = accept_actions, .gotos = &.{}, .unresolved = &.{} },
+    });
+    const lex_states = try allocator.dupe(lexer_serialize.SerializedLexState, &.{
+        .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
+    });
+    const lex_tables = try allocator.dupe(lexer_serialize.SerializedLexTable, &.{
+        .{ .start_state_id = 0, .states = lex_states },
+    });
+    const lex_modes = try allocator.dupe(lexer_serialize.SerializedLexMode, &.{
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+    });
+    const primary_state_ids = try allocator.dupe(u32, &.{ 0, 1, 2, 3 });
+
+    const external_symbols = try allocator.alloc(syntax_grammar.SymbolRef, external_names.len);
+    for (external_symbols, 0..) |*symbol, index| {
+        symbol.* = .{ .external = @intCast(index) };
+    }
+    const external_state_0 = try allocator.alloc(bool, external_names.len);
+    const external_state_1 = try allocator.alloc(bool, external_names.len);
+    @memset(external_state_0, false);
+    @memset(external_state_1, false);
+    external_state_1[bash_bare_dollar_external_id] = true;
+    const external_states = try allocator.dupe([]const bool, &.{
+        external_state_0,
+        external_state_1,
+    });
+
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_name = "bash",
+        .symbols = symbols,
+        .large_state_count = states.len,
+        .productions = productions,
+        .lex_modes = lex_modes,
+        .lex_tables = lex_tables,
+        .external_scanner = .{
+            .symbols = external_symbols,
+            .states = external_states,
+        },
+        .primary_state_ids = primary_state_ids,
+        .states = states,
+    };
+
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+    });
+}
+
 fn emitMultiTokenExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
     const symbols = [_]serialize.SerializedSymbolInfo{
         .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
@@ -616,6 +766,8 @@ const GeneratedParserRun = struct {
     parser_c: []const u8,
     input: []const u8,
     scanner_c: ?[]const u8 = null,
+    scanner_include_dirs: []const []const u8 = &.{},
+    language_function_name: []const u8 = "tree_sitter_generated",
     expected_metadata: ?[3]u8 = null,
     expected_root_type: ?[]const u8 = null,
     expected_child_types: []const []const u8 = &.{},
@@ -669,6 +821,9 @@ fn linkAndRunGeneratedParser(
         "-I",        tree_sitter_include_dir, "-I",       tree_sitter_runtime_dir,
         driver_path, parser_path,
     });
+    for (generated.scanner_include_dirs) |include_dir| {
+        try compile_args.appendSlice(&.{ "-I", include_dir });
+    }
     if (scanner_path) |path| try compile_args.append(path);
     try compile_args.appendSlice(&.{ "../tree-sitter/lib/src/lib.c", "-o", exe_path });
 
@@ -861,6 +1016,9 @@ fn driverSourceAlloc(
     allocator: std.mem.Allocator,
     generated: GeneratedParserRun,
 ) RuntimeLinkError![]const u8 {
+    const input_literal = try cStringLiteralAlloc(allocator, generated.input);
+    defer allocator.free(input_literal);
+
     const metadata_check = if (generated.expected_metadata) |metadata|
         try std.fmt.allocPrint(allocator,
             \\  const TSLanguageMetadata *metadata = ts_language_metadata(language);
@@ -892,7 +1050,7 @@ fn driverSourceAlloc(
         \\#include <tree_sitter/api.h>
         \\#include <unistd.h>
         \\
-        \\const TSLanguage *tree_sitter_generated(void);
+        \\const TSLanguage *{s}(void);
         \\{s}
         \\
         \\static void log_parser(void *payload, TSLogType log_type, const char *buffer) {{
@@ -904,8 +1062,8 @@ fn driverSourceAlloc(
         \\
         \\int main(void) {{
         \\  alarm(2);
-        \\  const char *input = "{s}";
-        \\  const TSLanguage *language = tree_sitter_generated();
+        \\  const char *input = {s};
+        \\  const TSLanguage *language = {s}();
         \\{s}
         \\  TSParser *parser = ts_parser_new();
         \\  if (!parser) return 10;
@@ -926,8 +1084,10 @@ fn driverSourceAlloc(
         \\}}
         \\
     , .{
+        generated.language_function_name,
         generated.extra_driver_declarations,
-        generated.input,
+        input_literal,
+        generated.language_function_name,
         metadata_check,
         tree_check,
         generated.after_parser_delete_check,
@@ -982,9 +1142,38 @@ fn treeAssertionSourceAlloc(
     return try out.toOwnedSlice();
 }
 
+fn cStringLiteralAlloc(allocator: std.mem.Allocator, value: []const u8) RuntimeLinkError![]const u8 {
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    const writer = &out.writer;
+
+    try writer.writeByte('"');
+    for (value) |byte| {
+        switch (byte) {
+            '\n' => try writer.writeAll("\\n"),
+            '\r' => try writer.writeAll("\\r"),
+            '\t' => try writer.writeAll("\\t"),
+            '\\' => try writer.writeAll("\\\\"),
+            '"' => try writer.writeAll("\\\""),
+            0 => try writer.writeAll("\\0"),
+            else => if (byte < 0x20 or byte >= 0x7f) {
+                try writer.print("\\{o:0>3}", .{byte});
+            } else {
+                try writer.writeByte(byte);
+            },
+        }
+    }
+    try writer.writeByte('"');
+    return try out.toOwnedSlice();
+}
+
 fn ensureTreeSitterRuntimeAvailable() RuntimeLinkError!void {
     std.Io.Dir.cwd().access(std.testing.io, tree_sitter_runtime_dir ++ "/lib.c", .{}) catch return error.TreeSitterRuntimeMissing;
     std.Io.Dir.cwd().access(std.testing.io, tree_sitter_include_dir ++ "/tree_sitter/api.h", .{}) catch return error.TreeSitterRuntimeMissing;
+}
+
+fn ensureFileAvailableOrSkip(path: []const u8) RuntimeLinkError!void {
+    std.Io.Dir.cwd().access(std.testing.io, path, .{}) catch return error.SkipZigTest;
 }
 
 test "linkAndRunNoExternalTinyParser links generated parser with tree-sitter runtime" {
@@ -1009,4 +1198,8 @@ test "linkAndRunStatefulExternalScannerParser links generated stateful external 
 
 test "linkAndRunBracketLangParser links generated bracket-lang parser with tree-sitter runtime" {
     try linkAndRunBracketLangParser(std.testing.allocator);
+}
+
+test "linkAndRunBashParserWithRealExternalScanner links generated Bash parser with upstream scanner" {
+    try linkAndRunBashParserWithRealExternalScanner(std.testing.allocator);
 }

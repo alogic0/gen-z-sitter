@@ -216,8 +216,8 @@ pub const shortlist_targets = [_]Target{
         .family = .bash,
         .source_kind = .grammar_json,
         .boundary_kind = .scanner_external_scanner,
-        .scanner_boundary_check_mode = .sampled_external_only,
-        .real_external_scanner_proof_scope = .sampled_expansion_path,
+        .scanner_boundary_check_mode = .full_runtime_link,
+        .real_external_scanner_proof_scope = .full_runtime_link,
         .provenance = .{
             .origin_kind = .external_repo_snapshot,
             .upstream_repository = "tree-sitter-bash",
@@ -228,8 +228,8 @@ pub const shortlist_targets = [_]Target{
         .expected_blocked = false,
         .scanner_valid_input_path = "compat_targets/tree_sitter_bash/valid.txt",
         .scanner_invalid_input_path = "compat_targets/tree_sitter_bash/invalid.txt",
-        .notes = "real external scanner grammar snapshot from the local tree-sitter-bash repo, promoted in M31 through a narrow sampled expansion path that exercises _bare_dollar and variable_name without claiming broader heredoc or full scanner.c runtime support",
-        .success_criteria = "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove a sampled Bash expansion path makes stronger progress on the valid input than on the invalid input",
+        .notes = "real external scanner grammar snapshot from the local tree-sitter-bash repo, with a focused runtime-link proof that compiles generated parser C against the upstream scanner.c and exercises the bare-dollar external token ABI",
+        .success_criteria = "load the snapshotted upstream grammar.json, extract the external-scanner boundary, and keep the focused Bash scanner runtime-link fixture passing against the real scanner.c",
     },
     .{
         .id = "parse_table_conflict_json",
@@ -358,8 +358,8 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[7].family == .bash);
     try std.testing.expect(shortlist[7].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[7].candidate_status == .intended_scanner_wave);
-    try std.testing.expect(shortlist[7].scanner_boundary_check_mode == .sampled_external_only);
-    try std.testing.expect(shortlist[7].real_external_scanner_proof_scope == .sampled_expansion_path);
+    try std.testing.expect(shortlist[7].scanner_boundary_check_mode == .full_runtime_link);
+    try std.testing.expect(shortlist[7].real_external_scanner_proof_scope == .full_runtime_link);
     try std.testing.expect(shortlist[7].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[7].scanner_invalid_input_path != null);
     try std.testing.expect(shortlist[8].candidate_status == .deferred_control_fixture);

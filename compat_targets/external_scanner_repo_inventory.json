@@ -9,7 +9,7 @@
       "passed_count": 1
     },
     {
-      "proof_scope": "sampled_expansion_path",
+      "proof_scope": "full_runtime_link",
       "target_count": 1,
       "passed_count": 1
     }
@@ -41,13 +41,13 @@
       "display_name": "tree-sitter-bash (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_bash/grammar.json",
       "source_kind": "grammar_json",
-      "proof_scope": "sampled_expansion_path",
+      "proof_scope": "full_runtime_link",
       "upstream_repository": "tree-sitter-bash",
       "upstream_revision": "a06c2e4415e9bc0346c6b86d401879ffb44058f7",
       "upstream_grammar_path": "src/grammar.json",
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-bash repo, promoted in M31 through a narrow sampled expansion path that exercises _bare_dollar and variable_name without claiming broader heredoc or full scanner.c runtime support"
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-bash repo, with a focused runtime-link proof that compiles generated parser C against the upstream scanner.c and exercises the bare-dollar external token ABI"
     }
   ]
 }
