@@ -9,7 +9,7 @@
     "scanner_wave_passed": 7,
     "scanner_wave_non_passing": 0,
     "deferred_parser_targets": 1,
-    "standalone_parser_proof_targets": 1,
+    "standalone_parser_proof_targets": 2,
     "deferred_control_targets": 1,
     "frozen_control_fixtures": 1,
     "deferred_scanner_targets": 0,
@@ -337,7 +337,7 @@
       "final_classification": "deferred_for_parser_boundary",
       "mismatch_category": "shift_reduce_boundary",
       "first_failed_stage": "emit_parser_c",
-      "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:16, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:13, reduce:2(_entry)] count=1], samples=[state 12 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:13, reduce:2(_entry)]; state 15 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:16, reduce:3(_entry)]]",
+      "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:5, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:10, reduce:2(_entry)] count=1], samples=[state 9 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:10, reduce:2(_entry)]; state 12 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:5, reduce:3(_entry)]]",
       "notes": "staged parser-only JS fixture intentionally mirrors an upstream-rejected ambiguity: tree-sitter reports an unresolved _entry shift/reduce conflict and requires associativity or an explicit conflict declaration"
     }
   ],

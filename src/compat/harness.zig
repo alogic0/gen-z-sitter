@@ -1677,7 +1677,7 @@ test "runShortlistTargetsAlloc promotes tree_sitter_c through compile smoke" {
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[5].mismatch_category);
 }
 
-test "runShortlistTargetsAlloc promotes tree_sitter_haskell through the sampled external-sequence boundary" {
+test "runShortlistTargetsAlloc promotes tree_sitter_haskell through runtime link" {
     const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqualStrings("tree_sitter_haskell_json", runs[6].id);
@@ -1688,10 +1688,12 @@ test "runShortlistTargetsAlloc promotes tree_sitter_haskell through the sampled 
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[6].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[6].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[6].mismatch_category);
-    try std.testing.expect(std.mem.indexOf(u8, runs[6].success_criteria, "external-sequence path") != null);
+    try std.testing.expectEqual(targets.BoundaryKind.scanner_external_scanner, runs[6].boundary_kind);
+    try std.testing.expectEqual(targets.RealExternalScannerProofScope.full_runtime_link, runs[6].real_external_scanner_proof_scope);
+    try std.testing.expect(std.mem.indexOf(u8, runs[6].success_criteria, "runtime-link fixture") != null);
 }
 
-test "runShortlistTargetsAlloc promotes tree_sitter_bash through a sampled expansion path" {
+test "runShortlistTargetsAlloc promotes tree_sitter_bash through runtime link" {
     const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqualStrings("tree_sitter_bash_json", runs[7].id);
@@ -1702,7 +1704,9 @@ test "runShortlistTargetsAlloc promotes tree_sitter_bash through a sampled expan
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[7].mismatch_category);
-    try std.testing.expect(std.mem.indexOf(u8, runs[7].notes, "_bare_dollar and variable_name") != null);
+    try std.testing.expectEqual(targets.BoundaryKind.scanner_external_scanner, runs[7].boundary_kind);
+    try std.testing.expectEqual(targets.RealExternalScannerProofScope.full_runtime_link, runs[7].real_external_scanner_proof_scope);
+    try std.testing.expect(std.mem.indexOf(u8, runs[7].success_criteria, "runtime-link fixture") != null);
 }
 
 test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked control case" {
