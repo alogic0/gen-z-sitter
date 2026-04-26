@@ -919,6 +919,11 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\  struct { uint8_t count; bool reusable; } entry;
         \\} TSParseActionEntry;
         \\
+        \\typedef struct {
+        \\  int32_t start;
+        \\  int32_t end;
+        \\} TSCharacterRange;
+        \\
         \\struct TSLanguage {
         \\  uint32_t abi_version;
         \\  uint32_t symbol_count;
@@ -965,6 +970,24 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\  const TSSymbol *supertype_map_entries;
         \\  TSLanguageMetadata metadata;
         \\};
+        \\
+        \\static inline bool set_contains(const TSCharacterRange *ranges, uint32_t len, int32_t lookahead) {
+        \\  uint32_t index = 0;
+        \\  uint32_t size = len - index;
+        \\  while (size > 1) {
+        \\    uint32_t half_size = size / 2;
+        \\    uint32_t mid_index = index + half_size;
+        \\    const TSCharacterRange *range = &ranges[mid_index];
+        \\    if (lookahead >= range->start && lookahead <= range->end) {
+        \\      return true;
+        \\    } else if (lookahead > range->end) {
+        \\      index = mid_index;
+        \\    }
+        \\    size -= half_size;
+        \\  }
+        \\  const TSCharacterRange *range = &ranges[index];
+        \\  return lookahead >= range->start && lookahead <= range->end;
+        \\}
         \\
         \\#define SMALL_STATE(id) ((id) - LARGE_STATE_COUNT)
         \\#define STATE(id) id
@@ -1275,6 +1298,11 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  struct { uint8_t count; bool reusable; } entry;
         \\} TSParseActionEntry;
         \\
+        \\typedef struct {
+        \\  int32_t start;
+        \\  int32_t end;
+        \\} TSCharacterRange;
+        \\
         \\struct TSLanguage {
         \\  uint32_t abi_version;
         \\  uint32_t symbol_count;
@@ -1321,6 +1349,24 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  const TSSymbol *supertype_map_entries;
         \\  TSLanguageMetadata metadata;
         \\};
+        \\
+        \\static inline bool set_contains(const TSCharacterRange *ranges, uint32_t len, int32_t lookahead) {
+        \\  uint32_t index = 0;
+        \\  uint32_t size = len - index;
+        \\  while (size > 1) {
+        \\    uint32_t half_size = size / 2;
+        \\    uint32_t mid_index = index + half_size;
+        \\    const TSCharacterRange *range = &ranges[mid_index];
+        \\    if (lookahead >= range->start && lookahead <= range->end) {
+        \\      return true;
+        \\    } else if (lookahead > range->end) {
+        \\      index = mid_index;
+        \\    }
+        \\    size -= half_size;
+        \\  }
+        \\  const TSCharacterRange *range = &ranges[index];
+        \\  return lookahead >= range->start && lookahead <= range->end;
+        \\}
         \\
         \\#define SMALL_STATE(id) ((id) - LARGE_STATE_COUNT)
         \\#define STATE(id) id

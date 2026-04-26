@@ -4,6 +4,7 @@ const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const EmitError = std.Io.Writer.Error;
 const advance_map_threshold = 8;
+const large_character_range_threshold = 8;
 
 pub const SymbolResolver = struct {
     context: *const anyopaque,
@@ -28,6 +29,9 @@ pub fn emitLexFunctionWithResolver(
     lex_table: lexical_serialize.SerializedLexTable,
     resolver: ?SymbolResolver,
 ) EmitError!void {
+    const large_sets = LargeCharacterSets{ .lex_table = lex_table };
+    try large_sets.emitDeclarations(writer, fn_name);
+
     try writer.print("static bool {s}(TSLexer *lexer, TSStateId state) {{\n", .{fn_name});
     try writer.writeAll("  START_LEXER();\n");
     try writer.writeAll("  eof = lexer->eof(lexer);\n");
@@ -48,7 +52,11 @@ pub fn emitLexFunctionWithResolver(
         for (state_value.transitions[advance_map_end..]) |transition| {
             if (transition.ranges.len == 0) continue;
             try writer.writeAll("      if (");
-            try writeTransitionCondition(writer, transition.ranges);
+            if (large_sets.find(transition.ranges)) |set_id| {
+                try writeLargeSetCondition(writer, fn_name, set_id, transition.ranges);
+            } else {
+                try writeTransitionCondition(writer, transition.ranges);
+            }
             try writer.writeAll(") ");
             if (transition.skip) {
                 try writer.print("SKIP({d});\n", .{transition.next_state_id});
@@ -62,6 +70,102 @@ pub fn emitLexFunctionWithResolver(
     try writer.writeAll("      return false;\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("}\n\n");
+}
+
+const LargeCharacterSets = struct {
+    lex_table: lexical_serialize.SerializedLexTable,
+
+    fn emitDeclarations(
+        self: *const LargeCharacterSets,
+        writer: anytype,
+        fn_name: []const u8,
+    ) EmitError!void {
+        var next_id: usize = 0;
+        for (self.lex_table.states) |state_value| {
+            const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
+            for (state_value.transitions[advance_map_end..]) |transition| {
+                if (!isLargeCharacterSet(transition.ranges)) continue;
+                const set_id = self.find(transition.ranges) orelse continue;
+                if (set_id != next_id) continue;
+
+                try writer.print("static const TSCharacterRange {s}_character_set_{d}[] = {{\n", .{ fn_name, set_id });
+                for (transition.ranges) |range| {
+                    try writer.print("  {{ {d}, {d} }},\n", .{ range.start, range.end_inclusive });
+                }
+                try writer.writeAll("};\n\n");
+                next_id += 1;
+            }
+        }
+    }
+
+    fn find(self: *const LargeCharacterSets, ranges: []const lexical_serialize.SerializedCharacterRange) ?usize {
+        var next_id: usize = 0;
+        for (self.lex_table.states, 0..) |state_value, state_index| {
+            const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
+            for (state_value.transitions[advance_map_end..], advance_map_end..) |transition, transition_index| {
+                if (!isLargeCharacterSet(transition.ranges)) continue;
+                if (self.hasPrevious(transition.ranges, state_index, transition_index)) continue;
+                if (rangeSetsEqual(transition.ranges, ranges)) return next_id;
+                next_id += 1;
+            }
+        }
+        return null;
+    }
+
+    fn hasPrevious(
+        self: *const LargeCharacterSets,
+        ranges: []const lexical_serialize.SerializedCharacterRange,
+        current_state_index: usize,
+        current_transition_index: usize,
+    ) bool {
+        for (self.lex_table.states[0..current_state_index]) |state_value| {
+            const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
+            for (state_value.transitions[advance_map_end..]) |transition| {
+                if (isLargeCharacterSet(transition.ranges) and rangeSetsEqual(transition.ranges, ranges)) return true;
+            }
+        }
+
+        const current_state = self.lex_table.states[current_state_index];
+        const advance_map_end = leadingAdvanceMapTransitionEnd(current_state.transitions);
+        for (current_state.transitions[advance_map_end..current_transition_index]) |transition| {
+            if (isLargeCharacterSet(transition.ranges) and rangeSetsEqual(transition.ranges, ranges)) return true;
+        }
+        return false;
+    }
+};
+
+fn isLargeCharacterSet(ranges: []const lexical_serialize.SerializedCharacterRange) bool {
+    return ranges.len >= large_character_range_threshold;
+}
+
+fn rangeSetsEqual(
+    lhs: []const lexical_serialize.SerializedCharacterRange,
+    rhs: []const lexical_serialize.SerializedCharacterRange,
+) bool {
+    if (lhs.len != rhs.len) return false;
+    for (lhs, rhs) |left, right| {
+        if (left.start != right.start) return false;
+        if (left.end_inclusive != right.end_inclusive) return false;
+    }
+    return true;
+}
+
+fn writeLargeSetCondition(
+    writer: anytype,
+    fn_name: []const u8,
+    set_id: usize,
+    ranges: []const lexical_serialize.SerializedCharacterRange,
+) EmitError!void {
+    if (rangesIncludeNull(ranges)) try writer.writeAll("(!eof && ");
+    try writer.print("set_contains({s}_character_set_{d}, {d}, lookahead)", .{ fn_name, set_id, ranges.len });
+    if (rangesIncludeNull(ranges)) try writer.writeByte(')');
+}
+
+fn rangesIncludeNull(ranges: []const lexical_serialize.SerializedCharacterRange) bool {
+    for (ranges) |range| {
+        if (range.start == 0) return true;
+    }
+    return false;
 }
 
 fn leadingAdvanceMapTransitionEnd(transitions: []const lexical_serialize.SerializedLexTransition) usize {
@@ -299,4 +403,47 @@ test "emitLexFunction uses ADVANCE_MAP for leading simple transitions" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "        100, 2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "        106, 4,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      if ((48 <= lookahead && lookahead <= 57)) ADVANCE(5);\n"));
+}
+
+test "emitLexFunction uses TSCharacterRange tables for large character sets" {
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buffer.deinit();
+
+    const ranges = [_]lexical_serialize.SerializedCharacterRange{
+        .{ .start = 0, .end_inclusive = 1 },
+        .{ .start = 10, .end_inclusive = 12 },
+        .{ .start = 20, .end_inclusive = 24 },
+        .{ .start = 30, .end_inclusive = 31 },
+        .{ .start = 40, .end_inclusive = 42 },
+        .{ .start = 50, .end_inclusive = 53 },
+        .{ .start = 60, .end_inclusive = 61 },
+        .{ .start = 70, .end_inclusive = 75 },
+    };
+    const table = lexical_serialize.SerializedLexTable{
+        .start_state_id = 0,
+        .states = &[_]lexical_serialize.SerializedLexState{
+            .{
+                .transitions = &[_]lexical_serialize.SerializedLexTransition{
+                    .{
+                        .ranges = ranges[0..],
+                        .next_state_id = 1,
+                        .skip = false,
+                    },
+                },
+            },
+            .{ .accept_symbol = .{ .terminal = 2 }, .transitions = &.{} },
+        },
+    };
+
+    try emitLexFunction(&buffer.writer, "ts_lex", table);
+    const emitted = buffer.writer.buffered();
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSCharacterRange ts_lex_character_set_0[] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  { 70, 75 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(
+        u8,
+        emitted,
+        1,
+        "      if ((!eof && set_contains(ts_lex_character_set_0, 8, lookahead))) ADVANCE(1);\n",
+    ));
 }

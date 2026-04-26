@@ -12,6 +12,8 @@ pub const generated_parser_comment = "/* generated parser.c */\n";
 /// Header comment identifying the local runtime ABI layout.
 pub const layout_comment = "/* tree-sitter runtime ABI layout */\n";
 
+pub const large_lexer_optimization_state_threshold: usize = 300;
+
 /// Runtime ABI version pair used by the generated C contract.
 pub const RuntimeCompatibilityInfo = struct {
     language_version: u16,
@@ -34,6 +36,19 @@ pub fn writeContractPrelude(writer: anytype, info: RuntimeCompatibilityInfo) !vo
     try writer.writeAll("#include <stdbool.h>\n");
     try writer.writeAll("#include <stdint.h>\n");
     try writer.writeAll("#include <stdlib.h>\n\n");
+}
+
+/// Write compiler pragmas that keep large generated lexers practical to compile.
+pub fn writeCompilerOptimizationPragmas(writer: anytype, main_lex_state_count: usize) !void {
+    if (main_lex_state_count <= large_lexer_optimization_state_threshold) return;
+
+    try writer.writeAll("#ifdef _MSC_VER\n");
+    try writer.writeAll("#pragma optimize(\"\", off)\n");
+    try writer.writeAll("#elif defined(__clang__)\n");
+    try writer.writeAll("#pragma clang optimize off\n");
+    try writer.writeAll("#elif defined(__GNUC__)\n");
+    try writer.writeAll("#pragma GCC optimize (\"O0\")\n");
+    try writer.writeAll("#endif\n\n");
 }
 
 /// Write the self-contained runtime ABI types and constants used by parser C.
@@ -94,6 +109,10 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
     try writer.writeAll("  TSParseAction action;\n");
     try writer.writeAll("  struct { uint8_t count; bool reusable; } entry;\n");
     try writer.writeAll("} TSParseActionEntry;\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  int32_t start;\n");
+    try writer.writeAll("  int32_t end;\n");
+    try writer.writeAll("} TSCharacterRange;\n\n");
     try writer.writeAll("struct TSLanguage {\n");
     try writer.writeAll("  uint32_t abi_version;\n");
     try writer.writeAll("  uint32_t symbol_count;\n");
@@ -140,6 +159,23 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
     try writer.writeAll("  const TSSymbol *supertype_map_entries;\n");
     try writer.writeAll("  TSLanguageMetadata metadata;\n");
     try writer.writeAll("};\n\n");
+    try writer.writeAll("static inline bool set_contains(const TSCharacterRange *ranges, uint32_t len, int32_t lookahead) {\n");
+    try writer.writeAll("  uint32_t index = 0;\n");
+    try writer.writeAll("  uint32_t size = len - index;\n");
+    try writer.writeAll("  while (size > 1) {\n");
+    try writer.writeAll("    uint32_t half_size = size / 2;\n");
+    try writer.writeAll("    uint32_t mid_index = index + half_size;\n");
+    try writer.writeAll("    const TSCharacterRange *range = &ranges[mid_index];\n");
+    try writer.writeAll("    if (lookahead >= range->start && lookahead <= range->end) {\n");
+    try writer.writeAll("      return true;\n");
+    try writer.writeAll("    } else if (lookahead > range->end) {\n");
+    try writer.writeAll("      index = mid_index;\n");
+    try writer.writeAll("    }\n");
+    try writer.writeAll("    size -= half_size;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  const TSCharacterRange *range = &ranges[index];\n");
+    try writer.writeAll("  return lookahead >= range->start && lookahead <= range->end;\n");
+    try writer.writeAll("}\n\n");
     try writer.writeAll("#define SMALL_STATE(id) ((id) - LARGE_STATE_COUNT)\n");
     try writer.writeAll("#define STATE(id) id\n");
     try writer.writeAll("#define ACTIONS(id) id\n\n");
@@ -211,7 +247,25 @@ test "writeContractTypesAndConstants emits runtime ABI version constants only" {
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define LANGUAGE_VERSION 15") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define MIN_COMPATIBLE_LANGUAGE_VERSION 13") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "TSParseActionEntry") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "TSCharacterRange") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "set_contains") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "struct TSLanguage") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define START_LEXER()") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define ACCEPT_TOKEN(symbol_value)") != null);
+}
+
+test "writeCompilerOptimizationPragmas only emits for large lexers" {
+    var small_buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer small_buffer.deinit();
+    try writeCompilerOptimizationPragmas(&small_buffer.writer, large_lexer_optimization_state_threshold);
+    try std.testing.expectEqual(@as(usize, 0), small_buffer.writer.buffered().len);
+
+    var large_buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer large_buffer.deinit();
+    try writeCompilerOptimizationPragmas(&large_buffer.writer, large_lexer_optimization_state_threshold + 1);
+    const emitted = large_buffer.writer.buffered();
+
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "#pragma optimize(\"\", off)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "#pragma clang optimize off") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "#pragma GCC optimize (\"O0\")") != null);
 }

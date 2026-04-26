@@ -135,6 +135,7 @@ pub fn writeParserCWithOptions(
     const runtime_lex = try buildRuntimeLexTableAlloc(arena.allocator(), compacted.lex_tables);
 
     try compat.writeContractPrelude(writer, compatibility);
+    try compat.writeCompilerOptimizationPragmas(writer, runtime_lex.table.states.len);
     try compat.writeContractTypesAndConstants(writer, compatibility);
     try writer.print("#define STATE_COUNT {d}\n", .{compacted.states.len});
     const large_state_count_value = serializedLargeStateCount(compacted);
@@ -1690,6 +1691,37 @@ test "emitParserCAlloc emits serialized lexer tables and remaps lex mode starts"
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_lex_fn = NULL,\n"));
+}
+
+test "emitParserCAlloc emits compiler optimization pragmas for large lexer tables" {
+    const allocator = std.testing.allocator;
+    const lex_states = try allocator.alloc(lexer_serialize.SerializedLexState, compat.large_lexer_optimization_state_threshold + 1);
+    defer allocator.free(lex_states);
+    for (lex_states) |*state_value| {
+        state_value.* = .{ .transitions = &.{} };
+    }
+
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .lex_tables = &[_]lexer_serialize.SerializedLexTable{
+            .{
+                .start_state_id = 0,
+                .states = lex_states,
+            },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#pragma clang optimize off\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#pragma GCC optimize (\"O0\")\n"));
+    const pragma_index = std.mem.indexOf(u8, emitted, "#pragma clang optimize off\n") orelse unreachable;
+    const lexer_index = std.mem.indexOf(u8, emitted, "static bool ts_lex") orelse unreachable;
+    try std.testing.expect(pragma_index < lexer_index);
 }
 
 test "emitParserCAlloc emits serialized reserved words" {

@@ -47,7 +47,7 @@ as evidence of coverage.
 
 ## New Confirmed Gaps (not in the 2026-04-25 audit)
 
-### Gap 2 — Large character sets: `TSCharacterRange` / `set_contains` not emitted
+### Gap 2 — Large character sets: `TSCharacterRange` / `set_contains` → **CLOSED**
 
 **What is missing.**
 The upstream generator (`render.rs::add_character_set`, `add_lex_state`) emits
@@ -70,10 +70,12 @@ of how many ranges the character class has.
 - `parser.h:154–170`: `set_contains` binary search over `TSCharacterRange`
 
 **Zig status.**
-`emit_c.zig:6`: `const advance_map_threshold = 8` — this is a different
-optimization (leading single-character transitions → `ADVANCE_MAP`). There is
-no `TSCharacterRange` path and no `set_contains` call anywhere in `emit_c.zig`
-or `compat.zig`.
+Closed on 2026-04-26. `compat.zig` now emits `TSCharacterRange` and the
+runtime `set_contains` helper. `emit_c.zig` detects large transition range sets
+with the upstream threshold of 8 ranges, emits `static const TSCharacterRange`
+tables before the lex function, and uses `set_contains(name, count, lookahead)`
+instead of expanding every range inline. The null-character EOF guard is
+preserved around large sets that include codepoint 0.
 
 **Correctness impact.** None. The inline range comparisons are semantically
 equivalent. Grammars that use this code path will compile and produce correct
@@ -86,14 +88,12 @@ produce lex states with many inline conditions instead of a compact
 Unicode operator ranges) this inflates the emitted C source and slows C
 compilation. Bash and Zig grammars are less affected.
 
-**Fix sketch.**
-1. Add `TSCharacterRange` typedef to `compat.zig`.
-2. In `emit_c.zig`, detect transitions whose character class has ≥ 8 ranges
-   that are not already handled by `ADVANCE_MAP`.
-3. Emit `static const TSCharacterRange name[] = {...}` before the lex function.
-4. Replace the inline conditions with `set_contains(name, count, lookahead)`.
+**Coverage.**
+Focused lexer-emitter tests cover large character-set table emission and
+`set_contains` use. Pipeline parser C goldens include the self-contained runtime
+contract helper.
 
-### Gap 3 — Compiler optimization pragmas not emitted for large lexers
+### Gap 3 — Compiler optimization pragmas for large lexers → **CLOSED**
 
 **What is missing.**
 When the main lex table has > 300 states, the upstream generator emits:
@@ -115,9 +115,11 @@ benefit justifies.
 **Reference.** `render.rs::add_pragmas` (lines 352–375): threshold is
 `self.main_lex_table.states.len() > 300`.
 
-**Zig status.** `compat.zig` emits `#pragma GCC diagnostic ignored
-"-Wmissing-field-initializers"` (for `UNUSED`) but no optimization-suppression
-pragma. The lex state count threshold check is absent.
+**Zig status.**
+Closed on 2026-04-26. `compat.zig` now carries the upstream threshold of
+`main_lex_table.states.len() > 300` and emits the MSVC/Clang/GCC optimization
+suppression pragma block. `parser_c.zig` calls this after building the combined
+runtime main lex table and before the generated runtime contract body.
 
 **Correctness impact.** None. Generated parsers are functionally correct
 regardless.
@@ -127,10 +129,9 @@ release builds of generated parsers will spend more time in the compiler's
 optimizer for `ts_lex`. The same parser compiled by the reference generator
 will have this overhead suppressed.
 
-**Fix sketch.**
-After serializing the lex table, check whether
-`serialized.lex_tables[0].states.len > 300` and conditionally emit the
-`#ifdef _MSC_VER ... #endif` pragma block in `compat.zig` or `parser_c.zig`.
+**Coverage.**
+Focused parser C emission tests cover the threshold behavior and verify the
+pragma block appears before `ts_lex`.
 
 ---
 
@@ -150,21 +151,17 @@ and are not gaps:
 
 ## Accuracy Assessment of `GAPS_260425.md`
 
-`GAPS_260425.md` (updated through RW-5) is accurate:
+`GAPS_260425.md` is accurate after the 2026-04-26 follow-up updates:
 
 - Remaining gap 1 (parse-table construction cost): confirmed open, not addressed
   by any rewrite.
-- Remaining gap 2 (pipeline goldens EOF refresh): confirmed open, isolated to
-  `zig build test-pipeline`.
-- Remaining gap 3 (broad external-scanner promotion): correctly scoped — Bash
-  and Haskell blocked by construction cost and scanner fixture work, not by
-  wiring. RW-5 closed the basic surfaces.
+- Pipeline goldens EOF refresh: closed; `zig build test-pipeline` passes.
+- Broad external-scanner promotion: closed for the current shortlist boundary;
+  Bash and Haskell are configured with `full_runtime_link` proof scope.
+- Large character sets and large-lexer optimization pragmas: closed by the
+  2026-04-26 follow-up described above.
 - All "No Longer Gaps" entries (RW-1 through RW-5) verified against the current
   source and are accurate.
 
-**Two items to add to `GAPS_260425.md`** (new findings above):
-- Large character sets / `TSCharacterRange` / `set_contains` (Gap 2 above) —
-  no correctness impact but affects emitted code size and C compile time for
-  Unicode-heavy grammars.
-- Compiler optimization pragma for large lexers (Gap 3 above) — no correctness
-  impact but affects C compile time for grammars with > 300 lex states.
+The two 2026-04-26 audit-only findings above are now closed and do not need to
+be added to `GAPS_260425.md` as open gaps.
