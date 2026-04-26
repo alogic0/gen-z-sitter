@@ -82,28 +82,67 @@ Out of scope:
 
 ## PR 4: Keyword / Word Token Boundary
 
-- [ ] Compare current repo behavior with tree-sitter keyword lex table handling
-- [ ] Add a dedicated plan for `word_token` / keyword-state execution
-- [ ] Implement the smallest viable split if current fixtures already need it
-- [ ] Otherwise leave a narrow tracked boundary with tests and notes
+- [x] Compare current repo behavior with tree-sitter keyword lex table handling
+  - Upstream builds `keyword_lex_table` from tokens that can match the same
+    string as the grammar `word_token`, emits `ts_lex_keywords`, and reruns it
+    only after the main lexer captures `keyword_capture_token`.
+  - Upstream accepts the keyword result only when the parse state has an action
+    for that symbol or the parse state's `reserved_word_set_id` marks it
+    reserved.
+  - Local serialized/emitted output already carries `keyword_lex_table`,
+    `keyword_capture_token`, `reserved_words`, and per-state
+    `reserved_word_set_id`.
+- [x] Add a dedicated plan for `word_token` / keyword-state execution
+  - The repo's narrower plan is the already-landed serialized keyword table plus
+    runtime-link proof, not a second behavioral-only keyword path.
+- [x] Implement the smallest viable split if current fixtures already need it
+  - `zig build test-link-keywords --summary all` exercises the emitted
+    keyword/reserved-word parser with the tree-sitter runtime.
+- [x] Otherwise leave a narrow tracked boundary with tests and notes
+  - Remaining boundary: broad upstream-style keyword-candidate inference from
+    coincident token analysis is not modeled as a separate builder artifact.
+    Current fixtures prove explicit reserved-word/keyword tables.
 
 ## PR 5: External Scanner Integration Boundary
 
-- [ ] Define how external-scanner validity should plug into lexer-state execution
-- [ ] Replace more harness-side special casing with lexer-state-aware scanner entry checks
-- [ ] Keep sampled scanner behavior green while shrinking ad hoc boundary logic
+- [x] Define how external-scanner validity should plug into lexer-state execution
+  - Lexical tokens are selected through the parse state's `lex_state_id`.
+  - External tokens remain selected from the parse state's resolved action set
+    and serialized external scanner boundary, matching the runtime's
+    parse-state-dependent scanner validity shape.
+- [x] Replace more harness-side special casing with lexer-state-aware scanner entry checks
+  - Scanner-boundary selection now combines external-token candidates with the
+    same lexer-state lexical selection used by scanner-free simulation.
+  - Remaining special casing is limited to sampled scanner behavior for known
+    fixture token names and state effects.
+- [x] Keep sampled scanner behavior green while shrinking ad hoc boundary logic
+  - Runtime-link proofs cover the minimal external scanner and the real Bash and
+    Haskell scanners.
 
 ## Verification
 
 - [x] `zig build test --summary all`
 - [x] `zig build test-behavioral --summary all`
 - [x] targeted scanner-wave runtime-link check: `zig build test-link-runtime --summary all`
+- [x] keyword/reserved-word runtime-link check: `zig build test-link-keywords --summary all`
+- [x] focused external-scanner link check: `zig build test-link-external-scanner --summary all`
+- [x] real Bash scanner link check: `zig build test-link-bash-real-scanner --summary all`
+- [x] real Haskell scanner link check: `zig build test-link-haskell-real-scanner --summary all`
 
 ## Completion Notes
 
-- [ ] record what now matches tree-sitter `build_lex_table.rs`
-- [ ] record what still differs
-- [ ] decide whether the next milestone should be:
+- [x] record what now matches tree-sitter `build_lex_table.rs`
+  - reusable lex states are built from valid token sets
+  - parse states carry stable `lex_state_id`s
+  - behavioral scanner-free and scanner-boundary paths use lex-state execution
+  - keyword and reserved-word emitted tables are linked against the tree-sitter
+    runtime
+- [x] record what still differs
+  - broad keyword-candidate inference from coincident token analysis remains a
+    future builder-level refinement
+  - sampled scanner behavior still uses fixture-specific token-name effects
+    rather than a full generated runtime scanner simulation
+- [x] decide whether the next milestone should be:
   - [ ] keyword lex table parity
-  - [ ] external-scanner lex-state integration
+  - [x] external-scanner lex-state integration
   - [ ] remaining regex / lexer feature gaps
