@@ -576,6 +576,9 @@ const RegexParser = struct {
             else => null,
         };
         if (quantifier == null) return node;
+        if (self.index < self.value.len and self.value[self.index] == '?') {
+            self.index += 1;
+        }
 
         const inner = try self.allocator.create(RegexNode);
         inner.* = node;
@@ -590,6 +593,11 @@ const RegexParser = struct {
         return switch (self.value[self.index]) {
             '(' => blk: {
                 self.index += 1;
+                if (self.index + 1 < self.value.len and self.value[self.index] == '?' and self.value[self.index + 1] == ':') {
+                    self.index += 2;
+                } else if (self.index < self.value.len and self.value[self.index] == '?') {
+                    return error.UnsupportedPattern;
+                }
                 var node = try self.parseChoice();
                 errdefer node.deinit(self.allocator);
                 if (self.index >= self.value.len or self.value[self.index] != ')') return error.UnsupportedPattern;
@@ -602,17 +610,16 @@ const RegexParser = struct {
             },
             '.' => blk: {
                 self.index += 1;
-                var chars = try CharacterSet.full(self.allocator);
-                try chars.removeCodepointRange(self.allocator, '\n', '\n' + 1);
+                const chars = try dotCharacterSet(self.allocator, self.flags);
                 break :blk .{ .chars = chars };
             },
             '\\' => blk: {
-                const atom = try parseEscapedAtom(self.allocator, self.value, &self.index);
+                const atom = try parseEscapedAtom(self.allocator, self.value, &self.index, self.flags);
                 break :blk .{ .chars = atom.chars };
             },
             ')', '|', '?', '*', '+', '{' => error.UnsupportedPattern,
             else => blk: {
-                const chars = try CharacterSet.fromChar(self.allocator, self.value[self.index]);
+                const chars = try literalCharacterSet(self.allocator, self.value[self.index], self.flags);
                 self.index += 1;
                 break :blk .{ .chars = chars };
             },
@@ -1028,6 +1035,92 @@ fn followingCharsForTokenSetAlloc(
     return result;
 }
 
+fn patternFlagEnabled(flags: ?[]const u8, flag: u8) bool {
+    return if (flags) |pattern_flags|
+        std.mem.indexOfScalar(u8, pattern_flags, flag) != null
+    else
+        false;
+}
+
+fn addAsciiCaseFold(allocator: std.mem.Allocator, chars: *CharacterSet, ch: u21) !void {
+    if (ch > std.math.maxInt(u8) or !std.ascii.isAlphabetic(@intCast(ch))) return;
+    try chars.addRange(allocator, std.ascii.toLower(@intCast(ch)), std.ascii.toLower(@intCast(ch)));
+    try chars.addRange(allocator, std.ascii.toUpper(@intCast(ch)), std.ascii.toUpper(@intCast(ch)));
+}
+
+fn literalCharacterSet(allocator: std.mem.Allocator, ch: u21, flags: ?[]const u8) !CharacterSet {
+    var chars = CharacterSet.empty();
+    if (patternFlagEnabled(flags, 'i')) {
+        try addAsciiCaseFold(allocator, &chars, ch);
+    }
+    if (chars.ranges.items.len == 0) {
+        try chars.addRange(allocator, ch, ch);
+    }
+    return chars;
+}
+
+fn dotCharacterSet(allocator: std.mem.Allocator, flags: ?[]const u8) !CharacterSet {
+    var chars = try CharacterSet.full(allocator);
+    if (!patternFlagEnabled(flags, 's')) {
+        try chars.removeCodepointRange(allocator, '\n', '\n' + 1);
+    }
+    return chars;
+}
+
+fn negateCharacterSet(allocator: std.mem.Allocator, source: CharacterSet) !CharacterSet {
+    var result = try CharacterSet.full(allocator);
+    errdefer result.deinit(allocator);
+    for (source.ranges.items) |range| {
+        try result.removeCodepointRange(allocator, range.start, range.end);
+    }
+    return result;
+}
+
+fn negateUnicodePropertySet(allocator: std.mem.Allocator, source: CharacterSet) !CharacterSet {
+    var owned = source;
+    defer owned.deinit(allocator);
+    return negateCharacterSet(allocator, owned);
+}
+
+fn digitCharacterSet(allocator: std.mem.Allocator) !CharacterSet {
+    var set = CharacterSet.empty();
+    try set.addRange(allocator, '0', '9');
+    return set;
+}
+
+fn whitespaceCharacterSet(allocator: std.mem.Allocator) !CharacterSet {
+    var set = CharacterSet.empty();
+    try set.addRange(allocator, ' ', ' ');
+    try set.addRange(allocator, '\t', '\t');
+    try set.addRange(allocator, '\n', '\n');
+    try set.addRange(allocator, '\r', '\r');
+    try set.addRange(allocator, 0x0c, 0x0c);
+    try set.addRange(allocator, 0x0b, 0x0b);
+    return set;
+}
+
+fn wordCharacterSet(allocator: std.mem.Allocator) !CharacterSet {
+    var set = CharacterSet.empty();
+    try set.addRange(allocator, 'a', 'z');
+    try set.addRange(allocator, 'A', 'Z');
+    try set.addRange(allocator, '0', '9');
+    try set.addRange(allocator, '_', '_');
+    return set;
+}
+
+fn foldClassLiteralIfNeeded(allocator: std.mem.Allocator, chars: CharacterSet, flags: ?[]const u8) !CharacterSet {
+    if (!patternFlagEnabled(flags, 'i')) return chars;
+    if (chars.ranges.items.len != 1) return chars;
+
+    const range = chars.ranges.items[0];
+    if (range.end != range.start + 1 or range.start > std.math.maxInt(u21)) return chars;
+    var result = try literalCharacterSet(allocator, @intCast(range.start), flags);
+    errdefer result.deinit(allocator);
+    var owned = chars;
+    owned.deinit(allocator);
+    return result;
+}
+
 fn mergeTokenIndexSet(target: *TokenIndexSet, incoming: TokenIndexSet) bool {
     var changed = false;
     for (incoming.values, 0..) |present, index| {
@@ -1106,13 +1199,12 @@ fn parsePatternAtom(
         '[' => parseBracketClassAtom(allocator, value, index, flags),
         '.' => blk: {
             index.* += 1;
-            var chars = try CharacterSet.full(allocator);
-            try chars.removeCodepointRange(allocator, '\n', '\n' + 1);
+            const chars = try dotCharacterSet(allocator, flags);
             break :blk .{ .chars = chars };
         },
-        '\\' => parseEscapedAtom(allocator, value, index),
+        '\\' => parseEscapedAtom(allocator, value, index, flags),
         else => blk: {
-            const chars = try CharacterSet.fromChar(allocator, value[index.*]);
+            const chars = try literalCharacterSet(allocator, value[index.*], flags);
             index.* += 1;
             break :blk .{ .chars = chars };
         },
@@ -1156,14 +1248,14 @@ fn parseClassEntry(
     index: *usize,
     flags: ?[]const u8,
 ) ExpandError!CharacterSet {
-    var first = try parseClassUnit(allocator, value, index);
+    var first = try parseClassUnit(allocator, value, index, null);
     errdefer first.deinit(allocator);
 
     if (index.* + 1 < value.len and value[index.*] == '-' and value[index.* + 1] != ']') {
         if (first.ranges.items.len != 1) return error.UnsupportedPattern;
         defer first.deinit(allocator);
         index.* += 1;
-        var second = try parseClassUnit(allocator, value, index);
+        var second = try parseClassUnit(allocator, value, index, null);
         defer second.deinit(allocator);
         if (second.ranges.items.len != 1) return error.UnsupportedPattern;
 
@@ -1190,29 +1282,86 @@ fn parseClassEntry(
         return chars;
     }
 
-    return first;
+    return foldClassLiteralIfNeeded(allocator, first, flags);
 }
 
 fn parseClassUnit(
     allocator: std.mem.Allocator,
     value: []const u8,
     index: *usize,
+    flags: ?[]const u8,
 ) ExpandError!CharacterSet {
     if (index.* >= value.len) return error.UnsupportedPattern;
     if (value[index.*] == '\\') {
-        const atom = try parseEscapedAtom(allocator, value, index);
+        const atom = try parseEscapedAtom(allocator, value, index, flags);
         return atom.chars;
     }
 
-    const chars = try CharacterSet.fromChar(allocator, value[index.*]);
+    const chars = try literalCharacterSet(allocator, value[index.*], flags);
     index.* += 1;
     return chars;
+}
+
+fn parseHexEscapeSet(
+    allocator: std.mem.Allocator,
+    value: []const u8,
+    index: *usize,
+    flags: ?[]const u8,
+) ExpandError!CharacterSet {
+    std.debug.assert(value[index.*] == 'x');
+    index.* += 1;
+    if (index.* + 2 > value.len) return error.UnsupportedPattern;
+    const high = std.fmt.charToDigit(value[index.*], 16) catch return error.UnsupportedPattern;
+    const low = std.fmt.charToDigit(value[index.* + 1], 16) catch return error.UnsupportedPattern;
+    index.* += 2;
+    return literalCharacterSet(allocator, @intCast((high << 4) | low), flags);
+}
+
+fn parseUnicodeEscapeSet(
+    allocator: std.mem.Allocator,
+    value: []const u8,
+    index: *usize,
+    flags: ?[]const u8,
+) ExpandError!CharacterSet {
+    std.debug.assert(value[index.*] == 'u');
+    index.* += 1;
+
+    const codepoint = if (index.* < value.len and value[index.*] == '{') blk: {
+        index.* += 1;
+        var result: u32 = 0;
+        var digits: usize = 0;
+        while (index.* < value.len and value[index.*] != '}') : (index.* += 1) {
+            const digit: u32 = std.fmt.charToDigit(value[index.*], 16) catch return error.UnsupportedPattern;
+            if (digits == 6) return error.UnsupportedPattern;
+            digits += 1;
+            if (result > (0x10ffff - digit) / 16) return error.UnsupportedPattern;
+            result = result * 16 + digit;
+        }
+        if (digits == 0 or index.* >= value.len or value[index.*] != '}') return error.UnsupportedPattern;
+        index.* += 1;
+        break :blk result;
+    } else blk: {
+        if (index.* + 4 > value.len) return error.UnsupportedPattern;
+        var result: u32 = 0;
+        for (value[index.*..][0..4]) |byte| {
+            const digit: u32 = std.fmt.charToDigit(byte, 16) catch return error.UnsupportedPattern;
+            result = result * 16 + digit;
+        }
+        index.* += 4;
+        break :blk result;
+    };
+
+    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) {
+        return error.UnsupportedPattern;
+    }
+    return literalCharacterSet(allocator, @intCast(codepoint), flags);
 }
 
 fn parseEscapedAtom(
     allocator: std.mem.Allocator,
     value: []const u8,
     index: *usize,
+    flags: ?[]const u8,
 ) ExpandError!PatternAtom {
     std.debug.assert(value[index.*] == '\\');
     index.* += 1;
@@ -1223,39 +1372,34 @@ fn parseEscapedAtom(
         'n' => try CharacterSet.fromChar(allocator, '\n'),
         'r' => try CharacterSet.fromChar(allocator, '\r'),
         't' => try CharacterSet.fromChar(allocator, '\t'),
-        'd' => blk: {
-            var set = CharacterSet.empty();
-            try set.addRange(allocator, '0', '9');
-            break :blk set;
+        'f' => try CharacterSet.fromChar(allocator, 0x0c),
+        'v' => try CharacterSet.fromChar(allocator, 0x0b),
+        '0' => try CharacterSet.fromChar(allocator, 0),
+        'x' => try parseHexEscapeSet(allocator, value, index, flags),
+        'u' => try parseUnicodeEscapeSet(allocator, value, index, flags),
+        'd' => try digitCharacterSet(allocator),
+        'D' => blk: {
+            var set = try digitCharacterSet(allocator);
+            defer set.deinit(allocator);
+            break :blk try negateCharacterSet(allocator, set);
         },
-        's' => blk: {
-            var set = CharacterSet.empty();
-            try set.addRange(allocator, ' ', ' ');
-            try set.addRange(allocator, '\t', '\t');
-            try set.addRange(allocator, '\n', '\n');
-            try set.addRange(allocator, '\r', '\r');
-            break :blk set;
-        },
+        's' => try whitespaceCharacterSet(allocator),
         'S' => blk: {
-            var set = try CharacterSet.full(allocator);
-            try set.removeCodepointRange(allocator, ' ', ' ' + 1);
-            try set.removeCodepointRange(allocator, '\t', '\t' + 1);
-            try set.removeCodepointRange(allocator, '\n', '\n' + 1);
-            try set.removeCodepointRange(allocator, '\r', '\r' + 1);
-            break :blk set;
+            var set = try whitespaceCharacterSet(allocator);
+            defer set.deinit(allocator);
+            break :blk try negateCharacterSet(allocator, set);
         },
-        'w' => blk: {
-            var set = CharacterSet.empty();
-            try set.addRange(allocator, 'a', 'z');
-            try set.addRange(allocator, 'A', 'Z');
-            try set.addRange(allocator, '0', '9');
-            try set.addRange(allocator, '_', '_');
-            break :blk set;
+        'w' => try wordCharacterSet(allocator),
+        'W' => blk: {
+            var set = try wordCharacterSet(allocator);
+            defer set.deinit(allocator);
+            break :blk try negateCharacterSet(allocator, set);
         },
-        'p' => try parseUnicodePropertySet(allocator, value, index),
-        else => try CharacterSet.fromChar(allocator, value[index.*]),
+        'p' => try parseUnicodePropertySet(allocator, value, index, false),
+        'P' => try parseUnicodePropertySet(allocator, value, index, true),
+        else => try literalCharacterSet(allocator, value[index.*], flags),
     };
-    if (escaped != 'p') index.* += 1;
+    if (escaped != 'p' and escaped != 'P' and escaped != 'x' and escaped != 'u') index.* += 1;
     return .{ .chars = chars };
 }
 
@@ -1263,8 +1407,9 @@ fn parseUnicodePropertySet(
     allocator: std.mem.Allocator,
     value: []const u8,
     index: *usize,
+    negated: bool,
 ) ExpandError!CharacterSet {
-    std.debug.assert(value[index.*] == 'p');
+    std.debug.assert(value[index.*] == 'p' or value[index.*] == 'P');
     index.* += 1;
     if (index.* >= value.len) return error.UnsupportedPattern;
 
@@ -1281,39 +1426,41 @@ fn parseUnicodePropertySet(
         while (index.* < value.len and std.ascii.isAlphabetic(value[index.*])) : (index.* += 1) {}
         property_name = value[start..index.*];
     }
+    if (property_name.len == 0) return error.UnsupportedPattern;
 
     var set = CharacterSet.empty();
+    errdefer set.deinit(allocator);
     if (std.mem.eql(u8, property_name, "Zs")) {
         try set.addRange(allocator, ' ', ' ');
         try set.addCodepointRange(allocator, 0xA0, 0xA1);
-        return set;
+        return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "Ll")) {
         try set.addRange(allocator, 'a', 'z');
         try set.addCodepointRange(allocator, 0x80, 0x110000);
-        return set;
+        return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "Lo")) {
         try set.addCodepointRange(allocator, 0x80, 0x110000);
-        return set;
+        return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "Lu") or std.mem.eql(u8, property_name, "Lt")) {
         try set.addRange(allocator, 'A', 'Z');
         try set.addCodepointRange(allocator, 0x80, 0x110000);
-        return set;
+        return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "L")) {
         try set.addRange(allocator, 'A', 'Z');
         try set.addRange(allocator, 'a', 'z');
         try set.addCodepointRange(allocator, 0x80, 0x110000);
-        return set;
+        return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "XID_Start")) {
         try set.addRange(allocator, 'A', 'Z');
         try set.addRange(allocator, 'a', 'z');
         try set.addRange(allocator, '_', '_');
         try set.addCodepointRange(allocator, 0x80, 0x110000);
-        return set;
+        return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "XID_Continue")) {
         try set.addRange(allocator, 'A', 'Z');
@@ -1321,15 +1468,15 @@ fn parseUnicodePropertySet(
         try set.addRange(allocator, '0', '9');
         try set.addRange(allocator, '_', '_');
         try set.addCodepointRange(allocator, 0x80, 0x110000);
-        return set;
+        return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "Mn")) {
         try set.addCodepointRange(allocator, 0x80, 0x110000);
-        return set;
+        return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "N")) {
         try set.addRange(allocator, '0', '9');
-        return set;
+        return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
 
     return error.UnsupportedPattern;
@@ -2791,6 +2938,45 @@ test "expandExtractedLexicalGrammar supports C grammar regex forms" {
     try std.testing.expectEqual(@as(?usize, 5), try matchVariable(std.testing.allocator, expanded, 5, "x1234z"));
     try std.testing.expectEqual(@as(?usize, 5), try matchVariable(std.testing.allocator, expanded, 8, "alpha+"));
     try std.testing.expectEqual(@as(?usize, 6), try matchVariable(std.testing.allocator, expanded, 8, "\\u1234+"));
+}
+
+test "expandExtractedLexicalGrammar supports broader zigrep-style regex forms" {
+    const all_rules = [_]rules.Rule{
+        .{ .pattern = .{ .value = "(?:ab|cd)+?e", .flags = null } },
+        .{ .pattern = .{ .value = "\\D\\W\\S", .flags = null } },
+        .{ .pattern = .{ .value = "\\x41\\u{42}\\u0043", .flags = null } },
+        .{ .pattern = .{ .value = "abc", .flags = "i" } },
+        .{ .pattern = .{ .value = "[a]z", .flags = "i" } },
+        .{ .pattern = .{ .value = ".", .flags = "s" } },
+        .{ .pattern = .{ .value = "\\P{N}+", .flags = null } },
+        .{ .pattern = .{ .value = "\\f\\v\\0", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "non_capture_lazy", .kind = .anonymous, .rule = 0 },
+            .{ .name = "negated_shorthands", .kind = .anonymous, .rule = 1 },
+            .{ .name = "hex_unicode_escapes", .kind = .anonymous, .rule = 2 },
+            .{ .name = "case_fold_literal", .kind = .anonymous, .rule = 3 },
+            .{ .name = "case_fold_class_literal", .kind = .anonymous, .rule = 4 },
+            .{ .name = "dot_all", .kind = .anonymous, .rule = 5 },
+            .{ .name = "negated_property", .kind = .anonymous, .rule = 6 },
+            .{ .name = "control_escapes", .kind = .anonymous, .rule = 7 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(?usize, 5), try matchVariable(std.testing.allocator, expanded, 0, "abcde"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 1, "a!x"));
+    try std.testing.expectEqual(@as(?usize, null), try matchVariable(std.testing.allocator, expanded, 1, "1!x"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 2, "ABC!"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 3, "AbC!"));
+    try std.testing.expectEqual(@as(?usize, 2), try matchVariable(std.testing.allocator, expanded, 4, "Az"));
+    try std.testing.expectEqual(@as(?usize, 1), try matchVariable(std.testing.allocator, expanded, 5, "\n"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 6, "abc1"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 7, "\x0c\x0b\x00"));
 }
 
 test "buildTokenConflictMapAlloc marks literal prefix and identifier continuation" {
