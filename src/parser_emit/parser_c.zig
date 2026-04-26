@@ -163,7 +163,8 @@ pub fn writeParserCWithOptions(
         try writer.writeAll("}\n\n");
     } else {
         const resolver_context = RuntimeSymbolResolverContext{ .symbols = emitted_symbols };
-        try lexer_emit_c.emitLexFunctionWithResolver(
+        try lexer_emit_c.emitLexFunctionWithResolverAlloc(
+            arena.allocator(),
             writer,
             "ts_lex",
             runtime_lex.table,
@@ -175,7 +176,8 @@ pub fn writeParserCWithOptions(
     }
     if (compacted.keyword_lex_table) |keyword_lex_table| {
         const resolver_context = RuntimeSymbolResolverContext{ .symbols = emitted_symbols };
-        try lexer_emit_c.emitLexFunctionWithResolver(
+        try lexer_emit_c.emitLexFunctionWithResolverAlloc(
+            arena.allocator(),
             writer,
             "ts_lex_keywords",
             keyword_lex_table,
