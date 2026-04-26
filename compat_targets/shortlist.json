@@ -122,6 +122,24 @@
       "success_means": "load, prepare, complete the routine coarse serialize-only parser step, emit parser tables plus C tables, emit parser.c, pass compatibility validation, and pass compile-smoke cleanly"
     },
     {
+      "id": "tree_sitter_zig_json",
+      "family": "zig",
+      "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "serialize_only",
+      "scanner_boundary_check_mode": "sampled_behavioral",
+      "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
+      "status": "intended_first_wave",
+      "source_kind": "grammar_json",
+      "origin_kind": "external_repo_snapshot",
+      "grammar_path": "compat_targets/tree_sitter_zig/grammar.json",
+      "upstream_repository": "tree-sitter-zig",
+      "upstream_revision": "6479aa13f32f701c383083d8b28360ebd682fb7d",
+      "upstream_grammar_path": "src/grammar.json",
+      "why": "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the same routine coarse parser boundary as the larger parser-only snapshots",
+      "success_means": "load, prepare, complete the routine coarse serialize-only parser step, emit parser tables plus C tables, emit parser.c, pass compatibility validation, and pass compile-smoke cleanly"
+    },
+    {
       "id": "tree_sitter_haskell_json",
       "family": "haskell",
       "boundary_kind": "scanner_external_scanner",

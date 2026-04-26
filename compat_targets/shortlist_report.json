@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "aggregate": {
-    "total_targets": 14,
-    "first_wave_targets": 5,
-    "first_wave_passed": 5,
+    "total_targets": 15,
+    "first_wave_targets": 6,
+    "first_wave_passed": 6,
     "scanner_wave_targets": 7,
     "scanner_wave_passed": 7,
     "deferred_parser_targets": 1,
-    "standalone_parser_proof_targets": 2,
+    "standalone_parser_proof_targets": 3,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
-    "passed_within_current_boundary": 12,
+    "passed_within_current_boundary": 13,
     "frozen_control_fixture": 1,
     "deferred_for_parser_boundary": 1,
     "deferred_for_scanner_boundary": 0,
@@ -82,6 +82,15 @@
     },
     {
       "family": "c",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 1,
+      "control_count": 0,
+      "deferred_count": 0,
+      "blocked_count": 0
+    },
+    {
+      "family": "zig",
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
@@ -594,6 +603,74 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 613619,
         "parser_c_bytes": 3981714
+      },
+      "blocked_boundary": null
+    },
+    {
+      "id": "tree_sitter_zig_json",
+      "display_name": "tree-sitter-zig (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_zig/grammar.json",
+      "family": "zig",
+      "source_kind": "grammar_json",
+      "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "serialize_only",
+      "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
+      "provenance": {
+        "origin_kind": "external_repo_snapshot",
+        "upstream_repository": "tree-sitter-zig",
+        "upstream_revision": "6479aa13f32f701c383083d8b28360ebd682fb7d",
+        "upstream_grammar_path": "src/grammar.json"
+      },
+      "candidate_status": "intended_first_wave",
+      "expected_blocked": false,
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the same routine coarse parser boundary as the larger parser-only snapshots",
+      "success_criteria": "load, prepare, complete the routine coarse serialize-only parser step, emit parser tables plus C tables, emit parser.c, pass compatibility validation, and pass compile-smoke cleanly",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "load": {
+        "status": "passed",
+        "detail": null
+      },
+      "prepare": {
+        "status": "passed",
+        "detail": null
+      },
+      "serialize": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "passed",
+        "detail": null
+      },
+      "scanner_boundary_check": {
+        "status": "not_run",
+        "detail": null
+      },
+      "compat_check": {
+        "status": "passed",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "passed",
+        "detail": null
+      },
+      "emission": {
+        "blocked": false,
+        "serialized_state_count": 1666,
+        "emitted_state_count": 0,
+        "merged_state_count": 0,
+        "action_entry_count": 0,
+        "goto_entry_count": 0,
+        "unresolved_entry_count": 0,
+        "parser_tables_bytes": 1828411,
+        "parser_c_bytes": 3369790
       },
       "blocked_boundary": null
     },

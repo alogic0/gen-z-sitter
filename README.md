@@ -121,7 +121,7 @@ Current staged compatibility boundary:
   - curated fixture proof: lower-level emitter, golden, compile-smoke, structural-compatibility, runtime-link, and behavioral tests
   - parser-only shortlist proof: versioned checked-in artifacts under `compat_targets/`
   - staged scanner-boundary proof: promoted scanner-wave entries in the checked-in compatibility artifacts
-  - real external scanner proof: sampled Haskell and Bash runtime-link fixtures, not full scanner.c runtime equivalence
+  - real external scanner proof: focused Haskell and Bash runtime-link fixtures, not corpus-level runtime equivalence
 - The main machine-readable compatibility surfaces are:
   - `compat_targets/shortlist.json`
   - `compat_targets/shortlist_inventory.json`
@@ -129,8 +129,8 @@ Current staged compatibility boundary:
   - `compat_targets/external_repo_inventory.json`
   - `compat_targets/external_scanner_repo_inventory.json`
   - `compat_targets/artifact_manifest.json`
-- The current parser-only boundary includes staged fixtures plus promoted real C JSON coverage. `parse_table_conflict_json` remains an intentional frozen control fixture for an ambiguity that requires precedence/conflict annotations.
-- The current scanner boundary includes staged scanner fixtures and sampled real external scanner proofs for `tree_sitter_haskell_json` and `tree_sitter_bash_json`. The Haskell proof covers a sampled external-sequence path; the Bash proof covers a narrower sampled expansion path, not heredoc behavior.
+- The current parser-only boundary includes staged fixtures plus promoted real C and Zig JSON coverage. `parse_table_conflict_json` remains an intentional frozen control fixture for an ambiguity that requires precedence/conflict annotations.
+- The current scanner boundary includes staged scanner fixtures and focused real external scanner runtime-link proofs for `tree_sitter_haskell_json` and `tree_sitter_bash_json`. These are link-and-run proofs against scanner.c, not corpus-level runtime parity.
 - Routine compatibility artifacts are refreshed by `zig run update_compat_artifacts.zig`. Heavier parser-boundary probing is kept separate in `zig run update_parser_boundary_probe.zig`.
 - The top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs.
 

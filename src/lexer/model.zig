@@ -467,7 +467,7 @@ const RegexRepeat = union(enum) {
     one_or_more,
     range: struct {
         min: usize,
-        max: usize,
+        max: ?usize,
     },
 };
 
@@ -623,14 +623,17 @@ const RegexParser = struct {
         std.debug.assert(self.value[self.index] == '{');
         self.index += 1;
         const min = try self.parseUnsigned();
-        var max = min;
+        var max: ?usize = min;
         if (self.index < self.value.len and self.value[self.index] == ',') {
             self.index += 1;
-            max = try self.parseUnsigned();
+            max = if (self.index < self.value.len and std.ascii.isDigit(self.value[self.index]))
+                try self.parseUnsigned()
+            else
+                null;
         }
         if (self.index >= self.value.len or self.value[self.index] != '}') return error.UnsupportedPattern;
         self.index += 1;
-        if (max < min) return error.UnsupportedPattern;
+        if (max != null and max.? < min) return error.UnsupportedPattern;
         return .{ .range = .{ .min = min, .max = max } };
     }
 
@@ -947,9 +950,13 @@ const Builder = struct {
             },
             .range => |range| blk: {
                 var next = next_state_id;
-                var optional_count = range.max - range.min;
-                while (optional_count > 0) : (optional_count -= 1) {
-                    next = try self.expandRegexRepeat(node, .optional, next);
+                if (range.max) |max| {
+                    var optional_count = max - range.min;
+                    while (optional_count > 0) : (optional_count -= 1) {
+                        next = try self.expandRegexRepeat(node, .optional, next);
+                    }
+                } else {
+                    next = try self.expandRegexRepeat(node, .zero_or_more, next);
                 }
                 var required_count = range.min;
                 while (required_count > 0) : (required_count -= 1) {
@@ -2750,6 +2757,7 @@ test "expandExtractedLexicalGrammar supports C grammar regex forms" {
         .{ .pattern = .{ .value = "[^\\\\\"\\n]+", .flags = null } },
         .{ .pattern = .{ .value = "x[0-9a-fA-F]{1,4}", .flags = null } },
         .{ .pattern = .{ .value = "\\d{2,3}", .flags = null } },
+        .{ .pattern = .{ .value = "x[0-9a-fA-F]{2,}", .flags = null } },
         .{ .pattern = .{ .value = "(\\\\+(.|\\r?\\n)|[^\\\\\\n])*", .flags = null } },
         .{ .pattern = .{ .value = "[^*]*\\*+([^/*][^*]*\\*+)*", .flags = null } },
         .{ .pattern = .{
@@ -2764,9 +2772,10 @@ test "expandExtractedLexicalGrammar supports C grammar regex forms" {
             .{ .name = "string_content", .kind = .anonymous, .rule = 2 },
             .{ .name = "hex_escape", .kind = .anonymous, .rule = 3 },
             .{ .name = "digits", .kind = .anonymous, .rule = 4 },
-            .{ .name = "escaped_string", .kind = .anonymous, .rule = 5 },
-            .{ .name = "block_comment_tail", .kind = .anonymous, .rule = 6 },
-            .{ .name = "identifier", .kind = .named, .rule = 7 },
+            .{ .name = "open_hex_escape", .kind = .anonymous, .rule = 5 },
+            .{ .name = "escaped_string", .kind = .anonymous, .rule = 6 },
+            .{ .name = "block_comment_tail", .kind = .anonymous, .rule = 7 },
+            .{ .name = "identifier", .kind = .named, .rule = 8 },
         },
         .separators = &.{},
     };
@@ -2778,8 +2787,10 @@ test "expandExtractedLexicalGrammar supports C grammar regex forms" {
     try std.testing.expectEqual(@as(?usize, 10), try matchVariable(std.testing.allocator, expanded, 1, "# pragma42"));
     try std.testing.expectEqual(@as(?usize, 4), try matchVariable(std.testing.allocator, expanded, 3, "x1afz"));
     try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 4, "1234"));
-    try std.testing.expectEqual(@as(?usize, 5), try matchVariable(std.testing.allocator, expanded, 7, "alpha+"));
-    try std.testing.expectEqual(@as(?usize, 6), try matchVariable(std.testing.allocator, expanded, 7, "\\u1234+"));
+    try std.testing.expectEqual(@as(?usize, null), try matchVariable(std.testing.allocator, expanded, 5, "x1"));
+    try std.testing.expectEqual(@as(?usize, 5), try matchVariable(std.testing.allocator, expanded, 5, "x1234z"));
+    try std.testing.expectEqual(@as(?usize, 5), try matchVariable(std.testing.allocator, expanded, 8, "alpha+"));
+    try std.testing.expectEqual(@as(?usize, 6), try matchVariable(std.testing.allocator, expanded, 8, "\\u1234+"));
 }
 
 test "buildTokenConflictMapAlloc marks literal prefix and identifier continuation" {

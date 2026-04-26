@@ -41,6 +41,7 @@ pub const TargetFamily = enum {
     repeat_choice_seq,
     ziggy,
     ziggy_schema,
+    zig,
     c,
     haskell,
     bash,
@@ -188,6 +189,26 @@ pub const shortlist_targets = [_]Target{
         .success_criteria = "load, prepare, complete the routine coarse serialize-only parser step, emit parser tables plus C tables, emit parser.c, pass compatibility validation, and pass compile-smoke cleanly",
     },
     .{
+        .id = "tree_sitter_zig_json",
+        .display_name = "tree-sitter-zig (JSON snapshot)",
+        .grammar_path = "compat_targets/tree_sitter_zig/grammar.json",
+        .family = .zig,
+        .source_kind = .grammar_json,
+        .boundary_kind = .parser_only,
+        .parser_boundary_check_mode = .serialize_only,
+        .standalone_parser_proof_scope = .coarse_serialize_only,
+        .provenance = .{
+            .origin_kind = .external_repo_snapshot,
+            .upstream_repository = "tree-sitter-zig",
+            .upstream_revision = "6479aa13f32f701c383083d8b28360ebd682fb7d",
+            .upstream_grammar_path = "src/grammar.json",
+        },
+        .candidate_status = .intended_first_wave,
+        .expected_blocked = false,
+        .notes = "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the same routine coarse parser boundary as the larger parser-only snapshots",
+        .success_criteria = "load, prepare, complete the routine coarse serialize-only parser step, emit parser tables plus C tables, emit parser.c, pass compatibility validation, and pass compile-smoke cleanly",
+    },
+    .{
         .id = "tree_sitter_haskell_json",
         .display_name = "tree-sitter-haskell (JSON snapshot)",
         .grammar_path = "compat_targets/tree_sitter_haskell/grammar.json",
@@ -332,6 +353,7 @@ const first_wave_targets = [_]Target{
     shortlist_targets[3],
     shortlist_targets[4],
     shortlist_targets[5],
+    shortlist_targets[6],
 };
 
 pub fn firstWaveTargets() []const Target {
@@ -340,7 +362,7 @@ pub fn firstWaveTargets() []const Target {
 
 test "stagedTargets exposes a small versioned shortlist" {
     const shortlist = shortlistTargets();
-    try std.testing.expectEqual(@as(usize, 14), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 15), shortlist.len);
     try std.testing.expect(shortlist[0].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
@@ -348,39 +370,44 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[5].family == .c);
     try std.testing.expect(shortlist[5].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[5].parser_boundary_check_mode == .serialize_only);
-    try std.testing.expect(shortlist[6].candidate_status == .intended_scanner_wave);
-    try std.testing.expect(shortlist[6].family == .haskell);
+    try std.testing.expect(shortlist[6].candidate_status == .intended_first_wave);
+    try std.testing.expect(shortlist[6].family == .zig);
     try std.testing.expect(shortlist[6].provenance.origin_kind == .external_repo_snapshot);
-    try std.testing.expect(shortlist[6].scanner_boundary_check_mode == .full_runtime_link);
-    try std.testing.expect(shortlist[6].real_external_scanner_proof_scope == .full_runtime_link);
-    try std.testing.expect(shortlist[6].scanner_valid_input_path != null);
-    try std.testing.expect(shortlist[6].scanner_invalid_input_path != null);
-    try std.testing.expect(shortlist[7].family == .bash);
-    try std.testing.expect(shortlist[7].provenance.origin_kind == .external_repo_snapshot);
+    try std.testing.expect(shortlist[6].parser_boundary_check_mode == .serialize_only);
+    try std.testing.expect(shortlist[6].standalone_parser_proof_scope == .coarse_serialize_only);
     try std.testing.expect(shortlist[7].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[7].family == .haskell);
+    try std.testing.expect(shortlist[7].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[7].scanner_boundary_check_mode == .full_runtime_link);
     try std.testing.expect(shortlist[7].real_external_scanner_proof_scope == .full_runtime_link);
     try std.testing.expect(shortlist[7].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[7].scanner_invalid_input_path != null);
-    try std.testing.expect(shortlist[8].candidate_status == .deferred_control_fixture);
-    try std.testing.expect(shortlist[9].family == .bracket_lang);
-    try std.testing.expect(shortlist[9].scanner_boundary_check_mode == .full_runtime_link);
-    try std.testing.expect(shortlist[9].real_external_scanner_proof_scope == .full_runtime_link);
-    try std.testing.expect(shortlist[9].standalone_parser_proof_scope == .coarse_serialize_only);
-    try std.testing.expect(shortlist[10].candidate_status == .intended_scanner_wave);
-    try std.testing.expect(shortlist[11].boundary_kind == .scanner_external_scanner);
-    try std.testing.expect(shortlist[11].scanner_valid_input_path != null);
-    try std.testing.expect(shortlist[11].scanner_invalid_input_path != null);
-    try std.testing.expect(shortlist[12].candidate_status == .intended_scanner_wave);
-    try std.testing.expect(shortlist[12].family == .mixed_semantics);
+    try std.testing.expect(shortlist[8].family == .bash);
+    try std.testing.expect(shortlist[8].provenance.origin_kind == .external_repo_snapshot);
+    try std.testing.expect(shortlist[8].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[8].scanner_boundary_check_mode == .full_runtime_link);
+    try std.testing.expect(shortlist[8].real_external_scanner_proof_scope == .full_runtime_link);
+    try std.testing.expect(shortlist[8].scanner_valid_input_path != null);
+    try std.testing.expect(shortlist[8].scanner_invalid_input_path != null);
+    try std.testing.expect(shortlist[9].candidate_status == .deferred_control_fixture);
+    try std.testing.expect(shortlist[10].family == .bracket_lang);
+    try std.testing.expect(shortlist[10].scanner_boundary_check_mode == .full_runtime_link);
+    try std.testing.expect(shortlist[10].real_external_scanner_proof_scope == .full_runtime_link);
+    try std.testing.expect(shortlist[10].standalone_parser_proof_scope == .coarse_serialize_only);
+    try std.testing.expect(shortlist[11].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[12].boundary_kind == .scanner_external_scanner);
     try std.testing.expect(shortlist[12].scanner_valid_input_path != null);
-    try std.testing.expect(shortlist[13].source_kind == .grammar_js);
+    try std.testing.expect(shortlist[12].scanner_invalid_input_path != null);
+    try std.testing.expect(shortlist[13].candidate_status == .intended_scanner_wave);
     try std.testing.expect(shortlist[13].family == .mixed_semantics);
+    try std.testing.expect(shortlist[13].scanner_valid_input_path != null);
+    try std.testing.expect(shortlist[14].source_kind == .grammar_js);
+    try std.testing.expect(shortlist[14].family == .mixed_semantics);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {
     const shortlist = firstWaveTargets();
-    try std.testing.expectEqual(@as(usize, 5), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 6), shortlist.len);
     try std.testing.expect(shortlist[0].source_kind == .grammar_json);
     try std.testing.expect(shortlist[2].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
@@ -388,6 +415,7 @@ test "firstWaveTargets returns only the intended first-wave run set" {
     try std.testing.expectEqualStrings("tree_sitter_ziggy_json", shortlist[2].id);
     try std.testing.expectEqualStrings("tree_sitter_ziggy_schema_json", shortlist[3].id);
     try std.testing.expectEqualStrings("tree_sitter_c_json", shortlist[4].id);
+    try std.testing.expectEqualStrings("tree_sitter_zig_json", shortlist[5].id);
     for (shortlist) |target| {
         try std.testing.expect(target.candidate_status == .intended_first_wave);
     }

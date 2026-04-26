@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "total_external_repo_targets": 5,
-  "passed_external_repo_targets": 5,
-  "standalone_parser_proof_targets": 1,
+  "total_external_repo_targets": 6,
+  "passed_external_repo_targets": 6,
+  "standalone_parser_proof_targets": 2,
   "family_coverage": [
     {
       "family": "ziggy",
@@ -23,6 +23,12 @@
       "passed_count": 1
     },
     {
+      "family": "zig",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 1
+    },
+    {
       "family": "haskell",
       "boundary_kind": "scanner_external_scanner",
       "target_count": 1,
@@ -38,8 +44,8 @@
   "boundary_coverage": [
     {
       "boundary_kind": "parser_only",
-      "target_count": 3,
-      "passed_count": 3
+      "target_count": 4,
+      "passed_count": 4
     },
     {
       "boundary_kind": "scanner_external_scanner",
@@ -100,6 +106,22 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-c repo, now promoted through routine coarse serialize-only, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke"
+    },
+    {
+      "id": "tree_sitter_zig_json",
+      "family": "zig",
+      "display_name": "tree-sitter-zig (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_zig/grammar.json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "parser_only",
+      "proof_scope": "none",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
+      "upstream_repository": "tree-sitter-zig",
+      "upstream_revision": "6479aa13f32f701c383083d8b28360ebd682fb7d",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the same routine coarse parser boundary as the larger parser-only snapshots"
     },
     {
       "id": "tree_sitter_haskell_json",

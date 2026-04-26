@@ -25,6 +25,7 @@ Current represented families:
   - `repeat_choice_seq`
   - `ziggy`
   - `ziggy_schema`
+  - `zig`
   - `parse_table_conflict`
 - scanner/external-scanner
   - `hidden_external_fields`
@@ -91,17 +92,22 @@ Versioned artifacts:
 
 Current staged boundary summary:
 
-- 5 intended first-wave parser-only targets now pass within the staged boundary
-- 2 real external parser-only snapshots have been promoted into that first-wave proven set:
+- 6 intended first-wave parser-only targets now pass within the staged boundary
+- 3 real external parser-only snapshots have been promoted into that first-wave proven set:
   - `tree_sitter_ziggy_json`
   - `tree_sitter_ziggy_schema_json`
-- those same 2 real snapshots are also exposed separately in `external_repo_inventory.json` so real-repo evidence can be read without mentally subtracting the staged fixture families
+  - `tree_sitter_zig_json`
+- those same 3 real snapshots are also exposed separately in `external_repo_inventory.json` so real-repo evidence can be read without mentally subtracting the staged fixture families
 - 1 additional real external parser-only snapshot is now promoted into the routine parser-only boundary:
   - `tree_sitter_c_json`
   - it currently proves `load`, `prepare`, routine coarse `serialize_only`, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke
   - it is now classified as `passed_within_current_boundary`
   - the standalone parser-boundary probe still proves a narrower coarse `serialize_only` layer for this target as supporting evidence
   - the central shortlist and external-repo inventory artifacts now expose that standalone proof directly with `standalone_parser_proof_scope = coarse_serialize_only`
+- 1 additional real external parser-only snapshot now passes the same routine coarse parser boundary:
+  - `tree_sitter_zig_json`
+  - it currently proves `load`, `prepare`, routine coarse `serialize_only`, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke
+  - onboarding it required supporting open-ended regex range quantifiers such as `{2,}` in the local Zig lexer model
 - 1 additional staged parser-only target remains deferred for a later wave:
   - `parse_table_conflict_json`
   - this is now treated explicitly as an intentional ambiguity/control fixture, not as an unresolved external parser-only promotion gap
@@ -114,22 +120,22 @@ Current staged boundary summary:
   - `mixed_semantics_json`
   - `mixed_semantics_js`
   - these targets keep extras elsewhere in the grammar while proving a narrower first-boundary path that does not depend on them
-- 1 real external scanner snapshot now passes within the current sampled real scanner boundary:
+- 1 real external scanner snapshot now passes within the current runtime-link real scanner boundary:
   - `tree_sitter_haskell_json`
   - it is the first real external scanner-family target in the shortlist
   - it now passes structural first-boundary extraction
-  - it also now passes a sampled external-sequence scanner proof layer
-  - its machine-readable `proof_scope` is `sampled_external_sequence`
-  - this is still narrower than full scanner.c runtime equivalence
-- 1 additional real external scanner snapshot now also passes within the current sampled real scanner boundary:
+  - it also now passes a focused runtime-link proof against the real scanner.c
+  - its machine-readable `proof_scope` is `full_runtime_link`
+  - this is still narrower than corpus-level runtime equivalence
+- 1 additional real external scanner snapshot now also passes within the current runtime-link real scanner boundary:
   - `tree_sitter_bash_json`
   - it adds a second real external scanner family to the evidence set
-  - it now passes a narrow sampled expansion path built around `_bare_dollar` and `variable_name`
-  - its machine-readable `proof_scope` is `sampled_expansion_path`
-  - it still does not claim sampled heredoc handling or full scanner.c runtime equivalence
+  - it now passes a focused runtime-link proof against the real scanner.c
+  - its machine-readable `proof_scope` is `full_runtime_link`
+  - it still does not claim sampled heredoc handling or corpus-level runtime equivalence
 
 Recommended next step after this staged boundary:
 
-- keep the parser-only, staged scanner, and sampled real external scanner boundaries stable now that `tree_sitter_c_json` has been promoted
+- keep the parser-only, staged scanner, and focused runtime-link real external scanner boundaries stable now that `tree_sitter_c_json` and `tree_sitter_zig_json` have been promoted
 - the remaining deferred parser-only case is the intentional frozen control fixture `parse_table_conflict_json`
 - the roadmap can now shift back toward broader compatibility polish or another widened real external wave
