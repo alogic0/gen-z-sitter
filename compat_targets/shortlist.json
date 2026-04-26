@@ -190,8 +190,8 @@
       "upstream_repository": null,
       "upstream_revision": null,
       "upstream_grammar_path": null,
-      "why": "staged small external-scanner runtime fixture that proves generated scanner tables through a full parser C link without claiming broad real-scanner promotion",
-      "success_means": "load grammar.json, prepare, emit parser.c, compile with scanner.c, link against the tree-sitter runtime, parse (()), and assert the root is not an ERROR node"
+      "why": "staged recursive external-scanner runtime fixture that proves generated scanner tables through a full parser C link without claiming broad real-scanner promotion",
+      "success_means": "load grammar.json, prepare, emit parser.c, compile with scanner.c, link against the tree-sitter runtime, parse (()), and assert the nested item tree has no ERROR root"
     },
     {
       "id": "hidden_external_fields_json",

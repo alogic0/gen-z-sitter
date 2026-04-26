@@ -7,11 +7,20 @@
   ],
   "rules": {
     "source": {
+      "type": "SYMBOL",
+      "name": "item"
+    },
+    "item": {
       "type": "SEQ",
       "members": [
         { "type": "SYMBOL", "name": "open_bracket" },
-        { "type": "SYMBOL", "name": "open_bracket" },
-        { "type": "SYMBOL", "name": "close_bracket" },
+        {
+          "type": "CHOICE",
+          "members": [
+            { "type": "SYMBOL", "name": "item" },
+            { "type": "BLANK" }
+          ]
+        },
         { "type": "SYMBOL", "name": "close_bracket" }
       ]
     }

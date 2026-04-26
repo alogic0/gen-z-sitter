@@ -1,5 +1,7 @@
 const std = @import("std");
 const grammar_ir = @import("../ir/grammar_ir.zig");
+const ir_rules = @import("../ir/rules.zig");
+const ir_symbols = @import("../ir/symbols.zig");
 const actions = @import("actions.zig");
 const debug_dump = @import("debug_dump.zig");
 const build = @import("build.zig");
@@ -1212,6 +1214,73 @@ test "serializeTableFromPrepared attaches serialized lex tables for an unambiguo
     for (serialized.lex_tables) |lex_table| {
         try std.testing.expect(lex_table.start_state_id < lex_table.states.len);
     }
+}
+
+test "serializeTableFromPrepared carries recursive external close reduce lookahead" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const source_symbol = ir_symbols.SymbolId.nonTerminal(0);
+    const item_symbol = ir_symbols.SymbolId.nonTerminal(1);
+    const open_symbol = ir_symbols.SymbolId.external(0);
+    const close_symbol = ir_symbols.SymbolId.external(1);
+
+    const optional_item_members = [_]ir_rules.RuleId{ 2, 3 };
+    const item_steps = [_]ir_rules.RuleId{ 1, 4, 5 };
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "recursive_external_close",
+        .variables = &.{
+            .{ .name = "source", .symbol = source_symbol, .kind = .named, .rule = 0 },
+            .{ .name = "item", .symbol = item_symbol, .kind = .named, .rule = 6 },
+        },
+        .external_tokens = &.{
+            .{ .name = "open_bracket", .symbol = open_symbol, .kind = .named, .rule = 1 },
+            .{ .name = "close_bracket", .symbol = close_symbol, .kind = .named, .rule = 5 },
+        },
+        .rules = &.{
+            .{ .symbol = item_symbol },
+            .{ .symbol = open_symbol },
+            .{ .symbol = item_symbol },
+            .blank,
+            .{ .choice = &optional_item_members },
+            .{ .symbol = close_symbol },
+            .{ .seq = &item_steps },
+        },
+        .symbols = &.{
+            .{ .id = source_symbol, .name = "source", .named = true, .visible = true },
+            .{ .id = item_symbol, .name = "item", .named = true, .visible = true },
+            .{ .id = open_symbol, .name = "open_bracket", .named = true, .visible = true },
+            .{ .id = close_symbol, .name = "close_bracket", .named = true, .visible = true },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    const result = try buildStatesFromPrepared(arena.allocator(), prepared);
+    var reduce_state_id: ?state.StateId = null;
+    for (result.actions.states) |state_actions| {
+        for (state_actions.entries) |entry| {
+            if (entry.symbol != .external or entry.symbol.external != 1) continue;
+            if (entry.action != .reduce) continue;
+            const production = result.productions[entry.action.reduce];
+            if (production.lhs != 1 or production.steps.len != 3) continue;
+            reduce_state_id = state_actions.state_id;
+            break;
+        }
+    }
+
+    const close_reduce_state_id = reduce_state_id orelse return error.TestExpectedEqual;
+    const serialized = try serializeTableFromPrepared(arena.allocator(), prepared, .diagnostic);
+    const lex_mode = serialized.lex_modes[close_reduce_state_id];
+    const external_state = serialized.external_scanner.states[lex_mode.external_lex_state];
+
+    try std.testing.expect(!serialized.isSerializationReady());
+    try std.testing.expect(external_state[1]);
 }
 
 test "serializeTableFromPrepared excludes default aliases from alias sequences" {

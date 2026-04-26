@@ -257,8 +257,8 @@ pub const shortlist_targets = [_]Target{
         .provenance = .{ .origin_kind = .staged_in_repo },
         .candidate_status = .intended_scanner_wave,
         .expected_blocked = false,
-        .notes = "staged small external-scanner runtime fixture that proves generated scanner tables through a full parser C link without claiming broad real-scanner promotion",
-        .success_criteria = "load grammar.json, prepare, emit parser.c, compile with scanner.c, link against the tree-sitter runtime, parse (()), and assert the root is not an ERROR node",
+        .notes = "staged recursive external-scanner runtime fixture that proves generated scanner tables through a full parser C link without claiming broad real-scanner promotion",
+        .success_criteria = "load grammar.json, prepare, emit parser.c, compile with scanner.c, link against the tree-sitter runtime, parse (()), and assert the nested item tree has no ERROR root",
     },
     .{
         .id = "hidden_external_fields_json",

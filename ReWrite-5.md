@@ -218,11 +218,10 @@ Fixture grammar:
 }
 ```
 
-Implemented fixture note: the staged `bracket_lang` fixture uses a flat generated
-sequence (`source := OPEN OPEN CLOSE CLOSE`) for the runtime-link proof. The nested
-repeat form and explicit recursive choice both currently exercise a reduce-before-
-external-close parser-boundary gap rather than the external-scanner runtime path this
-phase is meant to prove.
+Implemented fixture note: RW-5 originally staged `bracket_lang` with a flat generated
+sequence (`source := OPEN OPEN CLOSE CLOSE`) for the runtime-link proof. ReWrite-5.1
+closed the reduce-before-external-close parser-table gap and promoted the fixture to
+the nested recursive shape (`item := OPEN item? CLOSE`).
 
 Implementation notes:
 
@@ -248,10 +247,9 @@ Tasks:
 - [x] Add `emitBracketLangParserC` using the existing grammar loader/pipeline path.
 - [x] Add `linkAndRunBracketLangParser` that links generated parser C with staged
   `scanner.c`, parses `"(())"`, and asserts the root is not an ERROR node.
-- [ ] Add parse-tree shape assertions for the bracket nesting.
-  Deferred: generated nested bracket grammars currently hit the reduce-before-
-  external-close parser-boundary gap. The implemented Phase 4 runtime link asserts the
-  flat generated bracket token shape instead.
+- [x] Add parse-tree shape assertions for the bracket nesting.
+  Implemented by ReWrite-5.1: nested external-close reduction is implemented, and
+  the runtime link now asserts the recursive bracket tree.
 - [x] Add `test "linkAndRunBracketLangParser ..."` in `runtime_link.zig`.
 - [x] Add `zig build test-link-bracket-lang` in `build.zig`.
 

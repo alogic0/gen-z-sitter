@@ -116,22 +116,6 @@ fn optionalSymbolRefText(buf: []u8, value: ?syntax_ir.SymbolRef) []const u8 {
     return "none";
 }
 
-fn singleLookahead(lookaheads: first.SymbolSet) ?syntax_ir.SymbolRef {
-    var found: ?syntax_ir.SymbolRef = null;
-    if (lookaheads.includes_end) found = .{ .end = {} };
-    for (lookaheads.terminals, 0..) |present, index| {
-        if (!present) continue;
-        if (found != null) return null;
-        found = .{ .terminal = @intCast(index) };
-    }
-    for (lookaheads.externals, 0..) |present, index| {
-        if (!present) continue;
-        if (found != null) return null;
-        found = .{ .external = @intCast(index) };
-    }
-    return found;
-}
-
 fn symbolDisplayText(
     buf: []u8,
     variables: []const syntax_ir.SyntaxVariable,
@@ -690,23 +674,20 @@ fn addSymbolToSet(target: *first.SymbolSet, symbol: syntax_ir.SymbolRef) void {
 fn closureContextFollowSet(
     allocator: std.mem.Allocator,
     suffix_first: first.SymbolSet,
-    inherited_lookahead: ?syntax_ir.SymbolRef,
+    inherited_lookaheads: first.SymbolSet,
 ) !first.SymbolSet {
     var result = try cloneSymbolSet(allocator, suffix_first);
     if (result.includes_epsilon) {
-        if (inherited_lookahead) |lookahead| addSymbolToSet(&result, lookahead);
+        _ = mergeSymbolSetLookaheads(&result, inherited_lookaheads);
     }
     return result;
 }
 
 fn closureContextProductionEndFollowSet(
     allocator: std.mem.Allocator,
-    suffix_first: first.SymbolSet,
-    inherited_lookahead: ?syntax_ir.SymbolRef,
+    inherited_lookaheads: first.SymbolSet,
 ) !first.SymbolSet {
-    var result = try initEmptySymbolSet(allocator, suffix_first.terminals.len, suffix_first.externals.len);
-    if (inherited_lookahead) |lookahead| addSymbolToSet(&result, lookahead);
-    return result;
+    return try cloneSymbolSet(allocator, inherited_lookaheads);
 }
 
 const ClosureContext = struct {
@@ -719,12 +700,12 @@ const ClosureContext = struct {
         allocator: std.mem.Allocator,
         suffix_first: first.SymbolSet,
         suffix_reserved_word_set_id: u16,
-        inherited_lookahead: ?syntax_ir.SymbolRef,
+        inherited_lookaheads: first.SymbolSet,
         inherited_reserved_word_set_id: u16,
     ) !@This() {
         return .{
-            .following_tokens = try closureContextFollowSet(allocator, suffix_first, inherited_lookahead),
-            .production_end_follow = try closureContextProductionEndFollowSet(allocator, suffix_first, inherited_lookahead),
+            .following_tokens = try closureContextFollowSet(allocator, suffix_first, inherited_lookaheads),
+            .production_end_follow = try closureContextProductionEndFollowSet(allocator, inherited_lookaheads),
             .following_reserved_word_set_id = if (suffix_first.includes_epsilon)
                 @max(suffix_reserved_word_set_id, inherited_reserved_word_set_id)
             else
@@ -1146,6 +1127,11 @@ fn appendGeneratedItems(
             if (!item.containsLookahead(generated_entry.lookaheads, lookahead)) item.addLookahead(&generated_entry.lookaheads, lookahead);
         }
         for (context.production_end_follow.externals, 0..) |present, index| {
+            if (!present) continue;
+            const lookahead: syntax_ir.SymbolRef = .{ .external = @intCast(index) };
+            if (!item.containsLookahead(generated_entry.lookaheads, lookahead)) item.addLookahead(&generated_entry.lookaheads, lookahead);
+        }
+        for (context.following_tokens.externals, 0..) |present, index| {
             if (!present) continue;
             const lookahead: syntax_ir.SymbolRef = .{ .external = @intCast(index) };
             if (!item.containsLookahead(generated_entry.lookaheads, lookahead)) item.addLookahead(&generated_entry.lookaheads, lookahead);
@@ -2301,7 +2287,6 @@ const ClosureRun = struct {
     ) BuildError!bool {
         const parse_entry = self.items.items[cursor];
         const parse_item = parse_entry.item;
-        const inherited_lookahead = singleLookahead(parse_entry.lookaheads);
         const production = self.item_set_builder.productions[parse_item.production_id];
         if (parse_item.step_index >= production.steps.len) return false;
         switch (production.steps[parse_item.step_index].symbol) {
@@ -2331,7 +2316,7 @@ const ClosureRun = struct {
                     self.allocator,
                     suffix_first,
                     suffix_reserved_word_set_id,
-                    inherited_lookahead,
+                    parse_entry.lookaheads,
                     parse_entry.following_reserved_word_set_id,
                 );
                 defer context.deinit(self.allocator);
@@ -2991,18 +2976,20 @@ test "closureContextFollowSet merges inherited lookahead only through nullable s
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
+    var inherited = try initEmptySymbolSet(arena.allocator(), 3, 0);
+    inherited.terminals[2] = true;
     var suffix = try initEmptySymbolSet(arena.allocator(), 3, 0);
     suffix.terminals[1] = true;
     suffix.includes_epsilon = true;
 
-    const merged = try closureContextFollowSet(arena.allocator(), suffix, .{ .terminal = 2 });
+    const merged = try closureContextFollowSet(arena.allocator(), suffix, inherited);
     try std.testing.expect(merged.terminals[1]);
     try std.testing.expect(merged.terminals[2]);
     try std.testing.expect(merged.includes_epsilon);
 
     var non_nullable = try initEmptySymbolSet(arena.allocator(), 3, 0);
     non_nullable.terminals[1] = true;
-    const unchanged = try closureContextFollowSet(arena.allocator(), non_nullable, .{ .terminal = 2 });
+    const unchanged = try closureContextFollowSet(arena.allocator(), non_nullable, inherited);
     try std.testing.expect(unchanged.terminals[1]);
     try std.testing.expect(!unchanged.terminals[2]);
     try std.testing.expect(!unchanged.includes_epsilon);
@@ -3012,11 +2999,13 @@ test "ClosureContext projects nullable-suffix follow from merged follow and prod
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
+    var inherited = try initEmptySymbolSet(arena.allocator(), 3, 0);
+    inherited.terminals[2] = true;
     var suffix = try initEmptySymbolSet(arena.allocator(), 3, 0);
     suffix.terminals[1] = true;
     suffix.includes_epsilon = true;
 
-    const context = try ClosureContext.init(arena.allocator(), suffix, 0, .{ .terminal = 2 }, 0);
+    const context = try ClosureContext.init(arena.allocator(), suffix, 0, inherited, 0);
     defer context.deinit(arena.allocator());
 
     try std.testing.expect(context.following_tokens.terminals[1]);
@@ -3027,7 +3016,7 @@ test "ClosureContext projects nullable-suffix follow from merged follow and prod
 
     var non_nullable = try initEmptySymbolSet(arena.allocator(), 3, 0);
     non_nullable.terminals[1] = true;
-    const non_nullable_context = try ClosureContext.init(arena.allocator(), non_nullable, 0, .{ .terminal = 2 }, 0);
+    const non_nullable_context = try ClosureContext.init(arena.allocator(), non_nullable, 0, inherited, 0);
     defer non_nullable_context.deinit(arena.allocator());
 
     try std.testing.expect(non_nullable_context.following_tokens.terminals[1]);

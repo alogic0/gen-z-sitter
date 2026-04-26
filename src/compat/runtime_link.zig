@@ -119,7 +119,7 @@ pub fn linkAndRunBracketLangParser(allocator: std.mem.Allocator) RuntimeLinkErro
         .scanner_c = scanner_c,
         .input = "(())",
         .expected_root_type = "source",
-        .expected_tree_string = "(source (open_bracket) (open_bracket) (close_bracket) (close_bracket))",
+        .expected_tree_string = "(source (item (open_bracket) (item (open_bracket) (close_bracket)) (close_bracket)))",
     });
 }
 
