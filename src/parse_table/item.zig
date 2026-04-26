@@ -4,6 +4,44 @@ const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const ProductionId = u32;
 
+pub const SymbolSetProfile = struct {
+    init_empty_count: usize = 0,
+    clone_count: usize = 0,
+    free_count: usize = 0,
+    bool_alloc_bytes: usize = 0,
+    bool_free_bytes: usize = 0,
+};
+
+threadlocal var symbol_set_profile_enabled: bool = false;
+threadlocal var symbol_set_profile: SymbolSetProfile = .{};
+
+pub fn setSymbolSetProfileEnabled(enabled: bool) void {
+    symbol_set_profile_enabled = enabled;
+}
+
+pub fn resetSymbolSetProfile() void {
+    symbol_set_profile = .{};
+}
+
+pub fn symbolSetProfile() SymbolSetProfile {
+    return symbol_set_profile;
+}
+
+fn recordSymbolSetAlloc(kind: enum { init_empty, clone }, terminals_len: usize, externals_len: usize) void {
+    if (!symbol_set_profile_enabled) return;
+    switch (kind) {
+        .init_empty => symbol_set_profile.init_empty_count += 1,
+        .clone => symbol_set_profile.clone_count += 1,
+    }
+    symbol_set_profile.bool_alloc_bytes += (terminals_len + externals_len) * @sizeOf(bool);
+}
+
+fn recordSymbolSetFree(terminals_len: usize, externals_len: usize) void {
+    if (!symbol_set_profile_enabled) return;
+    symbol_set_profile.free_count += 1;
+    symbol_set_profile.bool_free_bytes += (terminals_len + externals_len) * @sizeOf(bool);
+}
+
 pub const ParseItem = struct {
     production_id: ProductionId,
     step_index: u16,
@@ -169,6 +207,7 @@ pub fn initEmptyLookaheadSet(
     const externals = try allocator.alloc(bool, externals_len);
     @memset(terminals, false);
     @memset(externals, false);
+    recordSymbolSetAlloc(.init_empty, terminals_len, externals_len);
     return .{
         .terminals = terminals,
         .externals = externals,
@@ -178,15 +217,18 @@ pub fn initEmptyLookaheadSet(
 }
 
 pub fn cloneSymbolSet(allocator: std.mem.Allocator, source: first.SymbolSet) !first.SymbolSet {
-    return .{
+    const cloned = first.SymbolSet{
         .terminals = try allocator.dupe(bool, source.terminals),
         .externals = try allocator.dupe(bool, source.externals),
         .includes_end = source.includes_end,
         .includes_epsilon = source.includes_epsilon,
     };
+    recordSymbolSetAlloc(.clone, source.terminals.len, source.externals.len);
+    return cloned;
 }
 
 pub fn freeSymbolSet(allocator: std.mem.Allocator, symbol_set: first.SymbolSet) void {
+    recordSymbolSetFree(symbol_set.terminals.len, symbol_set.externals.len);
     allocator.free(symbol_set.terminals);
     allocator.free(symbol_set.externals);
 }

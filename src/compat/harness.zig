@@ -968,6 +968,16 @@ pub fn runTarget(
         return run;
     }
 
+    const scoped_parse_table_progress = shouldEnableParseTableScopedProgress(target.id);
+    if (scoped_parse_table_progress) {
+        parse_table_build.setScopedProgressEnabled(true);
+        parse_table_pipeline.setScopedProgressEnabled(true);
+    }
+    defer if (scoped_parse_table_progress) {
+        parse_table_build.setScopedProgressEnabled(false);
+        parse_table_pipeline.setScopedProgressEnabled(false);
+    };
+
     const serialized = parse_table_pipeline.serializeTableFromPrepared(arena.allocator(), prepared, .diagnostic) catch |err| {
         return failRun(
             &run,

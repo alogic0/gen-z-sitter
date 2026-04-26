@@ -25,8 +25,17 @@ const emit_optimize = @import("../parser_emit/optimize.zig");
 const runtime_io = @import("../support/runtime_io.zig");
 
 threadlocal var scoped_progress_enabled: bool = false;
+threadlocal var pipeline_env_flags_loaded: bool = false;
+threadlocal var pipeline_env_flags: PipelineEnvFlags = .{};
 
-fn envFlagEnabled(name: []const u8) bool {
+const PipelineEnvFlags = struct {
+    progress: bool = false,
+    global_progress: bool = false,
+    profile: bool = false,
+    has_target_filter: bool = false,
+};
+
+fn envFlagEnabledRaw(name: []const u8) bool {
     const value = std.process.Environ.getAlloc(runtime_io.environ(), std.heap.page_allocator, name) catch return false;
     defer std.heap.page_allocator.free(value);
 
@@ -35,7 +44,7 @@ fn envFlagEnabled(name: []const u8) bool {
     return true;
 }
 
-fn hasProgressTargetFilter() bool {
+fn hasProgressTargetFilterRaw() bool {
     const value = std.process.Environ.getAlloc(
         runtime_io.environ(),
         std.heap.page_allocator,
@@ -45,15 +54,39 @@ fn hasProgressTargetFilter() bool {
     return value.len != 0;
 }
 
+fn ensurePipelineEnvFlags() void {
+    if (pipeline_env_flags_loaded) return;
+    pipeline_env_flags = .{
+        .progress = envFlagEnabledRaw("GEN_Z_SITTER_PARSE_TABLE_PROGRESS"),
+        .global_progress = envFlagEnabledRaw("GEN_Z_SITTER_PROGRESS"),
+        .profile = envFlagEnabledRaw("GEN_Z_SITTER_PARSE_TABLE_PROFILE"),
+        .has_target_filter = hasProgressTargetFilterRaw(),
+    };
+    pipeline_env_flags_loaded = true;
+}
+
+fn hasProgressTargetFilter() bool {
+    ensurePipelineEnvFlags();
+    return pipeline_env_flags.has_target_filter;
+}
+
 pub fn setScopedProgressEnabled(enabled: bool) void {
     scoped_progress_enabled = enabled;
 }
 
 fn shouldLogPipelineProgress() bool {
+    ensurePipelineEnvFlags();
     const requested =
-        envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_PROGRESS") or
-        envFlagEnabled("GEN_Z_SITTER_PROGRESS");
+        pipeline_env_flags.progress or
+        pipeline_env_flags.global_progress;
     if (!requested) return false;
+    if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
+    return true;
+}
+
+fn shouldProfilePipeline() bool {
+    ensurePipelineEnvFlags();
+    if (!pipeline_env_flags.profile) return false;
     if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
     return true;
 }
@@ -76,6 +109,18 @@ fn maybeLogPipelineDone(step: []const u8, enabled: bool) void {
 
 fn logPipelineSummary(comptime format: []const u8, args: anytype) void {
     std.debug.print("[parse_table_pipeline] " ++ format ++ "\n", args);
+}
+
+fn profileTimer(enabled: bool) ?std.Io.Timestamp {
+    if (!enabled) return null;
+    return std.Io.Timestamp.now(runtime_io.get(), .awake);
+}
+
+fn logProfileDone(step: []const u8, timer: ?std.Io.Timestamp) void {
+    const start = timer orelse return;
+    const elapsed_ms = @as(f64, @floatFromInt(start.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake)).nanoseconds)) /
+        @as(f64, std.time.ns_per_ms);
+    std.debug.print("[parse_table_pipeline_profile] stage={s} elapsed_ms={d:.2}\n", .{ step, elapsed_ms });
 }
 
 pub const PipelineError =
@@ -114,19 +159,25 @@ pub fn buildStatesFromPreparedWithOptions(
     build_options: build.BuildOptions,
 ) PipelineError!build.BuildResult {
     const progress_log = shouldLogPipelineProgress();
+    const profile_log = shouldProfilePipeline();
 
     var timer = maybeStartTimer(progress_log);
+    var stage_profile_timer = profileTimer(profile_log);
     if (progress_log) logPipelineStart("extract_tokens");
     const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    logProfileDone("extract_tokens", stage_profile_timer);
     if (progress_log) maybeLogPipelineDone("extract_tokens", timer);
 
     timer = maybeStartTimer(progress_log);
+    stage_profile_timer = profileTimer(profile_log);
     if (progress_log) logPipelineStart("flatten_grammar");
     const default_aliases = try extract_default_aliases.extractDefaultAliases(allocator, extracted.syntax, extracted.lexical);
     const flattened = try flatten_grammar.flattenGrammar(allocator, default_aliases.syntax);
+    logProfileDone("flatten_grammar", stage_profile_timer);
     if (progress_log) maybeLogPipelineDone("flatten_grammar", timer);
 
     timer = maybeStartTimer(progress_log);
+    stage_profile_timer = profileTimer(profile_log);
     if (progress_log) logPipelineStart("build_states");
     var effective_build_options = build_options;
     effective_build_options.reserved_word_context_names = try reservedWordContextNamesAlloc(allocator, prepared.reserved_word_sets);
@@ -134,6 +185,7 @@ pub fn buildStatesFromPreparedWithOptions(
     defer allocator.free(effective_build_options.non_terminal_extra_symbols);
     defer allocator.free(effective_build_options.reserved_word_context_names);
     const result = try build.buildStatesWithOptions(allocator, flattened, effective_build_options);
+    logProfileDone("build_states", stage_profile_timer);
     if (progress_log) {
         maybeLogPipelineDone("build_states", timer);
         logPipelineSummary(
@@ -324,10 +376,13 @@ pub fn serializeTableFromPreparedWithBuildOptions(
     build_options: build.BuildOptions,
 ) PipelineError!serialize.SerializedTable {
     const progress_log = shouldLogPipelineProgress();
+    const profile_log = shouldProfilePipeline();
     const result = try buildStatesFromPreparedWithOptions(allocator, prepared, build_options);
     const timer = maybeStartTimer(progress_log);
+    const stage_profile_timer = profileTimer(profile_log);
     if (progress_log) logPipelineStart("serialize_build_result");
     const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode);
+    logProfileDone("serialize_build_result", stage_profile_timer);
     if (progress_log) {
         maybeLogPipelineDone("serialize_build_result", timer);
         logPipelineSummary(

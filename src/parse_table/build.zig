@@ -12,13 +12,62 @@ const runtime_io = @import("../support/runtime_io.zig");
 
 threadlocal var scoped_progress_enabled: bool = false;
 threadlocal var current_transition_context: ?TransitionContext = null;
+threadlocal var construct_profile_enabled: bool = false;
+threadlocal var construct_profile: ConstructProfile = .{};
+threadlocal var build_env_flags_loaded: bool = false;
+threadlocal var build_env_flags: BuildEnvFlags = .{};
 
 const TransitionContext = struct {
     source_state_id: state.StateId,
     symbol: syntax_ir.SymbolRef,
 };
 
-fn envFlagEnabled(name: []const u8) bool {
+const ConstructProfile = struct {
+    states_processed: usize = 0,
+    successor_groups: usize = 0,
+    successor_seed_items: usize = 0,
+    successor_group_new: usize = 0,
+    successor_item_appends: usize = 0,
+    successor_item_merges: usize = 0,
+    transition_slices: usize = 0,
+    transition_slice_items: usize = 0,
+    transition_slice_bytes: usize = 0,
+    extra_transition_slices: usize = 0,
+    extra_transition_slice_items: usize = 0,
+    extra_transition_slice_bytes: usize = 0,
+    state_intern_calls: usize = 0,
+    state_intern_reused: usize = 0,
+    state_intern_new: usize = 0,
+    state_items_stored: usize = 0,
+    closure_cache_hits: usize = 0,
+    closure_cache_misses: usize = 0,
+    closure_seed_dupes: usize = 0,
+    closure_seed_items: usize = 0,
+    closure_seed_bytes: usize = 0,
+    closure_items_stored: usize = 0,
+    closure_items_returned: usize = 0,
+    item_set_hash_calls: usize = 0,
+    item_set_hash_entries: usize = 0,
+    item_set_eql_calls: usize = 0,
+    item_set_eql_entries: usize = 0,
+    collect_transitions_ns: u64 = 0,
+    extra_transitions_ns: u64 = 0,
+    reserved_word_ns: u64 = 0,
+    build_actions_ns: u64 = 0,
+    detect_conflicts_ns: u64 = 0,
+};
+
+const BuildEnvFlags = struct {
+    trace_top_comment: bool = false,
+    build_progress: bool = false,
+    progress: bool = false,
+    global_progress: bool = false,
+    context_log: bool = false,
+    profile: bool = false,
+    has_target_filter: bool = false,
+};
+
+fn envFlagEnabledRaw(name: []const u8) bool {
     const value = std.process.Environ.getAlloc(runtime_io.environ(), std.heap.page_allocator, name) catch return false;
     defer std.heap.page_allocator.free(value);
 
@@ -27,7 +76,7 @@ fn envFlagEnabled(name: []const u8) bool {
     return true;
 }
 
-fn hasProgressTargetFilter() bool {
+fn hasProgressTargetFilterRaw() bool {
     const value = std.process.Environ.getAlloc(
         runtime_io.environ(),
         std.heap.page_allocator,
@@ -37,28 +86,57 @@ fn hasProgressTargetFilter() bool {
     return value.len != 0;
 }
 
+fn ensureBuildEnvFlags() void {
+    if (build_env_flags_loaded) return;
+    build_env_flags = .{
+        .trace_top_comment = envFlagEnabledRaw("GEN_Z_SITTER_PARSE_TABLE_TRACE_TOP_COMMENT"),
+        .build_progress = envFlagEnabledRaw("GEN_Z_SITTER_PARSE_TABLE_BUILD_PROGRESS"),
+        .progress = envFlagEnabledRaw("GEN_Z_SITTER_PARSE_TABLE_PROGRESS"),
+        .global_progress = envFlagEnabledRaw("GEN_Z_SITTER_PROGRESS"),
+        .context_log = envFlagEnabledRaw("GEN_Z_SITTER_PARSE_TABLE_CONTEXT_LOG"),
+        .profile = envFlagEnabledRaw("GEN_Z_SITTER_PARSE_TABLE_PROFILE"),
+        .has_target_filter = hasProgressTargetFilterRaw(),
+    };
+    build_env_flags_loaded = true;
+}
+
+fn hasProgressTargetFilter() bool {
+    ensureBuildEnvFlags();
+    return build_env_flags.has_target_filter;
+}
+
 pub fn setScopedProgressEnabled(enabled: bool) void {
     scoped_progress_enabled = enabled;
 }
 
 fn shouldTraceHotspot() bool {
-    if (!envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_TRACE_TOP_COMMENT")) return false;
+    ensureBuildEnvFlags();
+    if (!build_env_flags.trace_top_comment) return false;
     if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
     return true;
 }
 
 fn shouldLogBuildProgress() bool {
+    ensureBuildEnvFlags();
     const requested =
-        envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_BUILD_PROGRESS") or
-        envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_PROGRESS") or
-        envFlagEnabled("GEN_Z_SITTER_PROGRESS");
+        build_env_flags.build_progress or
+        build_env_flags.progress or
+        build_env_flags.global_progress;
     if (!requested) return false;
     if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
     return true;
 }
 
 fn shouldLogBuildContexts() bool {
-    if (!envFlagEnabled("GEN_Z_SITTER_PARSE_TABLE_CONTEXT_LOG")) return false;
+    ensureBuildEnvFlags();
+    if (!build_env_flags.context_log) return false;
+    if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
+    return true;
+}
+
+fn shouldProfileBuild() bool {
+    ensureBuildEnvFlags();
+    if (!build_env_flags.profile) return false;
     if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
     return true;
 }
@@ -81,6 +159,103 @@ fn maybeLogBuildDone(step: []const u8, enabled: bool) void {
 
 fn logBuildSummary(comptime format: []const u8, args: anytype) void {
     std.debug.print("[parse_table_build] " ++ format ++ "\n", args);
+}
+
+fn profileTimer(enabled: bool) ?std.Io.Timestamp {
+    if (!enabled) return null;
+    return std.Io.Timestamp.now(runtime_io.get(), .awake);
+}
+
+fn logProfileDone(step: []const u8, timer: ?std.Io.Timestamp) void {
+    const start = timer orelse return;
+    const elapsed_ms = @as(f64, @floatFromInt(start.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake)).nanoseconds)) /
+        @as(f64, std.time.ns_per_ms);
+    std.debug.print("[parse_table_profile] stage={s} elapsed_ms={d:.2}\n", .{ step, elapsed_ms });
+}
+
+fn addProfileDuration(accumulator: *u64, timer: ?std.Io.Timestamp) void {
+    const start = timer orelse return;
+    const duration = start.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake));
+    accumulator.* += @intCast(duration.nanoseconds);
+}
+
+fn logSymbolSetProfile() void {
+    const profile = item.symbolSetProfile();
+    std.debug.print(
+        "[parse_table_profile] symbol_sets init_empty={d} clone={d} free={d} bool_alloc_mb={d:.2} bool_free_mb={d:.2}\n",
+        .{
+            profile.init_empty_count,
+            profile.clone_count,
+            profile.free_count,
+            @as(f64, @floatFromInt(profile.bool_alloc_bytes)) / (1024.0 * 1024.0),
+            @as(f64, @floatFromInt(profile.bool_free_bytes)) / (1024.0 * 1024.0),
+        },
+    );
+}
+
+fn resetConstructProfile() void {
+    construct_profile = .{};
+}
+
+fn logConstructProfile() void {
+    const profile = construct_profile;
+    std.debug.print(
+        "[parse_table_profile] construct states={d} successor_groups={d} seed_items={d} intern_calls={d} intern_new={d} intern_reused={d} closure_hits={d} closure_misses={d} closure_items_returned={d}\n",
+        .{
+            profile.states_processed,
+            profile.successor_groups,
+            profile.successor_seed_items,
+            profile.state_intern_calls,
+            profile.state_intern_new,
+            profile.state_intern_reused,
+            profile.closure_cache_hits,
+            profile.closure_cache_misses,
+            profile.closure_items_returned,
+        },
+    );
+    std.debug.print(
+        "[parse_table_profile] construct_alloc successor_group_new={d} successor_appends={d} successor_merges={d} transition_slices={d} transition_items={d} transition_mb={d:.2} extra_transition_slices={d} extra_transition_items={d} extra_transition_mb={d:.2}\n",
+        .{
+            profile.successor_group_new,
+            profile.successor_item_appends,
+            profile.successor_item_merges,
+            profile.transition_slices,
+            profile.transition_slice_items,
+            @as(f64, @floatFromInt(profile.transition_slice_bytes)) / (1024.0 * 1024.0),
+            profile.extra_transition_slices,
+            profile.extra_transition_slice_items,
+            @as(f64, @floatFromInt(profile.extra_transition_slice_bytes)) / (1024.0 * 1024.0),
+        },
+    );
+    std.debug.print(
+        "[parse_table_profile] closure_alloc seed_dupes={d} seed_items={d} seed_mb={d:.2} closure_items_stored={d} state_items_stored={d}\n",
+        .{
+            profile.closure_seed_dupes,
+            profile.closure_seed_items,
+            @as(f64, @floatFromInt(profile.closure_seed_bytes)) / (1024.0 * 1024.0),
+            profile.closure_items_stored,
+            profile.state_items_stored,
+        },
+    );
+    std.debug.print(
+        "[parse_table_profile] item_set_hash hash_calls={d} hash_entries={d} eql_calls={d} eql_entries={d}\n",
+        .{
+            profile.item_set_hash_calls,
+            profile.item_set_hash_entries,
+            profile.item_set_eql_calls,
+            profile.item_set_eql_entries,
+        },
+    );
+    std.debug.print(
+        "[parse_table_profile] construct_time collect_ms={d:.2} extra_ms={d:.2} reserved_ms={d:.2} actions_ms={d:.2} conflicts_ms={d:.2}\n",
+        .{
+            @as(f64, @floatFromInt(profile.collect_transitions_ns)) / @as(f64, std.time.ns_per_ms),
+            @as(f64, @floatFromInt(profile.extra_transitions_ns)) / @as(f64, std.time.ns_per_ms),
+            @as(f64, @floatFromInt(profile.reserved_word_ns)) / @as(f64, std.time.ns_per_ms),
+            @as(f64, @floatFromInt(profile.build_actions_ns)) / @as(f64, std.time.ns_per_ms),
+            @as(f64, @floatFromInt(profile.detect_conflicts_ns)) / @as(f64, std.time.ns_per_ms),
+        },
+    );
 }
 
 fn countPresent(values: []const bool) usize {
@@ -204,6 +379,10 @@ const SymbolRefContext = struct {
 
 const ParseItemSliceContext = struct {
     pub fn hash(_: @This(), values: []const item.ParseItemSetEntry) u64 {
+        if (construct_profile_enabled) {
+            construct_profile.item_set_hash_calls += 1;
+            construct_profile.item_set_hash_entries += values.len;
+        }
         var hasher = std.hash.Wyhash.init(0);
         for (values) |value| {
             hasher.update(std.mem.asBytes(&value.item.production_id));
@@ -218,6 +397,10 @@ const ParseItemSliceContext = struct {
     }
 
     pub fn eql(_: @This(), a: []const item.ParseItemSetEntry, b: []const item.ParseItemSetEntry) bool {
+        if (construct_profile_enabled) {
+            construct_profile.item_set_eql_calls += 1;
+            construct_profile.item_set_eql_entries += @max(a.len, b.len);
+        }
         return itemsEql(a, b);
     }
 };
@@ -263,26 +446,29 @@ const StateIdByItemSet = std.HashMap(item.ParseItemSet, state.StateId, ParseItem
 const ClosedItemsBySeed = std.HashMap(item.ParseItemSet, item.ParseItemSet, ParseItemSetContext, std.hash_map.default_max_load_percentage);
 const CoreIdByItemSetCore = std.HashMap(item.ParseItemSetCore, usize, ParseItemSetCoreContext, std.hash_map.default_max_load_percentage);
 const SymbolIndexMap = std.HashMap(syntax_ir.SymbolRef, usize, SymbolRefContext, std.hash_map.default_max_load_percentage);
-const SuccessorItemIndexMap = std.HashMap(item.ParseItem, usize, ParseItemCoreContext, std.hash_map.default_max_load_percentage);
 const ClosureItemIndexMap = std.HashMap(item.ParseItem, usize, ParseItemCoreContext, std.hash_map.default_max_load_percentage);
 const LexStateIdByTerminalSet = std.HashMap([]const bool, state.LexStateId, BoolSliceContext, std.hash_map.default_max_load_percentage);
 
 const SuccessorGroup = struct {
     symbol: syntax_ir.SymbolRef,
     items: std.array_list.Managed(item.ParseItemSetEntry),
-    item_indexes: SuccessorItemIndexMap,
 
     fn init(allocator: std.mem.Allocator, symbol: syntax_ir.SymbolRef) SuccessorGroup {
         return .{
             .symbol = symbol,
             .items = std.array_list.Managed(item.ParseItemSetEntry).init(allocator),
-            .item_indexes = SuccessorItemIndexMap.init(allocator),
         };
     }
 
     fn deinit(self: *@This()) void {
         self.items.deinit();
-        self.item_indexes.deinit();
+    }
+
+    fn findItemIndex(self: @This(), parse_item: item.ParseItem) ?usize {
+        for (self.items.items, 0..) |entry, index| {
+            if (item.ParseItem.eql(entry.item, parse_item)) return index;
+        }
+        return null;
     }
 };
 
@@ -320,6 +506,7 @@ const SuccessorGroups = struct {
                 if (result.found_existing) break :blk result.value_ptr.*;
                 const new_index = self.groups.items.len;
                 try self.groups.append(SuccessorGroup.init(self.allocator, symbol));
+                if (construct_profile_enabled) construct_profile.successor_group_new += 1;
                 result.value_ptr.* = @intCast(new_index);
                 break :blk new_index;
             };
@@ -334,16 +521,16 @@ const SuccessorGroups = struct {
             };
 
             const group = &self.groups.items[group_index];
-            const item_index = try group.item_indexes.getOrPut(successor_entry.item);
-            if (item_index.found_existing) {
-                _ = mergeSymbolSetLookaheads(&group.items.items[item_index.value_ptr.*].lookaheads, successor_entry.lookaheads);
-                group.items.items[item_index.value_ptr.*].following_reserved_word_set_id = @max(
-                    group.items.items[item_index.value_ptr.*].following_reserved_word_set_id,
+            if (group.findItemIndex(successor_entry.item)) |item_index| {
+                if (construct_profile_enabled) construct_profile.successor_item_merges += 1;
+                _ = mergeSymbolSetLookaheads(&group.items.items[item_index].lookaheads, successor_entry.lookaheads);
+                group.items.items[item_index].following_reserved_word_set_id = @max(
+                    group.items.items[item_index].following_reserved_word_set_id,
                     successor_entry.following_reserved_word_set_id,
                 );
                 freeSymbolSet(self.allocator, successor_entry.lookaheads);
             } else {
-                item_index.value_ptr.* = group.items.items.len;
+                if (construct_profile_enabled) construct_profile.successor_item_appends += 1;
                 try group.items.append(successor_entry);
             }
         }
@@ -413,6 +600,10 @@ const ClosureResultCache = struct {
         const seed_item_set = item.ParseItemSet{ .entries = seed_items };
         if (self.closed_items_by_seed.get(seed_item_set)) |cached| {
             self.hits += 1;
+            if (construct_profile_enabled) {
+                construct_profile.closure_cache_hits += 1;
+                construct_profile.closure_items_returned += cached.entries.len;
+            }
             if (shouldLogBuildProgress() or trace_current_transition) {
                 std.debug.print(
                     "[parse_table/build] gotoItems cache_hit seed_items={d} cached_items={d}\n",
@@ -423,6 +614,7 @@ const ClosureResultCache = struct {
         }
 
         self.misses += 1;
+        if (construct_profile_enabled) construct_profile.closure_cache_misses += 1;
         if (countDistinctSeedCores(self.entries.items, seed_item_set) > 0) {
             self.core_match_misses += 1;
             if (shouldLogBuildProgress() and seed_items.len >= 12) {
@@ -434,6 +626,11 @@ const ClosureResultCache = struct {
         }
 
         const seed_copy = try self.allocator.dupe(item.ParseItemSetEntry, seed_items);
+        if (construct_profile_enabled) {
+            construct_profile.closure_seed_dupes += 1;
+            construct_profile.closure_seed_items += seed_items.len;
+            construct_profile.closure_seed_bytes += seed_items.len * @sizeOf(item.ParseItemSetEntry);
+        }
         if (shouldLogBuildProgress() or trace_current_transition) {
             std.debug.print("[parse_table/build] gotoItems closure_start seed_items={d}\n", .{seed_items.len});
         }
@@ -443,6 +640,7 @@ const ClosureResultCache = struct {
             seed_item_set,
             options,
         );
+        if (construct_profile_enabled) construct_profile.closure_items_returned += closed_item_set.entries.len;
         if (shouldLogBuildProgress() or trace_current_transition) {
             std.debug.print(
                 "[parse_table/build] gotoItems closure_done seed_items={d} closed_items={d}\n",
@@ -454,6 +652,7 @@ const ClosureResultCache = struct {
             .closed_items = closed_item_set,
         });
         try self.closed_items_by_seed.put(.{ .entries = seed_copy }, closed_item_set);
+        if (construct_profile_enabled) construct_profile.closure_items_stored += closed_item_set.entries.len;
         return closed_item_set;
     }
 };
@@ -1415,19 +1614,38 @@ pub fn buildStatesWithOptions(
     options: BuildOptions,
 ) BuildError!BuildResult {
     const progress_log = shouldLogBuildProgress();
+    const profile_log = shouldProfileBuild();
+    const build_profile_timer = profileTimer(profile_log);
+    if (profile_log) {
+        item.resetSymbolSetProfile();
+        item.setSymbolSetProfileEnabled(true);
+        resetConstructProfile();
+        construct_profile_enabled = true;
+    }
+    defer if (profile_log) {
+        logProfileDone("build_states_total", build_profile_timer);
+        logSymbolSetProfile();
+        logConstructProfile();
+        item.setSymbolSetProfileEnabled(false);
+        construct_profile_enabled = false;
+    };
     if (progress_log) std.debug.print("[parse_table/build] buildStatesWithOptions enter\n", .{});
     try validateSupportedSubset(grammar);
 
     var timer = maybeStartTimer(progress_log);
+    var stage_profile_timer = profileTimer(profile_log);
     if (progress_log) std.debug.print("[parse_table/build] stage compute_first_sets\n", .{});
     if (progress_log) logBuildStart("compute_first_sets");
     const first_sets = try first.computeFirstSets(allocator, grammar);
+    logProfileDone("compute_first_sets", stage_profile_timer);
     if (progress_log) maybeLogBuildDone("compute_first_sets", timer);
 
     timer = maybeStartTimer(progress_log);
+    stage_profile_timer = profileTimer(profile_log);
     if (progress_log) std.debug.print("[parse_table/build] stage collect_productions\n", .{});
     if (progress_log) logBuildStart("collect_productions");
     const productions = try collectProductions(allocator, grammar);
+    logProfileDone("collect_productions", stage_profile_timer);
     if (progress_log) {
         maybeLogBuildDone("collect_productions", timer);
         logBuildSummary("collect_productions summary productions={d}", .{productions.len});
@@ -1440,13 +1658,17 @@ pub fn buildStatesWithOptions(
         try collectReservedWordContextNamesAlloc(allocator, grammar);
     defer if (!uses_option_reserved_contexts) allocator.free(reserved_word_context_names);
 
+    stage_profile_timer = profileTimer(profile_log);
     var item_set_builder = try ParseItemSetBuilder.init(allocator, productions, first_sets, reserved_word_context_names, grammar.word_token);
+    logProfileDone("item_set_builder_init", stage_profile_timer);
     defer item_set_builder.deinit();
 
     timer = maybeStartTimer(progress_log);
+    stage_profile_timer = profileTimer(profile_log);
     if (progress_log) std.debug.print("[parse_table/build] stage construct_states\n", .{});
     if (progress_log) logBuildStart("construct_states");
     const constructed = try constructStates(allocator, grammar.variables, productions, first_sets, item_set_builder, options);
+    logProfileDone("construct_states", stage_profile_timer);
     if (progress_log) {
         maybeLogBuildDone("construct_states", timer);
         logBuildSummary(
@@ -1456,12 +1678,15 @@ pub fn buildStatesWithOptions(
     }
 
     timer = maybeStartTimer(progress_log);
+    stage_profile_timer = profileTimer(profile_log);
     if (progress_log) std.debug.print("[parse_table/build] stage group_action_table\n", .{});
     if (progress_log) logBuildStart("group_action_table");
     const grouped_actions = try actions.groupActionTable(allocator, constructed.actions);
+    logProfileDone("group_action_table", stage_profile_timer);
     if (progress_log) maybeLogBuildDone("group_action_table", timer);
 
     timer = maybeStartTimer(progress_log);
+    stage_profile_timer = profileTimer(profile_log);
     if (progress_log) std.debug.print("[parse_table/build] stage resolve_action_table\n", .{});
     if (progress_log) logBuildStart("resolve_action_table");
     const resolved_actions = try resolution.resolveActionTableWithFirstSetsContext(
@@ -1473,6 +1698,7 @@ pub fn buildStatesWithOptions(
         first_sets,
         grouped_actions,
     );
+    logProfileDone("resolve_action_table", stage_profile_timer);
     if (progress_log) {
         maybeLogBuildDone("resolve_action_table", timer);
         logBuildSummary(
@@ -1480,12 +1706,16 @@ pub fn buildStatesWithOptions(
             .{ resolved_actions.hasUnresolvedDecisions(), resolved_actions.isSerializationReady() },
         );
     }
+    stage_profile_timer = profileTimer(profile_log);
     const lex_states = try assignLexStateIdsAlloc(allocator, constructed.states, resolved_actions);
+    logProfileDone("assign_lex_state_ids", stage_profile_timer);
 
     if (options.minimize_states) {
         timer = maybeStartTimer(progress_log);
+        stage_profile_timer = profileTimer(profile_log);
         if (progress_log) logBuildStart("minimize_states");
         const minimized = try minimize.minimizeAlloc(allocator, lex_states.states, resolved_actions);
+        logProfileDone("minimize_states", stage_profile_timer);
         if (progress_log) {
             maybeLogBuildDone("minimize_states", timer);
             logBuildSummary(
@@ -1609,7 +1839,9 @@ const StateRegistry = struct {
     }
 
     fn intern(self: *@This(), item_set: item.ParseItemSet) !InternResult {
+        if (construct_profile_enabled) construct_profile.state_intern_calls += 1;
         if (self.state_ids_by_item_set.get(item_set)) |existing_id| {
+            if (construct_profile_enabled) construct_profile.state_intern_reused += 1;
             return .{
                 .state_id = existing_id,
                 .reused = true,
@@ -1626,6 +1858,10 @@ const StateRegistry = struct {
             .conflicts = &.{},
         });
         try self.state_ids_by_item_set.put(item_set, new_id);
+        if (construct_profile_enabled) {
+            construct_profile.state_intern_new += 1;
+            construct_profile.state_items_stored += item_set.entries.len;
+        }
         return .{
             .state_id = new_id,
             .reused = false,
@@ -1887,32 +2123,42 @@ const StateConstructionEngine = struct {
         );
 
         var transition_stats = TransitionBuildStats{};
+        const collect_timer = profileTimer(construct_profile_enabled);
         const transitions = try self.collectTransitionsForState(
             self.state_registry.items()[state_index].items,
             self.state_registry.items()[state_index].id,
             &transition_stats,
         );
+        addProfileDuration(&construct_profile.collect_transitions_ns, collect_timer);
         reporter.logStateAfterTransitions(state_index, transitions.len, self.state_registry.items().len);
 
         const mutable_states = self.state_registry.items();
+        const extra_timer = profileTimer(construct_profile_enabled);
         mutable_states[state_index].transitions = try self.withExtraTransitions(transitions, mutable_states[state_index]);
+        addProfileDuration(&construct_profile.extra_transitions_ns, extra_timer);
+        const reserved_timer = profileTimer(construct_profile_enabled);
         mutable_states[state_index].reserved_word_set_id = reservedWordSetIdForParseState(
             mutable_states[state_index],
             self.productions,
             self.item_set_builder.word_token,
             self.item_set_builder.reserved_word_context_names,
         );
+        addProfileDuration(&construct_profile.reserved_word_ns, reserved_timer);
 
+        const actions_timer = profileTimer(construct_profile_enabled);
         const state_actions = try actions.buildActionsForState(
             self.allocator,
             self.productions,
             mutable_states[state_index],
         );
+        addProfileDuration(&construct_profile.build_actions_ns, actions_timer);
+        const conflicts_timer = profileTimer(construct_profile_enabled);
         const detected_conflicts = try conflicts.detectConflictsFromActions(
             self.allocator,
             mutable_states[state_index],
             state_actions,
         );
+        addProfileDuration(&construct_profile.detect_conflicts_ns, conflicts_timer);
         mutable_states[state_index].conflicts = detected_conflicts;
         try self.action_states.append(.{
             .state_id = mutable_states[state_index].id,
@@ -1950,6 +2196,11 @@ const StateConstructionEngine = struct {
         }
 
         state.sortTransitions(result.items);
+        if (construct_profile_enabled) {
+            construct_profile.extra_transition_slices += 1;
+            construct_profile.extra_transition_slice_items += result.items.len;
+            construct_profile.extra_transition_slice_bytes += result.items.len * @sizeOf(state.Transition);
+        }
         return try result.toOwnedSlice();
     }
 
@@ -1978,6 +2229,13 @@ const StateConstructionEngine = struct {
         var successor_groups = SuccessorGroups.init(self.allocator);
         defer successor_groups.deinit();
         try successor_groups.buildFromStateItems(state_items, self.productions);
+        if (construct_profile_enabled) {
+            construct_profile.states_processed += 1;
+            construct_profile.successor_groups += successor_groups.groups.items.len;
+            for (successor_groups.groups.items) |group| {
+                construct_profile.successor_seed_items += group.items.items.len;
+            }
+        }
         reporter.logGrouped(source_state_id, successor_groups.groups.items.len);
 
         for (successor_groups.groups.items, 0..) |*group, group_index| {
@@ -2062,6 +2320,11 @@ const StateConstructionEngine = struct {
         }
 
         state.sortTransitions(transitions.items);
+        if (construct_profile_enabled) {
+            construct_profile.transition_slices += 1;
+            construct_profile.transition_slice_items += transitions.items.len;
+            construct_profile.transition_slice_bytes += transitions.items.len * @sizeOf(state.Transition);
+        }
         return try transitions.toOwnedSlice();
     }
 };
