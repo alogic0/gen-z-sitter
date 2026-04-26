@@ -132,6 +132,7 @@ pub fn build(b: *std.Build) void {
         "linkAndRunStatefulExternalScannerParser",
         "linkAndRunBracketLangParser",
         "linkAndRunBashParserWithRealExternalScanner",
+        "linkAndRunHaskellParserWithRealExternalScanner",
     };
     const no_external_link_tests = b.addTest(.{
         .root_module = b.createModule(.{
@@ -230,6 +231,20 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_bash_real_scanner_link_tests.addArgs(args);
     const bash_real_scanner_link_step = b.step("test-link-bash-real-scanner", "Link and run a generated Bash parser with the real external scanner");
     bash_real_scanner_link_step.dependOn(&run_bash_real_scanner_link_tests.step);
+
+    const haskell_real_scanner_link_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunHaskellParserWithRealExternalScanner"},
+    });
+
+    const run_haskell_real_scanner_link_tests = b.addRunArtifact(haskell_real_scanner_link_tests);
+    if (b.args) |args| run_haskell_real_scanner_link_tests.addArgs(args);
+    const haskell_real_scanner_link_step = b.step("test-link-haskell-real-scanner", "Link and run a generated Haskell parser with the real external scanner");
+    haskell_real_scanner_link_step.dependOn(&run_haskell_real_scanner_link_tests.step);
 
     const runtime_link_tests = b.addTest(.{
         .root_module = b.createModule(.{

@@ -18,6 +18,11 @@ const bracket_lang_scanner_path = "compat_targets/bracket_lang/scanner.c";
 const bash_scanner_path = "../tree-sitter-grammars/tree-sitter-bash/src/scanner.c";
 const bash_scanner_include_dir = "../tree-sitter-grammars/tree-sitter-bash/src";
 const bash_bare_dollar_external_id = 15;
+const haskell_scanner_path = "../tree-sitter-grammars/tree-sitter-haskell/src/scanner.c";
+const haskell_scanner_include_dir = "../tree-sitter-grammars/tree-sitter-haskell/src";
+const haskell_start_external_id = 2;
+const haskell_varsym_external_id = 46;
+const haskell_update_external_id = 48;
 
 pub fn linkAndRunNoExternalTinyParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
@@ -146,6 +151,30 @@ pub fn linkAndRunBashParserWithRealExternalScanner(allocator: std.mem.Allocator)
         .scanner_include_dirs = &.{bash_scanner_include_dir},
         .input = "$\n",
         .expected_root_type = "program",
+    });
+}
+
+pub fn linkAndRunHaskellParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(haskell_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitHaskellVarsymParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
+        haskell_scanner_path,
+        arena.allocator(),
+        .limited(1024 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{haskell_scanner_include_dir},
+        .extra_compile_flags = &.{"-Wno-implicit-function-declaration"},
+        .input = "+",
+        .expected_root_type = "module",
     });
 }
 
@@ -474,8 +503,8 @@ fn emitBashBareDollarParserC(allocator: std.mem.Allocator) RuntimeLinkError![]co
         symbols[index + 1] = .{
             .ref = .{ .external = @intCast(index) },
             .name = name,
-            .named = true,
-            .visible = true,
+            .named = index != haskell_update_external_id and index != haskell_start_external_id,
+            .visible = index != haskell_update_external_id and index != haskell_start_external_id,
             .supertype = false,
             .public_symbol = @intCast(index + 1),
         };
@@ -541,6 +570,170 @@ fn emitBashBareDollarParserC(allocator: std.mem.Allocator) RuntimeLinkError![]co
     const serialized = serialize.SerializedTable{
         .blocked = false,
         .grammar_name = "bash",
+        .symbols = symbols,
+        .large_state_count = states.len,
+        .productions = productions,
+        .lex_modes = lex_modes,
+        .lex_tables = lex_tables,
+        .external_scanner = .{
+            .symbols = external_symbols,
+            .states = external_states,
+        },
+        .primary_state_ids = primary_state_ids,
+        .states = states,
+    };
+
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+    });
+}
+
+fn emitHaskellVarsymParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    const external_names = [_][]const u8{
+        "fail",
+        "semicolon",
+        "start",
+        "start_do",
+        "start_case",
+        "start_if",
+        "start_let",
+        "start_quote",
+        "start_explicit",
+        "end",
+        "end_explicit",
+        "start_brace",
+        "end_brace",
+        "start_texp",
+        "end_texp",
+        "where",
+        "in",
+        "arrow",
+        "bar",
+        "deriving",
+        "comment",
+        "haddock",
+        "cpp",
+        "pragma",
+        "qq_start",
+        "qq_body",
+        "splice",
+        "qual_dot",
+        "tight_dot",
+        "prefix_dot",
+        "dotdot",
+        "tight_at",
+        "prefix_at",
+        "tight_bang",
+        "prefix_bang",
+        "tight_tilde",
+        "prefix_tilde",
+        "prefix_percent",
+        "qualified_op",
+        "left_section_op",
+        "no_section_op",
+        "minus",
+        "context",
+        "infix",
+        "data_infix",
+        "type_instance",
+        "varsym",
+        "consym",
+        "update",
+    };
+
+    var symbols = try allocator.alloc(serialize.SerializedSymbolInfo, external_names.len + 2);
+    symbols[0] = .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 };
+    for (external_names, 0..) |name, index| {
+        symbols[index + 1] = .{
+            .ref = .{ .external = @intCast(index) },
+            .name = name,
+            .named = true,
+            .visible = true,
+            .supertype = false,
+            .public_symbol = @intCast(index + 1),
+        };
+    }
+    symbols[symbols.len - 1] = .{
+        .ref = .{ .non_terminal = 0 },
+        .name = "module",
+        .named = true,
+        .visible = true,
+        .supertype = false,
+        .public_symbol = @intCast(symbols.len - 1),
+    };
+
+    const productions = try allocator.dupe(serialize.SerializedProductionInfo, &.{
+        .{ .lhs = 0, .child_count = 3, .dynamic_precedence = 0 },
+    });
+    const start_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = haskell_update_external_id }, .action = .{ .shift = 2 } },
+    });
+    const after_update_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = haskell_start_external_id }, .action = .{ .shift = 3 } },
+    });
+    const after_start_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = haskell_varsym_external_id }, .action = .{ .shift = 4 } },
+    });
+    const start_gotos = try allocator.dupe(serialize.SerializedGotoEntry, &.{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 6 },
+    });
+    const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+    });
+    const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
+    });
+    const states = try allocator.dupe(serialize.SerializedState, &.{
+        .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = start_actions, .gotos = start_gotos, .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = after_update_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 3, .lex_state_id = 0, .actions = after_start_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 4, .lex_state_id = 0, .actions = reduce_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 5, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 6, .lex_state_id = 0, .actions = accept_actions, .gotos = &.{}, .unresolved = &.{} },
+    });
+    const lex_states = try allocator.dupe(lexer_serialize.SerializedLexState, &.{
+        .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
+    });
+    const lex_tables = try allocator.dupe(lexer_serialize.SerializedLexTable, &.{
+        .{ .start_state_id = 0, .states = lex_states },
+    });
+    const lex_modes = try allocator.dupe(lexer_serialize.SerializedLexMode, &.{
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 2 },
+        .{ .lex_state = 0, .external_lex_state = 3 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+    });
+    const primary_state_ids = try allocator.dupe(u32, &.{ 0, 1, 2, 3, 4, 5, 6 });
+
+    const external_symbols = try allocator.alloc(syntax_grammar.SymbolRef, external_names.len);
+    for (external_symbols, 0..) |*symbol, index| {
+        symbol.* = .{ .external = @intCast(index) };
+    }
+    const external_state_0 = try allocator.alloc(bool, external_names.len);
+    const external_state_1 = try allocator.alloc(bool, external_names.len);
+    const external_state_2 = try allocator.alloc(bool, external_names.len);
+    const external_state_3 = try allocator.alloc(bool, external_names.len);
+    @memset(external_state_0, false);
+    @memset(external_state_1, false);
+    @memset(external_state_2, false);
+    @memset(external_state_3, false);
+    external_state_1[haskell_update_external_id] = true;
+    external_state_2[haskell_start_external_id] = true;
+    external_state_3[haskell_varsym_external_id] = true;
+    const external_states = try allocator.dupe([]const bool, &.{
+        external_state_0,
+        external_state_1,
+        external_state_2,
+        external_state_3,
+    });
+
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_name = "haskell",
         .symbols = symbols,
         .large_state_count = states.len,
         .productions = productions,
@@ -767,6 +960,7 @@ const GeneratedParserRun = struct {
     input: []const u8,
     scanner_c: ?[]const u8 = null,
     scanner_include_dirs: []const []const u8 = &.{},
+    extra_compile_flags: []const []const u8 = &.{},
     language_function_name: []const u8 = "tree_sitter_generated",
     expected_metadata: ?[3]u8 = null,
     expected_root_type: ?[]const u8 = null,
@@ -817,13 +1011,19 @@ fn linkAndRunGeneratedParser(
     var compile_args = std.array_list.Managed([]const u8).init(allocator);
     defer compile_args.deinit();
     try compile_args.appendSlice(&.{
-        "zig",       "cc",                    "-std=c11", "-D_GNU_SOURCE",
-        "-I",        tree_sitter_include_dir, "-I",       tree_sitter_runtime_dir,
-        driver_path, parser_path,
+        "zig", "cc",                    "-std=c11", "-D_GNU_SOURCE",
+        "-I",  tree_sitter_include_dir,
     });
     for (generated.scanner_include_dirs) |include_dir| {
         try compile_args.appendSlice(&.{ "-I", include_dir });
     }
+    try compile_args.appendSlice(&.{
+        "-I",
+        tree_sitter_runtime_dir,
+        driver_path,
+        parser_path,
+    });
+    try compile_args.appendSlice(generated.extra_compile_flags);
     if (scanner_path) |path| try compile_args.append(path);
     try compile_args.appendSlice(&.{ "../tree-sitter/lib/src/lib.c", "-o", exe_path });
 
@@ -1202,4 +1402,8 @@ test "linkAndRunBracketLangParser links generated bracket-lang parser with tree-
 
 test "linkAndRunBashParserWithRealExternalScanner links generated Bash parser with upstream scanner" {
     try linkAndRunBashParserWithRealExternalScanner(std.testing.allocator);
+}
+
+test "linkAndRunHaskellParserWithRealExternalScanner links generated Haskell parser with upstream scanner" {
+    try linkAndRunHaskellParserWithRealExternalScanner(std.testing.allocator);
 }

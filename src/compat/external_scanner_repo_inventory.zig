@@ -192,9 +192,9 @@ fn collectCurrentLimitationsAlloc(
     }
 
     return try duplicateStringSliceAlloc(allocator, &.{
-        "real external scanner evidence is now represented by at least one passing external scanner snapshot",
-        "the current real external scanner proof is still narrower than runtime scanner parity because it rests on a sampled external-sequence boundary rather than full scanner.c execution",
-        "the next step is to widen real external scanner-family coverage without collapsing staged scanner proof and real scanner proof into one claim",
+        "real external scanner evidence is now represented by passing focused runtime-link fixtures",
+        "the current real external scanner proof links and executes scanner.c, but remains focused on selected token paths rather than full upstream grammar parsing",
+        "the next step is broader compatibility polish beyond the scanner ABI/link boundary",
     });
 }
 
@@ -241,9 +241,8 @@ test "buildExternalScannerRepoInventoryAlloc summarizes the current real externa
 
     try std.testing.expectEqual(@as(usize, 2), report.total_external_scanner_targets);
     try std.testing.expectEqual(@as(usize, 2), report.passed_external_scanner_targets);
-    try std.testing.expectEqual(@as(usize, 2), report.proof_scope_coverage.len);
-    try std.testing.expectEqual(targets.RealExternalScannerProofScope.sampled_external_sequence, report.proof_scope_coverage[0].proof_scope);
-    try std.testing.expectEqual(targets.RealExternalScannerProofScope.full_runtime_link, report.proof_scope_coverage[1].proof_scope);
+    try std.testing.expectEqual(@as(usize, 1), report.proof_scope_coverage.len);
+    try std.testing.expectEqual(targets.RealExternalScannerProofScope.full_runtime_link, report.proof_scope_coverage[0].proof_scope);
     try std.testing.expectEqual(@as(usize, 3), report.current_limitations.len);
     try std.testing.expectEqual(ExternalScannerEvidenceNextStep.broader_compatibility_polish, report.recommended_next_step);
     try std.testing.expectEqual(@as(usize, 2), report.targets.len);

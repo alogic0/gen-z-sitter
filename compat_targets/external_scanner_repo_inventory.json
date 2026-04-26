@@ -4,20 +4,15 @@
   "passed_external_scanner_targets": 2,
   "proof_scope_coverage": [
     {
-      "proof_scope": "sampled_external_sequence",
-      "target_count": 1,
-      "passed_count": 1
-    },
-    {
       "proof_scope": "full_runtime_link",
-      "target_count": 1,
-      "passed_count": 1
+      "target_count": 2,
+      "passed_count": 2
     }
   ],
   "current_limitations": [
-    "real external scanner evidence is now represented by at least one passing external scanner snapshot",
-    "the current real external scanner proof is still narrower than runtime scanner parity because it rests on a sampled external-sequence boundary rather than full scanner.c execution",
-    "the next step is to widen real external scanner-family coverage without collapsing staged scanner proof and real scanner proof into one claim"
+    "real external scanner evidence is now represented by passing focused runtime-link fixtures",
+    "the current real external scanner proof links and executes scanner.c, but remains focused on selected token paths rather than full upstream grammar parsing",
+    "the next step is broader compatibility polish beyond the scanner ABI/link boundary"
   ],
   "recommended_next_step": "broader_compatibility_polish",
   "targets": [
@@ -27,13 +22,13 @@
       "display_name": "tree-sitter-haskell (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_haskell/grammar.json",
       "source_kind": "grammar_json",
-      "proof_scope": "sampled_external_sequence",
+      "proof_scope": "full_runtime_link",
       "upstream_repository": "tree-sitter-haskell",
       "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
       "upstream_grammar_path": "src/grammar.json",
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current supported boundary is the sampled external-sequence proof because the behavioral simulator still rejects lexical separators"
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, with a focused runtime-link proof that compiles generated parser C against the upstream scanner.c and exercises its initial update/start layout sequence plus a varsym token"
     },
     {
       "id": "tree_sitter_bash_json",

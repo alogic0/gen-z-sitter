@@ -126,8 +126,8 @@
       "family": "haskell",
       "boundary_kind": "scanner_external_scanner",
       "parser_boundary_check_mode": "full_pipeline",
-      "scanner_boundary_check_mode": "sampled_external_only",
-      "real_external_scanner_proof_scope": "sampled_external_sequence",
+      "scanner_boundary_check_mode": "full_runtime_link",
+      "real_external_scanner_proof_scope": "full_runtime_link",
       "standalone_parser_proof_scope": "none",
       "status": "intended_scanner_wave",
       "source_kind": "grammar_json",
@@ -136,8 +136,8 @@
       "upstream_repository": "tree-sitter-haskell",
       "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
       "upstream_grammar_path": "src/grammar.json",
-      "why": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current supported boundary is the sampled external-sequence proof because the behavioral simulator still rejects lexical separators",
-      "success_means": "load the snapshotted upstream grammar.json, extract the first external-scanner boundary, and prove the sampled external-sequence path makes stronger valid-input progress than the invalid input"
+      "why": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, with a focused runtime-link proof that compiles generated parser C against the upstream scanner.c and exercises its initial update/start layout sequence plus a varsym token",
+      "success_means": "load the snapshotted upstream grammar.json, extract the external-scanner boundary, and keep the focused Haskell scanner runtime-link fixture passing against the real scanner.c"
     },
     {
       "id": "tree_sitter_bash_json",

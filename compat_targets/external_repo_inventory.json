@@ -108,14 +108,14 @@
       "grammar_path": "compat_targets/tree_sitter_haskell/grammar.json",
       "source_kind": "grammar_json",
       "boundary_kind": "scanner_external_scanner",
-      "proof_scope": "sampled_external_sequence",
+      "proof_scope": "full_runtime_link",
       "standalone_parser_proof_scope": "none",
       "upstream_repository": "tree-sitter-haskell",
       "upstream_revision": "0975ef72fc3c47b530309ca93937d7d143523628",
       "upstream_grammar_path": "src/grammar.json",
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
-      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, using indentation-sensitive layout externals and scanner.c; the current supported boundary is the sampled external-sequence proof because the behavioral simulator still rejects lexical separators"
+      "notes": "real external scanner grammar snapshot from the local tree-sitter-haskell repo, with a focused runtime-link proof that compiles generated parser C against the upstream scanner.c and exercises its initial update/start layout sequence plus a varsym token"
     },
     {
       "id": "tree_sitter_bash_json",
