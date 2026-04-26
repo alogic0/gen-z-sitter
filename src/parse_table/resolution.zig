@@ -1,5 +1,6 @@
 const std = @import("std");
 const actions = @import("actions.zig");
+const first_sets_mod = @import("first.zig");
 const item = @import("item.zig");
 const state = @import("state.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
@@ -277,12 +278,59 @@ pub fn resolveActionTableWithContext(
     parse_states: []const state.ParseState,
     grouped_table: actions.GroupedActionTable,
 ) std.mem.Allocator.Error!ResolvedActionTable {
+    return try resolveActionTableWithOptionalFirstSets(
+        allocator,
+        productions,
+        precedence_orderings,
+        expected_conflicts,
+        parse_states,
+        null,
+        grouped_table,
+    );
+}
+
+pub fn resolveActionTableWithFirstSetsContext(
+    allocator: std.mem.Allocator,
+    productions: anytype,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    expected_conflicts: []const []const syntax_ir.SymbolRef,
+    parse_states: []const state.ParseState,
+    first_sets: first_sets_mod.FirstSets,
+    grouped_table: actions.GroupedActionTable,
+) std.mem.Allocator.Error!ResolvedActionTable {
+    return try resolveActionTableWithOptionalFirstSets(
+        allocator,
+        productions,
+        precedence_orderings,
+        expected_conflicts,
+        parse_states,
+        first_sets,
+        grouped_table,
+    );
+}
+
+fn resolveActionTableWithOptionalFirstSets(
+    allocator: std.mem.Allocator,
+    productions: anytype,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    expected_conflicts: []const []const syntax_ir.SymbolRef,
+    parse_states: []const state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
+    grouped_table: actions.GroupedActionTable,
+) std.mem.Allocator.Error!ResolvedActionTable {
     const states = try allocator.alloc(ResolvedStateActions, grouped_table.states.len);
     for (grouped_table.states, 0..) |grouped_state, state_index| {
         const groups = try allocator.alloc(ResolvedActionGroup, grouped_state.groups.len);
         const parse_state = findState(parse_states, grouped_state.state_id);
         for (grouped_state.groups, 0..) |group, group_index| {
-            const decision = chooseResolvedAction(productions, precedence_orderings, expected_conflicts, parse_state, group.entries);
+            const decision = chooseResolvedAction(
+                productions,
+                precedence_orderings,
+                expected_conflicts,
+                parse_state,
+                first_sets,
+                group.entries,
+            );
             groups[group_index] = .{
                 .symbol = group.symbol,
                 .candidate_actions = try dupActions(allocator, group.entries),
@@ -321,6 +369,7 @@ fn chooseResolvedAction(
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
     expected_conflicts: []const []const syntax_ir.SymbolRef,
     parse_state: ?state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
     candidates: []const actions.ActionEntry,
 ) ResolutionDecision {
     if (candidates.len == 1) return .{ .chosen = candidates[0].action };
@@ -331,13 +380,13 @@ fn chooseResolvedAction(
 
         if (isShift(first) and isReduce(second)) {
             return .{
-                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, candidates[0].symbol, first, second),
+                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, candidates[0].symbol, first, second),
                 .reason = .shift_reduce,
             };
         }
         if (isReduce(first) and isShift(second)) {
             return .{
-                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, candidates[0].symbol, second, first),
+                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, candidates[0].symbol, second, first),
                 .reason = .shift_reduce,
             };
         }
@@ -489,6 +538,7 @@ fn resolveShiftReduce(
     productions: anytype,
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
     parse_state: ?state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
     shift_symbol: syntax_ir.SymbolRef,
     shift_action: actions.ParseAction,
     reduce_action: actions.ParseAction,
@@ -501,7 +551,7 @@ fn resolveShiftReduce(
     if (production_id >= productions.len) return null;
     const production = productions[production_id];
     if (parse_state) |resolved_state| {
-        if (hasSameAuxiliaryRepeatConflict(productions, resolved_state, shift_symbol)) return shift_action;
+        if (hasSameAuxiliaryRepeatConflictWithFirstSets(productions, resolved_state, first_sets, shift_symbol)) return shift_action;
     }
     const metadata = extractResolutionMetadata(production);
     const shift_metadata = if (parse_state) |resolved_state|
@@ -569,6 +619,15 @@ pub fn hasSameAuxiliaryRepeatConflict(
     parse_state: state.ParseState,
     shift_symbol: syntax_ir.SymbolRef,
 ) bool {
+    return hasSameAuxiliaryRepeatConflictWithFirstSets(productions, parse_state, null, shift_symbol);
+}
+
+pub fn hasSameAuxiliaryRepeatConflictWithFirstSets(
+    productions: anytype,
+    parse_state: state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
+    shift_symbol: syntax_ir.SymbolRef,
+) bool {
     var common_lhs: ?u32 = null;
     var saw_shift_item = false;
     var saw_reduce_item = false;
@@ -580,7 +639,7 @@ pub fn hasSameAuxiliaryRepeatConflict(
 
         const participates_as_shift =
             entry.item.step_index < production.steps.len and
-            symbolRefEql(production.steps[entry.item.step_index].symbol, shift_symbol);
+            symbolCanStartLookahead(first_sets, production.steps[entry.item.step_index].symbol, shift_symbol);
         const participates_as_reduce =
             entry.item.step_index == production.steps.len and
             item.containsLookahead(entry.lookaheads, shift_symbol);
@@ -597,6 +656,32 @@ pub fn hasSameAuxiliaryRepeatConflict(
     }
 
     return common_lhs != null and saw_shift_item and saw_reduce_item;
+}
+
+fn symbolCanStartLookahead(
+    first_sets: ?first_sets_mod.FirstSets,
+    symbol: syntax_ir.SymbolRef,
+    lookahead: syntax_ir.SymbolRef,
+) bool {
+    if (symbolRefEql(symbol, lookahead)) return true;
+
+    const sets = first_sets orelse return false;
+    return switch (symbol) {
+        .non_terminal => |index| if (index < sets.per_variable.len)
+            symbolSetContainsRef(sets.per_variable[index], lookahead)
+        else
+            false,
+        else => false,
+    };
+}
+
+fn symbolSetContainsRef(symbol_set: first_sets_mod.SymbolSet, symbol: syntax_ir.SymbolRef) bool {
+    return switch (symbol) {
+        .terminal => |index| index < symbol_set.terminals.len and symbol_set.terminals[index],
+        .external => |index| index < symbol_set.externals.len and symbol_set.externals[index],
+        .end => symbol_set.includes_end,
+        .non_terminal => false,
+    };
 }
 
 fn productionIsRepeatAuxiliary(production: anytype) bool {
@@ -2079,6 +2164,95 @@ test "resolveActionTable prefers shift for same auxiliary repeat conflicts" {
     };
 
     const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, &.{}, parse_states[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
+}
+
+test "resolveActionTable uses FIRST sets for same auxiliary repeat conflicts" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        lhs_kind: syntax_ir.VariableKind = .named,
+        steps: []const syntax_ir.ProductionStep,
+        lhs_is_repeat_auxiliary: bool = false,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const reduce_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    const shift_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+        .{ .symbol = .{ .non_terminal = 2 } },
+    };
+    const child_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .lhs_kind = .auxiliary, .steps = reduce_steps[0..] },
+        .{ .lhs = 1, .lhs_kind = .auxiliary, .steps = shift_steps[0..] },
+        .{ .lhs = 2, .lhs_kind = .named, .steps = child_steps[0..] },
+    };
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 2, 0, .{ .production_id = 1, .step_index = 1 }, .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.initEmpty(allocator, 2, 0, .{ .production_id = 2, .step_index = 1 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+    const parse_states = [_]state.ParseState{
+        .{ .id = 6, .items = parse_items[0..], .transitions = &.{}, .conflicts = &.{} },
+    };
+
+    var empty_terms = [_]bool{ false, false };
+    var child_terms = [_]bool{ true, false };
+    var per_variable = [_]first_sets_mod.SymbolSet{
+        .{ .terminals = empty_terms[0..], .externals = &.{} },
+        .{ .terminals = empty_terms[0..], .externals = &.{} },
+        .{ .terminals = child_terms[0..], .externals = &.{} },
+    };
+    const first_sets = first_sets_mod.FirstSets{
+        .terminals_len = 2,
+        .externals_len = 0,
+        .per_variable = per_variable[0..],
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 6,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTableWithFirstSetsContext(
+        allocator,
+        productions[0..],
+        &.{},
+        &.{},
+        parse_states[0..],
+        first_sets,
+        grouped,
+    );
     defer {
         for (resolved.states) |resolved_state| {
             for (resolved_state.groups) |group| allocator.free(group.candidate_actions);

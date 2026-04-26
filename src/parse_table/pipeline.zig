@@ -3,6 +3,7 @@ const grammar_ir = @import("../ir/grammar_ir.zig");
 const actions = @import("actions.zig");
 const debug_dump = @import("debug_dump.zig");
 const build = @import("build.zig");
+const first = @import("first.zig");
 const resolution = @import("resolution.zig");
 const serialize = @import("serialize.zig");
 const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
@@ -280,6 +281,9 @@ fn serializePreparedBuildResultAlloc(
     mode: serialize.SerializeMode,
 ) PipelineError!serialize.SerializedTable {
     const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    const default_aliases = try extract_default_aliases.extractDefaultAliases(allocator, extracted.syntax, extracted.lexical);
+    const flattened = try flatten_grammar.flattenGrammar(allocator, default_aliases.syntax);
+    const first_sets = try first.computeFirstSets(allocator, flattened);
     var serialized = try serialize.attachPreparedMetadataAlloc(
         allocator,
         try serialize.serializeBuildResult(allocator, result, mode),
@@ -290,11 +294,12 @@ fn serializePreparedBuildResultAlloc(
         serialized,
         extracted.syntax.extra_symbols,
     );
-    serialized = try serialize.attachRepetitionShiftMetadataAlloc(
+    serialized = try serialize.attachRepetitionShiftMetadataWithFirstSetsAlloc(
         allocator,
         serialized,
         result.states,
         result.productions,
+        first_sets,
     );
     serialized = try serialize.attachReservedWordsAlloc(
         allocator,

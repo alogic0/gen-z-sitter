@@ -416,6 +416,15 @@ const ClosureResultCache = struct {
         seed_items: []const item.ParseItemSetEntry,
         options: BuildOptions,
     ) BuildError!item.ParseItemSet {
+        if (options.closure_pressure_mode != .none or options.coarse_transitions.len != 0) {
+            return try item_set_builder.transitiveClosure(
+                self.allocator,
+                variables,
+                .{ .entries = seed_items },
+                options,
+            );
+        }
+
         const trace_current_transition = shouldTraceCurrentClosure();
         const seed_item_set = item.ParseItemSet{ .entries = seed_items };
         if (self.closed_items_by_seed.get(seed_item_set)) |cached| {
@@ -1469,12 +1478,13 @@ pub fn buildStatesWithOptions(
     timer = maybeStartTimer(progress_log);
     if (progress_log) std.debug.print("[parse_table/build] stage resolve_action_table\n", .{});
     if (progress_log) logBuildStart("resolve_action_table");
-    const resolved_actions = try resolution.resolveActionTableWithContext(
+    const resolved_actions = try resolution.resolveActionTableWithFirstSetsContext(
         allocator,
         productions,
         grammar.precedence_orderings,
         grammar.expected_conflicts,
         constructed.states,
+        first_sets,
         grouped_actions,
     );
     if (progress_log) {
@@ -1871,6 +1881,7 @@ const StateConstructionEngine = struct {
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
     item_set_builder: ParseItemSetBuilder,
+    closure_result_cache: *ClosureResultCache,
     state_registry: *StateRegistry,
     action_states: *std.array_list.Managed(actions.StateActions),
     largest_new_successor: *?SuccessorDiagnostic,
@@ -2012,10 +2023,10 @@ const StateConstructionEngine = struct {
                         );
                     }
                 }
-                break :blk try self.item_set_builder.transitiveClosure(
-                    self.allocator,
+                break :blk try self.closure_result_cache.getOrBuild(
                     self.variables,
-                    .{ .entries = group.items.items },
+                    self.item_set_builder,
+                    group.items.items,
                     transition_options,
                 );
             };
@@ -3159,6 +3170,8 @@ fn constructStates(
     );
     reporter.logInitialClosureDone(start_timer, start_item_set.entries.len);
     try state_registry.appendInitialState(start_item_set);
+    var closure_result_cache = ClosureResultCache.init(allocator);
+    defer closure_result_cache.deinit();
     const non_terminal_extra_starts = try addNonTerminalExtraStatesAlloc(
         allocator,
         variables,
@@ -3175,6 +3188,7 @@ fn constructStates(
         .productions = productions,
         .first_sets = first_sets,
         .item_set_builder = item_set_builder,
+        .closure_result_cache = &closure_result_cache,
         .state_registry = &state_registry,
         .action_states = &action_states,
         .largest_new_successor = &largest_new_successor,

@@ -1,6 +1,7 @@
 const std = @import("std");
 const actions = @import("actions.zig");
 const build = @import("build.zig");
+const first = @import("first.zig");
 const item = @import("item.zig");
 const resolution = @import("resolution.zig");
 const state = @import("state.zig");
@@ -416,7 +417,23 @@ pub fn attachRepetitionShiftMetadataAlloc(
     parse_states: []const state.ParseState,
     productions: []const build.ProductionInfo,
 ) std.mem.Allocator.Error!SerializedTable {
-    if (!hasRepetitionShift(serialized.states, parse_states, productions)) return serialized;
+    return try attachRepetitionShiftMetadataWithFirstSetsAlloc(
+        allocator,
+        serialized,
+        parse_states,
+        productions,
+        null,
+    );
+}
+
+pub fn attachRepetitionShiftMetadataWithFirstSetsAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    parse_states: []const state.ParseState,
+    productions: []const build.ProductionInfo,
+    first_sets: ?first.FirstSets,
+) std.mem.Allocator.Error!SerializedTable {
+    if (!hasRepetitionShift(serialized.states, parse_states, productions, first_sets)) return serialized;
 
     const states = try allocator.alloc(SerializedState, serialized.states.len);
     var result = serialized;
@@ -427,7 +444,7 @@ pub fn attachRepetitionShiftMetadataAlloc(
         for (serialized_state.actions, 0..) |entry, entry_index| {
             entries[entry_index] = entry;
             if (entry.action == .shift and state_index < parse_states.len and
-                shiftHasRepeatAuxiliaryConflict(parse_states[state_index], productions, entry.symbol))
+                shiftHasRepeatAuxiliaryConflict(parse_states[state_index], productions, first_sets, entry.symbol))
             {
                 entries[entry_index].repetition = true;
             }
@@ -1217,12 +1234,13 @@ fn hasRepetitionShift(
     serialized_states: []const SerializedState,
     parse_states: []const state.ParseState,
     productions: []const build.ProductionInfo,
+    first_sets: ?first.FirstSets,
 ) bool {
     for (serialized_states, 0..) |serialized_state, state_index| {
         if (state_index >= parse_states.len) return false;
         for (serialized_state.actions) |entry| {
             if (entry.action == .shift and
-                shiftHasRepeatAuxiliaryConflict(parse_states[state_index], productions, entry.symbol))
+                shiftHasRepeatAuxiliaryConflict(parse_states[state_index], productions, first_sets, entry.symbol))
             {
                 return true;
             }
@@ -1234,9 +1252,10 @@ fn hasRepetitionShift(
 fn shiftHasRepeatAuxiliaryConflict(
     parse_state: state.ParseState,
     productions: []const build.ProductionInfo,
+    first_sets: ?first.FirstSets,
     symbol: syntax_ir.SymbolRef,
 ) bool {
-    if (resolution.hasSameAuxiliaryRepeatConflict(productions, parse_state, symbol)) return true;
+    if (resolution.hasSameAuxiliaryRepeatConflictWithFirstSets(productions, parse_state, first_sets, symbol)) return true;
 
     var repeat_lhs: ?u32 = null;
     var saw_conflict = false;
