@@ -2,6 +2,7 @@ const std = @import("std");
 const compat_harness = @import("compat/harness.zig");
 const targets = @import("compat/targets.zig");
 const result_model = @import("compat/result.zig");
+const runtime_io = @import("support/runtime_io.zig");
 
 fn findTargetById(target_id: []const u8) ?targets.Target {
     for (targets.shortlistTargets()) |target| {
@@ -81,21 +82,40 @@ fn printRunSummary(run: result_model.TargetRunResult) void {
     }
 }
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+fn parseStage(raw: []const u8) ?result_model.StepName {
+    return std.meta.stringToEnum(result_model.StepName, raw);
+}
 
-    var args = try std.process.argsWithAllocator(allocator);
-    defer args.deinit();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const arena = init.arena.allocator();
+    runtime_io.set(init.io, init.minimal.environ);
+    const args = try init.minimal.args.toSlice(arena);
 
-    _ = args.next();
-    const target_id = args.next() orelse {
-        std.debug.print("usage: zig run src/debug_compat_target_runner.zig -- <target-id>\n", .{});
+    if (args.len < 2) {
+        std.debug.print("usage: zig run src/debug_compat_target_runner.zig -- <target-id> [--stop-after <stage>]\n", .{});
         std.process.exit(1);
-    };
-    if (args.next() != null) {
-        std.debug.print("usage: zig run src/debug_compat_target_runner.zig -- <target-id>\n", .{});
+    }
+    const target_id = args[1];
+    var stop_after_stage: ?result_model.StepName = null;
+    var arg_index: usize = 2;
+    while (arg_index < args.len) {
+        const arg = args[arg_index];
+        arg_index += 1;
+        if (std.mem.eql(u8, arg, "--stop-after")) {
+            if (arg_index >= args.len) {
+                std.debug.print("[compat_target_runner] --stop-after requires a stage\n", .{});
+                std.process.exit(1);
+            }
+            const raw_stage = args[arg_index];
+            arg_index += 1;
+            stop_after_stage = parseStage(raw_stage) orelse {
+                std.debug.print("[compat_target_runner] unknown stage: {s}\n", .{raw_stage});
+                std.process.exit(1);
+            };
+            continue;
+        }
+        std.debug.print("usage: zig run src/debug_compat_target_runner.zig -- <target-id> [--stop-after <stage>]\n", .{});
         std.process.exit(1);
     }
 
@@ -104,10 +124,13 @@ pub fn main() !void {
         std.process.exit(1);
     };
 
-    var timer = try std.time.Timer.start();
-    var run = try compat_harness.runTarget(allocator, target, .{ .progress_log = true });
+    const start_ts = std.Io.Timestamp.now(runtime_io.get(), .awake);
+    var run = try compat_harness.runTarget(allocator, target, .{
+        .progress_log = true,
+        .stop_after_stage = stop_after_stage,
+    });
     defer run.deinit(allocator);
-    const elapsed_ms = @as(f64, @floatFromInt(timer.read())) / @as(f64, std.time.ns_per_ms);
+    const elapsed_ms = @as(f64, @floatFromInt(start_ts.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake)).nanoseconds)) / @as(f64, std.time.ns_per_ms);
 
     printRunSummary(run);
     std.debug.print("[compat_target_runner] total_elapsed_ms={d:.2}\n", .{elapsed_ms});

@@ -1205,6 +1205,7 @@ pub const BuildOptions = struct {
     closure_pressure_thresholds: ClosurePressureThresholds = .{},
     coarse_transitions: []const CoarseTransitionSpec = &.{},
     reserved_word_context_names: []const []const u8 = &.{},
+    non_terminal_extra_symbols: []const syntax_ir.SymbolRef = &.{},
     minimize_states: bool = false,
 };
 
@@ -1520,6 +1521,11 @@ pub fn buildStatesWithOptions(
 const ConstructedStates = struct {
     states: []const state.ParseState,
     actions: actions.ActionTable,
+};
+
+const NonTerminalExtraStart = struct {
+    symbol: syntax_ir.SymbolRef,
+    state_id: state.StateId,
 };
 
 const CoreKeyStore = struct {
@@ -1868,6 +1874,7 @@ const StateConstructionEngine = struct {
     action_states: *std.array_list.Managed(actions.StateActions),
     largest_new_successor: *?SuccessorDiagnostic,
     largest_reused_successor: *?SuccessorDiagnostic,
+    non_terminal_extra_starts: []const NonTerminalExtraStart,
     options: BuildOptions,
 
     fn processState(
@@ -1890,7 +1897,7 @@ const StateConstructionEngine = struct {
         reporter.logStateAfterTransitions(state_index, transitions.len, self.state_registry.items().len);
 
         const mutable_states = self.state_registry.items();
-        mutable_states[state_index].transitions = transitions;
+        mutable_states[state_index].transitions = try self.withExtraTransitions(transitions, mutable_states[state_index]);
         mutable_states[state_index].reserved_word_set_id = reservedWordSetIdForParseState(
             mutable_states[state_index],
             self.productions,
@@ -1922,6 +1929,41 @@ const StateConstructionEngine = struct {
             detected_conflicts.len,
             transition_stats,
         );
+    }
+
+    fn withExtraTransitions(
+        self: *@This(),
+        transitions: []const state.Transition,
+        parse_state: state.ParseState,
+    ) BuildError![]const state.Transition {
+        if (self.non_terminal_extra_starts.len == 0 or self.isNonTerminalExtraEndState(parse_state)) return transitions;
+
+        var result = std.array_list.Managed(state.Transition).init(self.allocator);
+        defer result.deinit();
+        try result.appendSlice(transitions);
+
+        for (self.non_terminal_extra_starts) |extra_start| {
+            if (hasTransitionForSymbol(result.items, extra_start.symbol)) continue;
+            try result.append(.{
+                .symbol = extra_start.symbol,
+                .state = extra_start.state_id,
+                .extra = true,
+            });
+        }
+
+        state.sortTransitions(result.items);
+        return try result.toOwnedSlice();
+    }
+
+    fn isNonTerminalExtraEndState(self: @This(), parse_state: state.ParseState) bool {
+        for (parse_state.items) |entry| {
+            if (!item.containsLookahead(entry.lookaheads, .{ .end = {} })) continue;
+            if (entry.item.production_id >= self.productions.len) continue;
+            const production = self.productions[entry.item.production_id];
+            if (entry.item.step_index != production.steps.len) continue;
+            if (symbolRefIn(self.options.non_terminal_extra_symbols, .{ .non_terminal = production.lhs })) return true;
+        }
+        return false;
     }
 
     fn collectTransitionsForState(
@@ -2989,6 +3031,95 @@ fn findParseItem(items: []const item.ParseItemSetEntry, needle: item.ParseItem, 
     return null;
 }
 
+const ExtraSeedGroup = struct {
+    symbol: syntax_ir.SymbolRef,
+    items: std.array_list.Managed(item.ParseItemSetEntry),
+
+    fn init(allocator: std.mem.Allocator, symbol: syntax_ir.SymbolRef) @This() {
+        return .{
+            .symbol = symbol,
+            .items = std.array_list.Managed(item.ParseItemSetEntry).init(allocator),
+        };
+    }
+
+    fn deinit(self: *@This()) void {
+        self.items.deinit();
+    }
+};
+
+fn addNonTerminalExtraStatesAlloc(
+    allocator: std.mem.Allocator,
+    variables: []const syntax_ir.SyntaxVariable,
+    productions: []const ProductionInfo,
+    first_sets: first.FirstSets,
+    item_set_builder: ParseItemSetBuilder,
+    options: BuildOptions,
+    state_registry: *StateRegistry,
+) BuildError![]const NonTerminalExtraStart {
+    if (options.non_terminal_extra_symbols.len == 0) return &.{};
+
+    var groups = std.array_list.Managed(ExtraSeedGroup).init(allocator);
+    defer {
+        for (groups.items) |*group| group.deinit();
+        groups.deinit();
+    }
+
+    for (options.non_terminal_extra_symbols) |extra_symbol| {
+        const variable_index = switch (extra_symbol) {
+            .non_terminal => |index| index,
+            else => continue,
+        };
+        for (productions, 0..) |production, production_id| {
+            if (production.augmented or production.lhs != variable_index) continue;
+            if (production.steps.len == 0) continue;
+            const first_symbol = production.steps[0].symbol;
+            switch (first_symbol) {
+                .terminal, .external => {},
+                .end, .non_terminal => return error.UnsupportedFeature,
+            }
+
+            const group_index = try extraSeedGroupIndex(allocator, &groups, first_symbol);
+            var entry = try item.ParseItemSetEntry.initEmpty(
+                allocator,
+                first_sets.terminals_len,
+                first_sets.externals_len,
+                item.ParseItem.init(@intCast(production_id), 1),
+            );
+            item.addLookahead(&entry.lookaheads, .{ .end = {} });
+            try groups.items[group_index].items.append(entry);
+        }
+    }
+
+    const starts = try allocator.alloc(NonTerminalExtraStart, groups.items.len);
+    for (groups.items, 0..) |*group, index| {
+        const item_set = try item_set_builder.transitiveClosure(
+            allocator,
+            variables,
+            .{ .entries = group.items.items },
+            options,
+        );
+        const interned = try state_registry.intern(item_set);
+        starts[index] = .{
+            .symbol = group.symbol,
+            .state_id = interned.state_id,
+        };
+    }
+    return starts;
+}
+
+fn extraSeedGroupIndex(
+    allocator: std.mem.Allocator,
+    groups: *std.array_list.Managed(ExtraSeedGroup),
+    symbol: syntax_ir.SymbolRef,
+) std.mem.Allocator.Error!usize {
+    for (groups.items, 0..) |group, index| {
+        if (symbolRefEql(group.symbol, symbol)) return index;
+    }
+    const index = groups.items.len;
+    try groups.append(ExtraSeedGroup.init(allocator, symbol));
+    return index;
+}
+
 fn constructStates(
     allocator: std.mem.Allocator,
     variables: []const syntax_ir.SyntaxVariable,
@@ -3027,6 +3158,15 @@ fn constructStates(
     );
     reporter.logInitialClosureDone(start_timer, start_item_set.entries.len);
     try state_registry.appendInitialState(start_item_set);
+    const non_terminal_extra_starts = try addNonTerminalExtraStatesAlloc(
+        allocator,
+        variables,
+        productions,
+        first_sets,
+        item_set_builder,
+        options,
+        &state_registry,
+    );
 
     var state_engine = StateConstructionEngine{
         .allocator = allocator,
@@ -3038,6 +3178,7 @@ fn constructStates(
         .action_states = &action_states,
         .largest_new_successor = &largest_new_successor,
         .largest_reused_successor = &largest_reused_successor,
+        .non_terminal_extra_starts = non_terminal_extra_starts,
         .options = options,
     };
 
@@ -3232,6 +3373,18 @@ fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
             else => false,
         },
     };
+}
+
+fn symbolRefIn(symbols: []const syntax_ir.SymbolRef, symbol: syntax_ir.SymbolRef) bool {
+    return for (symbols) |candidate| {
+        if (symbolRefEql(candidate, symbol)) break true;
+    } else false;
+}
+
+fn hasTransitionForSymbol(transitions: []const state.Transition, symbol: syntax_ir.SymbolRef) bool {
+    return for (transitions) |transition| {
+        if (symbolRefEql(transition.symbol, symbol)) break true;
+    } else false;
 }
 
 fn appendOrMergeClosureEntry(

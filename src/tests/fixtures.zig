@@ -4038,6 +4038,48 @@ pub fn inlineFieldInheritanceGrammarJson() Fixture {
     };
 }
 
+pub fn nonTerminalExtraGrammarJson() Fixture {
+    return .{
+        .name = "non_terminal_extra",
+        .contents =
+        \\{
+        \\  "name": "non_terminal_extra",
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        { "type": "SYMBOL", "name": "item" },
+        \\        { "type": "SYMBOL", "name": "item" }
+        \\      ]
+        \\    },
+        \\    "item": {
+        \\      "type": "STRING",
+        \\      "value": "x"
+        \\    },
+        \\    "_gap": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        { "type": "SYMBOL", "name": "gap_start" },
+        \\        { "type": "SYMBOL", "name": "gap_end" }
+        \\      ]
+        \\    },
+        \\    "gap_start": {
+        \\      "type": "STRING",
+        \\      "value": "["
+        \\    },
+        \\    "gap_end": {
+        \\      "type": "STRING",
+        \\      "value": "]"
+        \\    }
+        \\  },
+        \\  "extras": [
+        \\    { "type": "SYMBOL", "name": "_gap" }
+        \\  ]
+        \\}
+        ,
+    };
+}
+
 pub fn hiddenExternalFieldsGrammarJson() Fixture {
     return .{
         .name = "hidden_external_fields",

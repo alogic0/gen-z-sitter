@@ -1,5 +1,6 @@
 const std = @import("std");
 const process_support = @import("../support/process.zig");
+const runtime_io = @import("../support/runtime_io.zig");
 
 pub const CompileSmokeError = anyerror;
 
@@ -17,18 +18,28 @@ pub const CompileSmokeResult = union(enum) {
 };
 
 pub fn compileParserC(allocator: std.mem.Allocator, contents: []const u8) CompileSmokeError!CompileSmokeResult {
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
+    const timestamp = std.Io.Timestamp.now(runtime_io.get(), .awake);
+    const tmp_path = try std.fmt.allocPrint(
+        allocator,
+        ".zig-cache/compat-smoke-{d}",
+        .{timestamp.nanoseconds},
+    );
+    defer allocator.free(tmp_path);
+    try std.Io.Dir.cwd().createDirPath(runtime_io.get(), tmp_path);
+    defer std.Io.Dir.cwd().deleteTree(runtime_io.get(), tmp_path) catch {};
 
-    try tmp.dir.writeFile(std.testing.io, .{
+    var tmp_dir = try std.Io.Dir.cwd().openDir(runtime_io.get(), tmp_path, .{});
+    defer tmp_dir.close(runtime_io.get());
+
+    try tmp_dir.writeFile(runtime_io.get(), .{
         .sub_path = "parser.c",
         .data = contents,
     });
 
-    const source_path = try tmp.dir.realPathFileAlloc(std.testing.io, "parser.c", allocator);
+    const source_path = try tmp_dir.realPathFileAlloc(runtime_io.get(), "parser.c", allocator);
     defer allocator.free(source_path);
 
-    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    const dir_path = try tmp_dir.realPathFileAlloc(runtime_io.get(), ".", allocator);
     defer allocator.free(dir_path);
 
     const object_path = try std.fs.path.join(allocator, &.{ dir_path, "parser.o" });

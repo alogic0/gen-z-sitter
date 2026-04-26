@@ -222,11 +222,17 @@ no production-order fallback for this conflict class.
 
 ### 9b — Non-Terminal Extras
 
-- [ ] Model extras that are non-terminals in parse-table construction.
-- [ ] Add extra-rule closure items where tree-sitter would allow non-terminal extras.
-- [ ] Ensure resulting extra shifts are represented as extra actions in serialized data.
-- [ ] Unblock the smallest fixture that currently depends on non-terminal extras.
-- [ ] Add compile-smoke coverage for that fixture.
+Upstream reference check: tree-sitter precomputes one parse state per starting terminal
+of non-terminal extra productions, seeded from the extra production after consuming that
+starting token. Normal states receive extra shifts to those states unless they are
+already at the end of a non-terminal extra. Extra productions whose first symbol is
+itself a non-terminal remain unsupported locally for now.
+
+- [x] Model extras that are non-terminals in parse-table construction.
+- [x] Add extra-rule closure items where tree-sitter would allow non-terminal extras.
+- [x] Ensure resulting extra shifts are represented as extra actions in serialized data.
+- [x] Unblock the smallest fixture that currently depends on non-terminal extras.
+- [x] Add compile-smoke coverage for that fixture.
 
 ---
 

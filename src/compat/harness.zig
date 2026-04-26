@@ -20,6 +20,7 @@ const behavioral_harness = @import("../behavioral/harness.zig");
 pub const RunOptions = struct {
     optimize: emit_optimize.Options = .{},
     progress_log: bool = false,
+    stop_after_stage: ?result_model.StepName = null,
 };
 
 var cached_shortlist_runs_for_tests: ?[]result_model.TargetRunResult = null;
@@ -119,6 +120,10 @@ fn shouldLogDetailProgress(options: RunOptions) bool {
     if (value.len == 0) return false;
     if (std.mem.eql(u8, value, "0")) return false;
     return true;
+}
+
+fn shouldStopAfter(options: RunOptions, stage: result_model.StepName) bool {
+    return options.stop_after_stage == stage;
 }
 
 fn loadExcludedTargetsEnv(allocator: std.mem.Allocator) !?[][]const u8 {
@@ -348,6 +353,7 @@ pub fn runTarget(
     if (detail_progress) logDetailDone(target.id, "load", load_timer);
     run.load.status = .passed;
     defer loaded.deinit();
+    if (shouldStopAfter(options, .load)) return run;
 
     std.debug.print("[compat/harness] stage prepare {s}\n", .{target.id});
     const prepare_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
@@ -364,6 +370,7 @@ pub fn runTarget(
     };
     if (detail_progress) logDetailDone(target.id, "prepare", prepare_timer);
     run.prepare.status = .passed;
+    if (shouldStopAfter(options, .prepare)) return run;
 
     if (target.boundary_kind == .parser_only and target.parser_boundary_check_mode == .prepare_only) {
         return failRun(
@@ -405,6 +412,7 @@ pub fn runTarget(
             );
         }
         run.serialize.status = .passed;
+        if (shouldStopAfter(options, .serialize)) return run;
         std.debug.print("[compat/harness] stage emit_parser_tables {s}\n", .{target.id});
         const parser_tables_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
         if (detail_progress) logDetailStart(target.id, "emit_parser_tables");
@@ -425,6 +433,7 @@ pub fn runTarget(
             );
         }
         run.emit_parser_tables.status = .passed;
+        if (shouldStopAfter(options, .emit_parser_tables)) return run;
         std.debug.print("[compat/harness] stage emit_parser_c {s}\n", .{target.id});
         const parser_c_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
         if (detail_progress) logDetailStart(target.id, "emit_parser_c");
@@ -445,6 +454,7 @@ pub fn runTarget(
             );
         }
         run.emit_parser_c.status = .passed;
+        if (shouldStopAfter(options, .emit_parser_c)) return run;
         std.debug.print("[compat/harness] stage compat_check {s}\n", .{target.id});
         const compat_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
         if (detail_progress) logDetailStart(target.id, "compat_check");
@@ -459,6 +469,7 @@ pub fn runTarget(
         };
         if (detail_progress) logDetailDone(target.id, "compat_check", compat_timer);
         run.compat_check.status = .passed;
+        if (shouldStopAfter(options, .compat_check)) return run;
         std.debug.print("[compat/harness] stage compile_smoke {s}\n", .{target.id});
         const compile_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
         if (detail_progress) logDetailStart(target.id, "compile_smoke");
@@ -476,6 +487,7 @@ pub fn runTarget(
             .success => {
                 if (detail_progress) logDetailDone(target.id, "compile_smoke", compile_timer);
                 run.compile_smoke.status = .passed;
+                if (shouldStopAfter(options, .compile_smoke)) return run;
             },
             .compiler_error => |stderr| {
                 return failRun(
@@ -551,6 +563,7 @@ pub fn runTarget(
             );
         }
         run.serialize.status = .passed;
+        if (shouldStopAfter(options, .serialize)) return run;
 
         if (target.scanner_boundary_check_mode == .structural_only) {
             return failRun(
@@ -678,6 +691,7 @@ pub fn runTarget(
             }
 
             run.scanner_boundary_check.status = .passed;
+            if (shouldStopAfter(options, .scanner_boundary_check)) return run;
             return run;
         }
 
@@ -935,6 +949,7 @@ pub fn runTarget(
         }
 
         run.scanner_boundary_check.status = .passed;
+        if (shouldStopAfter(options, .scanner_boundary_check)) return run;
         return run;
     }
 
@@ -948,6 +963,7 @@ pub fn runTarget(
         );
     };
     run.serialize.status = .passed;
+    if (shouldStopAfter(options, .serialize)) return run;
 
     const parser_tables = parser_tables_emit.emitSerializedTableAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
         return failRun(
@@ -959,6 +975,7 @@ pub fn runTarget(
         );
     };
     run.emit_parser_tables.status = .passed;
+    if (shouldStopAfter(options, .emit_parser_tables)) return run;
 
     const parser_c = parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
         return failRun(
@@ -970,6 +987,7 @@ pub fn runTarget(
         );
     };
     run.emit_parser_c.status = .passed;
+    if (shouldStopAfter(options, .emit_parser_c)) return run;
 
     const emission_stats = try parser_c_emit.collectEmissionStatsWithOptions(arena.allocator(), serialized, options.optimize);
     run.emission = .{
@@ -1068,6 +1086,7 @@ pub fn runTarget(
         );
     };
     run.compat_check.status = .passed;
+    if (shouldStopAfter(options, .compat_check)) return run;
 
     var compile_result = compile_smoke.compileParserC(allocator, parser_c) catch |err| {
         return failRun(
@@ -1083,6 +1102,7 @@ pub fn runTarget(
     switch (compile_result) {
         .success => {
             run.compile_smoke.status = .passed;
+            if (shouldStopAfter(options, .compile_smoke)) return run;
         },
         .compiler_error => |stderr| {
             return failRun(
@@ -1327,6 +1347,7 @@ fn buildBlockedBoundarySnapshotAlloc(
 
 fn symbolNameFor(extracted: extract_tokens.ExtractedGrammars, symbol: @import("../ir/syntax_grammar.zig").SymbolRef) []const u8 {
     return switch (symbol) {
+        .end => "end",
         .terminal => |index| if (index < extracted.lexical.variables.len)
             extracted.lexical.variables[index].name
         else
@@ -1437,6 +1458,7 @@ fn symbolParts(symbol: @import("../ir/syntax_grammar.zig").SymbolRef) struct {
     index: u32,
 } {
     return switch (symbol) {
+        .end => .{ .kind = .terminal, .index = 0 },
         .terminal => |index| .{ .kind = .terminal, .index = index },
         .non_terminal => |index| .{ .kind = .non_terminal, .index = index },
         .external => |index| .{ .kind = .external, .index = index },

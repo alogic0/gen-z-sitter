@@ -241,7 +241,7 @@ pub fn serializeBuildResult(
             .id = parse_state.id,
             .core_id = parse_state.core_id,
             .lex_state_id = parse_state.lex_state_id,
-            .actions = try collectActionsForState(allocator, snapshot.chosen, parse_state.id),
+            .actions = try collectActionsForState(allocator, snapshot.chosen, parse_state),
             .gotos = try collectGotosForState(allocator, parse_state),
             .unresolved = if (mode == .diagnostic)
                 try collectUnresolvedForState(allocator, snapshot.unresolved, parse_state.id)
@@ -362,7 +362,7 @@ pub fn attachExtraShiftMetadataAlloc(
     const states = try allocator.alloc(SerializedState, serialized.states.len);
     var result = serialized;
     result.states = states;
-    result.blocked = serialized.blocked or hasNonTerminalExtra(extra_symbols);
+    result.blocked = serialized.blocked;
 
     for (serialized.states, 0..) |serialized_state, state_index| {
         const entries = try allocator.alloc(SerializedActionEntry, serialized_state.actions.len);
@@ -1320,12 +1320,6 @@ fn symbolRefIn(symbols: []const syntax_ir.SymbolRef, symbol: syntax_ir.SymbolRef
     } else false;
 }
 
-fn hasNonTerminalExtra(symbols: []const syntax_ir.SymbolRef) bool {
-    return for (symbols) |symbol| {
-        if (symbol == .non_terminal) break true;
-    } else false;
-}
-
 fn findBoolSet(sets: []const []const bool, target: []const bool) ?usize {
     for (sets, 0..) |set, index| {
         if (std.mem.eql(bool, set, target)) return index;
@@ -1356,24 +1350,40 @@ fn symbolSortKey(symbol: syntax_ir.SymbolRef) u64 {
 fn collectActionsForState(
     allocator: std.mem.Allocator,
     chosen: []const resolution.ChosenDecisionRef,
-    state_id: state.StateId,
+    parse_state: state.ParseState,
 ) std.mem.Allocator.Error![]const SerializedActionEntry {
     var count: usize = 0;
     for (chosen) |entry| {
-        if (entry.state_id == state_id) count += 1;
+        if (entry.state_id == parse_state.id) count += 1;
     }
 
     const entries = try allocator.alloc(SerializedActionEntry, count);
     var index: usize = 0;
     for (chosen) |entry| {
-        if (entry.state_id != state_id) continue;
+        if (entry.state_id != parse_state.id) continue;
         entries[index] = .{
             .symbol = entry.symbol,
             .action = entry.action,
+            .extra = shiftActionIsExtra(parse_state.transitions, entry.symbol, entry.action),
         };
         index += 1;
     }
     return entries;
+}
+
+fn shiftActionIsExtra(
+    transitions: []const state.Transition,
+    symbol: syntax_ir.SymbolRef,
+    action: actions.ParseAction,
+) bool {
+    const target = switch (action) {
+        .shift => |state_id| state_id,
+        else => return false,
+    };
+    for (transitions) |transition| {
+        if (transition.state == target and transition.extra and symbolRefEql(transition.symbol, symbol)) return true;
+    }
+    return false;
 }
 
 fn collectGotosForState(
@@ -1644,7 +1654,7 @@ test "attachExtraShiftMetadataAlloc marks terminal extra shifts" {
     try std.testing.expect(!serialized.parse_action_list[2].actions[0].extra);
 }
 
-test "attachExtraShiftMetadataAlloc blocks non-terminal extras explicitly" {
+test "attachExtraShiftMetadataAlloc preserves non-terminal extra readiness" {
     const allocator = std.testing.allocator;
     const serialized = try attachExtraShiftMetadataAlloc(allocator, .{
         .states = &[_]SerializedState{
@@ -1660,7 +1670,52 @@ test "attachExtraShiftMetadataAlloc blocks non-terminal extras explicitly" {
         deinitParseActionList(allocator, serialized.parse_action_list);
     }
 
-    try std.testing.expect(serialized.blocked);
+    try std.testing.expect(!serialized.blocked);
+}
+
+test "serializeBuildResult preserves non-terminal extra start shifts" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+    var extra_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "_gap", .kind = .hidden, .productions = &.{.{ .steps = extra_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{.{ .non_terminal = 1 }},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const result = try build.buildStatesWithOptions(arena.allocator(), grammar, .{
+        .non_terminal_extra_symbols = &.{.{ .non_terminal = 1 }},
+    });
+    const serialized = try serializeBuildResult(arena.allocator(), result, .strict);
+
+    var saw_extra_shift = false;
+    for (serialized.states) |serialized_state| {
+        if (serialized_state.id != 0) continue;
+        for (serialized_state.actions) |entry| {
+            if (symbolRefEql(entry.symbol, .{ .terminal = 0 }) and entry.extra and switch (entry.action) {
+                .shift => true,
+                else => false,
+            }) {
+                saw_extra_shift = true;
+            }
+        }
+    }
+    try std.testing.expect(saw_extra_shift);
+    try std.testing.expect(!serialized.blocked);
 }
 
 test "attachRepetitionShiftMetadataAlloc marks repeat auxiliary conflicts" {

@@ -8,6 +8,7 @@ pub const LexStateId = u32;
 pub const Transition = struct {
     symbol: syntax_ir.SymbolRef,
     state: StateId,
+    extra: bool = false,
 };
 
 pub const ConflictKind = enum {
@@ -49,6 +50,7 @@ pub fn sortStates(states: []ParseState) void {
 
 fn lessThanTransition(_: void, a: Transition, b: Transition) bool {
     if (!std.meta.eql(a.symbol, b.symbol)) return symbolLessThan(a.symbol, b.symbol);
+    if (a.extra != b.extra) return !a.extra and b.extra;
     return a.state < b.state;
 }
 

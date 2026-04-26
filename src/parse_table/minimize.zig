@@ -117,6 +117,7 @@ pub fn minimizeAlloc(
             new_transitions[ti] = .{
                 .symbol = t.symbol,
                 .state = id_remap[t.state],
+                .extra = t.extra,
             };
         }
 
@@ -261,7 +262,23 @@ fn buildSig(
                 try entries.append(.{
                     .sym_tag = 0,
                     .sym_idx = idx,
-                    .kind = 4,
+                    .kind = if (t.extra) 5 else 4,
+                    .value = class_of[id_to_idx[t.state]],
+                });
+            },
+            .terminal => |idx| if (t.extra) {
+                try entries.append(.{
+                    .sym_tag = 1,
+                    .sym_idx = idx,
+                    .kind = 5,
+                    .value = class_of[id_to_idx[t.state]],
+                });
+            },
+            .external => |idx| if (t.extra) {
+                try entries.append(.{
+                    .sym_tag = 2,
+                    .sym_idx = idx,
+                    .kind = 5,
                     .value = class_of[id_to_idx[t.state]],
                 });
             },

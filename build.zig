@@ -4,6 +4,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const test_filter = b.option([]const u8, "test-filter", "Filter tests by name substring");
+    const compat_target = b.option([]const u8, "compat-target", "Compatibility target id for run-compat-target");
+    const compat_stop_after = b.option([]const u8, "compat-stop-after", "Stop run-compat-target after this stage");
 
     const exe = b.addExecutable(.{
         .name = "zig-tree-sit",
@@ -168,4 +170,22 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_runtime_link_tests.addArgs(args);
     const runtime_link_step = b.step("test-link-runtime", "Link and run generated parser fixtures with tree-sitter runtime");
     runtime_link_step.dependOn(&run_runtime_link_tests.step);
+
+    const compat_target_runner = b.addExecutable(.{
+        .name = "compat-target-runner",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/debug_compat_target_runner.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_compat_target = b.addRunArtifact(compat_target_runner);
+    run_compat_target.addArg(compat_target orelse "parse_table_tiny_json");
+    if (compat_stop_after) |stage| {
+        run_compat_target.addArg("--stop-after");
+        run_compat_target.addArg(stage);
+    }
+    if (b.args) |args| run_compat_target.addArgs(args);
+    const compat_target_step = b.step("run-compat-target", "Run one compatibility target through the harness");
+    compat_target_step.dependOn(&run_compat_target.step);
 }

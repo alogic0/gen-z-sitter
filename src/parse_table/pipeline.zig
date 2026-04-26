@@ -127,6 +127,8 @@ pub fn buildStatesFromPreparedWithOptions(
     if (progress_log) logPipelineStart("build_states");
     var effective_build_options = build_options;
     effective_build_options.reserved_word_context_names = try reservedWordContextNamesAlloc(allocator, prepared.reserved_word_sets);
+    effective_build_options.non_terminal_extra_symbols = try nonTerminalExtraSymbolsAlloc(allocator, flattened.extra_symbols);
+    defer allocator.free(effective_build_options.non_terminal_extra_symbols);
     defer allocator.free(effective_build_options.reserved_word_context_names);
     const result = try build.buildStatesWithOptions(allocator, flattened, effective_build_options);
     if (progress_log) {
@@ -148,6 +150,18 @@ fn reservedWordContextNamesAlloc(
         names[index] = reserved_set.context_name;
     }
     return names;
+}
+
+fn nonTerminalExtraSymbolsAlloc(
+    allocator: std.mem.Allocator,
+    extra_symbols: []const @import("../ir/syntax_grammar.zig").SymbolRef,
+) std.mem.Allocator.Error![]const @import("../ir/syntax_grammar.zig").SymbolRef {
+    var symbols = std.array_list.Managed(@import("../ir/syntax_grammar.zig").SymbolRef).init(allocator);
+    defer symbols.deinit();
+    for (extra_symbols) |symbol| {
+        if (symbol == .non_terminal) try symbols.append(symbol);
+    }
+    return try symbols.toOwnedSlice();
 }
 
 pub fn generateStateActionDumpFromPrepared(
@@ -1249,6 +1263,50 @@ test "serializeTableFromPrepared marks fields inherited from inline hidden fixtu
         .strict,
     );
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".inherited = true"));
+}
+
+test "serializeTableFromPrepared emits non-terminal extra shifts from fixture" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.nonTerminalExtraGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const serialized = try serializeTableFromPrepared(
+        pipeline_arena.allocator(),
+        prepared,
+        .strict,
+    );
+
+    try std.testing.expect(!serialized.blocked);
+    var saw_extra_shift = false;
+    for (serialized.states) |serialized_state| {
+        for (serialized_state.actions) |entry| {
+            if (entry.extra) {
+                saw_extra_shift = true;
+                break;
+            }
+        }
+    }
+    try std.testing.expect(saw_extra_shift);
+
+    const emitted = try generateParserCEmitterDumpFromPrepared(
+        pipeline_arena.allocator(),
+        prepared,
+        .strict,
+    );
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".extra = true"));
 }
 
 test "generateParserTableEmitterDumpFromPrepared matches the metadata-rich emitter golden fixture" {

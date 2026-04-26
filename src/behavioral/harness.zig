@@ -525,13 +525,26 @@ fn simulateBuiltScannerFree(
 
                 // ---- End of input ----
                 if (versions.items[vi].cursor >= input.len) {
-                    if (stateHasCompletedAugmentedProduction(result, state_id)) {
-                        return .{ .accepted = .{
+                    if (selectEofAction(result, state_id)) |fb| switch (fb) {
+                        .accept => return .{ .accepted = .{
                             .consumed_bytes = versions.items[vi].cursor,
                             .shifted_tokens = versions.items[vi].shifted_tokens,
                             .error_count = versions.items[vi].error_count,
-                        } };
-                    }
+                        } },
+                        .reduce => |prod_id| {
+                            if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                                updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
+                                killVersion(allocator, &versions, vi);
+                                break :inner;
+                            }
+                            continue :inner;
+                        },
+                        .shift => {
+                            updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .missing_action);
+                            killVersion(allocator, &versions, vi);
+                            break :inner;
+                        },
+                    };
                     if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
                         .accept => return .{ .accepted = .{
                             .consumed_bytes = versions.items[vi].cursor,
@@ -552,6 +565,13 @@ fn simulateBuiltScannerFree(
                             break :inner;
                         },
                     };
+                    if (stateHasCompletedAugmentedProduction(result, state_id)) {
+                        return .{ .accepted = .{
+                            .consumed_bytes = versions.items[vi].cursor,
+                            .shifted_tokens = versions.items[vi].shifted_tokens,
+                            .error_count = versions.items[vi].error_count,
+                        } };
+                    }
                     updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .missing_action);
                     killVersion(allocator, &versions, vi);
                     break :inner;
@@ -1309,7 +1329,7 @@ fn prepareLexStateTables(
         for (result.resolved_actions.groupsForState(parse_state.id)) |group| {
             switch (group.symbol) {
                 .terminal => |index| raw_sets[lex_state_id].insert(index),
-                .non_terminal, .external => {},
+                .end, .non_terminal, .external => {},
             }
         }
     }
@@ -1609,6 +1629,10 @@ fn selectFallbackAction(result: build.BuildResult, state_id: u32) ?actions.Parse
     var selected: ?actions.ParseAction = null;
 
     for (result.resolved_actions.groupsForState(state_id)) |group| {
+        switch (group.symbol) {
+            .end => continue,
+            else => {},
+        }
         switch (group.decision) {
             .unresolved => |reason| switch (reason) {
                 // shift/reduce: at fallback time there is no lookahead, so shifting is
@@ -1644,6 +1668,32 @@ fn selectFallbackAction(result: build.BuildResult, state_id: u32) ?actions.Parse
     }
 
     return selected;
+}
+
+fn selectEofAction(result: build.BuildResult, state_id: u32) ?actions.ParseAction {
+    const decision = result.resolved_actions.decisionFor(state_id, .{ .end = {} }) orelse return null;
+    return switch (decision) {
+        .chosen => |action| action,
+        .unresolved => |reason| switch (reason) {
+            .shift_reduce => blk: {
+                var selected: ?actions.ParseAction = null;
+                for (result.resolved_actions.candidateActionsFor(state_id, .{ .end = {} })) |action| {
+                    switch (action) {
+                        .reduce, .accept => {
+                            if (selected) |existing| {
+                                if (!parseActionEql(existing, action)) return null;
+                            } else {
+                                selected = action;
+                            }
+                        },
+                        .shift => {},
+                    }
+                }
+                break :blk selected;
+            },
+            else => null,
+        },
+    };
 }
 
 fn parseActionEql(a: actions.ParseAction, b: actions.ParseAction) bool {
@@ -1699,7 +1749,7 @@ test "simulatePreparedScannerFree accepts the valid behavioral config input" {
     }
 }
 
-test "simulatePreparedScannerFree rejects the invalid behavioral config input" {
+test "simulatePreparedScannerFree records recovery for the invalid behavioral config input" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -1707,7 +1757,10 @@ test "simulatePreparedScannerFree rejects the invalid behavioral config input" {
     const result = try simulatePreparedScannerFree(arena.allocator(), prepared, fixtures.behavioralConfigInvalidInput().contents);
 
     switch (result) {
-        .accepted => try std.testing.expect(false),
+        .accepted => |accepted| {
+            try std.testing.expect(accepted.consumed_bytes > 0);
+            try std.testing.expect(accepted.error_count > 0);
+        },
         .rejected => |rejected| {
             try std.testing.expect(
                 rejected.reason == .tokenization_failed or
