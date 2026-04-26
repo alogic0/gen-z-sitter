@@ -328,9 +328,9 @@ pub fn parseTableTinyDump() Fixture {
         .contents =
         \\state 0
         \\  items:
-        \\    #0@0
-        \\    #1@0
-        \\    #2@0
+        \\    #0@0 [end]
+        \\    #1@0 [end]
+        \\    #2@0 [end]
         \\  transitions:
         \\    non_terminal:0 -> 1
         \\    non_terminal:1 -> 2
@@ -338,17 +338,17 @@ pub fn parseTableTinyDump() Fixture {
         \\
         \\state 1
         \\  items:
-        \\    #0@1
+        \\    #0@1 [end]
         \\  transitions:
         \\
         \\state 2
         \\  items:
-        \\    #1@1
+        \\    #1@1 [end]
         \\  transitions:
         \\
         \\state 3
         \\  items:
-        \\    #2@1
+        \\    #2@1 [end]
         \\  transitions:
         \\
         ,
@@ -395,10 +395,10 @@ pub fn parseTableConflictDump() Fixture {
         .contents =
         \\state 0
         \\  items:
-        \\    #0@0
-        \\    #1@0
-        \\    #2@0 [terminal:0]
-        \\    #3@0 [terminal:0]
+        \\    #0@0 [end]
+        \\    #1@0 [end]
+        \\    #2@0 [terminal:0, end]
+        \\    #3@0 [terminal:0, end]
         \\  transitions:
         \\    non_terminal:0 -> 1
         \\    non_terminal:1 -> 2
@@ -406,34 +406,34 @@ pub fn parseTableConflictDump() Fixture {
         \\
         \\state 1
         \\  items:
-        \\    #0@1
+        \\    #0@1 [end]
         \\  transitions:
         \\
         \\state 2
         \\  items:
-        \\    #1@1
-        \\    #2@1 [terminal:0]
+        \\    #1@1 [end]
+        \\    #2@1 [terminal:0, end]
         \\  transitions:
         \\    terminal:0 -> 4
         \\
         \\state 3
         \\  items:
-        \\    #3@1 [terminal:0]
+        \\    #3@1 [terminal:0, end]
         \\  transitions:
         \\
         \\state 4
         \\  items:
-        \\    #2@0 [terminal:0]
-        \\    #2@2 [terminal:0]
-        \\    #3@0 [terminal:0]
+        \\    #2@0 [terminal:0, end]
+        \\    #2@2 [terminal:0, end]
+        \\    #3@0 [terminal:0, end]
         \\  transitions:
         \\    non_terminal:1 -> 5
         \\    terminal:1 -> 3
         \\
         \\state 5
         \\  items:
-        \\    #2@1 [terminal:0]
-        \\    #2@3 [terminal:0]
+        \\    #2@1 [terminal:0, end]
+        \\    #2@3 [terminal:0, end]
         \\  transitions:
         \\    terminal:0 -> 4
         \\  conflicts:
@@ -451,10 +451,10 @@ pub fn parseTableConflictActionDump() Fixture {
         .contents =
         \\state 0
         \\  items:
-        \\    #0@0
-        \\    #1@0
-        \\    #2@0 [terminal:0]
-        \\    #3@0 [terminal:0]
+        \\    #0@0 [end]
+        \\    #1@0 [end]
+        \\    #2@0 [terminal:0, end]
+        \\    #3@0 [terminal:0, end]
         \\  transitions:
         \\    non_terminal:0 -> 1
         \\    non_terminal:1 -> 2
@@ -464,31 +464,34 @@ pub fn parseTableConflictActionDump() Fixture {
         \\
         \\state 1
         \\  items:
-        \\    #0@1
+        \\    #0@1 [end]
         \\  transitions:
         \\  actions:
+        \\    end => accept
         \\
         \\state 2
         \\  items:
-        \\    #1@1
-        \\    #2@1 [terminal:0]
+        \\    #1@1 [end]
+        \\    #2@1 [terminal:0, end]
         \\  transitions:
         \\    terminal:0 -> 4
         \\  actions:
+        \\    end => reduce 1
         \\    terminal:0 => shift 4
         \\
         \\state 3
         \\  items:
-        \\    #3@1 [terminal:0]
+        \\    #3@1 [terminal:0, end]
         \\  transitions:
         \\  actions:
+        \\    end => reduce 3
         \\    terminal:0 => reduce 3
         \\
         \\state 4
         \\  items:
-        \\    #2@0 [terminal:0]
-        \\    #2@2 [terminal:0]
-        \\    #3@0 [terminal:0]
+        \\    #2@0 [terminal:0, end]
+        \\    #2@2 [terminal:0, end]
+        \\    #3@0 [terminal:0, end]
         \\  transitions:
         \\    non_terminal:1 -> 5
         \\    terminal:1 -> 3
@@ -497,11 +500,12 @@ pub fn parseTableConflictActionDump() Fixture {
         \\
         \\state 5
         \\  items:
-        \\    #2@1 [terminal:0]
-        \\    #2@3 [terminal:0]
+        \\    #2@1 [terminal:0, end]
+        \\    #2@3 [terminal:0, end]
         \\  transitions:
         \\    terminal:0 -> 4
         \\  actions:
+        \\    end => reduce 2
         \\    terminal:0 => shift 4
         \\    terminal:0 => reduce 2
         \\  conflicts:
@@ -519,13 +523,13 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         .contents =
         \\state 0
         \\  items:
-        \\    #0@0
-        \\    #1@0
+        \\    #0@0 [end]
+        \\    #1@0 [end]
         \\    #2@0 [terminal:0]
         \\    #3@0 [terminal:0]
         \\    #4@0 [terminal:0]
         \\    #5@0 [terminal:0]
-        \\    #6@0 [terminal:0]
+        \\    #6@0 [terminal:0, end]
         \\  transitions:
         \\    non_terminal:0 -> 1
         \\    non_terminal:1 -> 2
@@ -538,13 +542,14 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         \\
         \\state 1
         \\  items:
-        \\    #0@1
+        \\    #0@1 [end]
         \\  transitions:
         \\  actions:
+        \\    end => accept
         \\
         \\state 2
         \\  items:
-        \\    #1@1
+        \\    #1@1 [end]
         \\  transitions:
         \\    terminal:0 -> 7
         \\  actions:
@@ -579,16 +584,18 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         \\
         \\state 6
         \\  items:
-        \\    #6@1 [terminal:0]
+        \\    #6@1 [terminal:0, end]
         \\  transitions:
         \\  actions:
+        \\    end => reduce 6
         \\    terminal:0 => reduce 6
         \\
         \\state 7
         \\  items:
-        \\    #1@2
+        \\    #1@2 [end]
         \\  transitions:
         \\  actions:
+        \\    end => reduce 1
         \\
         ,
     };
@@ -600,8 +607,8 @@ pub fn parseTableMetadataActionDump() Fixture {
         .contents =
         \\state 0
         \\  items:
-        \\    #0@0
-        \\    #1@0
+        \\    #0@0 [end]
+        \\    #1@0 [end]
         \\    #2@0 [terminal:0]
         \\  transitions:
         \\    non_terminal:0 -> 1
@@ -612,13 +619,14 @@ pub fn parseTableMetadataActionDump() Fixture {
         \\
         \\state 1
         \\  items:
-        \\    #0@1
+        \\    #0@1 [end]
         \\  transitions:
         \\  actions:
+        \\    end => accept
         \\
         \\state 2
         \\  items:
-        \\    #1@1
+        \\    #1@1 [end]
         \\  transitions:
         \\    terminal:0 -> 4
         \\  actions:
@@ -633,8 +641,8 @@ pub fn parseTableMetadataActionDump() Fixture {
         \\
         \\state 4
         \\  items:
-        \\    #1@2
-        \\    #2@0
+        \\    #1@2 [end]
+        \\    #2@0 [end]
         \\  transitions:
         \\    non_terminal:1 -> 5
         \\    terminal:1 -> 6
@@ -643,15 +651,17 @@ pub fn parseTableMetadataActionDump() Fixture {
         \\
         \\state 5
         \\  items:
-        \\    #1@3
+        \\    #1@3 [end]
         \\  transitions:
         \\  actions:
+        \\    end => reduce 1
         \\
         \\state 6
         \\  items:
-        \\    #2@1
+        \\    #2@1 [end]
         \\  transitions:
         \\  actions:
+        \\    end => reduce 2
         \\
         ,
     };
@@ -671,6 +681,7 @@ pub fn parseTableMetadataSerializedDump() Fixture {
         \\
         \\state 1
         \\  actions:
+        \\    end => accept
         \\  gotos:
         \\
         \\state 2
@@ -691,10 +702,12 @@ pub fn parseTableMetadataSerializedDump() Fixture {
         \\
         \\state 5
         \\  actions:
+        \\    end => reduce 1
         \\  gotos:
         \\
         \\state 6
         \\  actions:
+        \\    end => reduce 2
         \\  gotos:
         \\
         ,
@@ -715,15 +728,18 @@ pub fn parseTableConflictSerializedDump() Fixture {
         \\
         \\state 1
         \\  actions:
+        \\    end => accept
         \\  gotos:
         \\
         \\state 2
         \\  actions:
+        \\    end => reduce 1
         \\    terminal:0 => shift 4
         \\  gotos:
         \\
         \\state 3
         \\  actions:
+        \\    end => reduce 3
         \\    terminal:0 => reduce 3
         \\  gotos:
         \\
@@ -735,6 +751,7 @@ pub fn parseTableConflictSerializedDump() Fixture {
         \\
         \\state 5
         \\  actions:
+        \\    end => reduce 2
         \\  gotos:
         \\  unresolved:
         \\    terminal:0 (shift_reduce)
@@ -750,7 +767,7 @@ pub fn parseTableMetadataEmitterDump() Fixture {
         .name = "parse_table_metadata_emitter_dump",
         .contents =
         \\parser_tables blocked=false
-        \\state_count=5
+        \\state_count=7
         \\state 0 {
         \\  action terminal:1 shift 3
         \\  goto non_terminal:0 1
@@ -758,6 +775,7 @@ pub fn parseTableMetadataEmitterDump() Fixture {
         \\}
         \\
         \\state 1 {
+        \\  action end accept
         \\}
         \\
         \\state 2 {
@@ -769,8 +787,16 @@ pub fn parseTableMetadataEmitterDump() Fixture {
         \\}
         \\
         \\state 4 {
-        \\  action terminal:1 shift 1
-        \\  goto non_terminal:1 1
+        \\  action terminal:1 shift 6
+        \\  goto non_terminal:1 5
+        \\}
+        \\
+        \\state 5 {
+        \\  action end reduce 1
+        \\}
+        \\
+        \\state 6 {
+        \\  action end reduce 2
         \\}
         ,
     };
@@ -789,13 +815,16 @@ pub fn parseTableConflictEmitterDump() Fixture {
         \\}
         \\
         \\state 1 {
+        \\  action end accept
         \\}
         \\
         \\state 2 {
+        \\  action end reduce 1
         \\  action terminal:0 shift 4
         \\}
         \\
         \\state 3 {
+        \\  action end reduce 3
         \\  action terminal:0 reduce 3
         \\}
         \\
@@ -805,6 +834,7 @@ pub fn parseTableConflictEmitterDump() Fixture {
         \\}
         \\
         \\state 5 {
+        \\  action end reduce 2
         \\  unresolved terminal:0 shift_reduce candidates=2
         \\}
         ,
@@ -815,572 +845,352 @@ pub fn parseTableMetadataParserCDump() Fixture {
     return .{
         .name = "parse_table_metadata_parser_c_dump",
         .contents =
-        \\/* generated parser.c skeleton */
-        \\/* top-level layout: ts_language -> parser/runtime/compatibility */
+        \\/* generated parser.c */
+        \\/* tree-sitter runtime ABI layout */
         \\#include <stdbool.h>
         \\#include <stdint.h>
+        \\#include <stdlib.h>
         \\
-        \\#define TS_PARSER_BLOCKED false
-        \\#define TS_STATE_COUNT 5
-        \\#define TS_SYMBOL_COUNT 4
-        \\#define TS_KEYWORD_CAPTURE_TOKEN 0
+        \\#define LANGUAGE_VERSION 15
+        \\#define MIN_COMPATIBLE_LANGUAGE_VERSION 13
         \\
-        \\#define TS_LANGUAGE_VERSION 15
-        \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
-        \\#define TS_SYMBOL_KIND_NON_TERMINAL 1
-        \\#define TS_SYMBOL_KIND_TERMINAL 2
-        \\#define TS_SYMBOL_KIND_EXTERNAL 3
-        \\#define TS_ACTION_SHIFT 1
-        \\#define TS_ACTION_REDUCE 2
-        \\#define TS_ACTION_ACCEPT 3
-        \\#define TS_UNRESOLVED_SHIFT_REDUCE 1
-        \\#define TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED 2
+        \\typedef uint16_t TSStateId;
+        \\typedef uint16_t TSSymbol;
+        \\typedef uint16_t TSFieldId;
         \\
-        \\typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;
-        \\typedef struct { uint16_t symbol_id; uint16_t state; } TSGotoEntry;
-        \\typedef struct { uint16_t kind; uint16_t value; } TSCandidateEntry;
-        \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidate_count; const TSCandidateEntry *candidates; } TSUnresolvedEntry;
-        \\typedef struct { uint16_t production_id; uint16_t step_index; const char *name; bool named; } TSAliasEntry;
+        \\typedef struct TSLanguage TSLanguage;
         \\
         \\typedef struct {
-        \\  uint16_t id;
+        \\  uint8_t major_version;
+        \\  uint8_t minor_version;
+        \\  uint8_t patch_version;
+        \\} TSLanguageMetadata;
+        \\
+        \\typedef struct {
+        \\  TSFieldId field_id;
+        \\  uint8_t child_index;
+        \\  bool inherited;
+        \\} TSFieldMapEntry;
+        \\
+        \\typedef struct {
+        \\  uint16_t index;
+        \\  uint16_t length;
+        \\} TSMapSlice;
+        \\
+        \\typedef struct {
+        \\  bool visible;
+        \\  bool named;
+        \\  bool supertype;
+        \\} TSSymbolMetadata;
+        \\
+        \\typedef struct TSLexer TSLexer;
+        \\struct TSLexer {
+        \\  int32_t lookahead;
+        \\  TSSymbol result_symbol;
+        \\  void (*advance)(TSLexer *, bool);
+        \\  void (*mark_end)(TSLexer *);
+        \\  uint32_t (*get_column)(TSLexer *);
+        \\  bool (*is_at_included_range_start)(const TSLexer *);
+        \\  bool (*eof)(const TSLexer *);
+        \\  void (*log)(const TSLexer *, const char *, ...);
+        \\};
+        \\
+        \\typedef enum {
+        \\  TSParseActionTypeShift,
+        \\  TSParseActionTypeReduce,
+        \\  TSParseActionTypeAccept,
+        \\  TSParseActionTypeRecover,
+        \\} TSParseActionType;
+        \\
+        \\typedef union {
+        \\  struct { uint8_t type; TSStateId state; bool extra; bool repetition; } shift;
+        \\  struct { uint8_t type; uint8_t child_count; TSSymbol symbol; int16_t dynamic_precedence; uint16_t production_id; } reduce;
+        \\  uint8_t type;
+        \\} TSParseAction;
+        \\
+        \\typedef struct {
+        \\  uint16_t lex_state;
+        \\  uint16_t external_lex_state;
+        \\  uint16_t reserved_word_set_id;
+        \\} TSLexerMode;
+        \\
+        \\typedef union {
+        \\  TSParseAction action;
+        \\  struct { uint8_t count; bool reusable; } entry;
+        \\} TSParseActionEntry;
+        \\
+        \\struct TSLanguage {
+        \\  uint32_t abi_version;
+        \\  uint32_t symbol_count;
+        \\  uint32_t alias_count;
+        \\  uint32_t token_count;
+        \\  uint32_t external_token_count;
+        \\  uint32_t state_count;
+        \\  uint32_t large_state_count;
+        \\  uint32_t production_id_count;
+        \\  uint32_t field_count;
+        \\  uint16_t max_alias_sequence_length;
+        \\  const uint16_t *parse_table;
+        \\  const uint16_t *small_parse_table;
+        \\  const uint32_t *small_parse_table_map;
+        \\  const TSParseActionEntry *parse_actions;
+        \\  const char * const *symbol_names;
+        \\  const char * const *field_names;
+        \\  const TSMapSlice *field_map_slices;
+        \\  const TSFieldMapEntry *field_map_entries;
+        \\  const TSSymbolMetadata *symbol_metadata;
+        \\  const TSSymbol *public_symbol_map;
+        \\  const uint16_t *alias_map;
+        \\  const TSSymbol *alias_sequences;
+        \\  const TSLexerMode *lex_modes;
+        \\  bool (*lex_fn)(TSLexer *, TSStateId);
+        \\  bool (*keyword_lex_fn)(TSLexer *, TSStateId);
+        \\  TSSymbol keyword_capture_token;
+        \\  struct {
+        \\    const bool *states;
+        \\    const TSSymbol *symbol_map;
+        \\    void *(*create)(void);
+        \\    void (*destroy)(void *);
+        \\    bool (*scan)(void *, TSLexer *, const bool *symbol_whitelist);
+        \\    unsigned (*serialize)(void *, char *);
+        \\    void (*deserialize)(void *, const char *, unsigned);
+        \\  } external_scanner;
+        \\  const TSStateId *primary_state_ids;
         \\  const char *name;
-        \\  uint16_t kind;
-        \\  bool terminal;
-        \\  bool external;
-        \\} TSSymbolInfo;
+        \\  const TSSymbol *reserved_words;
+        \\  uint16_t max_reserved_word_set_size;
+        \\  uint32_t supertype_count;
+        \\  const TSSymbol *supertype_symbols;
+        \\  const TSMapSlice *supertype_map_slices;
+        \\  const TSSymbol *supertype_map_entries;
+        \\  TSLanguageMetadata metadata;
+        \\};
         \\
-        \\typedef struct {
-        \\  uint16_t language_version;
-        \\  uint16_t min_compatible_language_version;
-        \\  const char *target;
-        \\  const char *layer;
-        \\} TSCompatibilityInfo;
+        \\#define SMALL_STATE(id) ((id) - LARGE_STATE_COUNT)
+        \\#define STATE(id) id
+        \\#define ACTIONS(id) id
         \\
-        \\typedef struct {
-        \\  const TSActionEntry *actions;
-        \\  uint16_t action_count;
-        \\  const TSGotoEntry *gotos;
-        \\  uint16_t goto_count;
-        \\  const TSUnresolvedEntry *unresolved;
-        \\  uint16_t unresolved_count;
-        \\} TSStateTable;
+        \\#ifdef _MSC_VER
+        \\#define UNUSED __pragma(warning(suppress : 4101))
+        \\#else
+        \\#define UNUSED __attribute__((unused))
+        \\#endif
+        \\#define START_LEXER() \
+        \\  bool result = false; \
+        \\  bool skip = false; \
+        \\  UNUSED \
+        \\  bool eof = false; \
+        \\  int32_t lookahead; \
+        \\  lexer->result_symbol = 0; \
+        \\  goto start; \
+        \\  next_state: \
+        \\  lexer->advance(lexer, skip); \
+        \\  start: \
+        \\  skip = false; \
+        \\  lookahead = lexer->lookahead
+        \\#define ADVANCE(state_value) \
+        \\  do { state = state_value; goto next_state; } while (0)
+        \\#define ADVANCE_MAP(...) \
+        \\  do { \
+        \\    static const uint16_t map[] = { __VA_ARGS__ }; \
+        \\    for (uint32_t i = 0; i < sizeof(map) / sizeof(map[0]); i += 2) { \
+        \\      if (map[i] == lookahead) { \
+        \\        state = map[i + 1]; \
+        \\        goto next_state; \
+        \\      } \
+        \\    } \
+        \\  } while (0)
+        \\#define SKIP(state_value) \
+        \\  do { skip = true; state = state_value; goto next_state; } while (0)
+        \\#define ACCEPT_TOKEN(symbol_value) \
+        \\  do { result = true; lexer->result_symbol = symbol_value; lexer->mark_end(lexer); } while (0)
+        \\#define END_STATE() return result
         \\
-        \\typedef struct {
-        \\  bool blocked;
-        \\  uint16_t symbol_count;
-        \\  uint16_t state_count;
-        \\  uint16_t keyword_capture_token;
-        \\  const TSSymbolInfo *symbols;
-        \\  const TSStateTable *states;
-        \\  const TSCompatibilityInfo *compatibility;
-        \\} TSParser;
+        \\#define STATE_COUNT 7
+        \\#define LARGE_STATE_COUNT 2
+        \\#define SYMBOL_COUNT 6
+        \\#define TOKEN_COUNT 3
+        \\#define EXTERNAL_TOKEN_COUNT 0
+        \\#define PRODUCTION_ID_COUNT 3
+        \\#define FIELD_COUNT 1
+        \\#define ALIAS_COUNT 1
+        \\#define MAX_ALIAS_SEQUENCE_LENGTH 3
+        \\#define MAX_RESERVED_WORD_SET_SIZE 0
         \\
-        \\typedef struct {
-        \\  uint16_t action_count;
-        \\  uint16_t goto_count;
-        \\  uint16_t unresolved_count;
-        \\  bool has_unresolved;
-        \\} TSRuntimeStateInfo;
-        \\
-        \\typedef struct {
-        \\  bool blocked;
-        \\  bool has_unresolved_states;
-        \\  uint16_t state_count;
-        \\  const TSParser *parser;
-        \\  const TSRuntimeStateInfo *states;
-        \\} TSParserRuntime;
-        \\
-        \\typedef struct {
-        \\  const TSParser *parser;
-        \\  const TSParserRuntime *runtime;
-        \\  const TSCompatibilityInfo *compatibility;
-        \\} TSLanguage;
-        \\
-        \\static bool ts_string_eq(const char *a, const char *b) {
-        \\  if (!a || !b) return false;
-        \\  while (a[0] != 0 && b[0] != 0) {
-        \\    if (a[0] != b[0]) return false;
-        \\    a += 1;
-        \\    b += 1;
+        \\static bool ts_lex(TSLexer *lexer, TSStateId state) {
+        \\  START_LEXER();
+        \\  eof = lexer->eof(lexer);
+        \\  switch (state) {
+        \\    case 0:
+        \\      if (lookahead == 120) ADVANCE(1);
+        \\      END_STATE();
+        \\    case 1:
+        \\      ACCEPT_TOKEN(2);
+        \\      END_STATE();
+        \\    case 2:
+        \\      if (lookahead == 43) ADVANCE(3);
+        \\      END_STATE();
+        \\    case 3:
+        \\      ACCEPT_TOKEN(1);
+        \\      END_STATE();
+        \\    default:
+        \\      return false;
         \\  }
-        \\  return a[0] == b[0];
         \\}
         \\
-        \\static const TSCompatibilityInfo ts_compatibility = {
-        \\  .language_version = 15,
-        \\  .min_compatible_language_version = 13,
-        \\  .target = "tree-sitter-runtime-surface",
-        \\  .layer = "intermediate",
+        \\static const char * const ts_symbol_names[SYMBOL_COUNT] = {
+        \\  [0] = "end",
+        \\  [1] = "terminal:0",
+        \\  [2] = "terminal:1",
+        \\  [3] = "source_file",
+        \\  [4] = "expr",
+        \\  [5] = "rhs",
         \\};
         \\
-        \\static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {
-        \\  {
-        \\    .id = 0,
-        \\    .name = "non_terminal:0",
-        \\    .kind = 1,
-        \\    .terminal = false,
-        \\    .external = false,
-        \\  },
-        \\  {
-        \\    .id = 1,
-        \\    .name = "non_terminal:1",
-        \\    .kind = 1,
-        \\    .terminal = false,
-        \\    .external = false,
-        \\  },
-        \\  {
-        \\    .id = 2,
-        \\    .name = "terminal:0",
-        \\    .kind = 2,
-        \\    .terminal = true,
-        \\    .external = false,
-        \\  },
-        \\  {
-        \\    .id = 3,
-        \\    .name = "terminal:1",
-        \\    .kind = 2,
-        \\    .terminal = true,
-        \\    .external = false,
-        \\  },
+        \\static const TSSymbolMetadata ts_symbol_metadata[SYMBOL_COUNT] = {
+        \\  [0] = { .visible = false, .named = false, .supertype = false },
+        \\  [1] = { .visible = true, .named = false, .supertype = false },
+        \\  [2] = { .visible = true, .named = false, .supertype = false },
+        \\  [3] = { .visible = true, .named = true, .supertype = false },
+        \\  [4] = { .visible = true, .named = true, .supertype = false },
+        \\  [5] = { .visible = true, .named = true, .supertype = false },
         \\};
         \\
-        \\static const TSActionEntry ts_empty_actions[] = {
-        \\};
-        \\static const TSGotoEntry ts_empty_gotos[] = {
-        \\};
-        \\
-        \\/* state 0 */
-        \\static const TSActionEntry ts_state_0_actions[] = {
-        \\  { 3, 1, 3 },
-        \\};
-        \\static const TSGotoEntry ts_state_0_gotos[] = {
-        \\  { 0, 1 },
-        \\  { 1, 2 },
+        \\static const TSSymbol ts_symbol_map[SYMBOL_COUNT] = {
+        \\  [0] = 0,
+        \\  [1] = 1,
+        \\  [2] = 2,
+        \\  [3] = 3,
+        \\  [4] = 4,
+        \\  [5] = 5,
         \\};
         \\
-        \\/* state 1 */
-        \\
-        \\/* state 2 */
-        \\static const TSActionEntry ts_state_2_actions[] = {
-        \\  { 2, 1, 4 },
+        \\static const char * const ts_field_names[FIELD_COUNT + 1] = {
+        \\  [0] = "",
+        \\  [1] = "lhs",
         \\};
         \\
-        \\/* state 3 */
-        \\static const TSActionEntry ts_state_3_actions[] = {
-        \\  { 2, 2, 2 },
+        \\static const TSFieldMapEntry ts_field_map_entries[] = {
+        \\  [0] = { .field_id = 1, .child_index = 0, .inherited = false },
         \\};
         \\
-        \\/* state 4 */
-        \\static const TSActionEntry ts_state_4_actions[] = {
-        \\  { 3, 1, 1 },
+        \\static const TSMapSlice ts_field_map_slices[] = {
+        \\  [0] = { .index = 0, .length = 0 },
+        \\  [1] = { .index = 0, .length = 1 },
+        \\  [2] = { .index = 1, .length = 0 },
         \\};
-        \\static const TSGotoEntry ts_state_4_gotos[] = {
-        \\  { 1, 1 },
+        \\
+        \\static const uint16_t ts_non_terminal_alias_map[] = {
+        \\  4, 2,
+        \\    4,
+        \\    5,
+        \\  0,
         \\};
-        \\static const TSStateTable ts_states[TS_STATE_COUNT] = {
-        \\  {
-        \\    .actions = ts_state_0_actions,
-        \\    .action_count = 1,
-        \\    .gotos = ts_state_0_gotos,
-        \\    .goto_count = 2,
-        \\    .unresolved = 0,
-        \\    .unresolved_count = 0,
+        \\static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH > 0 ? MAX_ALIAS_SEQUENCE_LENGTH : 1] = {
+        \\  [0] = { 0, 0, 0 },
+        \\  [1] = { 0, 0, 5 },
+        \\  [2] = { 0, 0, 0 },
+        \\};
+        \\
+        \\static const TSStateId ts_primary_state_ids[STATE_COUNT] = {
+        \\  [0] = 0,
+        \\  [1] = 1,
+        \\  [2] = 2,
+        \\  [3] = 3,
+        \\  [4] = 4,
+        \\  [5] = 5,
+        \\  [6] = 3,
+        \\};
+        \\
+        \\static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {
+        \\  [STATE(0)] = {
+        \\    [3] = STATE(1),
+        \\    [4] = STATE(2),
+        \\    [2] = ACTIONS(1),
         \\  },
-        \\  {
-        \\    .actions = ts_empty_actions,
-        \\    .action_count = 0,
-        \\    .gotos = ts_empty_gotos,
-        \\    .goto_count = 0,
-        \\    .unresolved = 0,
-        \\    .unresolved_count = 0,
-        \\  },
-        \\  {
-        \\    .actions = ts_state_2_actions,
-        \\    .action_count = 1,
-        \\    .gotos = ts_empty_gotos,
-        \\    .goto_count = 0,
-        \\    .unresolved = 0,
-        \\    .unresolved_count = 0,
-        \\  },
-        \\  {
-        \\    .actions = ts_state_3_actions,
-        \\    .action_count = 1,
-        \\    .gotos = ts_empty_gotos,
-        \\    .goto_count = 0,
-        \\    .unresolved = 0,
-        \\    .unresolved_count = 0,
-        \\  },
-        \\  {
-        \\    .actions = ts_state_4_actions,
-        \\    .action_count = 1,
-        \\    .gotos = ts_state_4_gotos,
-        \\    .goto_count = 1,
-        \\    .unresolved = 0,
-        \\    .unresolved_count = 0,
+        \\  [STATE(1)] = {
+        \\    [0] = ACTIONS(3),
         \\  },
         \\};
         \\
-        \\#define TS_ALIAS_COUNT 0
-        \\static const TSAliasEntry *ts_alias_sequences = 0;
-        \\
-        \\static const TSParser ts_parser = {
-        \\  .blocked = false,
-        \\  .symbol_count = TS_SYMBOL_COUNT,
-        \\  .state_count = TS_STATE_COUNT,
-        \\  .keyword_capture_token = TS_KEYWORD_CAPTURE_TOKEN,
-        \\  .symbols = ts_symbols,
-        \\  .states = ts_states,
-        \\  .compatibility = &ts_compatibility,
+        \\static const uint16_t ts_small_parse_table[] = {
+        \\  [0] = 1,
+        \\  ACTIONS(5), 1, 1,
+        \\  [4] = 1,
+        \\  ACTIONS(7), 1, 1,
+        \\  [8] = 2,
+        \\  STATE(5), 1, 4,
+        \\  ACTIONS(9), 1, 2,
+        \\  [15] = 1,
+        \\  ACTIONS(11), 1, 0,
+        \\  [19] = 1,
+        \\  ACTIONS(7), 1, 0,
         \\};
         \\
-        \\static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {
-        \\  {
-        \\    .action_count = 1,
-        \\    .goto_count = 2,
-        \\    .unresolved_count = 0,
-        \\    .has_unresolved = false,
-        \\  },
-        \\  {
-        \\    .action_count = 0,
-        \\    .goto_count = 0,
-        \\    .unresolved_count = 0,
-        \\    .has_unresolved = false,
-        \\  },
-        \\  {
-        \\    .action_count = 1,
-        \\    .goto_count = 0,
-        \\    .unresolved_count = 0,
-        \\    .has_unresolved = false,
-        \\  },
-        \\  {
-        \\    .action_count = 1,
-        \\    .goto_count = 0,
-        \\    .unresolved_count = 0,
-        \\    .has_unresolved = false,
-        \\  },
-        \\  {
-        \\    .action_count = 1,
-        \\    .goto_count = 1,
-        \\    .unresolved_count = 0,
-        \\    .has_unresolved = false,
-        \\  },
+        \\static const uint32_t ts_small_parse_table_map[] = {
+        \\  [SMALL_STATE(2)] = 0,
+        \\  [SMALL_STATE(3)] = 4,
+        \\  [SMALL_STATE(4)] = 8,
+        \\  [SMALL_STATE(5)] = 15,
+        \\  [SMALL_STATE(6)] = 19,
         \\};
         \\
-        \\static const TSParserRuntime ts_runtime = {
-        \\  .blocked = false,
-        \\  .has_unresolved_states = false,
-        \\  .state_count = TS_STATE_COUNT,
-        \\  .parser = &ts_parser,
-        \\  .states = ts_runtime_states,
+        \\static const TSParseActionEntry ts_parse_actions[] = {
+        \\  [0] = { .entry = { .count = 0, .reusable = false } },
+        \\  [1] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 3, .extra = false, .repetition = false } } },
+        \\  [3] = { .entry = { .count = 1, .reusable = true } }, { .action = { .type = TSParseActionTypeAccept } },
+        \\  [5] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 4, .extra = false, .repetition = false } } },
+        \\  [7] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 1, .symbol = 4, .dynamic_precedence = 0, .production_id = 2 } } },
+        \\  [9] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 6, .extra = false, .repetition = false } } },
+        \\  [11] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 3, .symbol = 3, .dynamic_precedence = 0, .production_id = 1 } } },
+        \\};
+        \\
+        \\static const TSLexerMode ts_lex_modes[STATE_COUNT] = {
+        \\  [0] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [1] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [2] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [3] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [4] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [5] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [6] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\};
         \\
         \\static const TSLanguage ts_language = {
-        \\  .parser = &ts_parser,
-        \\  .runtime = &ts_runtime,
-        \\  .compatibility = &ts_compatibility,
+        \\  .abi_version = LANGUAGE_VERSION,
+        \\  .symbol_count = SYMBOL_COUNT,
+        \\  .alias_count = ALIAS_COUNT,
+        \\  .token_count = TOKEN_COUNT,
+        \\  .external_token_count = EXTERNAL_TOKEN_COUNT,
+        \\  .state_count = STATE_COUNT,
+        \\  .large_state_count = LARGE_STATE_COUNT,
+        \\  .production_id_count = PRODUCTION_ID_COUNT,
+        \\  .field_count = FIELD_COUNT,
+        \\  .max_alias_sequence_length = MAX_ALIAS_SEQUENCE_LENGTH,
+        \\  .parse_table = &ts_parse_table[0][0],
+        \\  .small_parse_table = ts_small_parse_table,
+        \\  .small_parse_table_map = ts_small_parse_table_map,
+        \\  .parse_actions = ts_parse_actions,
+        \\  .symbol_names = ts_symbol_names,
+        \\  .field_names = ts_field_names,
+        \\  .field_map_slices = ts_field_map_slices,
+        \\  .field_map_entries = ts_field_map_entries,
+        \\  .symbol_metadata = ts_symbol_metadata,
+        \\  .public_symbol_map = ts_symbol_map,
+        \\  .alias_map = ts_non_terminal_alias_map,
+        \\  .alias_sequences = &ts_alias_sequences[0][0],
+        \\  .lex_modes = ts_lex_modes,
+        \\  .lex_fn = ts_lex,
+        \\  .keyword_lex_fn = NULL,
+        \\  .keyword_capture_token = 0,
+        \\  .primary_state_ids = ts_primary_state_ids,
+        \\  .name = "parse_table_metadata",
+        \\  .supertype_count = 0,
+        \\  .max_reserved_word_set_size = 0,
+        \\  .metadata = { .major_version = 0, .minor_version = 0, .patch_version = 0 },
         \\};
         \\
-        \\const TSLanguage *ts_language_instance(void) {
+        \\const TSLanguage *tree_sitter_generated(void) {
         \\  return &ts_language;
-        \\}
-        \\
-        \\const TSParser *ts_language_parser(const TSLanguage *language) {
-        \\  return language ? language->parser : 0;
-        \\}
-        \\
-        \\const TSParserRuntime *ts_language_runtime(const TSLanguage *language) {
-        \\  return language ? language->runtime : 0;
-        \\}
-        \\
-        \\const TSCompatibilityInfo *ts_language_compatibility(const TSLanguage *language) {
-        \\  return language ? language->compatibility : 0;
-        \\}
-        \\
-        \\const TSParser *ts_parser_instance(void) {
-        \\  return ts_language_parser(ts_language_instance());
-        \\}
-        \\
-        \\const TSCompatibilityInfo *ts_parser_compatibility(void) {
-        \\  return ts_language_compatibility(ts_language_instance());
-        \\}
-        \\
-        \\uint16_t ts_parser_language_version(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->language_version : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_min_compatible_language_version(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->min_compatible_language_version : 0;
-        \\}
-        \\
-        \\const char *ts_parser_compatibility_target(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->target : 0;
-        \\}
-        \\
-        \\const char *ts_parser_compatibility_layer(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->layer : 0;
-        \\}
-        \\
-        \\const TSParserRuntime *ts_parser_runtime(void) {
-        \\  return ts_language_runtime(ts_language_instance());
-        \\}
-        \\
-        \\bool ts_parser_runtime_is_blocked(void) {
-        \\  const TSParserRuntime *runtime = ts_parser_runtime();
-        \\  return runtime ? runtime->blocked : false;
-        \\}
-        \\
-        \\bool ts_parser_runtime_has_unresolved_states(void) {
-        \\  const TSParserRuntime *runtime = ts_parser_runtime();
-        \\  return runtime ? runtime->has_unresolved_states : false;
-        \\}
-        \\
-        \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
-        \\  const TSParserRuntime *runtime = ts_parser_runtime();
-        \\  return runtime && state_id < runtime->state_count ? &runtime->states[state_id] : 0;
-        \\}
-        \\
-        \\bool ts_parser_runtime_state_has_unresolved(uint16_t state_id) {
-        \\  const TSRuntimeStateInfo *state = ts_parser_runtime_state(state_id);
-        \\  return state ? state->has_unresolved : false;
-        \\}
-        \\
-        \\const TSStateTable *ts_parser_state(uint16_t state_id) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser && state_id < parser->state_count ? &parser->states[state_id] : 0;
-        \\}
-        \\
-        \\bool ts_parser_is_blocked(void) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser ? parser->blocked : false;
-        \\}
-        \\
-        \\uint16_t ts_parser_symbol_count(void) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser ? parser->symbol_count : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_state_count(void) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser ? parser->state_count : 0;
-        \\}
-        \\
-        \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser && symbol_id < parser->symbol_count ? &parser->symbols[symbol_id] : 0;
-        \\}
-        \\
-        \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->name : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_symbol_id(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->id : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_symbol_kind(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->kind : 0;
-        \\}
-        \\
-        \\bool ts_parser_symbol_is_terminal(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->terminal : false;
-        \\}
-        \\
-        \\bool ts_parser_symbol_is_external(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->external : false;
-        \\}
-        \\
-        \\int16_t ts_parser_find_symbol_id(const char *symbol) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  uint16_t i = 0;
-        \\  while (parser && i < parser->symbol_count) {
-        \\    if (ts_string_eq(parser->symbols[i].name, symbol)) return (int16_t)i;
-        \\    i += 1;
-        \\  }
-        \\  return -1;
-        \\}
-        \\
-        \\const TSActionEntry *ts_parser_actions(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->actions : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_action_count(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->action_count : 0;
-        \\}
-        \\
-        \\const TSGotoEntry *ts_parser_gotos(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->gotos : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_goto_count(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->goto_count : 0;
-        \\}
-        \\
-        \\const TSUnresolvedEntry *ts_parser_unresolved(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->unresolved : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_unresolved_count(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->unresolved_count : 0;
-        \\}
-        \\
-        \\const TSActionEntry *ts_parser_action_at(uint16_t state_id, uint16_t index) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state && index < state->action_count ? &state->actions[index] : 0;
-        \\}
-        \\
-        \\const TSGotoEntry *ts_parser_goto_at(uint16_t state_id, uint16_t index) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state && index < state->goto_count ? &state->gotos[index] : 0;
-        \\}
-        \\
-        \\const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state && index < state->unresolved_count ? &state->unresolved[index] : 0;
-        \\}
-        \\
-        \\const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {
-        \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
-        \\}
-        \\
-        \\const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {
-        \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-        \\  if (!entry) return 0;
-        \\  switch (entry->kind) {
-        \\    case TS_ACTION_SHIFT: return "shift";
-        \\    case TS_ACTION_REDUCE: return "reduce";
-        \\    case TS_ACTION_ACCEPT: return "accept";
-        \\    default: return 0;
-        \\  }
-        \\}
-        \\
-        \\bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {
-        \\  const char *kind = ts_parser_action_kind(state_id, index);
-        \\  return kind && ts_string_eq(kind, "shift");
-        \\}
-        \\
-        \\bool ts_parser_action_is_reduce(uint16_t state_id, uint16_t index) {
-        \\  const char *kind = ts_parser_action_kind(state_id, index);
-        \\  return kind && ts_string_eq(kind, "reduce");
-        \\}
-        \\
-        \\bool ts_parser_action_is_accept(uint16_t state_id, uint16_t index) {
-        \\  const char *kind = ts_parser_action_kind(state_id, index);
-        \\  return kind && ts_string_eq(kind, "accept");
-        \\}
-        \\
-        \\uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {
-        \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-        \\  return entry ? entry->value : 0;
-        \\}
-        \\
-        \\const char *ts_parser_goto_symbol(uint16_t state_id, uint16_t index) {
-        \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
-        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_goto_target(uint16_t state_id, uint16_t index) {
-        \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
-        \\  return entry ? entry->state : 0;
-        \\}
-        \\
-        \\const char *ts_parser_unresolved_symbol(uint16_t state_id, uint16_t index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
-        \\}
-        \\
-        \\const char *ts_parser_unresolved_reason(uint16_t state_id, uint16_t index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-        \\  if (!entry) return 0;
-        \\  switch (entry->reason) {
-        \\    case TS_UNRESOLVED_SHIFT_REDUCE: return "shift_reduce";
-        \\    case TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED: return "reduce_reduce_deferred";
-        \\    default: return 0;
-        \\  }
-        \\}
-        \\
-        \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-        \\  return entry ? entry->candidate_count : 0;
-        \\}
-        \\
-        \\const TSCandidateEntry *ts_parser_unresolved_candidate_at(uint16_t state_id, uint16_t entry_index, uint16_t candidate_index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, entry_index);
-        \\  return entry && candidate_index < entry->candidate_count ? &entry->candidates[candidate_index] : 0;
-        \\}
-        \\
-        \\const TSActionEntry *ts_parser_find_action(uint16_t state_id, const char *symbol) {
-        \\  uint16_t count = ts_parser_action_count(state_id);
-        \\  uint16_t i = 0;
-        \\  while (i < count) {
-        \\    const TSActionEntry *entry = ts_parser_action_at(state_id, i);
-        \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
-        \\    i += 1;
-        \\  }
-        \\  return 0;
-        \\}
-        \\
-        \\const TSGotoEntry *ts_parser_find_goto(uint16_t state_id, const char *symbol) {
-        \\  uint16_t count = ts_parser_goto_count(state_id);
-        \\  uint16_t i = 0;
-        \\  while (i < count) {
-        \\    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);
-        \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
-        \\    i += 1;
-        \\  }
-        \\  return 0;
-        \\}
-        \\
-        \\const TSUnresolvedEntry *ts_parser_find_unresolved(uint16_t state_id, const char *symbol) {
-        \\  uint16_t count = ts_parser_unresolved_count(state_id);
-        \\  uint16_t i = 0;
-        \\  while (i < count) {
-        \\    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);
-        \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
-        \\    i += 1;
-        \\  }
-        \\  return 0;
-        \\}
-        \\
-        \\bool ts_parser_has_action(uint16_t state_id, const char *symbol) {
-        \\  return ts_parser_find_action(state_id, symbol) != 0;
-        \\}
-        \\
-        \\bool ts_parser_has_goto(uint16_t state_id, const char *symbol) {
-        \\  return ts_parser_find_goto(state_id, symbol) != 0;
-        \\}
-        \\
-        \\bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {
-        \\  return ts_parser_find_unresolved(state_id, symbol) != 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_alias_count(void) {
-        \\  return TS_ALIAS_COUNT;
-        \\}
-        \\
-        \\const TSAliasEntry *ts_parser_alias_at(uint16_t production_id, uint16_t step_index) {
-        \\  uint16_t i = 0;
-        \\  while (i < TS_ALIAS_COUNT) {
-        \\    if (ts_alias_sequences[i].production_id == production_id && ts_alias_sequences[i].step_index == step_index) return &ts_alias_sequences[i];
-        \\    i += 1;
-        \\  }
-        \\  return 0;
         \\}
         \\
         ,
@@ -1391,592 +1201,343 @@ pub fn parseTableConflictParserCDump() Fixture {
     return .{
         .name = "parse_table_conflict_parser_c_dump",
         .contents =
-        \\/* generated parser.c skeleton */
-        \\/* top-level layout: ts_language -> parser/runtime/compatibility */
+        \\/* generated parser.c */
+        \\/* tree-sitter runtime ABI layout */
         \\#include <stdbool.h>
         \\#include <stdint.h>
+        \\#include <stdlib.h>
         \\
-        \\#define TS_PARSER_BLOCKED true
-        \\#define TS_STATE_COUNT 6
-        \\#define TS_SYMBOL_COUNT 4
-        \\#define TS_KEYWORD_CAPTURE_TOKEN 0
+        \\#define LANGUAGE_VERSION 15
+        \\#define MIN_COMPATIBLE_LANGUAGE_VERSION 13
         \\
-        \\#define TS_LANGUAGE_VERSION 15
-        \\#define TS_MIN_COMPATIBLE_LANGUAGE_VERSION 13
-        \\#define TS_SYMBOL_KIND_NON_TERMINAL 1
-        \\#define TS_SYMBOL_KIND_TERMINAL 2
-        \\#define TS_SYMBOL_KIND_EXTERNAL 3
-        \\#define TS_ACTION_SHIFT 1
-        \\#define TS_ACTION_REDUCE 2
-        \\#define TS_ACTION_ACCEPT 3
-        \\#define TS_UNRESOLVED_SHIFT_REDUCE 1
-        \\#define TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED 2
+        \\typedef uint16_t TSStateId;
+        \\typedef uint16_t TSSymbol;
+        \\typedef uint16_t TSFieldId;
         \\
-        \\typedef struct { uint16_t symbol_id; uint16_t kind; uint16_t value; } TSActionEntry;
-        \\typedef struct { uint16_t symbol_id; uint16_t state; } TSGotoEntry;
-        \\typedef struct { uint16_t kind; uint16_t value; } TSCandidateEntry;
-        \\typedef struct { uint16_t symbol_id; uint16_t reason; uint16_t candidate_count; const TSCandidateEntry *candidates; } TSUnresolvedEntry;
-        \\typedef struct { uint16_t production_id; uint16_t step_index; const char *name; bool named; } TSAliasEntry;
+        \\typedef struct TSLanguage TSLanguage;
         \\
         \\typedef struct {
-        \\  uint16_t id;
+        \\  uint8_t major_version;
+        \\  uint8_t minor_version;
+        \\  uint8_t patch_version;
+        \\} TSLanguageMetadata;
+        \\
+        \\typedef struct {
+        \\  TSFieldId field_id;
+        \\  uint8_t child_index;
+        \\  bool inherited;
+        \\} TSFieldMapEntry;
+        \\
+        \\typedef struct {
+        \\  uint16_t index;
+        \\  uint16_t length;
+        \\} TSMapSlice;
+        \\
+        \\typedef struct {
+        \\  bool visible;
+        \\  bool named;
+        \\  bool supertype;
+        \\} TSSymbolMetadata;
+        \\
+        \\typedef struct TSLexer TSLexer;
+        \\struct TSLexer {
+        \\  int32_t lookahead;
+        \\  TSSymbol result_symbol;
+        \\  void (*advance)(TSLexer *, bool);
+        \\  void (*mark_end)(TSLexer *);
+        \\  uint32_t (*get_column)(TSLexer *);
+        \\  bool (*is_at_included_range_start)(const TSLexer *);
+        \\  bool (*eof)(const TSLexer *);
+        \\  void (*log)(const TSLexer *, const char *, ...);
+        \\};
+        \\
+        \\typedef enum {
+        \\  TSParseActionTypeShift,
+        \\  TSParseActionTypeReduce,
+        \\  TSParseActionTypeAccept,
+        \\  TSParseActionTypeRecover,
+        \\} TSParseActionType;
+        \\
+        \\typedef union {
+        \\  struct { uint8_t type; TSStateId state; bool extra; bool repetition; } shift;
+        \\  struct { uint8_t type; uint8_t child_count; TSSymbol symbol; int16_t dynamic_precedence; uint16_t production_id; } reduce;
+        \\  uint8_t type;
+        \\} TSParseAction;
+        \\
+        \\typedef struct {
+        \\  uint16_t lex_state;
+        \\  uint16_t external_lex_state;
+        \\  uint16_t reserved_word_set_id;
+        \\} TSLexerMode;
+        \\
+        \\typedef union {
+        \\  TSParseAction action;
+        \\  struct { uint8_t count; bool reusable; } entry;
+        \\} TSParseActionEntry;
+        \\
+        \\struct TSLanguage {
+        \\  uint32_t abi_version;
+        \\  uint32_t symbol_count;
+        \\  uint32_t alias_count;
+        \\  uint32_t token_count;
+        \\  uint32_t external_token_count;
+        \\  uint32_t state_count;
+        \\  uint32_t large_state_count;
+        \\  uint32_t production_id_count;
+        \\  uint32_t field_count;
+        \\  uint16_t max_alias_sequence_length;
+        \\  const uint16_t *parse_table;
+        \\  const uint16_t *small_parse_table;
+        \\  const uint32_t *small_parse_table_map;
+        \\  const TSParseActionEntry *parse_actions;
+        \\  const char * const *symbol_names;
+        \\  const char * const *field_names;
+        \\  const TSMapSlice *field_map_slices;
+        \\  const TSFieldMapEntry *field_map_entries;
+        \\  const TSSymbolMetadata *symbol_metadata;
+        \\  const TSSymbol *public_symbol_map;
+        \\  const uint16_t *alias_map;
+        \\  const TSSymbol *alias_sequences;
+        \\  const TSLexerMode *lex_modes;
+        \\  bool (*lex_fn)(TSLexer *, TSStateId);
+        \\  bool (*keyword_lex_fn)(TSLexer *, TSStateId);
+        \\  TSSymbol keyword_capture_token;
+        \\  struct {
+        \\    const bool *states;
+        \\    const TSSymbol *symbol_map;
+        \\    void *(*create)(void);
+        \\    void (*destroy)(void *);
+        \\    bool (*scan)(void *, TSLexer *, const bool *symbol_whitelist);
+        \\    unsigned (*serialize)(void *, char *);
+        \\    void (*deserialize)(void *, const char *, unsigned);
+        \\  } external_scanner;
+        \\  const TSStateId *primary_state_ids;
         \\  const char *name;
-        \\  uint16_t kind;
-        \\  bool terminal;
-        \\  bool external;
-        \\} TSSymbolInfo;
+        \\  const TSSymbol *reserved_words;
+        \\  uint16_t max_reserved_word_set_size;
+        \\  uint32_t supertype_count;
+        \\  const TSSymbol *supertype_symbols;
+        \\  const TSMapSlice *supertype_map_slices;
+        \\  const TSSymbol *supertype_map_entries;
+        \\  TSLanguageMetadata metadata;
+        \\};
         \\
-        \\typedef struct {
-        \\  uint16_t language_version;
-        \\  uint16_t min_compatible_language_version;
-        \\  const char *target;
-        \\  const char *layer;
-        \\} TSCompatibilityInfo;
+        \\#define SMALL_STATE(id) ((id) - LARGE_STATE_COUNT)
+        \\#define STATE(id) id
+        \\#define ACTIONS(id) id
         \\
-        \\typedef struct {
-        \\  const TSActionEntry *actions;
-        \\  uint16_t action_count;
-        \\  const TSGotoEntry *gotos;
-        \\  uint16_t goto_count;
-        \\  const TSUnresolvedEntry *unresolved;
-        \\  uint16_t unresolved_count;
-        \\} TSStateTable;
+        \\#ifdef _MSC_VER
+        \\#define UNUSED __pragma(warning(suppress : 4101))
+        \\#else
+        \\#define UNUSED __attribute__((unused))
+        \\#endif
+        \\#define START_LEXER() \
+        \\  bool result = false; \
+        \\  bool skip = false; \
+        \\  UNUSED \
+        \\  bool eof = false; \
+        \\  int32_t lookahead; \
+        \\  lexer->result_symbol = 0; \
+        \\  goto start; \
+        \\  next_state: \
+        \\  lexer->advance(lexer, skip); \
+        \\  start: \
+        \\  skip = false; \
+        \\  lookahead = lexer->lookahead
+        \\#define ADVANCE(state_value) \
+        \\  do { state = state_value; goto next_state; } while (0)
+        \\#define ADVANCE_MAP(...) \
+        \\  do { \
+        \\    static const uint16_t map[] = { __VA_ARGS__ }; \
+        \\    for (uint32_t i = 0; i < sizeof(map) / sizeof(map[0]); i += 2) { \
+        \\      if (map[i] == lookahead) { \
+        \\        state = map[i + 1]; \
+        \\        goto next_state; \
+        \\      } \
+        \\    } \
+        \\  } while (0)
+        \\#define SKIP(state_value) \
+        \\  do { skip = true; state = state_value; goto next_state; } while (0)
+        \\#define ACCEPT_TOKEN(symbol_value) \
+        \\  do { result = true; lexer->result_symbol = symbol_value; lexer->mark_end(lexer); } while (0)
+        \\#define END_STATE() return result
         \\
-        \\typedef struct {
-        \\  bool blocked;
-        \\  uint16_t symbol_count;
-        \\  uint16_t state_count;
-        \\  uint16_t keyword_capture_token;
-        \\  const TSSymbolInfo *symbols;
-        \\  const TSStateTable *states;
-        \\  const TSCompatibilityInfo *compatibility;
-        \\} TSParser;
+        \\#define STATE_COUNT 6
+        \\#define LARGE_STATE_COUNT 2
+        \\#define SYMBOL_COUNT 5
+        \\#define TOKEN_COUNT 3
+        \\#define EXTERNAL_TOKEN_COUNT 0
+        \\#define PRODUCTION_ID_COUNT 4
+        \\#define FIELD_COUNT 0
+        \\#define ALIAS_COUNT 0
+        \\#define MAX_ALIAS_SEQUENCE_LENGTH 0
+        \\#define MAX_RESERVED_WORD_SET_SIZE 0
         \\
-        \\typedef struct {
-        \\  uint16_t action_count;
-        \\  uint16_t goto_count;
-        \\  uint16_t unresolved_count;
-        \\  bool has_unresolved;
-        \\} TSRuntimeStateInfo;
-        \\
-        \\typedef struct {
-        \\  bool blocked;
-        \\  bool has_unresolved_states;
-        \\  uint16_t state_count;
-        \\  const TSParser *parser;
-        \\  const TSRuntimeStateInfo *states;
-        \\} TSParserRuntime;
-        \\
-        \\typedef struct {
-        \\  const TSParser *parser;
-        \\  const TSParserRuntime *runtime;
-        \\  const TSCompatibilityInfo *compatibility;
-        \\} TSLanguage;
-        \\
-        \\static bool ts_string_eq(const char *a, const char *b) {
-        \\  if (!a || !b) return false;
-        \\  while (a[0] != 0 && b[0] != 0) {
-        \\    if (a[0] != b[0]) return false;
-        \\    a += 1;
-        \\    b += 1;
+        \\static bool ts_lex(TSLexer *lexer, TSStateId state) {
+        \\  START_LEXER();
+        \\  eof = lexer->eof(lexer);
+        \\  switch (state) {
+        \\    case 0:
+        \\      if (lookahead == 120) ADVANCE(1);
+        \\      END_STATE();
+        \\    case 1:
+        \\      ACCEPT_TOKEN(2);
+        \\      END_STATE();
+        \\    case 2:
+        \\      if (lookahead == 43) ADVANCE(3);
+        \\      END_STATE();
+        \\    case 3:
+        \\      ACCEPT_TOKEN(1);
+        \\      END_STATE();
+        \\    default:
+        \\      return false;
         \\  }
-        \\  return a[0] == b[0];
         \\}
         \\
-        \\static const TSCompatibilityInfo ts_compatibility = {
-        \\  .language_version = 15,
-        \\  .min_compatible_language_version = 13,
-        \\  .target = "tree-sitter-runtime-surface",
-        \\  .layer = "intermediate",
+        \\static const char * const ts_symbol_names[SYMBOL_COUNT] = {
+        \\  [0] = "end",
+        \\  [1] = "terminal:0",
+        \\  [2] = "terminal:1",
+        \\  [3] = "source_file",
+        \\  [4] = "expr",
         \\};
         \\
-        \\static const TSSymbolInfo ts_symbols[TS_SYMBOL_COUNT] = {
-        \\  {
-        \\    .id = 0,
-        \\    .name = "non_terminal:0",
-        \\    .kind = 1,
-        \\    .terminal = false,
-        \\    .external = false,
-        \\  },
-        \\  {
-        \\    .id = 1,
-        \\    .name = "non_terminal:1",
-        \\    .kind = 1,
-        \\    .terminal = false,
-        \\    .external = false,
-        \\  },
-        \\  {
-        \\    .id = 2,
-        \\    .name = "terminal:0",
-        \\    .kind = 2,
-        \\    .terminal = true,
-        \\    .external = false,
-        \\  },
-        \\  {
-        \\    .id = 3,
-        \\    .name = "terminal:1",
-        \\    .kind = 2,
-        \\    .terminal = true,
-        \\    .external = false,
-        \\  },
+        \\static const TSSymbolMetadata ts_symbol_metadata[SYMBOL_COUNT] = {
+        \\  [0] = { .visible = false, .named = false, .supertype = false },
+        \\  [1] = { .visible = true, .named = false, .supertype = false },
+        \\  [2] = { .visible = true, .named = false, .supertype = false },
+        \\  [3] = { .visible = true, .named = true, .supertype = false },
+        \\  [4] = { .visible = true, .named = true, .supertype = false },
         \\};
         \\
-        \\static const TSActionEntry ts_empty_actions[] = {
-        \\};
-        \\static const TSGotoEntry ts_empty_gotos[] = {
-        \\};
-        \\
-        \\/* state 0 */
-        \\static const TSActionEntry ts_state_0_actions[] = {
-        \\  { 3, 1, 3 },
-        \\};
-        \\static const TSGotoEntry ts_state_0_gotos[] = {
-        \\  { 0, 1 },
-        \\  { 1, 2 },
+        \\static const TSSymbol ts_symbol_map[SYMBOL_COUNT] = {
+        \\  [0] = 0,
+        \\  [1] = 1,
+        \\  [2] = 2,
+        \\  [3] = 3,
+        \\  [4] = 4,
         \\};
         \\
-        \\/* state 1 */
-        \\
-        \\/* state 2 */
-        \\static const TSActionEntry ts_state_2_actions[] = {
-        \\  { 2, 1, 4 },
+        \\static const char * const ts_field_names[FIELD_COUNT + 1] = {
+        \\  [0] = "",
         \\};
         \\
-        \\/* state 3 */
-        \\static const TSActionEntry ts_state_3_actions[] = {
-        \\  { 2, 2, 3 },
+        \\static const TSFieldMapEntry ts_field_map_entries[] = {
+        \\  { 0 },
         \\};
         \\
-        \\/* state 4 */
-        \\static const TSGotoEntry ts_state_4_gotos[] = {
-        \\  { 1, 5 },
+        \\static const TSMapSlice ts_field_map_slices[] = {
+        \\  [0] = { .index = 0, .length = 0 },
+        \\  [1] = { .index = 0, .length = 0 },
+        \\  [2] = { .index = 0, .length = 0 },
+        \\  [3] = { .index = 0, .length = 0 },
         \\};
         \\
-        \\/* state 5 */
-        \\static const TSCandidateEntry ts_state_5_unresolved_0_candidates[] = {
-        \\  { 1, 4 },
-        \\  { 2, 2 },
+        \\static const uint16_t ts_non_terminal_alias_map[] = {
+        \\  0,
         \\};
-        \\static const TSUnresolvedEntry ts_state_5_unresolved[] = {
-        \\  { 2, 1, 2, ts_state_5_unresolved_0_candidates },
+        \\static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH > 0 ? MAX_ALIAS_SEQUENCE_LENGTH : 1] = {
+        \\  [0] = { 0 },
+        \\  [1] = { 0 },
+        \\  [2] = { 0 },
+        \\  [3] = { 0 },
         \\};
-        \\static const TSStateTable ts_states[TS_STATE_COUNT] = {
-        \\  {
-        \\    .actions = ts_state_0_actions,
-        \\    .action_count = 1,
-        \\    .gotos = ts_state_0_gotos,
-        \\    .goto_count = 2,
-        \\    .unresolved = 0,
-        \\    .unresolved_count = 0,
+        \\
+        \\static const TSStateId ts_primary_state_ids[STATE_COUNT] = {
+        \\  [0] = 0,
+        \\  [1] = 1,
+        \\  [2] = 2,
+        \\  [3] = 3,
+        \\  [4] = 4,
+        \\  [5] = 5,
+        \\};
+        \\
+        \\static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {
+        \\  [STATE(0)] = {
+        \\    [3] = STATE(1),
+        \\    [4] = STATE(2),
+        \\    [2] = ACTIONS(1),
         \\  },
-        \\  {
-        \\    .actions = ts_empty_actions,
-        \\    .action_count = 0,
-        \\    .gotos = ts_empty_gotos,
-        \\    .goto_count = 0,
-        \\    .unresolved = 0,
-        \\    .unresolved_count = 0,
-        \\  },
-        \\  {
-        \\    .actions = ts_state_2_actions,
-        \\    .action_count = 1,
-        \\    .gotos = ts_empty_gotos,
-        \\    .goto_count = 0,
-        \\    .unresolved = 0,
-        \\    .unresolved_count = 0,
-        \\  },
-        \\  {
-        \\    .actions = ts_state_3_actions,
-        \\    .action_count = 1,
-        \\    .gotos = ts_empty_gotos,
-        \\    .goto_count = 0,
-        \\    .unresolved = 0,
-        \\    .unresolved_count = 0,
-        \\  },
-        \\  {
-        \\    .actions = ts_state_0_actions,
-        \\    .action_count = 1,
-        \\    .gotos = ts_state_4_gotos,
-        \\    .goto_count = 1,
-        \\    .unresolved = 0,
-        \\    .unresolved_count = 0,
-        \\  },
-        \\  {
-        \\    .actions = ts_empty_actions,
-        \\    .action_count = 0,
-        \\    .gotos = ts_empty_gotos,
-        \\    .goto_count = 0,
-        \\    .unresolved = ts_state_5_unresolved,
-        \\    .unresolved_count = 1,
+        \\  [STATE(1)] = {
+        \\    [0] = ACTIONS(3),
         \\  },
         \\};
         \\
-        \\#define TS_ALIAS_COUNT 0
-        \\static const TSAliasEntry *ts_alias_sequences = 0;
-        \\
-        \\static const TSParser ts_parser = {
-        \\  .blocked = true,
-        \\  .symbol_count = TS_SYMBOL_COUNT,
-        \\  .state_count = TS_STATE_COUNT,
-        \\  .keyword_capture_token = TS_KEYWORD_CAPTURE_TOKEN,
-        \\  .symbols = ts_symbols,
-        \\  .states = ts_states,
-        \\  .compatibility = &ts_compatibility,
+        \\static const uint16_t ts_small_parse_table[] = {
+        \\  [0] = 2,
+        \\  ACTIONS(5), 1, 0,
+        \\  ACTIONS(7), 1, 1,
+        \\  [7] = 1,
+        \\  ACTIONS(9), 2, 0, 1,
+        \\  [12] = 2,
+        \\  STATE(5), 1, 4,
+        \\  ACTIONS(1), 1, 2,
+        \\  [19] = 1,
+        \\  ACTIONS(11), 1, 0,
         \\};
         \\
-        \\static const TSRuntimeStateInfo ts_runtime_states[TS_STATE_COUNT] = {
-        \\  {
-        \\    .action_count = 1,
-        \\    .goto_count = 2,
-        \\    .unresolved_count = 0,
-        \\    .has_unresolved = false,
-        \\  },
-        \\  {
-        \\    .action_count = 0,
-        \\    .goto_count = 0,
-        \\    .unresolved_count = 0,
-        \\    .has_unresolved = false,
-        \\  },
-        \\  {
-        \\    .action_count = 1,
-        \\    .goto_count = 0,
-        \\    .unresolved_count = 0,
-        \\    .has_unresolved = false,
-        \\  },
-        \\  {
-        \\    .action_count = 1,
-        \\    .goto_count = 0,
-        \\    .unresolved_count = 0,
-        \\    .has_unresolved = false,
-        \\  },
-        \\  {
-        \\    .action_count = 1,
-        \\    .goto_count = 1,
-        \\    .unresolved_count = 0,
-        \\    .has_unresolved = false,
-        \\  },
-        \\  {
-        \\    .action_count = 0,
-        \\    .goto_count = 0,
-        \\    .unresolved_count = 1,
-        \\    .has_unresolved = true,
-        \\  },
+        \\static const uint32_t ts_small_parse_table_map[] = {
+        \\  [SMALL_STATE(2)] = 0,
+        \\  [SMALL_STATE(3)] = 7,
+        \\  [SMALL_STATE(4)] = 12,
+        \\  [SMALL_STATE(5)] = 19,
         \\};
         \\
-        \\static const TSParserRuntime ts_runtime = {
-        \\  .blocked = true,
-        \\  .has_unresolved_states = true,
-        \\  .state_count = TS_STATE_COUNT,
-        \\  .parser = &ts_parser,
-        \\  .states = ts_runtime_states,
+        \\static const TSParseActionEntry ts_parse_actions[] = {
+        \\  [0] = { .entry = { .count = 0, .reusable = false } },
+        \\  [1] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 3, .extra = false, .repetition = false } } },
+        \\  [3] = { .entry = { .count = 1, .reusable = true } }, { .action = { .type = TSParseActionTypeAccept } },
+        \\  [5] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 1, .symbol = 3, .dynamic_precedence = 0, .production_id = 1 } } },
+        \\  [7] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 4, .extra = false, .repetition = false } } },
+        \\  [9] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 1, .symbol = 4, .dynamic_precedence = 0, .production_id = 3 } } },
+        \\  [11] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 3, .symbol = 4, .dynamic_precedence = 0, .production_id = 2 } } },
+        \\};
+        \\
+        \\static const TSLexerMode ts_lex_modes[STATE_COUNT] = {
+        \\  [0] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [1] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [2] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [3] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [4] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [5] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\};
         \\
         \\static const TSLanguage ts_language = {
-        \\  .parser = &ts_parser,
-        \\  .runtime = &ts_runtime,
-        \\  .compatibility = &ts_compatibility,
+        \\  .abi_version = LANGUAGE_VERSION,
+        \\  .symbol_count = SYMBOL_COUNT,
+        \\  .alias_count = ALIAS_COUNT,
+        \\  .token_count = TOKEN_COUNT,
+        \\  .external_token_count = EXTERNAL_TOKEN_COUNT,
+        \\  .state_count = STATE_COUNT,
+        \\  .large_state_count = LARGE_STATE_COUNT,
+        \\  .production_id_count = PRODUCTION_ID_COUNT,
+        \\  .field_count = FIELD_COUNT,
+        \\  .max_alias_sequence_length = MAX_ALIAS_SEQUENCE_LENGTH,
+        \\  .parse_table = &ts_parse_table[0][0],
+        \\  .small_parse_table = ts_small_parse_table,
+        \\  .small_parse_table_map = ts_small_parse_table_map,
+        \\  .parse_actions = ts_parse_actions,
+        \\  .symbol_names = ts_symbol_names,
+        \\  .field_names = ts_field_names,
+        \\  .field_map_slices = ts_field_map_slices,
+        \\  .field_map_entries = ts_field_map_entries,
+        \\  .symbol_metadata = ts_symbol_metadata,
+        \\  .public_symbol_map = ts_symbol_map,
+        \\  .alias_map = ts_non_terminal_alias_map,
+        \\  .alias_sequences = &ts_alias_sequences[0][0],
+        \\  .lex_modes = ts_lex_modes,
+        \\  .lex_fn = ts_lex,
+        \\  .keyword_lex_fn = NULL,
+        \\  .keyword_capture_token = 0,
+        \\  .primary_state_ids = ts_primary_state_ids,
+        \\  .name = "parse_table_conflict",
+        \\  .supertype_count = 0,
+        \\  .max_reserved_word_set_size = 0,
+        \\  .metadata = { .major_version = 0, .minor_version = 0, .patch_version = 0 },
         \\};
         \\
-        \\const TSLanguage *ts_language_instance(void) {
+        \\const TSLanguage *tree_sitter_generated(void) {
         \\  return &ts_language;
-        \\}
-        \\
-        \\const TSParser *ts_language_parser(const TSLanguage *language) {
-        \\  return language ? language->parser : 0;
-        \\}
-        \\
-        \\const TSParserRuntime *ts_language_runtime(const TSLanguage *language) {
-        \\  return language ? language->runtime : 0;
-        \\}
-        \\
-        \\const TSCompatibilityInfo *ts_language_compatibility(const TSLanguage *language) {
-        \\  return language ? language->compatibility : 0;
-        \\}
-        \\
-        \\const TSParser *ts_parser_instance(void) {
-        \\  return ts_language_parser(ts_language_instance());
-        \\}
-        \\
-        \\const TSCompatibilityInfo *ts_parser_compatibility(void) {
-        \\  return ts_language_compatibility(ts_language_instance());
-        \\}
-        \\
-        \\uint16_t ts_parser_language_version(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->language_version : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_min_compatible_language_version(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->min_compatible_language_version : 0;
-        \\}
-        \\
-        \\const char *ts_parser_compatibility_target(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->target : 0;
-        \\}
-        \\
-        \\const char *ts_parser_compatibility_layer(void) {
-        \\  const TSCompatibilityInfo *compatibility = ts_parser_compatibility();
-        \\  return compatibility ? compatibility->layer : 0;
-        \\}
-        \\
-        \\const TSParserRuntime *ts_parser_runtime(void) {
-        \\  return ts_language_runtime(ts_language_instance());
-        \\}
-        \\
-        \\bool ts_parser_runtime_is_blocked(void) {
-        \\  const TSParserRuntime *runtime = ts_parser_runtime();
-        \\  return runtime ? runtime->blocked : false;
-        \\}
-        \\
-        \\bool ts_parser_runtime_has_unresolved_states(void) {
-        \\  const TSParserRuntime *runtime = ts_parser_runtime();
-        \\  return runtime ? runtime->has_unresolved_states : false;
-        \\}
-        \\
-        \\const TSRuntimeStateInfo *ts_parser_runtime_state(uint16_t state_id) {
-        \\  const TSParserRuntime *runtime = ts_parser_runtime();
-        \\  return runtime && state_id < runtime->state_count ? &runtime->states[state_id] : 0;
-        \\}
-        \\
-        \\bool ts_parser_runtime_state_has_unresolved(uint16_t state_id) {
-        \\  const TSRuntimeStateInfo *state = ts_parser_runtime_state(state_id);
-        \\  return state ? state->has_unresolved : false;
-        \\}
-        \\
-        \\const TSStateTable *ts_parser_state(uint16_t state_id) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser && state_id < parser->state_count ? &parser->states[state_id] : 0;
-        \\}
-        \\
-        \\bool ts_parser_is_blocked(void) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser ? parser->blocked : false;
-        \\}
-        \\
-        \\uint16_t ts_parser_symbol_count(void) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser ? parser->symbol_count : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_state_count(void) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser ? parser->state_count : 0;
-        \\}
-        \\
-        \\const TSSymbolInfo *ts_parser_symbol(uint16_t symbol_id) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  return parser && symbol_id < parser->symbol_count ? &parser->symbols[symbol_id] : 0;
-        \\}
-        \\
-        \\const char *ts_parser_symbol_name(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->name : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_symbol_id(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->id : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_symbol_kind(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->kind : 0;
-        \\}
-        \\
-        \\bool ts_parser_symbol_is_terminal(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->terminal : false;
-        \\}
-        \\
-        \\bool ts_parser_symbol_is_external(uint16_t symbol_id) {
-        \\  const TSSymbolInfo *symbol = ts_parser_symbol(symbol_id);
-        \\  return symbol ? symbol->external : false;
-        \\}
-        \\
-        \\int16_t ts_parser_find_symbol_id(const char *symbol) {
-        \\  const TSParser *parser = ts_parser_instance();
-        \\  uint16_t i = 0;
-        \\  while (parser && i < parser->symbol_count) {
-        \\    if (ts_string_eq(parser->symbols[i].name, symbol)) return (int16_t)i;
-        \\    i += 1;
-        \\  }
-        \\  return -1;
-        \\}
-        \\
-        \\const TSActionEntry *ts_parser_actions(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->actions : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_action_count(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->action_count : 0;
-        \\}
-        \\
-        \\const TSGotoEntry *ts_parser_gotos(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->gotos : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_goto_count(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->goto_count : 0;
-        \\}
-        \\
-        \\const TSUnresolvedEntry *ts_parser_unresolved(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->unresolved : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_unresolved_count(uint16_t state_id) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state ? state->unresolved_count : 0;
-        \\}
-        \\
-        \\const TSActionEntry *ts_parser_action_at(uint16_t state_id, uint16_t index) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state && index < state->action_count ? &state->actions[index] : 0;
-        \\}
-        \\
-        \\const TSGotoEntry *ts_parser_goto_at(uint16_t state_id, uint16_t index) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state && index < state->goto_count ? &state->gotos[index] : 0;
-        \\}
-        \\
-        \\const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {
-        \\  const TSStateTable *state = ts_parser_state(state_id);
-        \\  return state && index < state->unresolved_count ? &state->unresolved[index] : 0;
-        \\}
-        \\
-        \\const char *ts_parser_action_symbol(uint16_t state_id, uint16_t index) {
-        \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
-        \\}
-        \\
-        \\const char *ts_parser_action_kind(uint16_t state_id, uint16_t index) {
-        \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-        \\  if (!entry) return 0;
-        \\  switch (entry->kind) {
-        \\    case TS_ACTION_SHIFT: return "shift";
-        \\    case TS_ACTION_REDUCE: return "reduce";
-        \\    case TS_ACTION_ACCEPT: return "accept";
-        \\    default: return 0;
-        \\  }
-        \\}
-        \\
-        \\bool ts_parser_action_is_shift(uint16_t state_id, uint16_t index) {
-        \\  const char *kind = ts_parser_action_kind(state_id, index);
-        \\  return kind && ts_string_eq(kind, "shift");
-        \\}
-        \\
-        \\bool ts_parser_action_is_reduce(uint16_t state_id, uint16_t index) {
-        \\  const char *kind = ts_parser_action_kind(state_id, index);
-        \\  return kind && ts_string_eq(kind, "reduce");
-        \\}
-        \\
-        \\bool ts_parser_action_is_accept(uint16_t state_id, uint16_t index) {
-        \\  const char *kind = ts_parser_action_kind(state_id, index);
-        \\  return kind && ts_string_eq(kind, "accept");
-        \\}
-        \\
-        \\uint16_t ts_parser_action_value(uint16_t state_id, uint16_t index) {
-        \\  const TSActionEntry *entry = ts_parser_action_at(state_id, index);
-        \\  return entry ? entry->value : 0;
-        \\}
-        \\
-        \\const char *ts_parser_goto_symbol(uint16_t state_id, uint16_t index) {
-        \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
-        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_goto_target(uint16_t state_id, uint16_t index) {
-        \\  const TSGotoEntry *entry = ts_parser_goto_at(state_id, index);
-        \\  return entry ? entry->state : 0;
-        \\}
-        \\
-        \\const char *ts_parser_unresolved_symbol(uint16_t state_id, uint16_t index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-        \\  return entry ? ts_parser_symbol_name(entry->symbol_id) : 0;
-        \\}
-        \\
-        \\const char *ts_parser_unresolved_reason(uint16_t state_id, uint16_t index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-        \\  if (!entry) return 0;
-        \\  switch (entry->reason) {
-        \\    case TS_UNRESOLVED_SHIFT_REDUCE: return "shift_reduce";
-        \\    case TS_UNRESOLVED_REDUCE_REDUCE_DEFERRED: return "reduce_reduce_deferred";
-        \\    default: return 0;
-        \\  }
-        \\}
-        \\
-        \\uint16_t ts_parser_unresolved_candidates(uint16_t state_id, uint16_t index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, index);
-        \\  return entry ? entry->candidate_count : 0;
-        \\}
-        \\
-        \\const TSCandidateEntry *ts_parser_unresolved_candidate_at(uint16_t state_id, uint16_t entry_index, uint16_t candidate_index) {
-        \\  const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, entry_index);
-        \\  return entry && candidate_index < entry->candidate_count ? &entry->candidates[candidate_index] : 0;
-        \\}
-        \\
-        \\const TSActionEntry *ts_parser_find_action(uint16_t state_id, const char *symbol) {
-        \\  uint16_t count = ts_parser_action_count(state_id);
-        \\  uint16_t i = 0;
-        \\  while (i < count) {
-        \\    const TSActionEntry *entry = ts_parser_action_at(state_id, i);
-        \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
-        \\    i += 1;
-        \\  }
-        \\  return 0;
-        \\}
-        \\
-        \\const TSGotoEntry *ts_parser_find_goto(uint16_t state_id, const char *symbol) {
-        \\  uint16_t count = ts_parser_goto_count(state_id);
-        \\  uint16_t i = 0;
-        \\  while (i < count) {
-        \\    const TSGotoEntry *entry = ts_parser_goto_at(state_id, i);
-        \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
-        \\    i += 1;
-        \\  }
-        \\  return 0;
-        \\}
-        \\
-        \\const TSUnresolvedEntry *ts_parser_find_unresolved(uint16_t state_id, const char *symbol) {
-        \\  uint16_t count = ts_parser_unresolved_count(state_id);
-        \\  uint16_t i = 0;
-        \\  while (i < count) {
-        \\    const TSUnresolvedEntry *entry = ts_parser_unresolved_at(state_id, i);
-        \\    if (entry && ts_string_eq(ts_parser_symbol_name(entry->symbol_id), symbol)) return entry;
-        \\    i += 1;
-        \\  }
-        \\  return 0;
-        \\}
-        \\
-        \\bool ts_parser_has_action(uint16_t state_id, const char *symbol) {
-        \\  return ts_parser_find_action(state_id, symbol) != 0;
-        \\}
-        \\
-        \\bool ts_parser_has_goto(uint16_t state_id, const char *symbol) {
-        \\  return ts_parser_find_goto(state_id, symbol) != 0;
-        \\}
-        \\
-        \\bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {
-        \\  return ts_parser_find_unresolved(state_id, symbol) != 0;
-        \\}
-        \\
-        \\uint16_t ts_parser_alias_count(void) {
-        \\  return TS_ALIAS_COUNT;
-        \\}
-        \\
-        \\const TSAliasEntry *ts_parser_alias_at(uint16_t production_id, uint16_t step_index) {
-        \\  uint16_t i = 0;
-        \\  while (i < TS_ALIAS_COUNT) {
-        \\    if (ts_alias_sequences[i].production_id == production_id && ts_alias_sequences[i].step_index == step_index) return &ts_alias_sequences[i];
-        \\    i += 1;
-        \\  }
-        \\  return 0;
         \\}
         \\
         ,
@@ -1993,13 +1554,16 @@ pub fn parseTableConflictActionTableDump() Fixture {
         \\
         \\state 1
         \\  actions:
+        \\    end => accept
         \\
         \\state 2
         \\  actions:
+        \\    end => reduce 1
         \\    terminal:0 => shift 4
         \\
         \\state 3
         \\  actions:
+        \\    end => reduce 3
         \\    terminal:0 => reduce 3
         \\
         \\state 4
@@ -2008,6 +1572,7 @@ pub fn parseTableConflictActionTableDump() Fixture {
         \\
         \\state 5
         \\  actions:
+        \\    end => reduce 2
         \\    terminal:0 => shift 4
         \\    terminal:0 => reduce 2
         \\  conflicts:
@@ -2030,14 +1595,20 @@ pub fn parseTableConflictGroupedActionTableDump() Fixture {
         \\
         \\state 1
         \\  actions:
+        \\    end:
+        \\      accept
         \\
         \\state 2
         \\  actions:
+        \\    end:
+        \\      reduce 1
         \\    terminal:0:
         \\      shift 4
         \\
         \\state 3
         \\  actions:
+        \\    end:
+        \\      reduce 3
         \\    terminal:0:
         \\      reduce 3
         \\
@@ -2048,6 +1619,8 @@ pub fn parseTableConflictGroupedActionTableDump() Fixture {
         \\
         \\state 5
         \\  actions:
+        \\    end:
+        \\      reduce 2
         \\    terminal:0:
         \\      shift 4
         \\      reduce 2
@@ -2071,12 +1644,18 @@ pub fn parseTableTinyGroupedActionTableDump() Fixture {
         \\
         \\state 1
         \\  actions:
+        \\    end:
+        \\      accept
         \\
         \\state 2
         \\  actions:
+        \\    end:
+        \\      reduce 1
         \\
         \\state 3
         \\  actions:
+        \\    end:
+        \\      reduce 2
         \\
         ,
     };
@@ -2093,6 +1672,8 @@ pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
         \\
         \\state 1
         \\  actions:
+        \\    end:
+        \\      accept
         \\
         \\state 2
         \\  actions:
@@ -2121,11 +1702,15 @@ pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
         \\
         \\state 6
         \\  actions:
+        \\    end:
+        \\      reduce 6
         \\    terminal:0:
         \\      reduce 6
         \\
         \\state 7
         \\  actions:
+        \\    end:
+        \\      reduce 1
         \\
         ,
     };
@@ -2141,6 +1726,7 @@ pub fn parseTableReduceReduceActionTableDump() Fixture {
         \\
         \\state 1
         \\  actions:
+        \\    end => accept
         \\
         \\state 2
         \\  actions:
@@ -2165,10 +1751,12 @@ pub fn parseTableReduceReduceActionTableDump() Fixture {
         \\
         \\state 6
         \\  actions:
+        \\    end => reduce 6
         \\    terminal:0 => reduce 6
         \\
         \\state 7
         \\  actions:
+        \\    end => reduce 1
         \\
         ,
     };
@@ -2185,6 +1773,8 @@ pub fn parseTableMetadataGroupedActionTableDump() Fixture {
         \\
         \\state 1
         \\  actions:
+        \\    end:
+        \\      accept
         \\
         \\state 2
         \\  actions:
@@ -2203,9 +1793,13 @@ pub fn parseTableMetadataGroupedActionTableDump() Fixture {
         \\
         \\state 5
         \\  actions:
+        \\    end:
+        \\      reduce 1
         \\
         \\state 6
         \\  actions:
+        \\    end:
+        \\      reduce 2
         \\
         ,
     };
@@ -2221,6 +1815,7 @@ pub fn parseTableMetadataActionTableDump() Fixture {
         \\
         \\state 1
         \\  actions:
+        \\    end => accept
         \\
         \\state 2
         \\  actions:
@@ -2236,9 +1831,11 @@ pub fn parseTableMetadataActionTableDump() Fixture {
         \\
         \\state 5
         \\  actions:
+        \\    end => reduce 1
         \\
         \\state 6
         \\  actions:
+        \\    end => reduce 2
         \\
         ,
     };
@@ -2632,13 +2229,16 @@ pub fn parseTablePrecedenceResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
+        \\    end: reduce 1
         \\    terminal:0: shift 4
         \\
         \\state 3
         \\  resolved_actions:
+        \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
         \\state 4
@@ -2647,6 +2247,7 @@ pub fn parseTablePrecedenceResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
+        \\    end: reduce 2
         \\    terminal:0: reduce 2
         \\
         ,
@@ -2663,13 +2264,16 @@ pub fn parseTableNamedPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
+        \\    end: reduce 1
         \\    terminal:1: shift 5
         \\
         \\state 3
         \\  resolved_actions:
+        \\    end: reduce 3
         \\    terminal:1: reduce 3
         \\
         \\state 4
@@ -2678,10 +2282,12 @@ pub fn parseTableNamedPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
+        \\    end: reduce 4
         \\    terminal:1: reduce 4
         \\
         \\state 6
         \\  resolved_actions:
+        \\    end: reduce 2
         \\    terminal:1: reduce 2
         \\
         ,
@@ -2698,13 +2304,16 @@ pub fn parseTableNamedPrecedenceShiftResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
+        \\    end: reduce 1
         \\    terminal:1: shift 5
         \\
         \\state 3
         \\  resolved_actions:
+        \\    end: reduce 3
         \\    terminal:1: reduce 3
         \\
         \\state 4
@@ -2713,10 +2322,12 @@ pub fn parseTableNamedPrecedenceShiftResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
+        \\    end: reduce 4
         \\    terminal:1: reduce 4
         \\
         \\state 6
         \\  resolved_actions:
+        \\    end: reduce 2
         \\    terminal:1: shift 5
         \\
         ,
@@ -2733,13 +2344,16 @@ pub fn parseTableDynamicPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
+        \\    end: reduce 1
         \\    terminal:0: shift 4
         \\
         \\state 3
         \\  resolved_actions:
+        \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
         \\state 4
@@ -2748,6 +2362,7 @@ pub fn parseTableDynamicPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
+        \\    end: reduce 2
         \\    terminal:0: reduce 2
         \\
         ,
@@ -2764,13 +2379,16 @@ pub fn parseTableNegativeDynamicPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
+        \\    end: reduce 1
         \\    terminal:0: shift 4
         \\
         \\state 3
         \\  resolved_actions:
+        \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
         \\state 4
@@ -2779,6 +2397,7 @@ pub fn parseTableNegativeDynamicPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
+        \\    end: reduce 2
         \\    terminal:0: shift 4
         \\
         ,
@@ -2795,13 +2414,16 @@ pub fn parseTableDynamicBeatsNamedPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
+        \\    end: reduce 1
         \\    terminal:1: shift 5
         \\
         \\state 3
         \\  resolved_actions:
+        \\    end: reduce 3
         \\    terminal:1: reduce 3
         \\
         \\state 4
@@ -2810,10 +2432,12 @@ pub fn parseTableDynamicBeatsNamedPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
+        \\    end: reduce 4
         \\    terminal:1: reduce 4
         \\
         \\state 6
         \\  resolved_actions:
+        \\    end: reduce 2
         \\    terminal:1: reduce 2
         \\
         ,
@@ -2952,13 +2576,16 @@ pub fn parseTableNegativePrecedenceResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
+        \\    end: reduce 1
         \\    terminal:0: shift 4
         \\
         \\state 3
         \\  resolved_actions:
+        \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
         \\state 4
@@ -2967,6 +2594,7 @@ pub fn parseTableNegativePrecedenceResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
+        \\    end: reduce 2
         \\    terminal:0: shift 4
         \\
         ,
@@ -2983,13 +2611,16 @@ pub fn parseTableAssociativityResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
+        \\    end: reduce 1
         \\    terminal:0: shift 4
         \\
         \\state 3
         \\  resolved_actions:
+        \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
         \\state 4
@@ -2998,6 +2629,7 @@ pub fn parseTableAssociativityResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
+        \\    end: reduce 2
         \\    terminal:0: reduce 2
         \\
         ,
@@ -3014,13 +2646,16 @@ pub fn parseTableNonAssociativeResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
+        \\    end: reduce 1
         \\    terminal:0: shift 4
         \\
         \\state 3
         \\  resolved_actions:
+        \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
         \\state 4
@@ -3029,6 +2664,7 @@ pub fn parseTableNonAssociativeResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
+        \\    end: reduce 2
         \\    terminal:0: unresolved (shift_reduce)
         \\      candidate shift 4
         \\      candidate reduce 2
@@ -3089,13 +2725,16 @@ pub fn parseTableRightAssociativityResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
+        \\    end: reduce 1
         \\    terminal:0: shift 4
         \\
         \\state 3
         \\  resolved_actions:
+        \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
         \\state 4
@@ -3104,6 +2743,7 @@ pub fn parseTableRightAssociativityResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
+        \\    end: reduce 2
         \\    terminal:0: shift 4
         \\
         ,
@@ -3120,13 +2760,16 @@ pub fn parseTableConflictResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
+        \\    end: reduce 1
         \\    terminal:0: shift 4
         \\
         \\state 3
         \\  resolved_actions:
+        \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
         \\state 4
@@ -3135,6 +2778,7 @@ pub fn parseTableConflictResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
+        \\    end: reduce 2
         \\    terminal:0: unresolved (shift_reduce)
         \\      candidate shift 4
         \\      candidate reduce 2
@@ -3153,6 +2797,7 @@ pub fn parseTableReduceReduceResolvedActionDump() Fixture {
         \\
         \\state 1
         \\  resolved_actions:
+        \\    end: accept
         \\
         \\state 2
         \\  resolved_actions:
@@ -3174,10 +2819,12 @@ pub fn parseTableReduceReduceResolvedActionDump() Fixture {
         \\
         \\state 6
         \\  resolved_actions:
+        \\    end: reduce 6
         \\    terminal:0: reduce 6
         \\
         \\state 7
         \\  resolved_actions:
+        \\    end: reduce 1
         \\
         ,
     };
@@ -4059,8 +3706,8 @@ pub fn nonTerminalExtraGrammarJson() Fixture {
         \\    "_gap": {
         \\      "type": "SEQ",
         \\      "members": [
-        \\        { "type": "SYMBOL", "name": "gap_start" },
-        \\        { "type": "SYMBOL", "name": "gap_end" }
+        \\        { "type": "STRING", "value": "[" },
+        \\        { "type": "STRING", "value": "]" }
         \\      ]
         \\    },
         \\    "gap_start": {

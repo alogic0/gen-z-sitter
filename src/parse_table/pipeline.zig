@@ -569,9 +569,9 @@ test "generateStateActionDumpFromPrepared matches the tiny parser-state action g
     try std.testing.expectEqualStrings(
         \\state 0
         \\  items:
-        \\    #0@0
-        \\    #1@0
-        \\    #2@0
+        \\    #0@0 [end]
+        \\    #1@0 [end]
+        \\    #2@0 [end]
         \\  transitions:
         \\    non_terminal:0 -> 1
         \\    non_terminal:1 -> 2
@@ -581,21 +581,24 @@ test "generateStateActionDumpFromPrepared matches the tiny parser-state action g
         \\
         \\state 1
         \\  items:
-        \\    #0@1
+        \\    #0@1 [end]
         \\  transitions:
         \\  actions:
+        \\    end => accept
         \\
         \\state 2
         \\  items:
-        \\    #1@1
+        \\    #1@1 [end]
         \\  transitions:
         \\  actions:
+        \\    end => reduce 1
         \\
         \\state 3
         \\  items:
-        \\    #2@1
+        \\    #2@1 [end]
         \\  transitions:
         \\  actions:
+        \\    end => reduce 2
         \\
     , dump);
 }
@@ -1292,9 +1295,13 @@ test "serializeTableFromPrepared attaches serialized lex tables for an unambiguo
     try std.testing.expect(!serialized.blocked);
     try std.testing.expect(serialized.lex_tables.len > 0);
     try std.testing.expectEqual(serialized.lex_state_terminal_sets.len, serialized.lex_tables.len);
+    var non_empty_tables: usize = 0;
     for (serialized.lex_tables) |lex_table| {
+        if (lex_table.states.len == 0) continue;
+        non_empty_tables += 1;
         try std.testing.expect(lex_table.start_state_id < lex_table.states.len);
     }
+    try std.testing.expect(non_empty_tables > 0);
 }
 
 test "serializeTableFromPrepared carries recursive external close reduce lookahead" {
@@ -1364,7 +1371,7 @@ test "serializeTableFromPrepared carries recursive external close reduce lookahe
     try std.testing.expect(external_state[1]);
 }
 
-test "serializeTableFromPrepared excludes default aliases from alias sequences" {
+test "serializeTableFromPrepared carries promoted default aliases into alias sequences" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -1404,7 +1411,9 @@ test "serializeTableFromPrepared excludes default aliases from alias sequences" 
     const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &raw);
     const serialized = try serializeTableFromPrepared(arena.allocator(), prepared, .strict);
 
-    try std.testing.expectEqual(@as(usize, 0), serialized.alias_sequences.len);
+    try std.testing.expectEqual(@as(usize, 1), serialized.alias_sequences.len);
+    try std.testing.expectEqualStrings("value", serialized.alias_sequences[0].name);
+    try std.testing.expect(serialized.alias_sequences[0].named);
 }
 
 test "generateSerializedTableDumpFromPrepared matches the metadata-rich serialized-table golden fixture" {
