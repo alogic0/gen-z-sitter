@@ -171,16 +171,18 @@ item   := OPEN item? CLOSE
 
 Parse target: `"(())"`.
 
-- [ ] Add `emitStatefulExternalScannerParserC` in `runtime_link.zig`.
-- [ ] Add `statefulScannerSource()` following the scanner semantics above.
-- [ ] Add `linkAndRunStatefulExternalScannerParser` that parses `"(())"` and asserts
+- [x] Add `emitStatefulExternalScannerParserC` in `runtime_link.zig`.
+- [x] Add `statefulScannerSource()` following the scanner semantics above.
+- [x] Add `linkAndRunStatefulExternalScannerParser` that parses `"(())"` and asserts
   the root is not an ERROR node.
-- [ ] Add parse-tree shape assertions for nesting depth 2.
-- [ ] If claiming serialize/deserialize coverage, add a reliable assertion that those
+- [x] Add parse-tree shape assertions for nesting depth 2.
+- [x] If claiming serialize/deserialize coverage, add a reliable assertion that those
   callbacks were actually called. If the runtime does not call them for this grammar,
   document that this phase proves stateful scanner linking and mutation only.
-- [ ] Add `test "linkAndRunStatefulExternalScannerParser ..."` in `runtime_link.zig`.
-- [ ] Add `zig build test-link-stateful-scanner` in `build.zig`.
+  This phase proves scanner payload allocation, depth mutation, function linking, and
+  destruction. It does not claim serialize/deserialize rewind coverage.
+- [x] Add `test "linkAndRunStatefulExternalScannerParser ..."` in `runtime_link.zig`.
+- [x] Add `zig build test-link-stateful-scanner` in `build.zig`.
 
 ---
 

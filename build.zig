@@ -115,6 +115,7 @@ pub fn build(b: *std.Build) void {
         "linkAndRunKeywordReservedParser",
         "linkAndRunExternalScannerParser",
         "linkAndRunMultiTokenExternalScannerParser",
+        "linkAndRunStatefulExternalScannerParser",
     };
     const no_external_link_tests = b.addTest(.{
         .root_module = b.createModule(.{
@@ -171,6 +172,20 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_multi_token_scanner_link_tests.addArgs(args);
     const multi_token_scanner_link_step = b.step("test-link-multi-token-scanner", "Link and run a generated multi-token external-scanner parser with tree-sitter runtime");
     multi_token_scanner_link_step.dependOn(&run_multi_token_scanner_link_tests.step);
+
+    const stateful_scanner_link_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/runtime_link_test_entry.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (test_filter) |f| &.{f} else &.{"linkAndRunStatefulExternalScannerParser"},
+    });
+
+    const run_stateful_scanner_link_tests = b.addRunArtifact(stateful_scanner_link_tests);
+    if (b.args) |args| run_stateful_scanner_link_tests.addArgs(args);
+    const stateful_scanner_link_step = b.step("test-link-stateful-scanner", "Link and run a generated stateful external-scanner parser with tree-sitter runtime");
+    stateful_scanner_link_step.dependOn(&run_stateful_scanner_link_tests.step);
 
     const runtime_link_tests = b.addTest(.{
         .root_module = b.createModule(.{

@@ -70,6 +70,34 @@ pub fn linkAndRunMultiTokenExternalScannerParser(allocator: std.mem.Allocator) R
     });
 }
 
+pub fn linkAndRunStatefulExternalScannerParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitStatefulExternalScannerParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = statefulScannerSource(),
+        .input = "(())",
+        .expected_root_type = "source_file",
+        .expected_tree_string = "(source_file (item (item)))",
+        .extra_driver_declarations =
+        \\extern unsigned tree_sitter_stateful_external_grammar_created_count(void);
+        \\extern unsigned tree_sitter_stateful_external_grammar_destroyed_count(void);
+        \\extern unsigned tree_sitter_stateful_external_grammar_max_depth(void);
+        \\
+        ,
+        .after_parser_delete_check =
+        \\  if (tree_sitter_stateful_external_grammar_created_count() != 1) return 30;
+        \\  if (tree_sitter_stateful_external_grammar_destroyed_count() != 1) return 31;
+        \\  if (tree_sitter_stateful_external_grammar_max_depth() != 2) return 32;
+        \\
+        ,
+    });
+}
+
 fn emitTinyParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
     const rules = [_]ir_rules.Rule{
         .{ .string = "x" },
@@ -437,6 +465,116 @@ fn emitMultiTokenExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLin
     });
 }
 
+fn emitStatefulExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    const symbols = [_]serialize.SerializedSymbolInfo{
+        .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
+        .{ .ref = .{ .external = 0 }, .name = "OPEN", .named = false, .visible = true, .supertype = false, .public_symbol = 1 },
+        .{ .ref = .{ .external = 1 }, .name = "CLOSE", .named = false, .visible = true, .supertype = false, .public_symbol = 2 },
+        .{ .ref = .{ .external = 2 }, .name = "ERROR_SENTINEL", .named = false, .visible = false, .supertype = false, .public_symbol = 3 },
+        .{ .ref = .{ .non_terminal = 0 }, .name = "source_file", .named = true, .visible = true, .supertype = false, .public_symbol = 4 },
+        .{ .ref = .{ .non_terminal = 1 }, .name = "item", .named = true, .visible = true, .supertype = false, .public_symbol = 5 },
+    };
+    const productions = [_]serialize.SerializedProductionInfo{
+        .{ .lhs = 0, .child_count = 1, .dynamic_precedence = 0 },
+        .{ .lhs = 1, .child_count = 3, .dynamic_precedence = 0 },
+        .{ .lhs = 1, .child_count = 2, .dynamic_precedence = 0 },
+    };
+    const start_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .external = 0 }, .action = .{ .shift = 2 } },
+    };
+    const start_gotos = [_]serialize.SerializedGotoEntry{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 8 },
+        .{ .symbol = .{ .non_terminal = 1 }, .state = 7 },
+    };
+    const nested_start_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .external = 0 }, .action = .{ .shift = 2 } },
+        .{ .symbol = .{ .external = 1 }, .action = .{ .shift = 3 } },
+    };
+    const nested_start_gotos = [_]serialize.SerializedGotoEntry{
+        .{ .symbol = .{ .non_terminal = 1 }, .state = 4 },
+    };
+    const short_item_reduce_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+        .{ .symbol = .{ .external = 1 }, .action = .{ .reduce = 2 } },
+    };
+    const after_nested_item_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .external = 1 }, .action = .{ .shift = 5 } },
+    };
+    const nested_item_reduce_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+        .{ .symbol = .{ .external = 1 }, .action = .{ .reduce = 1 } },
+    };
+    const source_reduce_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+    };
+    const accept_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
+    };
+    const states = [_]serialize.SerializedState{
+        .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = start_actions[0..], .gotos = start_gotos[0..], .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = nested_start_actions[0..], .gotos = nested_start_gotos[0..], .unresolved = &.{} },
+        .{ .id = 3, .lex_state_id = 0, .actions = short_item_reduce_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 4, .lex_state_id = 0, .actions = after_nested_item_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 5, .lex_state_id = 0, .actions = nested_item_reduce_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 6, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 7, .lex_state_id = 0, .actions = source_reduce_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 8, .lex_state_id = 0, .actions = accept_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+    };
+    const lex_states = [_]lexer_serialize.SerializedLexState{
+        .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
+    };
+    const lex_tables = [_]lexer_serialize.SerializedLexTable{
+        .{ .start_state_id = 0, .states = lex_states[0..] },
+    };
+    const lex_modes = [_]lexer_serialize.SerializedLexMode{
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 2 },
+        .{ .lex_state = 0, .external_lex_state = 3 },
+        .{ .lex_state = 0, .external_lex_state = 3 },
+        .{ .lex_state = 0, .external_lex_state = 3 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+    };
+    const primary_state_ids = [_]u32{ 0, 1, 2, 3, 4, 5, 6, 7, 8 };
+    const external_symbols = [_]syntax_grammar.SymbolRef{
+        .{ .external = 0 },
+        .{ .external = 1 },
+        .{ .external = 2 },
+    };
+    const external_state_0 = [_]bool{ false, false, false };
+    const external_state_1 = [_]bool{ true, false, false };
+    const external_state_2 = [_]bool{ true, true, false };
+    const external_state_3 = [_]bool{ false, true, false };
+    const external_states = [_][]const bool{
+        external_state_0[0..],
+        external_state_1[0..],
+        external_state_2[0..],
+        external_state_3[0..],
+    };
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_name = "stateful_external_grammar",
+        .symbols = symbols[0..],
+        .large_state_count = states.len,
+        .productions = productions[0..],
+        .lex_modes = lex_modes[0..],
+        .lex_tables = lex_tables[0..],
+        .external_scanner = .{
+            .symbols = external_symbols[0..],
+            .states = external_states[0..],
+        },
+        .primary_state_ids = primary_state_ids[0..],
+        .states = states[0..],
+    };
+
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+    });
+}
+
 const GeneratedParserRun = struct {
     parser_c: []const u8,
     input: []const u8,
@@ -444,6 +582,9 @@ const GeneratedParserRun = struct {
     expected_metadata: ?[3]u8 = null,
     expected_root_type: ?[]const u8 = null,
     expected_child_types: []const []const u8 = &.{},
+    expected_tree_string: ?[]const u8 = null,
+    extra_driver_declarations: []const u8 = "",
+    after_parser_delete_check: []const u8 = "",
 };
 
 fn linkAndRunGeneratedParser(
@@ -607,6 +748,78 @@ fn multiTokenScannerSource() []const u8 {
     ;
 }
 
+fn statefulScannerSource() []const u8 {
+    return
+    \\#include <stdbool.h>
+    \\#include <stdint.h>
+    \\#include <stdlib.h>
+    \\#include "parser.h"
+    \\
+    \\enum TokenType {
+    \\  OPEN = 0,
+    \\  CLOSE = 1,
+    \\  ERROR_SENTINEL = 2,
+    \\};
+    \\
+    \\typedef struct {
+    \\  uint8_t depth;
+    \\} ScannerState;
+    \\
+    \\static unsigned created_count;
+    \\static unsigned destroyed_count;
+    \\static unsigned max_depth;
+    \\
+    \\unsigned tree_sitter_stateful_external_grammar_created_count(void) { return created_count; }
+    \\unsigned tree_sitter_stateful_external_grammar_destroyed_count(void) { return destroyed_count; }
+    \\unsigned tree_sitter_stateful_external_grammar_max_depth(void) { return max_depth; }
+    \\
+    \\void *tree_sitter_stateful_external_grammar_external_scanner_create(void) {
+    \\  ScannerState *state = (ScannerState *)calloc(1, sizeof(ScannerState));
+    \\  if (state) created_count++;
+    \\  return state;
+    \\}
+    \\
+    \\void tree_sitter_stateful_external_grammar_external_scanner_destroy(void *payload) {
+    \\  destroyed_count++;
+    \\  free(payload);
+    \\}
+    \\
+    \\unsigned tree_sitter_stateful_external_grammar_external_scanner_serialize(void *payload, char *buffer) {
+    \\  ScannerState *state = (ScannerState *)payload;
+    \\  buffer[0] = state ? (char)state->depth : 0;
+    \\  return 1;
+    \\}
+    \\
+    \\void tree_sitter_stateful_external_grammar_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
+    \\  ScannerState *state = (ScannerState *)payload;
+    \\  if (!state) return;
+    \\  state->depth = length >= 1 ? (uint8_t)buffer[0] : 0;
+    \\}
+    \\
+    \\bool tree_sitter_stateful_external_grammar_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
+    \\  ScannerState *state = (ScannerState *)payload;
+    \\  if (!state || valid_symbols[ERROR_SENTINEL]) return false;
+    \\  if (valid_symbols[OPEN] && lexer->lookahead == '(') {
+    \\    lexer->result_symbol = OPEN;
+    \\    lexer->advance(lexer, false);
+    \\    lexer->mark_end(lexer);
+    \\    state->depth++;
+    \\    if (state->depth > max_depth) max_depth = state->depth;
+    \\    return true;
+    \\  }
+    \\  if (valid_symbols[CLOSE] && lexer->lookahead == ')') {
+    \\    lexer->result_symbol = CLOSE;
+    \\    lexer->advance(lexer, false);
+    \\    lexer->mark_end(lexer);
+    \\    if (state->depth > 0) state->depth--;
+    \\    return true;
+    \\  }
+    \\  return false;
+    \\}
+    \\
+    ;
+}
+
 fn driverSourceAlloc(
     allocator: std.mem.Allocator,
     generated: GeneratedParserRun,
@@ -624,7 +837,12 @@ fn driverSourceAlloc(
         "";
     defer if (generated.expected_metadata != null) allocator.free(metadata_check);
 
-    const tree_check = try treeAssertionSourceAlloc(allocator, generated.expected_root_type, generated.expected_child_types);
+    const tree_check = try treeAssertionSourceAlloc(
+        allocator,
+        generated.expected_root_type,
+        generated.expected_child_types,
+        generated.expected_tree_string,
+    );
     defer allocator.free(tree_check);
 
     return try std.fmt.allocPrint(allocator,
@@ -632,11 +850,13 @@ fn driverSourceAlloc(
         \\#include <stdint.h>
         \\#include <stdio.h>
         \\#include <signal.h>
+        \\#include <stdlib.h>
         \\#include <string.h>
         \\#include <tree_sitter/api.h>
         \\#include <unistd.h>
         \\
         \\const TSLanguage *tree_sitter_generated(void);
+        \\{s}
         \\
         \\static void log_parser(void *payload, TSLogType log_type, const char *buffer) {{
         \\  uint32_t *count = (uint32_t *)payload;
@@ -664,18 +884,26 @@ fn driverSourceAlloc(
         \\{s}
         \\  ts_tree_delete(tree);
         \\  ts_parser_delete(parser);
+        \\{s}
         \\  return is_error ? 13 : 0;
         \\}}
         \\
-    , .{ generated.input, metadata_check, tree_check });
+    , .{
+        generated.extra_driver_declarations,
+        generated.input,
+        metadata_check,
+        tree_check,
+        generated.after_parser_delete_check,
+    });
 }
 
 fn treeAssertionSourceAlloc(
     allocator: std.mem.Allocator,
     expected_root_type: ?[]const u8,
     expected_child_types: []const []const u8,
+    expected_tree_string: ?[]const u8,
 ) RuntimeLinkError![]const u8 {
-    if (expected_root_type == null and expected_child_types.len == 0) {
+    if (expected_root_type == null and expected_child_types.len == 0 and expected_tree_string == null) {
         return try allocator.dupe(u8, "");
     }
 
@@ -703,6 +931,16 @@ fn treeAssertionSourceAlloc(
             , .{ index, index, index, index, index, index, child_type, 20 + index });
         }
     }
+    if (expected_tree_string) |tree_string| {
+        try writer.print(
+            \\  char *tree_string = ts_node_string(root);
+            \\  if (!tree_string) return 28;
+            \\  bool tree_matches = strcmp(tree_string, "{s}") == 0;
+            \\  free(tree_string);
+            \\  if (!tree_matches) return 29;
+            \\
+        , .{tree_string});
+    }
 
     return try out.toOwnedSlice();
 }
@@ -726,4 +964,8 @@ test "linkAndRunExternalScannerParser links generated external scanner parser wi
 
 test "linkAndRunMultiTokenExternalScannerParser links generated multi-token external scanner parser with tree-sitter runtime" {
     try linkAndRunMultiTokenExternalScannerParser(std.testing.allocator);
+}
+
+test "linkAndRunStatefulExternalScannerParser links generated stateful external scanner parser with tree-sitter runtime" {
+    try linkAndRunStatefulExternalScannerParser(std.testing.allocator);
 }
