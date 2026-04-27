@@ -152,7 +152,7 @@ pub fn validateResolvedConflictPolicy(
     allocator: std.mem.Allocator,
     result: build.BuildResult,
 ) (std.mem.Allocator.Error || error{ UnresolvedDecisions, UnusedExpectedConflict })!void {
-    if (result.hasBlockingUnresolvedDecisions()) return error.UnresolvedDecisions;
+    try result.validateBlockingConflictPolicy();
     const report = try expectedConflictReportFromBuildResultAlloc(allocator, result);
     try validateExpectedConflictReport(report);
 }

@@ -262,9 +262,7 @@ pub fn serializeBuildResult(
     result: build.BuildResult,
     mode: SerializeMode,
 ) SerializeError!SerializedTable {
-    if (mode == .strict and result.hasBlockingUnresolvedDecisions()) {
-        return error.UnresolvedDecisions;
-    }
+    if (mode == .strict) try result.validateBlockingConflictPolicy();
 
     const snapshot = try result.decisionSnapshotAlloc(allocator);
     defer {
@@ -2594,6 +2592,68 @@ test "serializeBuildResult rejects blocked snapshots in strict mode" {
         error.UnresolvedDecisions,
         serializeBuildResult(allocator, result, .strict),
     );
+}
+
+test "serializeBuildResult accepts expected reduce reduce snapshots in strict mode" {
+    const allocator = std.testing.allocator;
+
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 2,
+            .items = &.{},
+            .transitions = &.{},
+            .conflicts = &.{},
+        },
+    };
+
+    const productions = [_]build.ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = &.{} },
+        .{ .lhs = 2, .steps = &.{} },
+    };
+
+    const resolved_actions = resolution.ResolvedActionTable{
+        .states = &[_]resolution.ResolvedStateActions{
+            .{
+                .state_id = 2,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &[_]actions.ParseAction{
+                            .{ .reduce = 1 },
+                            .{ .reduce = 2 },
+                        },
+                        .decision = .{ .unresolved = .reduce_reduce_expected },
+                    },
+                },
+            },
+        },
+    };
+
+    const result = build.BuildResult{
+        .productions = productions[0..],
+        .precedence_orderings = &.{},
+        .states = parse_states[0..],
+        .lex_state_count = 1,
+        .actions = .{ .states = &.{} },
+        .resolved_actions = resolved_actions,
+    };
+
+    const serialized = try serializeBuildResult(allocator, result, .strict);
+    defer allocator.free(serialized.states);
+    defer deinitSmallParseTable(allocator, serialized.small_parse_table);
+    defer deinitParseActionList(allocator, serialized.parse_action_list);
+    defer deinitFieldMap(allocator, serialized.field_map);
+    defer allocator.free(serialized.lex_modes);
+    defer deinitLexStateTerminalSets(allocator, serialized.lex_state_terminal_sets);
+    defer allocator.free(serialized.primary_state_ids);
+    defer allocator.free(serialized.productions);
+    defer allocator.free(serialized.alias_sequences);
+    defer allocator.free(serialized.states[0].gotos);
+    defer allocator.free(serialized.states[0].actions);
+
+    try std.testing.expect(serialized.isSerializationReady());
+    try std.testing.expectEqual(@as(usize, 0), serialized.states[0].unresolved.len);
 }
 
 test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {

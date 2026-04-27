@@ -1523,6 +1523,10 @@ pub const BuildResult = struct {
         return self.resolved_actions.isSerializationReady();
     }
 
+    pub fn validateBlockingConflictPolicy(self: BuildResult) error{UnresolvedDecisions}!void {
+        if (self.hasBlockingUnresolvedDecisions()) return error.UnresolvedDecisions;
+    }
+
     pub fn unresolvedDecisionsAlloc(
         self: BuildResult,
         allocator: std.mem.Allocator,

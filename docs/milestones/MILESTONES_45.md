@@ -279,6 +279,8 @@ Completed steps:
   flag for JSON-summary generation.
 - [x] Add a consolidated strict conflict-policy validator for blocking
   unresolved decisions and unused `expected_conflicts`.
+- [x] Move strict serialization's blocking-conflict failure through the
+  post-build policy helper while keeping diagnostic serialization unchanged.
 
 ---
 
