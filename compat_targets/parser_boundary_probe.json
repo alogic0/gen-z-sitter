@@ -1,20 +1,34 @@
 {
   "schema_version": 1,
-  "target_count": 1,
+  "target_count": 2,
   "entries": [
     {
-      "id": "tree_sitter_c_json",
-      "display_name": "tree-sitter-c (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_c/grammar.json",
-      "family": "c",
+      "id": "repeat_choice_seq_js",
+      "display_name": "Repeat Choice Seq (JS)",
+      "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
+      "family": "repeat_choice_seq",
+      "current_parser_boundary_check_mode": "full_pipeline",
+      "probed_parser_boundary_check_mode": "full_pipeline",
+      "recommended_next_parser_boundary_check_mode": "full_pipeline",
+      "probe_status": "failed",
+      "probe_failed_stage": "serialize",
+      "detail": "no isolated probe is implemented for parser boundary mode full_pipeline",
+      "serialized_state_count": null,
+      "serialized_blocked": null
+    },
+    {
+      "id": "tree_sitter_javascript_json",
+      "display_name": "tree-sitter-javascript (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_javascript/grammar.json",
+      "family": "javascript",
       "current_parser_boundary_check_mode": "prepare_only",
       "probed_parser_boundary_check_mode": "serialize_only",
       "recommended_next_parser_boundary_check_mode": "full_pipeline",
       "probe_status": "passed",
       "probe_failed_stage": null,
-      "detail": "isolated coarse serialize-only parser probe passed with 2336 serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
-      "serialized_state_count": 2336,
-      "serialized_blocked": false
+      "detail": "isolated coarse serialize-only parser probe passed with 1606 serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
+      "serialized_state_count": 1606,
+      "serialized_blocked": true
     }
   ]
 }

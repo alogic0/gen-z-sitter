@@ -310,18 +310,18 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     var report = try buildInventoryReportAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 16), report.boundary.total_shortlist_targets);
+    try std.testing.expectEqual(@as(usize, 17), report.boundary.total_shortlist_targets);
     try std.testing.expectEqual(@as(usize, 7), report.boundary.first_wave_targets);
     try std.testing.expectEqual(@as(usize, 7), report.boundary.first_wave_passed);
     try std.testing.expectEqual(@as(usize, 7), report.boundary.scanner_wave_targets);
     try std.testing.expectEqual(@as(usize, 7), report.boundary.scanner_wave_passed);
-    try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_parser_targets);
+    try std.testing.expectEqual(@as(usize, 2), report.boundary.deferred_parser_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_control_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.frozen_control_fixtures);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.deferred_scanner_targets);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.excluded_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.blocked_control_targets);
-    try std.testing.expectEqual(@as(usize, 14), report.family_coverage.len);
+    try std.testing.expectEqual(@as(usize, 15), report.family_coverage.len);
     try std.testing.expectEqual(targets.TargetFamily.c, report.family_coverage[5].family);
     try std.testing.expectEqual(targets.TargetFamily.zig, report.family_coverage[6].family);
     try std.testing.expectEqual(@as(usize, 1), report.family_coverage[5].passed_count);
@@ -344,9 +344,11 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     try std.testing.expectEqual(@as(usize, 2), report.family_coverage[12].passed_count);
     try std.testing.expectEqual(targets.TargetFamily.mixed_semantics, report.family_coverage[13].family);
     try std.testing.expectEqual(@as(usize, 2), report.family_coverage[13].passed_count);
+    try std.testing.expectEqual(targets.TargetFamily.javascript, report.family_coverage[14].family);
+    try std.testing.expectEqual(@as(usize, 1), report.family_coverage[14].deferred_count);
     try std.testing.expectEqual(@as(usize, 7), report.proven_first_wave_targets.len);
     try std.testing.expectEqual(@as(usize, 7), report.proven_scanner_wave_targets.len);
-    try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_targets.len);
+    try std.testing.expectEqual(@as(usize, 2), report.deferred_parser_targets.len);
     try std.testing.expectEqual(@as(usize, 1), report.deferred_control_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
 }

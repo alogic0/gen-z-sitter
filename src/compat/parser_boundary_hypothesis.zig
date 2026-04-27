@@ -149,6 +149,12 @@ fn buildEntryAlloc(
             "no routine-safe parser boundary step is promoted yet for {s}; the current full-pipeline blocker is an intentional 2-entry shift/reduce ambiguity where the next identifier/number token can either continue the current _entry tail or start the next repeated source_file entry, so the target stays deferred unless a later milestone deliberately broadens ambiguity handling",
             .{run.id},
         )
+    else if (std.mem.eql(u8, run.id, "tree_sitter_javascript_json"))
+        try std.fmt.allocPrint(
+            allocator,
+            "no routine-safe parser boundary step is promoted yet for {s}; the measured standalone coarse serialize-only probe reaches 1606 serialized states but remains blocked, while full lookahead-sensitive serialization stays outside the bounded routine compatibility budget",
+            .{run.id},
+        )
     else
         try std.fmt.allocPrint(
             allocator,
@@ -156,11 +162,17 @@ fn buildEntryAlloc(
             .{run.id},
         );
     const decision: HypothesisDecision = .keep_standalone_probe;
-    const standalone_probe_status: StandaloneProbeStatus = if (run.id.len != 0 and std.mem.eql(u8, run.id, "tree_sitter_c_json"))
+    const standalone_probe_status: StandaloneProbeStatus = if (std.mem.eql(u8, run.id, "tree_sitter_c_json") or std.mem.eql(u8, run.id, "tree_sitter_javascript_json"))
         .implemented_passing
     else
         .not_implemented;
-    const standalone_probe_detail = if (standalone_probe_status == .implemented_passing)
+    const standalone_probe_detail = if (std.mem.eql(u8, run.id, "tree_sitter_javascript_json"))
+        try std.fmt.allocPrint(
+            allocator,
+            "standalone coarse serialize-only probe is implemented and reaches 1606 serialized states for {s}, but records blocked=true, so routine lookahead-sensitive serialization remains deferred",
+            .{run.id},
+        )
+    else if (standalone_probe_status == .implemented_passing)
         try std.fmt.allocPrint(
             allocator,
             "standalone coarse serialize-only probe is implemented and currently passes for {s}; the checked-in parser boundary probe records serialized_state_count=2336 and blocked=false while keeping full lookahead-sensitive parser proof out of the routine boundary",
@@ -183,7 +195,7 @@ fn buildEntryAlloc(
     else
         try std.fmt.allocPrint(
             allocator,
-            "the next named proof step for {s} is {s}; it remains scoped to {s} because the routine compatibility refresh should stay fast and stable while this deferred parser-wave singleton is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet",
+            "the next named proof step for {s} is {s}; it remains scoped to {s} because the routine compatibility refresh should stay fast and stable while this deferred parser-wave target is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet",
             .{ run.id, @tagName(proposed_mode), @tagName(evaluation_surface) },
         );
 
@@ -204,7 +216,12 @@ fn buildEntryAlloc(
         .deferred_from_step = run.first_failed_stage.?,
         .standalone_probe_status = standalone_probe_status,
         .standalone_probe_detail = standalone_probe_detail,
-        .measured_standalone_serialized_state_count = if (standalone_probe_status == .implemented_passing or run.parser_boundary_check_mode == .serialize_only) 2336 else null,
+        .measured_standalone_serialized_state_count = if (std.mem.eql(u8, run.id, "tree_sitter_javascript_json"))
+            1606
+        else if (standalone_probe_status == .implemented_passing or run.parser_boundary_check_mode == .serialize_only)
+            2336
+        else
+            null,
         .decision = decision,
         .rationale = rationale,
     };
@@ -252,9 +269,9 @@ test "buildParserBoundaryHypothesisAlloc summarizes the current deferred parser-
     var report = try buildParserBoundaryHypothesisAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 1), report.deferred_parser_wave_target_count);
-    try std.testing.expect(report.singleton_parser_wave);
-    try std.testing.expectEqual(@as(usize, 1), report.entries.len);
+    try std.testing.expectEqual(@as(usize, 2), report.deferred_parser_wave_target_count);
+    try std.testing.expect(!report.singleton_parser_wave);
+    try std.testing.expectEqual(@as(usize, 2), report.entries.len);
 }
 
 test "renderParserBoundaryHypothesisAlloc matches the checked-in parser boundary hypothesis artifact" {

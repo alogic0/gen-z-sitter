@@ -67,8 +67,8 @@ pub fn buildCoverageDecisionAlloc(
     const recommendation_rationale = if (deferred_parser_targets.len != 0)
         try duplicateStringSliceAlloc(allocator, &.{
             "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-            "the only remaining deferred parser-only control fixture is still intentional, and the larger real external parser-only C snapshot is now promoted through a routine coarse serialize-only boundary while still remaining deferred overall",
-            "the routine shortlist now proves load, prepare, coarse serialize, parser-table emission, C-table emission, parser.c emission, compatibility validation, and compile-smoke for that C snapshot, so the parser-wave singleton is gone and the next promoted milestone can return to broader compatibility polish",
+            "one deferred parser-only fixture is an intentional upstream-rejected ambiguity, while tree-sitter-javascript is a real external parser-only candidate held at load/prepare because full lookahead-sensitive serialization exceeds the bounded routine budget",
+            "the next promoted milestone should narrow or promote the onboarded JavaScript snapshot before adding another large parser-only grammar to the stable first wave",
         })
     else if (deferred_scanner_targets.len == 0)
         try duplicateStringSliceAlloc(allocator, &.{
@@ -273,11 +273,11 @@ test "buildCoverageDecisionAlloc summarizes the current next-step decision" {
     try std.testing.expectEqual(@as(usize, 7), report.first_wave_passed_count);
     try std.testing.expectEqual(@as(usize, 0), report.first_wave_non_passing_count);
     try std.testing.expect(report.parser_only_boundary_proven);
-    try std.testing.expect(report.deferred_parser_wave_singleton);
+    try std.testing.expect(!report.deferred_parser_wave_singleton);
     try std.testing.expect(report.primary_deferred_parser_wave_target != null);
     try std.testing.expectEqual(@as(usize, 0), report.standalone_parser_probe_pass_count);
     try std.testing.expectEqual(NextMilestone.second_wave_parser_only_repo_coverage, report.recommended_next_milestone);
-    try std.testing.expectEqual(@as(usize, 2), report.deferred_parser_only_targets.len);
+    try std.testing.expectEqual(@as(usize, 3), report.deferred_parser_only_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
 }
 

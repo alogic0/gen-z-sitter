@@ -289,6 +289,8 @@ test "buildParserBoundaryProbeFromTargetsAlloc can select deferred parser-wave t
     var report = try buildParserBoundaryProbeFromTargetsAlloc(allocator, targets.shortlistTargets());
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 1), report.target_count);
-    try std.testing.expectEqual(@as(usize, 1), report.entries.len);
+    try std.testing.expectEqual(@as(usize, 2), report.target_count);
+    try std.testing.expectEqual(@as(usize, 2), report.entries.len);
+    try std.testing.expectEqualStrings("repeat_choice_seq_js", report.entries[0].id);
+    try std.testing.expectEqualStrings("tree_sitter_javascript_json", report.entries[1].id);
 }

@@ -153,8 +153,8 @@ does not yet appear in generated C.
 
 ## Priority 4 — Broader Compat Coverage
 
-The next meaningful real grammar addition is JSON. It is small, scanner-free,
-and useful as a fast end-to-end real-world regression target.
+The first real grammar addition was JSON. It is small, scanner-free, and useful
+as a fast end-to-end real-world regression target.
 
 Process:
 
@@ -162,11 +162,24 @@ Process:
 2. [x] Run at compile-smoke/full parser-only level.
 3. [x] Add it to the shortlist after the local proof is stable.
 4. [x] Refresh checked-in compatibility artifacts in one explicit batch.
+5. [x] Add a `tree-sitter-javascript` `grammar.json` snapshot as the next
+   large real grammar candidate.
+6. [x] Keep `tree_sitter_javascript_json` at load/prepare level after the
+   bounded direct proof showed full lookahead-sensitive serialization does not
+   finish within 120 seconds.
 
 Completed result:
 
 - `tree_sitter_json_json` now passes the parser-only compatibility boundary as a
   fast real scanner-free external snapshot.
+- `tree_sitter_javascript_json` is tracked as the next broader-coverage
+  candidate, but remains deferred until parser-table serialization scale improves.
+
+Next broader-coverage candidates from `Next_Steps_2026_04_27.txt`:
+
+- `tree-sitter-python`: indentation-sensitive external scanner state.
+- `tree-sitter-typescript`: large alias/generic grammar surface.
+- `tree-sitter-rust`: large lexer and many parser states.
 
 ---
 

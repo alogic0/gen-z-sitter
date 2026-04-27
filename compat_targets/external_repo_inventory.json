@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "total_external_repo_targets": 7,
+  "total_external_repo_targets": 8,
   "passed_external_repo_targets": 7,
   "standalone_parser_proof_targets": 2,
   "family_coverage": [
@@ -45,12 +45,18 @@
       "boundary_kind": "scanner_external_scanner",
       "target_count": 1,
       "passed_count": 1
+    },
+    {
+      "family": "javascript",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 0
     }
   ],
   "boundary_coverage": [
     {
       "boundary_kind": "parser_only",
-      "target_count": 5,
+      "target_count": 6,
       "passed_count": 5
     },
     {
@@ -60,10 +66,11 @@
     }
   ],
   "current_limitations": [
-    "the checked-in real external evidence now includes at least one passing external scanner-family snapshot",
-    "the next step is to widen real external scanner-family coverage without collapsing parser-only and scanner evidence into a single flat claim"
+    "the checked-in real external evidence now includes a larger parser-only snapshot that is still held at an explicit deferred parser boundary",
+    "tree-sitter-c currently proves load, prepare, routine coarse serialize-only, parser-table emission, and C-table emission in the shortlist and also has a matching standalone coarse serialize-only parser proof, but the stable shortlist still does not claim broader emitted parser.c or compiled parser surfaces for a grammar of that size",
+    "real external scanner evidence and the promoted Ziggy parser-only snapshots remain passing while this larger parser-only target stays explicitly deferred"
   ],
-  "recommended_next_step": "broader_compatibility_polish",
+  "recommended_next_step": "narrow_or_promote_onboarded_external_parser_targets",
   "targets": [
     {
       "id": "tree_sitter_ziggy_json",
@@ -176,6 +183,22 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real external scanner grammar snapshot from the local tree-sitter-bash repo, with a focused runtime-link proof that compiles generated parser C against the upstream scanner.c and exercises the bare-dollar external token ABI"
+    },
+    {
+      "id": "tree_sitter_javascript_json",
+      "family": "javascript",
+      "display_name": "tree-sitter-javascript (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_javascript/grammar.json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "parser_only",
+      "proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
+      "upstream_repository": "tree-sitter-javascript",
+      "upstream_revision": "58404d8cf191d69f2674a8fd507bd5776f46cb11",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "deferred_for_parser_boundary",
+      "mismatch_category": "routine_serialize_proof_boundary",
+      "notes": "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, currently kept at load/prepare level because full lookahead-sensitive serialization exceeds the bounded compatibility budget"
     }
   ]
 }

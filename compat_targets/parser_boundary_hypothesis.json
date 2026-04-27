@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "deferred_parser_wave_target_count": 1,
-  "singleton_parser_wave": true,
+  "deferred_parser_wave_target_count": 2,
+  "singleton_parser_wave": false,
   "entries": [
     {
       "id": "repeat_choice_seq_js",
@@ -15,7 +15,7 @@
       "routine_boundary_hypothesis": "no_safe_routine_step_yet",
       "routine_refresh_candidate_mode": null,
       "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for repeat_choice_seq_js; the current full-pipeline blocker is an intentional 2-entry shift/reduce ambiguity where the next identifier/number token can either continue the current _entry tail or start the next repeated source_file entry, so the target stays deferred unless a later milestone deliberately broadens ambiguity handling",
-      "singleton_parser_wave": true,
+      "singleton_parser_wave": false,
       "current_proven_steps": [
         "load",
         "prepare",
@@ -28,6 +28,30 @@
       "measured_standalone_serialized_state_count": null,
       "decision": "keep_standalone_probe",
       "rationale": "the next named proof step for repeat_choice_seq_js is not a broader routine refresh; it remains scoped to standalone_probe because the staged grammar intentionally keeps the current 2-entry shift/reduce ambiguity as a parser-boundary fixture rather than an upstream-mismatch candidate"
+    },
+    {
+      "id": "tree_sitter_javascript_json",
+      "display_name": "tree-sitter-javascript (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_javascript/grammar.json",
+      "family": "javascript",
+      "current_parser_boundary_check_mode": "prepare_only",
+      "proposed_parser_boundary_check_mode": "serialize_only",
+      "evaluation_surface": "standalone_probe",
+      "routine_refresh_safe": false,
+      "routine_boundary_hypothesis": "no_safe_routine_step_yet",
+      "routine_refresh_candidate_mode": null,
+      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_javascript_json; the measured standalone coarse serialize-only probe reaches 1606 serialized states but remains blocked, while full lookahead-sensitive serialization stays outside the bounded routine compatibility budget",
+      "singleton_parser_wave": false,
+      "current_proven_steps": [
+        "load",
+        "prepare"
+      ],
+      "deferred_from_step": "serialize",
+      "standalone_probe_status": "implemented_passing",
+      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and reaches 1606 serialized states for tree_sitter_javascript_json, but records blocked=true, so routine lookahead-sensitive serialization remains deferred",
+      "measured_standalone_serialized_state_count": 1606,
+      "decision": "keep_standalone_probe",
+      "rationale": "the next named proof step for tree_sitter_javascript_json is serialize_only; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave target is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet"
     }
   ]
 }
