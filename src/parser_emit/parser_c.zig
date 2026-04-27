@@ -366,6 +366,7 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("};\n\n");
     if (has_unresolved) try writeUnresolvedAccessors(writer, compacted.states, unresolved_owners);
     if (options.glr_loop and has_unresolved) try writeGlrUnresolvedForkHelpers(writer);
+    if (options.glr_loop) try writeGlrVersionCondenseHelpers(writer);
     try writeReservedWords(writer, emitted_symbols, compacted.reserved_words);
     try writeExternalScannerTables(writer, emitted_symbols, compacted.grammar_name, compacted.external_scanner);
 
@@ -674,6 +675,35 @@ fn writeGlrUnresolvedForkHelpers(writer: anytype) !void {
     try writer.writeAll("    }\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("  return applied;\n");
+    try writer.writeAll("}\n\n");
+}
+
+fn writeGlrVersionCondenseHelpers(writer: anytype) !void {
+    try writer.writeAll("static bool ts_generated_parse_versions_equal(const TSGeneratedParseVersion *left, const TSGeneratedParseVersion *right) {\n");
+    try writer.writeAll("  return left->active == right->active &&\n");
+    try writer.writeAll("    left->state == right->state &&\n");
+    try writer.writeAll("    left->byte_offset == right->byte_offset &&\n");
+    try writer.writeAll("    left->dynamic_precedence == right->dynamic_precedence;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n");
+    try writer.writeAll("  uint16_t write_index = 0;\n");
+    try writer.writeAll("  for (uint16_t read_index = 0; read_index < set->count; read_index++) {\n");
+    try writer.writeAll("    if (!set->versions[read_index].active) continue;\n");
+    try writer.writeAll("    bool duplicate = false;\n");
+    try writer.writeAll("    for (uint16_t existing_index = 0; existing_index < write_index; existing_index++) {\n");
+    try writer.writeAll("      if (ts_generated_parse_versions_equal(&set->versions[existing_index], &set->versions[read_index])) {\n");
+    try writer.writeAll("        duplicate = true;\n");
+    try writer.writeAll("        break;\n");
+    try writer.writeAll("      }\n");
+    try writer.writeAll("    }\n");
+    try writer.writeAll("    if (duplicate) continue;\n");
+    try writer.writeAll("    if (write_index != read_index) set->versions[write_index] = set->versions[read_index];\n");
+    try writer.writeAll("    write_index++;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  for (uint16_t clear_index = write_index; clear_index < set->count; clear_index++) {\n");
+    try writer.writeAll("    set->versions[clear_index].active = false;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  set->count = write_index;\n");
     try writer.writeAll("}\n\n");
 }
 
@@ -1950,6 +1980,32 @@ test "emitParserCAlloc emits opt-in GLR unresolved fork helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static uint16_t ts_generated_fork_unresolved_actions(TSGeneratedParseVersionSet *set, uint16_t version_index, TSSymbol lookahead_symbol) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (unresolved->symbol_id != lookahead_symbol) continue;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_apply_parse_action(&set->versions[target_index], &action_entry[1 + action_index].action)"));
+}
+
+test "emitParserCAlloc emits opt-in GLR version condensation helpers" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_parse_versions_equal(const TSGeneratedParseVersion *left, const TSGeneratedParseVersion *right) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!set->versions[read_index].active) continue;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->count = write_index;\n"));
 }
 
 test "emitParserCAlloc emits serialized lex modes" {
