@@ -52,16 +52,16 @@ surfaces that the behavioral scanner-free GLR harness already handles.
 
 Implement the remaining Priority 4 item from `next-steps-270427_2.md`.
 
-- [ ] Add no-action recovery to generated `ts_generated_drive_version`.
-- [ ] Stage 1: scan backward through `version->stack` for a state that has a
+- [x] Add no-action recovery to generated `ts_generated_drive_version`.
+- [x] Stage 1: scan backward through `version->stack` for a state that has a
   valid action for the current lookahead.
-- [ ] If found, shrink the stack, update `version->state`, increment
+- [x] If found, shrink the stack, update `version->state`, increment
   `error_count`, and retry.
-- [ ] Stage 2: if no recovery state exists, mark the version as needing one-byte
-  input recovery in the outer loop.
-- [ ] Bound recovery attempts per outer iteration so malformed input cannot
+- [x] Stage 2: if no recovery state exists, advance the generated parse
+  version by one input byte and return a recovery step for the outer loop.
+- [x] Bound recovery attempts per outer iteration so malformed input cannot
   loop forever.
-- [ ] Add focused emitted-code tests for stack-backtracking snippets,
+- [x] Add focused emitted-code tests for stack-backtracking snippets,
   `error_count` increments, and retry limits.
 
 Gate:

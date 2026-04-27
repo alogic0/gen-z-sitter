@@ -319,7 +319,7 @@ Status:
 - [x] Add generated parse-version `error_count` storage.
 - [x] Prune generated parse versions whose `error_count` is more than 3 above
   the active minimum.
-- [ ] Add generated no-action recovery in `ts_generated_drive_version`.
+- [x] Add generated no-action recovery in `ts_generated_drive_version`.
 
 ---
 
