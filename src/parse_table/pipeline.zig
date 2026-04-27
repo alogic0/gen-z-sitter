@@ -148,6 +148,15 @@ pub fn validateExpectedConflictReport(report: ExpectedConflictReport) error{Unus
     if (report.hasUnusedExpectedConflicts()) return error.UnusedExpectedConflict;
 }
 
+pub fn validateResolvedConflictPolicy(
+    allocator: std.mem.Allocator,
+    result: build.BuildResult,
+) (std.mem.Allocator.Error || error{ UnresolvedDecisions, UnusedExpectedConflict })!void {
+    if (result.hasBlockingUnresolvedDecisions()) return error.UnresolvedDecisions;
+    const report = try expectedConflictReportFromBuildResultAlloc(allocator, result);
+    try validateExpectedConflictReport(report);
+}
+
 pub fn generateStateDumpFromPrepared(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
@@ -171,8 +180,7 @@ pub fn buildStatesFromPreparedStrictExpectedConflicts(
     prepared: grammar_ir.PreparedGrammar,
 ) PipelineError!build.BuildResult {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const report = try expectedConflictReportFromBuildResultAlloc(allocator, result);
-    try validateExpectedConflictReport(report);
+    try validateResolvedConflictPolicy(allocator, result);
     return result;
 }
 
@@ -209,8 +217,7 @@ pub fn buildStatesFromPreparedWithOptions(
     defer allocator.free(effective_build_options.reserved_word_context_names);
     const result = try build.buildStatesWithOptions(allocator, flattened, effective_build_options);
     if (effective_build_options.strict_expected_conflicts) {
-        const report = try expectedConflictReportFromBuildResultAlloc(allocator, result);
-        try validateExpectedConflictReport(report);
+        try validateResolvedConflictPolicy(allocator, result);
     }
     logProfileDone("build_states", stage_profile_timer);
     if (progress_log) {
@@ -1297,6 +1304,33 @@ test "buildStatesFromPrepared rejects unresolved conflict grammar in strict seri
     );
 }
 
+test "validateResolvedConflictPolicy rejects blocking shift reduce conflicts" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableConflictGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expect(result.hasBlockingUnresolvedDecisions());
+    try std.testing.expectError(
+        error.UnresolvedDecisions,
+        validateResolvedConflictPolicy(pipeline_arena.allocator(), result),
+    );
+}
+
 test "expectedConflictReportFromPrepared reports unused expected conflicts" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
@@ -1415,6 +1449,94 @@ test "buildStatesFromPreparedWithOptions rejects unused expected conflicts when 
             prepared,
             .{ .strict_expected_conflicts = true },
         ),
+    );
+}
+
+test "validateResolvedConflictPolicy allows expected reduce reduce conflicts" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    const contents =
+        \\{
+        \\  "name": "expected_reduce_reduce",
+        \\  "expected_conflicts": [["lhs", "rhs"]],
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        { "type": "SYMBOL", "name": "start" },
+        \\        { "type": "STRING", "value": "+" }
+        \\      ]
+        \\    },
+        \\    "start": {
+        \\      "type": "CHOICE",
+        \\      "members": [
+        \\        { "type": "SYMBOL", "name": "lhs" },
+        \\        { "type": "SYMBOL", "name": "rhs" }
+        \\      ]
+        \\    },
+        \\    "lhs": { "type": "SYMBOL", "name": "atom" },
+        \\    "rhs": { "type": "SYMBOL", "name": "atom" },
+        \\    "atom": { "type": "STRING", "value": "x" }
+        \\  }
+        \\}
+    ;
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expect(result.hasUnresolvedDecisions());
+    try std.testing.expect(!result.hasBlockingUnresolvedDecisions());
+    try validateResolvedConflictPolicy(pipeline_arena.allocator(), result);
+}
+
+test "validateResolvedConflictPolicy rejects unused expected conflicts" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    const contents =
+        \\{
+        \\  "name": "policy_unused_expected_conflict",
+        \\  "expected_conflicts": [["source_file", "expr"]],
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "expr" },
+        \\    "expr": { "type": "STRING", "value": "x" }
+        \\  }
+        \\}
+    ;
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expectError(
+        error.UnusedExpectedConflict,
+        validateResolvedConflictPolicy(pipeline_arena.allocator(), result),
     );
 }
 

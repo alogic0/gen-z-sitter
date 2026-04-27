@@ -277,6 +277,8 @@ Completed steps:
   `expected_conflicts` while leaving the default build path unchanged.
 - [x] Add an opt-in `strict_expected_conflicts` build/generate option and CLI
   flag for JSON-summary generation.
+- [x] Add a consolidated strict conflict-policy validator for blocking
+  unresolved decisions and unused `expected_conflicts`.
 
 ---
 
