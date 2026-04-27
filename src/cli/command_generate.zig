@@ -23,6 +23,12 @@ const EmittedSizeStats = struct {
     parser_c_emitted_bytes: usize,
 };
 
+const ParseTableMinimizationStats = struct {
+    default_state_count: usize,
+    minimized_state_count: usize,
+    merged_state_count: usize,
+};
+
 pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.GenerateOptions) !void {
     if (opts.grammar_path.len == 0) {
         return error.InvalidArguments;
@@ -202,6 +208,12 @@ fn generateJsonSummaryAlloc(
     });
     const parser_stats = try parser_c_emit.collectEmissionStatsWithOptions(allocator, serialized, options);
     const serialized_state_count = serialized.states.len;
+    const parse_table_minimization = try collectParseTableMinimizationStats(
+        allocator,
+        prepared,
+        build_options,
+        serialized_state_count,
+    );
     const emitted_size_stats = try collectEmittedSizeStats(allocator, serialized, options);
 
     var out: std.Io.Writer.Allocating = .init(allocator);
@@ -229,6 +241,11 @@ fn generateJsonSummaryAlloc(
             if (build_options.minimize_states) "true" else "false",
         },
     );
+    try writer.writeAll(" },\n");
+    try writer.writeAll("  \"parse_table_minimization\": { ");
+    try writer.print("\"default_state_count\": {d}, ", .{parse_table_minimization.default_state_count});
+    try writer.print("\"minimized_state_count\": {d}, ", .{parse_table_minimization.minimized_state_count});
+    try writer.print("\"merged_state_count\": {d}", .{parse_table_minimization.merged_state_count});
     try writer.writeAll(" },\n");
     try writer.writeAll("  \"savings\": { ");
     try writer.print("\"state_count_delta\": {d}, ", .{serialized_state_count - parser_stats.state_count});
@@ -279,6 +296,35 @@ fn generateJsonSummaryAlloc(
     try writer.writeAll("\n}\n");
 
     return try out.toOwnedSlice();
+}
+
+fn collectParseTableMinimizationStats(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    build_options: parse_table_build.BuildOptions,
+    serialized_state_count: usize,
+) !ParseTableMinimizationStats {
+    if (!build_options.minimize_states) {
+        return .{
+            .default_state_count = serialized_state_count,
+            .minimized_state_count = serialized_state_count,
+            .merged_state_count = 0,
+        };
+    }
+
+    var default_build_options = build_options;
+    default_build_options.minimize_states = false;
+    const default_result = try parse_table_pipeline.buildStatesFromPreparedWithOptions(
+        allocator,
+        prepared,
+        default_build_options,
+    );
+    const default_state_count = default_result.states.len;
+    return .{
+        .default_state_count = default_state_count,
+        .minimized_state_count = serialized_state_count,
+        .merged_state_count = default_state_count - serialized_state_count,
+    };
 }
 
 fn collectEmittedSizeStats(
@@ -365,6 +411,7 @@ test "generateJsonSummaryAlloc reports parser row-sharing stats" {
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 6"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true, \"minimize_states\": false }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 6, \"minimized_state_count\": 6, \"merged_state_count\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"savings\": { \"state_count_delta\": 0, \"action_array_definitions_saved\": 0, \"goto_array_definitions_saved\": 0, \"unresolved_array_definitions_saved\": 0, \"total_array_definitions_saved\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_bytes\": { "));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_entry_count\": 8"));
@@ -404,6 +451,7 @@ test "generateJsonSummaryAlloc can disable duplicate-state compaction stats" {
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 7"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": false, \"minimize_states\": false }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 7, \"minimized_state_count\": 7, \"merged_state_count\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"savings\": { \"state_count_delta\": 0, \"action_array_definitions_saved\": 0, \"goto_array_definitions_saved\": 0, \"unresolved_array_definitions_saved\": 0, \"total_array_definitions_saved\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parser_tables_baseline\": "));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parser_c_emitted\": "));
@@ -438,6 +486,7 @@ test "generateJsonSummaryAlloc reports minimized parse-table option" {
     );
 
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true, \"minimize_states\": true }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 7, \"minimized_state_count\": 7, \"merged_state_count\": 0 }"));
 }
 
 test "generateJsonSummaryAlloc reports serialized versus emitted state counts when compaction keeps states" {

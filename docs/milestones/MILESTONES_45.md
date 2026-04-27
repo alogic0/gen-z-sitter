@@ -334,6 +334,7 @@ Completed steps:
 - [x] Add a bounded compat minimization probe for safe shortlist targets that
   compares default and minimized state counts without running heavy compat.
 - [x] Add aggregate minimization counts for the bounded compat probe.
+- [x] Expose parse-table minimization state counts in generate JSON summaries.
 
 **Risk.** Low. Purely additive. The minimization pass can be toggled off and
 the existing output is unchanged when it is.
