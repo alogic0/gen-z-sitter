@@ -475,8 +475,11 @@ fn writeRuntimeAction(
 
 fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n");
+    try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n");
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  TSStateId state;\n");
+    try writer.writeAll("  TSStateId stack[GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH];\n");
+    try writer.writeAll("  uint16_t stack_len;\n");
     try writer.writeAll("  uint32_t byte_offset;\n");
     try writer.writeAll("  int32_t dynamic_precedence;\n");
     try writer.writeAll("  bool active;\n");
@@ -489,12 +492,21 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("  set->count = 1;\n");
     try writer.writeAll("  for (uint16_t i = 0; i < GEN_Z_SITTER_MAX_PARSE_VERSIONS; i++) {\n");
     try writer.writeAll("    set->versions[i].state = 0;\n");
+    try writer.writeAll("    set->versions[i].stack_len = 0;\n");
     try writer.writeAll("    set->versions[i].byte_offset = 0;\n");
     try writer.writeAll("    set->versions[i].dynamic_precedence = 0;\n");
     try writer.writeAll("    set->versions[i].active = false;\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("  set->versions[0].state = start_state;\n");
+    try writer.writeAll("  set->versions[0].stack[0] = start_state;\n");
+    try writer.writeAll("  set->versions[0].stack_len = 1;\n");
     try writer.writeAll("  set->versions[0].active = true;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static bool ts_generated_version_push_state(TSGeneratedParseVersion *version, TSStateId state) {\n");
+    try writer.writeAll("  if (version->stack_len >= GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH) return false;\n");
+    try writer.writeAll("  version->stack[version->stack_len++] = state;\n");
+    try writer.writeAll("  version->state = state;\n");
+    try writer.writeAll("  return true;\n");
     try writer.writeAll("}\n\n");
 }
 
@@ -545,7 +557,7 @@ fn writeGlrActionDispatch(writer: anytype) !void {
     try writer.writeAll("  TSGeneratedParseStep step = { 0 };\n");
     try writer.writeAll("  switch ((TSParseActionType)action->type) {\n");
     try writer.writeAll("    case TSParseActionTypeShift:\n");
-    try writer.writeAll("      version->state = action->shift.state;\n");
+    try writer.writeAll("      if (!ts_generated_version_push_state(version, action->shift.state)) break;\n");
     try writer.writeAll("      step.status = TSGeneratedParseStepShift;\n");
     try writer.writeAll("      step.next_state = action->shift.state;\n");
     try writer.writeAll("      break;\n");
@@ -1917,9 +1929,11 @@ test "emitParserCAlloc emits opt-in GLR parser version storage" {
     defer allocator.free(emitted);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSStateId state;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSStateId state;\n  TSStateId stack[GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH];\n  uint16_t stack_len;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseVersion versions[GEN_Z_SITTER_MAX_PARSE_VERSIONS];\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_parse_versions_init(TSGeneratedParseVersionSet *set, TSStateId start_state) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_version_push_state(TSGeneratedParseVersion *version, TSStateId state) {\n"));
 }
 
 test "emitParserCAlloc emits opt-in GLR parse table helpers" {
@@ -1970,6 +1984,7 @@ test "emitParserCAlloc emits opt-in GLR action dispatch helpers" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef enum {\n  TSGeneratedParseStepNoAction,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static TSGeneratedParseStep ts_generated_apply_parse_action(TSGeneratedParseVersion *version, const TSParseAction *action) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_version_push_state(version, action->shift.state)) break;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->dynamic_precedence += action->reduce.dynamic_precedence;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static TSGeneratedParseStep ts_generated_parse_version_step(TSGeneratedParseVersion *version, TSSymbol lookahead_symbol) {\n"));
 }

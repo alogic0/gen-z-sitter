@@ -146,6 +146,8 @@ does not yet appear in generated C.
 - [x] Add a generated active-version step helper for the opt-in GLR loop path.
 - [x] Align generated version condensation with the runtime rule: merge matching
   state/cursor positions and keep the higher dynamic precedence.
+- [x] Add generated parse-version stack storage and bounded shift-state pushes
+  for the opt-in GLR loop path.
 
 ---
 
