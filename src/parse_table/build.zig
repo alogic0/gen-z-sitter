@@ -1699,14 +1699,6 @@ pub fn buildStatesWithOptions(
 
     timer = maybeStartTimer(progress_log);
     stage_profile_timer = profileTimer(profile_log);
-    if (progress_log) std.debug.print("[parse_table/build] stage group_action_table\n", .{});
-    if (progress_log) logBuildStart("group_action_table");
-    const grouped_actions = try actions.groupActionTable(allocator, constructed.actions);
-    logProfileDone("group_action_table", stage_profile_timer);
-    if (progress_log) maybeLogBuildDone("group_action_table", timer);
-
-    timer = maybeStartTimer(progress_log);
-    stage_profile_timer = profileTimer(profile_log);
     if (progress_log) std.debug.print("[parse_table/build] stage resolve_action_table\n", .{});
     if (progress_log) logBuildStart("resolve_action_table");
     const resolved_actions = try resolution.resolveActionTableWithFirstSetsContext(
@@ -1716,7 +1708,7 @@ pub fn buildStatesWithOptions(
         grammar.expected_conflicts,
         constructed.states,
         first_sets,
-        grouped_actions,
+        constructed.grouped_actions,
     );
     logProfileDone("resolve_action_table", stage_profile_timer);
     if (progress_log) {
@@ -1768,6 +1760,7 @@ pub fn buildStatesWithOptions(
 const ConstructedStates = struct {
     states: []const state.ParseState,
     actions: actions.ActionTable,
+    grouped_actions: actions.GroupedActionTable,
 };
 
 const NonTerminalExtraStart = struct {
@@ -2127,6 +2120,7 @@ const StateConstructionEngine = struct {
     successor_seed_state_cache: *SuccessorSeedStateCache,
     state_registry: *StateRegistry,
     action_states: *std.array_list.Managed(actions.StateActions),
+    grouped_action_states: *std.array_list.Managed(actions.GroupedStateActions),
     largest_new_successor: *?SuccessorDiagnostic,
     largest_reused_successor: *?SuccessorDiagnostic,
     non_terminal_extra_starts: []const NonTerminalExtraStart,
@@ -2172,6 +2166,11 @@ const StateConstructionEngine = struct {
             self.productions,
             mutable_states[state_index],
         );
+        const grouped_state_actions = try actions.buildGroupedActionsForState(
+            self.allocator,
+            self.productions,
+            mutable_states[state_index],
+        );
         addProfileDuration(&construct_profile.build_actions_ns, actions_timer);
         const conflicts_timer = profileTimer(construct_profile_enabled);
         const detected_conflicts = try conflicts.detectConflictsFromActions(
@@ -2185,6 +2184,7 @@ const StateConstructionEngine = struct {
             .state_id = mutable_states[state_index].id,
             .entries = state_actions,
         });
+        try self.grouped_action_states.append(grouped_state_actions);
 
         reporter.logStateDone(
             state_index,
@@ -3489,6 +3489,8 @@ fn constructStates(
     defer state_registry.deinit();
     var action_states = std.array_list.Managed(actions.StateActions).init(allocator);
     defer action_states.deinit();
+    var grouped_action_states = std.array_list.Managed(actions.GroupedStateActions).init(allocator);
+    defer grouped_action_states.deinit();
     var largest_new_successor: ?SuccessorDiagnostic = null;
     var largest_reused_successor: ?SuccessorDiagnostic = null;
 
@@ -3537,6 +3539,7 @@ fn constructStates(
         .successor_seed_state_cache = &successor_seed_state_cache,
         .state_registry = &state_registry,
         .action_states = &action_states,
+        .grouped_action_states = &grouped_action_states,
         .largest_new_successor = &largest_new_successor,
         .largest_reused_successor = &largest_reused_successor,
         .non_terminal_extra_starts = non_terminal_extra_starts,
@@ -3558,6 +3561,9 @@ fn constructStates(
         .states = try state_registry.intoOwnedSlice(),
         .actions = .{
             .states = try action_states.toOwnedSlice(),
+        },
+        .grouped_actions = .{
+            .states = try grouped_action_states.toOwnedSlice(),
         },
     };
 }

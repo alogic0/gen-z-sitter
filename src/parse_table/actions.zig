@@ -132,6 +132,58 @@ pub fn buildActionsForState(
     return try entries.toOwnedSlice();
 }
 
+pub fn buildGroupedActionsForState(
+    allocator: std.mem.Allocator,
+    productions: anytype,
+    parse_state: state.ParseState,
+) std.mem.Allocator.Error!GroupedStateActions {
+    var groups = std.array_list.Managed(ActionGroup).init(allocator);
+    defer groups.deinit();
+    errdefer deinitActionGroups(allocator, groups.items);
+
+    for (parse_state.transitions) |transition| {
+        switch (transition.symbol) {
+            .terminal, .external => {
+                try appendUniqueGroupedAction(allocator, &groups, transition.symbol, .{ .shift = transition.state });
+            },
+            .end, .non_terminal => {},
+        }
+    }
+
+    for (parse_state.items) |entry| {
+        const parse_item = entry.item;
+        const production = productions[parse_item.production_id];
+        if (parse_item.step_index != production.steps.len) continue;
+
+        const action: ParseAction = if (production.augmented)
+            .{ .accept = {} }
+        else
+            .{ .reduce = parse_item.production_id };
+
+        var terminal_iter = entry.lookaheads.terminals.bits.iterator(.{});
+        while (terminal_iter.next()) |index| {
+            try appendUniqueGroupedAction(allocator, &groups, .{ .terminal = @intCast(index) }, action);
+        }
+        var external_iter = entry.lookaheads.externals.bits.iterator(.{});
+        while (external_iter.next()) |index| {
+            try appendUniqueGroupedAction(allocator, &groups, .{ .external = @intCast(index) }, action);
+        }
+        if (entry.lookaheads.includes_end) {
+            try appendUniqueGroupedAction(allocator, &groups, .{ .end = {} }, action);
+        }
+    }
+
+    sortActionGroups(groups.items);
+    for (groups.items) |group| {
+        sortParseActions(@constCast(group.actions));
+    }
+
+    return .{
+        .state_id = parse_state.id,
+        .groups = try groups.toOwnedSlice(),
+    };
+}
+
 pub fn buildActionTable(
     allocator: std.mem.Allocator,
     productions: anytype,
@@ -145,6 +197,18 @@ pub fn buildActionTable(
         };
     }
     return .{ .states = state_entries };
+}
+
+pub fn buildGroupedActionTable(
+    allocator: std.mem.Allocator,
+    productions: anytype,
+    parse_states: []const state.ParseState,
+) std.mem.Allocator.Error!GroupedActionTable {
+    const states = try allocator.alloc(GroupedStateActions, parse_states.len);
+    for (parse_states, 0..) |parse_state, index| {
+        states[index] = try buildGroupedActionsForState(allocator, productions, parse_state);
+    }
+    return .{ .states = states };
 }
 
 pub fn groupActionsForState(
@@ -197,8 +261,58 @@ fn actionsFromEntriesAlloc(
     return result;
 }
 
+fn appendUniqueGroupedAction(
+    allocator: std.mem.Allocator,
+    groups: *std.array_list.Managed(ActionGroup),
+    symbol: syntax_ir.SymbolRef,
+    action: ParseAction,
+) std.mem.Allocator.Error!void {
+    for (groups.items) |*group| {
+        if (!symbolRefEql(group.symbol, symbol)) continue;
+        for (group.actions) |existing| {
+            if (parseActionEql(existing, action)) return;
+        }
+        group.actions = try appendParseActionAlloc(allocator, group.actions, action);
+        return;
+    }
+
+    const group_actions = try allocator.alloc(ParseAction, 1);
+    group_actions[0] = action;
+    try groups.append(.{
+        .symbol = symbol,
+        .actions = group_actions,
+    });
+}
+
+fn appendParseActionAlloc(
+    allocator: std.mem.Allocator,
+    values: []const ParseAction,
+    value: ParseAction,
+) std.mem.Allocator.Error![]const ParseAction {
+    const result = try allocator.alloc(ParseAction, values.len + 1);
+    @memcpy(result[0..values.len], values);
+    result[values.len] = value;
+    allocator.free(values);
+    return result;
+}
+
+pub fn deinitActionGroups(allocator: std.mem.Allocator, groups: []const ActionGroup) void {
+    for (groups) |group| {
+        allocator.free(group.entries);
+        allocator.free(group.actions);
+    }
+}
+
 pub fn sortActionEntries(entries: []ActionEntry) void {
     std.mem.sort(ActionEntry, entries, {}, lessThanActionEntry);
+}
+
+pub fn sortActionGroups(groups: []ActionGroup) void {
+    std.mem.sort(ActionGroup, groups, {}, lessThanActionGroup);
+}
+
+pub fn sortParseActions(values: []ParseAction) void {
+    std.mem.sort(ParseAction, values, {}, ParseAction.lessThan);
 }
 
 fn appendUniqueAction(
@@ -214,6 +328,10 @@ fn appendUniqueAction(
 fn lessThanActionEntry(_: void, a: ActionEntry, b: ActionEntry) bool {
     if (!symbolRefEql(a.symbol, b.symbol)) return symbolLessThan(a.symbol, b.symbol);
     return ParseAction.lessThan({}, a.action, b.action);
+}
+
+fn lessThanActionGroup(_: void, a: ActionGroup, b: ActionGroup) bool {
+    return symbolLessThan(a.symbol, b.symbol);
 }
 
 fn actionEntryEql(a: ActionEntry, b: ActionEntry) bool {
@@ -432,6 +550,70 @@ test "buildActionTable keeps per-state actions addressable by state id" {
         .accept => true,
         else => false,
     });
+}
+
+test "buildGroupedActionsForState matches grouped flat actions" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{
+            .lhs = std.math.maxInt(u32),
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .non_terminal = 0 } },
+            },
+            .augmented = true,
+        },
+        .{
+            .lhs = 0,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .terminal = 0 } },
+            },
+        },
+    };
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 2, item.ParseItem.init(0, 1), .{ .external = 1 }),
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 2, item.ParseItem.init(1, 1), .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 2, item.ParseItem.init(1, 0), .{ .terminal = 0 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+
+    const parse_state = state.ParseState{
+        .id = 5,
+        .items = parse_items[0..],
+        .transitions = &[_]state.Transition{
+            .{ .symbol = .{ .terminal = 0 }, .state = 8 },
+            .{ .symbol = .{ .non_terminal = 0 }, .state = 9 },
+        },
+    };
+
+    const flat_entries = try buildActionsForState(allocator, productions[0..], parse_state);
+    defer allocator.free(flat_entries);
+    const grouped_from_flat = try groupActionsForState(allocator, parse_state.id, flat_entries);
+    defer {
+        deinitActionGroups(allocator, grouped_from_flat.groups);
+        allocator.free(grouped_from_flat.groups);
+    }
+    const direct_grouped = try buildGroupedActionsForState(allocator, productions[0..], parse_state);
+    defer {
+        deinitActionGroups(allocator, direct_grouped.groups);
+        allocator.free(direct_grouped.groups);
+    }
+
+    try std.testing.expectEqual(grouped_from_flat.groups.len, direct_grouped.groups.len);
+    for (grouped_from_flat.groups, direct_grouped.groups) |expected, actual| {
+        try std.testing.expect(symbolRefEql(expected.symbol, actual.symbol));
+        try std.testing.expectEqual(expected.actions.len, actual.actions.len);
+        for (expected.actions, actual.actions) |expected_action, actual_action| {
+            try std.testing.expect(parseActionEql(expected_action, actual_action));
+        }
+    }
 }
 
 test "groupActionsForState groups sorted actions by symbol deterministically" {

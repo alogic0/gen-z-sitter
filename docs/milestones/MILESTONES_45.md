@@ -193,10 +193,10 @@ Completed steps:
 - [x] Populate the action slice when grouping flat state actions.
 - [x] Teach resolution to consume `ActionGroup.actions` instead of deriving
   candidates only from `ActionEntry` values.
+- [x] Build grouped action tables directly during state construction.
 
 Remaining steps:
 
-- [ ] Build grouped action tables directly during state construction.
 - [ ] Keep flat `ActionTable` only as a debug/compat projection.
 - [ ] Serialize unresolved multi-action entries as strict-mode blockers and
   diagnostic-mode side-table entries.
