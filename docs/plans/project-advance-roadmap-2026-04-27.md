@@ -100,7 +100,7 @@ parity needs tree construction or an explicitly scoped public result model.
   - tree-sitter-compatible `TSTree`/`TSNode` ABI.
 - [x] Add generated value stack entries for shifted terminals and reduced
   productions.
-- [ ] Build reduced parent nodes with byte ranges and production IDs.
+- [x] Build reduced parent nodes with byte ranges and production IDs.
 - [ ] Preserve alias and field metadata through the emitted tree path.
 - [ ] Add a staged test comparing generated tree strings with the runtime parser
   for a small grammar.
