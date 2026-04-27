@@ -910,6 +910,11 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\typedef struct {
         \\  uint16_t lex_state;
         \\  uint16_t external_lex_state;
+        \\} TSLexMode;
+        \\
+        \\typedef struct {
+        \\  uint16_t lex_state;
+        \\  uint16_t external_lex_state;
         \\  uint16_t reserved_word_set_id;
         \\} TSLexerMode;
         \\
@@ -1287,6 +1292,11 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  struct { uint8_t type; uint8_t child_count; TSSymbol symbol; int16_t dynamic_precedence; uint16_t production_id; } reduce;
         \\  uint8_t type;
         \\} TSParseAction;
+        \\
+        \\typedef struct {
+        \\  uint16_t lex_state;
+        \\  uint16_t external_lex_state;
+        \\} TSLexMode;
         \\
         \\typedef struct {
         \\  uint16_t lex_state;

@@ -433,13 +433,20 @@ Gate:
 
 Goal: make generated C robust enough for downstream parser consumers.
 
-- [ ] Add missing compiler pragmas only where measured compile time requires
+- [x] Add missing compiler pragmas only where measured compile time requires
   them.
-- [ ] Finish TSCharacterRange compatibility if large Unicode grammars need it.
-- [ ] Audit generated ABI structs against the tree-sitter runtime headers.
+- [x] Finish TSCharacterRange compatibility if large Unicode grammars need it.
+- [x] Audit generated ABI structs against the tree-sitter runtime headers.
 - [ ] Add compile-smoke tests for C11, common warnings, and large lex tables.
 - [ ] Decide when public `tree_sitter_<name>()` naming should replace the
   current generic entry point in generated output.
+
+Audit note: the generated self-contained C contract now mirrors the runtime
+header structs used by generated parsers, including `TSLexMode`,
+`TSLexerMode`, `TSParseAction`, `TSParseActionEntry`, `TSCharacterRange`,
+`TSSymbolMetadata`, field/supertype map slices, and the `TSLanguage` layout.
+Compiler pragmas and large-character-set `TSCharacterRange` emission are already
+implemented and kept behind measured lexer-size thresholds.
 
 Gate:
 

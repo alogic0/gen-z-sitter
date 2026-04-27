@@ -103,6 +103,10 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  uint16_t lex_state;\n");
     try writer.writeAll("  uint16_t external_lex_state;\n");
+    try writer.writeAll("} TSLexMode;\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  uint16_t lex_state;\n");
+    try writer.writeAll("  uint16_t external_lex_state;\n");
     try writer.writeAll("  uint16_t reserved_word_set_id;\n");
     try writer.writeAll("} TSLexerMode;\n\n");
     try writer.writeAll("typedef union {\n");
@@ -246,6 +250,8 @@ test "writeContractTypesAndConstants emits runtime ABI version constants only" {
 
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define LANGUAGE_VERSION 15") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define MIN_COMPATIBLE_LANGUAGE_VERSION 13") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "} TSLexMode;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "} TSLexerMode;") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "TSParseActionEntry") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "TSCharacterRange") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "set_contains") != null);
