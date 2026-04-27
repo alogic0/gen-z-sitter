@@ -167,6 +167,15 @@ bool ts_generated_parse(const char *input, uint32_t length,
 byte offset (valid for most non-ambiguous prefixes). Divergent-offset handling
 (versions that reduced a different number of input bytes) is a follow-up.
 
+Status:
+
+- [x] Add a generated raw-input lexer adapter that invokes the existing emitted
+  `ts_lex(TSLexer *, TSStateId)` function using `ts_lex_modes[parse_state]`.
+- [x] Add an initial `ts_generated_parse` outer loop that drives active
+  versions from raw input and advances parse-version `byte_offset` with a
+  single shared lookahead position.
+- [ ] Extend the outer loop to handle divergent active-version byte offsets.
+
 **Files.**
 `src/parser_emit/parser_c.zig` — extend `writeGlrActionDispatch` (1a),
 add `writeGlrDriveVersionHelper` (1b), add `writeGlrMainParseFunction` (1c).

@@ -367,7 +367,9 @@ pub fn writeParserCWithOptions(
     if (has_unresolved) try writeUnresolvedAccessors(writer, compacted.states, unresolved_owners);
     if (options.glr_loop and has_unresolved) try writeGlrUnresolvedForkHelpers(writer);
     if (options.glr_loop) try writeGlrVersionCondenseHelpers(writer);
+    if (options.glr_loop) try writeGlrInputLexerHelpers(writer);
     if (options.glr_loop) try writeGlrVersionStepLoop(writer, has_unresolved);
+    if (options.glr_loop) try writeGlrMainParseFunction(writer);
     try writeReservedWords(writer, emitted_symbols, compacted.reserved_words);
     try writeExternalScannerTables(writer, emitted_symbols, compacted.grammar_name, compacted.external_scanner);
 
@@ -737,6 +739,61 @@ fn writeGlrVersionCondenseHelpers(writer: anytype) !void {
     try writer.writeAll("}\n\n");
 }
 
+fn writeGlrInputLexerHelpers(writer: anytype) !void {
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  TSLexer base;\n");
+    try writer.writeAll("  const char *input;\n");
+    try writer.writeAll("  uint32_t length;\n");
+    try writer.writeAll("  uint32_t offset;\n");
+    try writer.writeAll("  uint32_t end_offset;\n");
+    try writer.writeAll("} TSGeneratedInputLexer;\n\n");
+    try writer.writeAll("static void ts_generated_input_lexer_sync(TSGeneratedInputLexer *lexer) {\n");
+    try writer.writeAll("  lexer->base.lookahead = lexer->offset < lexer->length ? (unsigned char)lexer->input[lexer->offset] : 0;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static void ts_generated_input_lexer_advance(TSLexer *base, bool skip) {\n");
+    try writer.writeAll("  (void)skip;\n");
+    try writer.writeAll("  TSGeneratedInputLexer *lexer = (TSGeneratedInputLexer *)base;\n");
+    try writer.writeAll("  if (lexer->offset < lexer->length) lexer->offset++;\n");
+    try writer.writeAll("  ts_generated_input_lexer_sync(lexer);\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static void ts_generated_input_lexer_mark_end(TSLexer *base) {\n");
+    try writer.writeAll("  TSGeneratedInputLexer *lexer = (TSGeneratedInputLexer *)base;\n");
+    try writer.writeAll("  lexer->end_offset = lexer->offset;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static uint32_t ts_generated_input_lexer_get_column(TSLexer *base) {\n");
+    try writer.writeAll("  TSGeneratedInputLexer *lexer = (TSGeneratedInputLexer *)base;\n");
+    try writer.writeAll("  return lexer->offset;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static bool ts_generated_input_lexer_is_at_included_range_start(const TSLexer *base) {\n");
+    try writer.writeAll("  (void)base;\n");
+    try writer.writeAll("  return false;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static bool ts_generated_input_lexer_eof(const TSLexer *base) {\n");
+    try writer.writeAll("  const TSGeneratedInputLexer *lexer = (const TSGeneratedInputLexer *)base;\n");
+    try writer.writeAll("  return lexer->offset >= lexer->length;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static void ts_generated_input_lexer_log(const TSLexer *base, const char *format, ...) {\n");
+    try writer.writeAll("  (void)base;\n");
+    try writer.writeAll("  (void)format;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static bool ts_generated_lex_symbol(const char *input, uint32_t length, TSStateId parse_state, TSSymbol *out_symbol, uint32_t *out_advance_bytes) {\n");
+    try writer.writeAll("  TSGeneratedInputLexer lexer = { 0 };\n");
+    try writer.writeAll("  lexer.input = input;\n");
+    try writer.writeAll("  lexer.length = length;\n");
+    try writer.writeAll("  lexer.base.advance = ts_generated_input_lexer_advance;\n");
+    try writer.writeAll("  lexer.base.mark_end = ts_generated_input_lexer_mark_end;\n");
+    try writer.writeAll("  lexer.base.get_column = ts_generated_input_lexer_get_column;\n");
+    try writer.writeAll("  lexer.base.is_at_included_range_start = ts_generated_input_lexer_is_at_included_range_start;\n");
+    try writer.writeAll("  lexer.base.eof = ts_generated_input_lexer_eof;\n");
+    try writer.writeAll("  lexer.base.log = ts_generated_input_lexer_log;\n");
+    try writer.writeAll("  ts_generated_input_lexer_sync(&lexer);\n");
+    try writer.writeAll("  if (!ts_lex(&lexer.base, ts_lex_modes[parse_state].lex_state)) return false;\n");
+    try writer.writeAll("  *out_symbol = lexer.base.result_symbol;\n");
+    try writer.writeAll("  *out_advance_bytes = lexer.end_offset;\n");
+    try writer.writeAll("  return true;\n");
+    try writer.writeAll("}\n\n");
+}
+
 fn writeGlrVersionStepLoop(writer: anytype, has_unresolved: bool) !void {
     try writer.writeAll("static bool ts_generated_step_parse_versions(TSGeneratedParseVersionSet *set, TSSymbol lookahead_symbol) {\n");
     try writer.writeAll("  uint16_t initial_count = set->count;\n");
@@ -761,6 +818,41 @@ fn writeGlrVersionStepLoop(writer: anytype, has_unresolved: bool) !void {
     try writer.writeAll("  }\n");
     try writer.writeAll("  ts_generated_condense_parse_versions(set);\n");
     try writer.writeAll("  return false;\n");
+    try writer.writeAll("}\n\n");
+}
+
+fn writeGlrMainParseFunction(writer: anytype) !void {
+    try writer.writeAll("static bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n");
+    try writer.writeAll("  TSGeneratedParseVersionSet set;\n");
+    try writer.writeAll("  ts_generated_parse_versions_init(&set, 0);\n");
+    try writer.writeAll("  for (;;) {\n");
+    try writer.writeAll("    TSGeneratedParseVersion *lead = NULL;\n");
+    try writer.writeAll("    for (uint16_t i = 0; i < set.count; i++) {\n");
+    try writer.writeAll("      if (set.versions[i].active) {\n");
+    try writer.writeAll("        lead = &set.versions[i];\n");
+    try writer.writeAll("        break;\n");
+    try writer.writeAll("      }\n");
+    try writer.writeAll("    }\n");
+    try writer.writeAll("    if (!lead) return false;\n");
+    try writer.writeAll("    TSSymbol lookahead_symbol = 0;\n");
+    try writer.writeAll("    uint32_t advance_bytes = 0;\n");
+    try writer.writeAll("    if (lead->byte_offset < length) {\n");
+    try writer.writeAll("      if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) return false;\n");
+    try writer.writeAll("      if (advance_bytes == 0) return false;\n");
+    try writer.writeAll("    }\n");
+    try writer.writeAll("    bool accepted = ts_generated_step_parse_versions(&set, lookahead_symbol);\n");
+    try writer.writeAll("    if (accepted) {\n");
+    try writer.writeAll("      if (out_consumed_bytes) *out_consumed_bytes = lead->byte_offset + advance_bytes;\n");
+    try writer.writeAll("      return true;\n");
+    try writer.writeAll("    }\n");
+    try writer.writeAll("    bool any_active = false;\n");
+    try writer.writeAll("    for (uint16_t i = 0; i < set.count; i++) {\n");
+    try writer.writeAll("      if (!set.versions[i].active) continue;\n");
+    try writer.writeAll("      if (advance_bytes > 0) set.versions[i].byte_offset += advance_bytes;\n");
+    try writer.writeAll("      any_active = true;\n");
+    try writer.writeAll("    }\n");
+    try writer.writeAll("    if (!any_active || advance_bytes == 0) return false;\n");
+    try writer.writeAll("  }\n");
     try writer.writeAll("}\n\n");
 }
 
@@ -2099,6 +2191,63 @@ test "emitParserCAlloc emits opt-in GLR active-version step loop" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseStep step = ts_generated_drive_version(version, lookahead_symbol);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->active = false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_condense_parse_versions(set);\n"));
+}
+
+test "emitParserCAlloc emits opt-in GLR raw input lexer adapter" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .lex_modes = &[_]lexer_serialize.SerializedLexMode{
+            .{ .lex_state = 3 },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSLexer base;\n  const char *input;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_input_lexer_advance(TSLexer *base, bool skip) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_lex_symbol(const char *input, uint32_t length, TSStateId parse_state, TSSymbol *out_symbol, uint32_t *out_advance_bytes) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_lex(&lexer.base, ts_lex_modes[parse_state].lex_state)) return false;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "*out_symbol = lexer.base.result_symbol;\n"));
+}
+
+test "emitParserCAlloc emits opt-in GLR raw input parse entry point" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_parse_versions_init(&set, 0);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) return false;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool accepted = ts_generated_step_parse_versions(&set, lookahead_symbol);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (advance_bytes > 0) set.versions[i].byte_offset += advance_bytes;\n"));
 }
 
 test "emitParserCAlloc emits serialized lex modes" {
