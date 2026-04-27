@@ -234,14 +234,30 @@ Implementation batches, in order:
 4. `tree_sitter_zig_json` promotion beyond coarse serialize.
    - [x] Move from routine coarse serialize-only evidence toward parser.c
      emission and compile-smoke if the bounded cost stays acceptable.
-   - [ ] Add one accepted runtime-link sample after compile-smoke passes.
+   - [x] Profile the direct runtime-link path with a scoped diagnostic that
+     reports parser.c emission, driver generation, C compile/link, and linked
+     driver runtime separately.
+   - [x] Identify whether the 30s timeout comes from parser generation, C
+     compile/link, generated parser execution, or recovery behavior.
+   - [x] Re-run the runtime-link profiler in the same coarse closure mode used
+     by the compat target.
+   - [ ] Fix the parser-context gap exposed by `const answer = 42;`: the linked
+     parser currently shifts `const` and the identifier, then reaches EOF/error
+     instead of accepting `=`, the integer expression, and `;`.
+   - [ ] Add one accepted runtime-link sample only after the scoped diagnostic
+     has clear headroom under the bounded test limit.
    - [ ] Add one invalid or partial runtime-link sample after the accepted
-     sample is stable.
+     sample is stable and bounded.
    - Note: the scoped `tree_sitter_zig_json` compat target currently proves
      load, prepare, routine coarse serialization, parser table emission,
      parser.c emission, compatibility validation, and compile-smoke in about
-     7.1s. A direct runtime-link proof on `const answer = 42;` exceeded the
-     30s bounded test limit and remains deferred.
+     7.1s. Full lookahead runtime serialization still exceeds 60s before
+     parser.c emission, but the compat-matching coarse closure mode completes
+     runtime serialization in about 2.3s, parser.c emission in about 0.22s,
+     C compile/link in about 4.6s, and linked driver execution in about 13ms.
+     Accepted runtime-link promotion remains deferred because the current
+     generated parser errors after the variable identifier in
+     `const answer = 42;`.
 
 5. Scanner-wave evidence accounting.
    - [ ] Ensure Bash and Haskell generated GLR scanner runtime-link proofs are

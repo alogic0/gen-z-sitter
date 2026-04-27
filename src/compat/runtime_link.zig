@@ -347,6 +347,43 @@ pub fn linkAndRunTreeSitterZiggySchemaParserAcceptedSample(allocator: std.mem.Al
     });
 }
 
+pub fn profileTreeSitterZigRuntimeLinkCandidate(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const serialize_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+    var serialized = try parse_table_pipeline.serializeRuntimeTableFromGrammarPathWithBuildOptionsProfile(
+        arena.allocator(),
+        "compat_targets/tree_sitter_zig/grammar.json",
+        .diagnostic,
+        .{ .closure_lookahead_mode = .none },
+        "tree_sitter_zig_json",
+    );
+    std.debug.print(
+        "[zig-runtime-link-profile] serialize_ms={d:.2} states={d} blocked={}\n",
+        .{ elapsedMs(serialize_timer), serialized.states.len, serialized.blocked },
+    );
+    serialized = try offsetRuntimeStartStateAlloc(arena.allocator(), serialized);
+
+    const emit_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+    const parser_c = try parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+    std.debug.print(
+        "[zig-runtime-link-profile] emit_parser_c_ms={d:.2} bytes={d}\n",
+        .{ elapsedMs(emit_timer), parser_c.len },
+    );
+
+    try linkAndRunGeneratedParserWithProfile(allocator, .{
+        .parser_c = parser_c,
+        .input = "const answer = 42;",
+        .expected_has_error = true,
+    }, "tree_sitter_zig_json");
+}
+
 pub fn linkAndRunBashParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
     try ensureFileAvailableOrSkip(bash_scanner_path);
@@ -1730,6 +1767,22 @@ fn linkAndRunGeneratedParser(
     allocator: std.mem.Allocator,
     generated: GeneratedParserRun,
 ) RuntimeLinkError!void {
+    return try linkAndRunGeneratedParserMaybeProfile(allocator, generated, null);
+}
+
+fn linkAndRunGeneratedParserWithProfile(
+    allocator: std.mem.Allocator,
+    generated: GeneratedParserRun,
+    label: []const u8,
+) RuntimeLinkError!void {
+    return try linkAndRunGeneratedParserMaybeProfile(allocator, generated, label);
+}
+
+fn linkAndRunGeneratedParserMaybeProfile(
+    allocator: std.mem.Allocator,
+    generated: GeneratedParserRun,
+    profile_label: ?[]const u8,
+) RuntimeLinkError!void {
     const timestamp = std.Io.Timestamp.now(runtime_io.get(), .awake);
     const tmp_path = try std.fmt.allocPrint(
         allocator,
@@ -1753,12 +1806,20 @@ fn linkAndRunGeneratedParser(
             .data = scanner_c,
         });
     }
+    const driver_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     const driver_source = try driverSourceAlloc(allocator, generated);
     defer allocator.free(driver_source);
     try tmp_dir.writeFile(runtime_io.get(), .{
         .sub_path = "driver.c",
         .data = driver_source,
     });
+    if (profile_label) |label| {
+        std.debug.print("[zig-runtime-link-profile] {s} driver_source_ms={d:.2} bytes={d}\n", .{
+            label,
+            elapsedMs(driver_timer),
+            driver_source.len,
+        });
+    }
 
     const parser_path = try tmp_dir.realPathFileAlloc(runtime_io.get(), "parser.c", allocator);
     defer allocator.free(parser_path);
@@ -1793,8 +1854,15 @@ fn linkAndRunGeneratedParser(
     if (scanner_path) |path| try compile_args.append(path);
     try compile_args.appendSlice(&.{ "../tree-sitter/lib/src/lib.c", "-o", exe_path });
 
+    if (profile_label) |label| {
+        std.debug.print("[zig-runtime-link-profile] {s} compile_start\n", .{label});
+    }
+    const compile_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     var compile_result = try process_support.runCapture(allocator, compile_args.items);
     defer compile_result.deinit(allocator);
+    if (profile_label) |label| {
+        std.debug.print("[zig-runtime-link-profile] {s} compile_ms={d:.2}\n", .{ label, elapsedMs(compile_timer) });
+    }
 
     switch (compile_result.term) {
         .exited => |code| if (code != 0) {
@@ -1804,8 +1872,15 @@ fn linkAndRunGeneratedParser(
         else => return error.RuntimeLinkCompileTerminated,
     }
 
+    if (profile_label) |label| {
+        std.debug.print("[zig-runtime-link-profile] {s} run_start\n", .{label});
+    }
+    const run_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     var run_result = try process_support.runCapture(allocator, &.{exe_path});
     defer run_result.deinit(allocator);
+    if (profile_label) |label| {
+        std.debug.print("[zig-runtime-link-profile] {s} run_ms={d:.2}\n", .{ label, elapsedMs(run_timer) });
+    }
 
     switch (run_result.term) {
         .exited => |code| if (code != 0) {
@@ -1825,6 +1900,11 @@ fn linkAndRunGeneratedParser(
             return error.RuntimeLinkDriverTerminated;
         },
     }
+}
+
+fn elapsedMs(start: std.Io.Timestamp) f64 {
+    const duration = start.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake));
+    return @as(f64, @floatFromInt(duration.nanoseconds)) / @as(f64, std.time.ns_per_ms);
 }
 
 fn externalScannerSource() []const u8 {

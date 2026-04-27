@@ -378,12 +378,59 @@ pub fn serializeRuntimeTableFromGrammarPath(
     path: []const u8,
     mode: serialize.SerializeMode,
 ) (PipelineError || grammar_loader.LoaderError || parse_grammar.ParseGrammarError)!serialize.SerializedTable {
+    return try serializeRuntimeTableFromGrammarPathMaybeProfile(allocator, path, mode, .{}, null);
+}
+
+pub fn serializeRuntimeTableFromGrammarPathWithProfile(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    mode: serialize.SerializeMode,
+    profile_label: []const u8,
+) (PipelineError || grammar_loader.LoaderError || parse_grammar.ParseGrammarError)!serialize.SerializedTable {
+    return try serializeRuntimeTableFromGrammarPathMaybeProfile(allocator, path, mode, .{}, profile_label);
+}
+
+pub fn serializeRuntimeTableFromGrammarPathWithBuildOptionsProfile(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    mode: serialize.SerializeMode,
+    build_options: build.BuildOptions,
+    profile_label: []const u8,
+) (PipelineError || grammar_loader.LoaderError || parse_grammar.ParseGrammarError)!serialize.SerializedTable {
+    return try serializeRuntimeTableFromGrammarPathMaybeProfile(allocator, path, mode, build_options, profile_label);
+}
+
+fn serializeRuntimeTableFromGrammarPathMaybeProfile(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    mode: serialize.SerializeMode,
+    build_options: build.BuildOptions,
+    profile_label: ?[]const u8,
+) (PipelineError || grammar_loader.LoaderError || parse_grammar.ParseGrammarError)!serialize.SerializedTable {
+    const total_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+
+    const load_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     var loaded = try grammar_loader.loadGrammarFile(allocator, path);
     defer loaded.deinit();
+    logRuntimeProfile(profile_label, "load", load_timer);
+
+    const prepare_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     const prepared = try parse_grammar.parseRawGrammar(allocator, &loaded.json.grammar);
-    var serialized = try serializeTableFromPrepared(allocator, prepared, mode);
+    logRuntimeProfile(profile_label, "prepare", prepare_timer);
+
+    const serialize_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+    var serialized = try serializeTableFromPreparedWithBuildOptions(allocator, prepared, mode, build_options);
+    logRuntimeProfile(profile_label, "serialize_parse_table", serialize_timer);
+
+    const extract_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    logRuntimeProfile(profile_label, "extract_tokens", extract_timer);
+
+    const eof_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     const eof_valids = try eofValidLexStatesAlloc(allocator, serialized);
+    logRuntimeProfile(profile_label, "eof_valids", eof_timer);
+
+    const lex_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesWithEofAlloc(
         allocator,
         prepared.rules,
@@ -391,7 +438,16 @@ pub fn serializeRuntimeTableFromGrammarPath(
         serialized.lex_state_terminal_sets,
         eof_valids,
     );
+    logRuntimeProfile(profile_label, "build_lex_tables", lex_timer);
+    logRuntimeProfile(profile_label, "total_runtime_serialize", total_timer);
     return serialized;
+}
+
+fn logRuntimeProfile(profile_label: ?[]const u8, stage: []const u8, start: std.Io.Timestamp) void {
+    const label = profile_label orelse return;
+    const duration = start.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake));
+    const elapsed_ms = @as(f64, @floatFromInt(duration.nanoseconds)) / @as(f64, std.time.ns_per_ms);
+    std.debug.print("[runtime-serialize-profile] {s} {s}_ms={d:.2}\n", .{ label, stage, elapsed_ms });
 }
 
 fn eofValidLexStatesAlloc(

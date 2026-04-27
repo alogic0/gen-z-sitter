@@ -2,6 +2,7 @@ const std = @import("std");
 
 const custom_step_names = [_][]const u8{
     "run-minimize-report",
+    "run-zig-runtime-link-profile",
     "test-build-config",
 };
 
@@ -243,6 +244,18 @@ pub fn build(b: *std.Build) void {
     const compat_target_step = b.step("run-compat-target", "Run one compatibility target through the harness");
     compat_target_step.dependOn(&run_compat_target.step);
 
+    const zig_runtime_profile_runner = b.addExecutable(.{
+        .name = "zig-runtime-link-profile",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/debug_zig_runtime_link_profile.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_zig_runtime_profile = b.addRunArtifact(zig_runtime_profile_runner);
+    const zig_runtime_profile_step = b.step("run-zig-runtime-link-profile", "Profile the tree_sitter_zig_json runtime-link path");
+    zig_runtime_profile_step.dependOn(&run_zig_runtime_profile.step);
+
     const minimize_report_runner = b.addExecutable(.{
         .name = "minimize-report-runner",
         .root_module = b.createModule(.{
@@ -259,7 +272,8 @@ pub fn build(b: *std.Build) void {
 
 test "custom build steps stay documented" {
     try std.testing.expect(std.mem.eql(u8, custom_step_names[0], "run-minimize-report"));
-    try std.testing.expect(std.mem.eql(u8, custom_step_names[1], "test-build-config"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[1], "run-zig-runtime-link-profile"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[2], "test-build-config"));
 }
 
 fn createTestModule(
