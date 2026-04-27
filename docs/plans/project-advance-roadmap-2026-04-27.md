@@ -305,6 +305,15 @@ Gate:
 Goal: turn scanner-free incremental proof into an implementation that can be
 trusted for scanner-using grammars.
 
+### 4.0 Behavioral Harness Baseline
+
+- [x] Resolve or reclassify the existing Haskell external-boundary fixture
+  failure in `zig test src/behavioral_test_entry.zig`.
+- [x] Decide whether full behavioral entry is expected to be green before
+  scanner-aware incremental work continues.
+- [x] Keep focused incremental filters as the Phase 4 gate until the Haskell
+  baseline is fixed.
+
 ### 4.1 Scanner-Aware Incremental Harness
 
 #### 4.1a Audit and Invariants

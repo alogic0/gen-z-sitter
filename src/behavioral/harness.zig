@@ -379,13 +379,6 @@ pub fn sampleExtractedExternalBoundaryOnly(
             continue;
         }
 
-        if (syntax == null) {
-            if (skipSupportedExtraPrefix(input[cursor..])) |skip_len| {
-                cursor += skip_len;
-                continue;
-            }
-        }
-
         if (try matchLexicalPrefix(allocator, prepared_sampled, input[cursor..])) |match| {
             if (match.leading_separator_len > 0) {
                 cursor += nextInputCharLen(input[cursor..]);
@@ -394,6 +387,11 @@ pub fn sampleExtractedExternalBoundaryOnly(
 
             cursor += match.len;
             lexical_matches += 1;
+            continue;
+        }
+
+        if (skipSupportedExtraPrefix(input[cursor..])) |skip_len| {
+            cursor += skip_len;
             continue;
         }
 
