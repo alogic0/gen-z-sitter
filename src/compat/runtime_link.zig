@@ -1531,7 +1531,7 @@ fn directGeneratedParseDriverSourceAlloc(
             "  if (parse_ok) return 40;\n  return 0;\n";
     const parse_call =
         if (generated.direct_generated_result)
-            "  TSGeneratedParseResult result = { 0 };\n  bool parse_ok = ts_generated_parse_result(input, (uint32_t)strlen(input), &result);\n  consumed = result.consumed_bytes;\n  if (parse_ok && !result.accepted) return 42;\n  if (parse_ok && result.root_node != 1) return 43;\n  if (parse_ok && result.node_count != 2) return 44;\n  if (parse_ok && result.nodes[result.root_node].start_byte != 0) return 45;\n  if (parse_ok && result.nodes[result.root_node].end_byte != strlen(input)) return 46;\n"
+            "  TSGeneratedParseResult result = { 0 };\n  bool parse_ok = ts_generated_parse_result(input, (uint32_t)strlen(input), &result);\n  consumed = result.consumed_bytes;\n  if (parse_ok && !result.accepted) return 42;\n  if (parse_ok && result.root_node != 1) return 43;\n  if (parse_ok && result.node_count != 2) return 44;\n  if (parse_ok && result.nodes[result.root_node].start_byte != 0) return 45;\n  if (parse_ok && result.nodes[result.root_node].end_byte != strlen(input)) return 46;\n  if (parse_ok && result.nodes[result.root_node].child_count != 1) return 47;\n  if (parse_ok && result.nodes[result.root_node].children[0] != 0) return 48;\n"
         else
             "  bool parse_ok = ts_generated_parse(input, (uint32_t)strlen(input), &consumed);\n";
 
@@ -1550,6 +1550,7 @@ fn directGeneratedParseDriverSourceAlloc(
         \\  uint16_t production_id;
         \\  uint16_t child_count;
         \\  uint16_t first_child;
+        \\  uint16_t children[16];
         \\}} TSGeneratedNode;
         \\
         \\typedef struct {{
