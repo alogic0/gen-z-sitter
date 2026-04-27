@@ -115,6 +115,7 @@ pub fn build(b: *std.Build) void {
         "linkAndRunNoExternalTinyParser",
         "linkAndRunNoExternalTinyGlrParser",
         "linkAndRunUnresolvedShiftReduceGlrParser",
+        "linkAndRejectMalformedTinyGlrParser",
         "linkAndRunKeywordReservedParser",
         "linkAndRunExternalScannerParser",
         "linkAndRunMultiTokenExternalScannerParser",

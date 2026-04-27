@@ -82,7 +82,7 @@ needs runtime proof on generated C.
 - [x] Add a fixture with one unresolved shift/reduce conflict and prove both:
   unresolved side tables are emitted, and the generated GLR loop accepts the
   intended input.
-- [ ] Add a malformed-input direct `ts_generated_parse` proof once no-action
+- [x] Add a malformed-input direct `ts_generated_parse` proof once no-action
   recovery lands.
 
 Gate:
