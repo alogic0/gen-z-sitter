@@ -28,6 +28,67 @@ pub const MinimizationAggregate = struct {
     }
 };
 
+pub const SkippedMinimizationTarget = struct {
+    target_id: []const u8,
+    reason: []const u8,
+};
+
+const bounded_target_ids = [_][]const u8{
+    "parse_table_tiny_json",
+    "behavioral_config_json",
+    "parse_table_conflict_json",
+    "bracket_lang_json",
+    "hidden_external_fields_json",
+    "mixed_semantics_json",
+};
+
+const skipped_targets = [_]SkippedMinimizationTarget{
+    .{
+        .target_id = "repeat_choice_seq_js",
+        .reason = "blocked control grammar that upstream rejects as ambiguous",
+    },
+    .{
+        .target_id = "tree_sitter_ziggy_json",
+        .reason = "large real-grammar snapshot kept out of fast unit minimization probes",
+    },
+    .{
+        .target_id = "tree_sitter_ziggy_schema_json",
+        .reason = "large real-grammar snapshot kept out of fast unit minimization probes",
+    },
+    .{
+        .target_id = "tree_sitter_c_json",
+        .reason = "large real-grammar snapshot kept out of fast unit minimization probes",
+    },
+    .{
+        .target_id = "tree_sitter_zig_json",
+        .reason = "large real-grammar snapshot kept out of fast unit minimization probes",
+    },
+    .{
+        .target_id = "tree_sitter_haskell_json",
+        .reason = "large real external-scanner snapshot kept out of fast unit minimization probes",
+    },
+    .{
+        .target_id = "tree_sitter_bash_json",
+        .reason = "large real external-scanner snapshot kept out of fast unit minimization probes",
+    },
+    .{
+        .target_id = "hidden_external_fields_js",
+        .reason = "JS-loader variant kept out of the fast minimization probe",
+    },
+    .{
+        .target_id = "mixed_semantics_js",
+        .reason = "JS-loader variant kept out of the fast minimization probe",
+    },
+};
+
+pub fn boundedTargetIds() []const []const u8 {
+    return bounded_target_ids[0..];
+}
+
+pub fn skippedTargets() []const SkippedMinimizationTarget {
+    return skipped_targets[0..];
+}
+
 pub fn probeTargetAlloc(
     allocator: std.mem.Allocator,
     target: targets.Target,
@@ -68,6 +129,20 @@ pub fn aggregateProbes(probes: []const MinimizationProbe) MinimizationAggregate 
     return aggregate;
 }
 
+fn isBoundedTarget(target_id: []const u8) bool {
+    for (boundedTargetIds()) |bounded_id| {
+        if (std.mem.eql(u8, bounded_id, target_id)) return true;
+    }
+    return false;
+}
+
+fn skippedTargetReason(target_id: []const u8) ?[]const u8 {
+    for (skippedTargets()) |skipped| {
+        if (std.mem.eql(u8, skipped.target_id, target_id)) return skipped.reason;
+    }
+    return null;
+}
+
 fn findTarget(target_id: []const u8) ?targets.Target {
     for (targets.shortlistTargets()) |target| {
         if (std.mem.eql(u8, target.id, target_id)) return target;
@@ -89,16 +164,7 @@ fn expectBoundedTargetMinimization(target_id: []const u8) !MinimizationProbe {
 }
 
 test "bounded compat minimization probe keeps safe target state counts monotonic" {
-    const target_ids = [_][]const u8{
-        "parse_table_tiny_json",
-        "behavioral_config_json",
-        "parse_table_conflict_json",
-        "bracket_lang_json",
-        "hidden_external_fields_json",
-        "mixed_semantics_json",
-    };
-
-    for (target_ids) |target_id| {
+    for (boundedTargetIds()) |target_id| {
         _ = try expectBoundedTargetMinimization(target_id);
     }
 }
@@ -108,6 +174,25 @@ test "bounded compat minimization probe reports merged count from state delta" {
     try std.testing.expectEqual(
         probe.default_state_count - probe.minimized_state_count,
         probe.mergedCount(),
+    );
+}
+
+test "bounded compat minimization probe classifies every shortlist target" {
+    var classified_count: usize = 0;
+    for (targets.shortlistTargets()) |target| {
+        if (isBoundedTarget(target.id)) {
+            classified_count += 1;
+            continue;
+        }
+        const reason = skippedTargetReason(target.id) orelse return error.UnclassifiedTarget;
+        try std.testing.expect(reason.len > 0);
+        classified_count += 1;
+    }
+
+    try std.testing.expectEqual(targets.shortlistTargets().len, classified_count);
+    try std.testing.expectEqual(
+        targets.shortlistTargets().len,
+        boundedTargetIds().len + skippedTargets().len,
     );
 }
 
