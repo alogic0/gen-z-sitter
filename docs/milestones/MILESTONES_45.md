@@ -331,6 +331,8 @@ Completed steps:
   scanner-free outcomes and checks the minimized state count does not grow.
 - [x] Constrain minimization candidates by item-set core identity while
   ignoring lookahead sets.
+- [x] Add a bounded compat minimization probe for safe shortlist targets that
+  compares default and minimized state counts without running heavy compat.
 
 **Risk.** Low. Purely additive. The minimization pass can be toggled off and
 the existing output is unchanged when it is.
