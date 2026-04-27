@@ -147,6 +147,7 @@ does not yet appear in generated C.
   including shift, reduce, accept, recover, and dynamic-precedence accumulation.
 - [x] Add generated unresolved-action fork helpers for the opt-in GLR loop path.
 - [x] Add generated version condensation helpers for the opt-in GLR loop path.
+- [x] Add a generated active-version step helper for the opt-in GLR loop path.
 
 ---
 
