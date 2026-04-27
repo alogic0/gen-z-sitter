@@ -345,6 +345,9 @@ Completed steps:
 - [x] Add a focused build step for printing the bounded minimization JSON
   report without running heavy compatibility targets.
 - [x] Document the bounded minimization report command and local Phase 4 gate.
+- [x] Add a fast build-configuration test step for custom build-step metadata.
+- [x] Add the CLI-generate focused test step to the documented local Phase 4
+  gate.
 
 **Risk.** Low. Purely additive. The minimization pass can be toggled off and
 the existing output is unchanged when it is.
@@ -356,6 +359,8 @@ Use these bounded commands for routine Phase 4 verification:
 ```bash
 zig build run-minimize-report
 zig build test
+zig build test-build-config
+zig build test-cli-generate
 zig build test-pt
 zig build test-pipeline
 zig build test-behavioral

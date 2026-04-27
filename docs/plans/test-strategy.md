@@ -22,6 +22,30 @@ Use five layers:
 4. semantic equivalence tests
 5. determinism tests
 
+## Fast Local Gates
+
+Use bounded commands for routine local verification:
+
+```bash
+zig build test
+zig build test-build-config
+zig build test-cli-generate
+zig build test-pipeline
+zig build test-behavioral
+zig build run-minimize-report
+```
+
+Keep heavy compatibility runs separate from routine edits. `test-compat-heavy`
+and `test-compat-full` are deliberate compatibility gates, not default
+inner-loop checks.
+
+`test-cli-generate` covers the focused top-level generate summary surface,
+including optimization and parse-table minimization summary fields.
+
+`run-minimize-report` is a diagnostic gate for parse-table minimization. It
+covers staged safe JSON targets and reports skipped large real-grammar or
+JS-loader targets explicitly.
+
 ## 1. Unit Tests
 
 ### Scope

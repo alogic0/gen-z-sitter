@@ -75,13 +75,15 @@ Bounded test commands:
 
 ```bash
 zig build test
+zig build test-build-config
+zig build test-cli-generate
 zig build test-pipeline
 zig build test-link-runtime
 zig build test-compat-heavy
 zig build run-minimize-report
 ```
 
-`test` and `test-pipeline` are the fast local gates. `test-compat-heavy` is intentionally separate because it exercises larger compatibility targets and can take substantially longer.
+`test`, `test-build-config`, `test-cli-generate`, and `test-pipeline` are fast local gates. `test-compat-heavy` is intentionally separate because it exercises larger compatibility targets and can take substantially longer.
 `run-minimize-report` is a bounded diagnostic command. It prints parse-table minimization counts for the staged safe compatibility targets and lists larger or JS-loader targets that are intentionally skipped from fast minimization probes.
 
 Expected current behavior:
@@ -115,6 +117,8 @@ Supported generate options:
 - `--report-states-for-rule <rule>`
 - `--js-runtime <runtime>`
 - `--no-optimize-merge-states`
+- `--minimize`
+- `--strict-expected-conflicts`
 
 Not every flag currently maps to a fully surfaced end-user feature. The most directly exercised user-facing paths today are grammar loading, preparation, debug dumps, `node-types.json` output, and `--json-summary`. Some options exist to preserve the eventual generator contract or to drive lower-level emitter and compatibility paths that are more heavily exercised in tests than in the top-level CLI.
 

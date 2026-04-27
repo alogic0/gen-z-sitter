@@ -2,6 +2,7 @@ const std = @import("std");
 
 const custom_step_names = [_][]const u8{
     "run-minimize-report",
+    "test-build-config",
 };
 
 pub fn build(b: *std.Build) void {
@@ -39,6 +40,16 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_tests.addArgs(args);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
+
+    const build_config_tests = b.addTest(.{
+        .root_module = createTestModule(b, "build.zig", target, optimize),
+        .filters = if (test_filter) |f| &.{f} else &.{},
+    });
+
+    const run_build_config_tests = b.addRunArtifact(build_config_tests);
+    if (b.args) |args| run_build_config_tests.addArgs(args);
+    const build_config_test_step = b.step("test-build-config", "Run build configuration tests");
+    build_config_test_step.dependOn(&run_build_config_tests.step);
 
     const pt_tests = b.addTest(.{
         .root_module = createTestModule(b, "src/parse_table_test_entry.zig", target, optimize),
@@ -234,6 +245,7 @@ pub fn build(b: *std.Build) void {
 
 test "custom build steps stay documented" {
     try std.testing.expect(std.mem.eql(u8, custom_step_names[0], "run-minimize-report"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[1], "test-build-config"));
 }
 
 fn createTestModule(
