@@ -266,6 +266,8 @@ Completed steps:
   `expected_conflicts` input.
 - [x] Add a standalone expected-conflict policy helper that matches conflict
   members independent of order and reports unused declarations.
+- [x] Route reduce/reduce expected-conflict checks through the shared policy
+  helper while preserving current resolution behavior.
 
 ---
 

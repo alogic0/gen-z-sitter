@@ -3,6 +3,7 @@ const actions = @import("actions.zig");
 const first_sets_mod = @import("first.zig");
 const item = @import("item.zig");
 const state = @import("state.zig");
+const conflict_resolution = @import("conflict_resolution.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const UnresolvedReason = enum {
@@ -405,7 +406,13 @@ fn chooseResolvedAction(
             if (resolveReduceReduceByPrecedence(productions, precedence_orderings, first, second)) |chosen| {
                 return .{ .chosen = chosen };
             }
-            const reason: UnresolvedReason = if (reduceReduceIsExpected(productions, expected_conflicts, first, second))
+            const reason: UnresolvedReason = if (reduceReduceIsExpected(
+                productions,
+                expected_conflicts,
+                parse_state,
+                symbol,
+                candidates,
+            ))
                 .reduce_reduce_expected
             else
                 .reduce_reduce_deferred;
@@ -422,25 +429,18 @@ fn chooseResolvedAction(
 fn reduceReduceIsExpected(
     productions: anytype,
     expected_conflicts: []const []const syntax_ir.SymbolRef,
-    a: actions.ParseAction,
-    b: actions.ParseAction,
+    parse_state: ?state.ParseState,
+    symbol: syntax_ir.SymbolRef,
+    candidates: []const actions.ParseAction,
 ) bool {
-    if (expected_conflicts.len == 0) return false;
-    const prod_id_a = switch (a) {
-        .reduce => |id| id,
-        else => return false,
-    };
-    const prod_id_b = switch (b) {
-        .reduce => |id| id,
-        else => return false,
-    };
-    if (prod_id_a >= productions.len or prod_id_b >= productions.len) return false;
-    const lhs_a = productions[prod_id_a].lhs;
-    const lhs_b = productions[prod_id_b].lhs;
-    for (expected_conflicts) |conflict_set| {
-        if (conflictSetContainsBoth(conflict_set, lhs_a, lhs_b)) return true;
-    }
-    return false;
+    const state_id = if (parse_state) |value| value.id else 0;
+    return conflict_resolution.reduceConflictIsExpected(
+        expected_conflicts,
+        state_id,
+        symbol,
+        productions,
+        candidates,
+    );
 }
 
 const PrecedenceComparison = enum {
@@ -524,25 +524,6 @@ fn precedenceEntryMatchesProduction(
             else => false,
         },
     };
-}
-
-fn conflictSetContainsBoth(
-    conflict_set: []const syntax_ir.SymbolRef,
-    lhs_a: u32,
-    lhs_b: u32,
-) bool {
-    var found_a = false;
-    var found_b = false;
-    for (conflict_set) |sym| {
-        switch (sym) {
-            .non_terminal => |index| {
-                if (index == lhs_a) found_a = true;
-                if (index == lhs_b) found_b = true;
-            },
-            else => {},
-        }
-    }
-    return found_a and found_b;
 }
 
 fn resolveShiftReduce(
