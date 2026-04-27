@@ -22,7 +22,7 @@ pub fn normalizeConflictSets(
 
     for (input) |conflict_set| {
         const members = try normalizeSymbolList(allocator, conflict_set);
-        if (members.len < 2) {
+        if (members.len == 0) {
             allocator.free(members);
             continue;
         }
@@ -278,6 +278,19 @@ test "normalizeConflictSets deduplicates conflict members and duplicate sets" {
     try std.testing.expectEqual(@as(usize, 2), normalized[0].len);
     try std.testing.expectEqual(@as(u32, 1), normalized[0][0].index);
     try std.testing.expectEqual(@as(u32, 2), normalized[0][1].index);
+}
+
+test "normalizeConflictSets preserves singleton conflict sets" {
+    const conflict = [_]ir_symbols.SymbolId{
+        ir_symbols.SymbolId.nonTerminal(1),
+    };
+    const normalized = try normalizeConflictSets(std.testing.allocator, &.{&conflict});
+    defer std.testing.allocator.free(normalized);
+    defer std.testing.allocator.free(normalized[0]);
+
+    try std.testing.expectEqual(@as(usize, 1), normalized.len);
+    try std.testing.expectEqual(@as(usize, 1), normalized[0].len);
+    try std.testing.expectEqual(@as(u32, 1), normalized[0][0].index);
 }
 
 test "normalizePrecedenceOrderings deduplicates entries and duplicate lists" {

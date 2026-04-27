@@ -285,6 +285,8 @@ Completed steps:
   summaries.
 - [x] Route shift/reduce expected-conflict checks through the shared policy
   helper and keep declared matches non-blocking.
+- [x] Add a staged parser-only compatibility fixture that declares a
+  shift/reduce `expected_conflicts` entry and verifies it is accepted.
 
 ---
 

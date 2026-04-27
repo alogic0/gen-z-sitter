@@ -27,6 +27,7 @@ Current represented families:
   - `ziggy_schema`
   - `zig`
   - `parse_table_conflict`
+  - `parse_table_expected_conflict`
 - scanner/external-scanner
   - `hidden_external_fields`
   - `mixed_semantics`
@@ -112,6 +113,13 @@ Current staged boundary summary:
   - `parse_table_conflict_json`
   - this is now treated explicitly as an intentional ambiguity/control fixture, not as an unresolved external parser-only promotion gap
   - the checked-in reports classify it as a `frozen_control_fixture`
+- 1 focused staged parser-only fixture proves the expected-conflict policy:
+  - `parse_table_expected_conflict`
+  - it mirrors the ambiguous expression shape from `parse_table_conflict` but
+    declares `expected_conflicts` so the resolver can keep the shift/reduce
+    entry as a non-blocking expected conflict
+  - it is exercised by local pipeline tests rather than by the generated
+    shortlist artifacts
 - 2 staged scanner/external-scanner targets now pass within the first scanner wave:
   - `hidden_external_fields_json`
   - `hidden_external_fields_js`

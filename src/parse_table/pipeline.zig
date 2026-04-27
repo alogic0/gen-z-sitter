@@ -1503,6 +1503,37 @@ test "validateResolvedConflictPolicy allows expected reduce reduce conflicts" {
     try validateResolvedConflictPolicy(pipeline_arena.allocator(), result);
 }
 
+test "validateResolvedConflictPolicy allows staged expected shift reduce fixture" {
+    var load_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer load_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var loaded = try grammar_loader.loadGrammarFile(
+        load_arena.allocator(),
+        "compat_targets/parse_table_expected_conflict/grammar.json",
+    );
+    defer loaded.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &loaded.json.grammar);
+    const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expect(result.hasUnresolvedDecisions());
+    try std.testing.expect(!result.hasBlockingUnresolvedDecisions());
+
+    const unresolved = try result.unresolvedDecisionsAlloc(pipeline_arena.allocator());
+    try std.testing.expect(unresolved.len > 0);
+    for (unresolved) |entry| {
+        try std.testing.expectEqual(resolution.UnresolvedReason.shift_reduce_expected, entry.reason);
+    }
+
+    const report = try expectedConflictReportFromBuildResultAlloc(pipeline_arena.allocator(), result);
+    try std.testing.expect(!report.hasUnusedExpectedConflicts());
+    try validateResolvedConflictPolicy(pipeline_arena.allocator(), result);
+}
+
 test "validateResolvedConflictPolicy rejects unused expected conflicts" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();

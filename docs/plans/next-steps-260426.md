@@ -27,23 +27,25 @@ State after M43 (lexer parity), M44 (lexer-state milestone), and M45 Phases 1–
 
 ---
 
-## Priority 1 — M45 Phase 3 Completion: Compatibility Fixture
+## Priority 1 — M45 Phase 3 Completion
 
-**What is missing.**
+**Current state.**
 
 `expectedConflictReportFromPreparedAlloc` is now visible through JSON-summary
 counts and non-strict generate warnings when JSON-summary generation already
 builds the parse table. Shift/reduce conflicts are routed through
-`ExpectedConflictPolicy` in the resolver. The remaining work is fixture-level
-coverage rather than resolver plumbing.
+`ExpectedConflictPolicy` in the resolver. A staged compatibility fixture now
+declares a shift/reduce `expected_conflicts` entry and verifies it is accepted by
+the policy.
 
-**Work.**
+**Remaining manual gate.**
 
-1. Add a compat fixture that declares `expected_conflicts` for a real
-   shift/reduce ambiguity and verifies it is accepted by the policy.
+No further bounded local implementation is currently planned for Phase 3.
+Future broad compatibility claims should run the relevant shortlist or heavy
+compatibility target manually before updating checked-in reports.
 
-**Gate.** All existing compat targets pass unchanged. The new shift/reduce
-expected-conflict fixture is accepted only when its declaration matches.
+**Local gate.** Keep `zig build test-pipeline` and `zig build test-cli-generate`
+green.
 
 ---
 

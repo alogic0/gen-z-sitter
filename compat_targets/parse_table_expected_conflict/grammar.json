@@ -1,0 +1,27 @@
+{
+  "name": "parse_table_expected_conflict",
+  "expected_conflicts": [["expr"]],
+  "rules": {
+    "source_file": {
+      "type": "SYMBOL",
+      "name": "expr"
+    },
+    "expr": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            { "type": "SYMBOL", "name": "expr" },
+            { "type": "STRING", "value": "+" },
+            { "type": "SYMBOL", "name": "expr" }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": "x"
+        }
+      ]
+    }
+  }
+}
