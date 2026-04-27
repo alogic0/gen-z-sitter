@@ -15,7 +15,12 @@ const syntax_ir = @import("../ir/syntax_grammar.zig");
 /// Errors produced while converting the parse-table builder output into the
 /// runtime-oriented serialized model.
 pub const SerializeError = std.mem.Allocator.Error || error{
+    ParseActionListTooLarge,
     UnresolvedDecisions,
+};
+
+pub const ParseActionListError = std.mem.Allocator.Error || error{
+    ParseActionListTooLarge,
 };
 
 /// Controls whether unresolved parse decisions block serialization.
@@ -413,7 +418,7 @@ pub fn attachExtraShiftMetadataAlloc(
     allocator: std.mem.Allocator,
     serialized: SerializedTable,
     extra_symbols: []const syntax_ir.SymbolRef,
-) std.mem.Allocator.Error!SerializedTable {
+) ParseActionListError!SerializedTable {
     if (extra_symbols.len == 0) return serialized;
 
     const states = try allocator.alloc(SerializedState, serialized.states.len);
@@ -449,7 +454,7 @@ pub fn attachRepetitionShiftMetadataAlloc(
     serialized: SerializedTable,
     parse_states: []const state.ParseState,
     productions: []const build.ProductionInfo,
-) std.mem.Allocator.Error!SerializedTable {
+) ParseActionListError!SerializedTable {
     return try attachRepetitionShiftMetadataWithFirstSetsAlloc(
         allocator,
         serialized,
@@ -465,7 +470,7 @@ pub fn attachRepetitionShiftMetadataWithFirstSetsAlloc(
     parse_states: []const state.ParseState,
     productions: []const build.ProductionInfo,
     first_sets: ?first.FirstSets,
-) std.mem.Allocator.Error!SerializedTable {
+) ParseActionListError!SerializedTable {
     if (!hasRepetitionShift(serialized.states, parse_states, productions, first_sets)) return serialized;
 
     const states = try allocator.alloc(SerializedState, serialized.states.len);
@@ -563,7 +568,7 @@ pub fn buildParseActionListAlloc(
     allocator: std.mem.Allocator,
     states: []const SerializedState,
     productions: []const SerializedProductionInfo,
-) std.mem.Allocator.Error![]const SerializedParseActionListEntry {
+) ParseActionListError![]const SerializedParseActionListEntry {
     var entries = std.array_list.Managed(SerializedParseActionListEntry).init(allocator);
     defer entries.deinit();
     var single_action_indexes = ParseActionListIndexMap.init(allocator);
@@ -574,7 +579,7 @@ pub fn buildParseActionListAlloc(
         .reusable = false,
         .actions = &.{},
     });
-    var next_index: u16 = 1;
+    var next_index: usize = 1;
 
     for (states) |serialized_state| {
         for (serialized_state.actions) |entry| {
@@ -589,8 +594,8 @@ pub fn buildParseActionListAlloc(
                 continue;
             }
 
-            const index = next_index;
-            next_index += @intCast(action_slice.len + 1);
+            const index = try checkedParseActionListSpan(next_index, action_slice.len);
+            next_index += action_slice.len + 1;
             try entries.append(.{
                 .index = index,
                 .reusable = true,
@@ -605,8 +610,8 @@ pub fn buildParseActionListAlloc(
                 continue;
             }
 
-            const index = next_index;
-            next_index += @intCast(action_slice.len + 1);
+            const index = try checkedParseActionListSpan(next_index, action_slice.len);
+            next_index += action_slice.len + 1;
             try entries.append(.{
                 .index = index,
                 .reusable = false,
@@ -616,6 +621,13 @@ pub fn buildParseActionListAlloc(
     }
 
     return try entries.toOwnedSlice();
+}
+
+fn checkedParseActionListSpan(index: usize, action_count: usize) ParseActionListError!u16 {
+    if (index > std.math.maxInt(u16) or action_count > std.math.maxInt(u16) - index) {
+        return error.ParseActionListTooLarge;
+    }
+    return @intCast(index);
 }
 
 pub fn deinitParseActionList(

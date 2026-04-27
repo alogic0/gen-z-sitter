@@ -368,12 +368,13 @@ Goal: keep large grammar work practical without hiding regressions.
 
 ### 5.1 Construction Profiling
 
-- [ ] Keep construct-stage profiling available through env flags.
-- [ ] Re-profile C JSON, Zig, TypeScript, Rust, and JavaScript after each major
+- [x] Keep construct-stage profiling available through env flags.
+- [x] Re-profile C JSON, Zig, TypeScript, Rust, and JavaScript after each major
   parse-table change.
-- [ ] Track construction time, serialization time, emission time, MaxRSS, and
+- [x] Track construction time, serialization time, emission time, MaxRSS, and
   allocator churn.
-- [ ] Store representative measurements in a lightweight artifact or plan note.
+- [x] Store representative measurements in a lightweight artifact or plan note:
+  `docs/plans/phase5-profile-2026-04-27.md`.
 
 ### 5.2 Data Structure Improvements
 
@@ -383,7 +384,11 @@ Candidate optimizations, only after measurements justify them:
 - [ ] Closure cache key compaction if closure misses dominate.
 - [ ] State interning improvements if `state_intern_calls` greatly exceeds
   `state_intern_reused`.
-- [ ] Parse-action list and small-table dedup audits for large grammars.
+- [x] Parse-action list and small-table dedup audits for large grammars.
+
+Current Phase 5 profile note: SymbolSet allocation churn is visible but not the
+dominant C JSON signal; JavaScript now reports an explicit
+`ParseActionListTooLarge` boundary instead of overflowing in Debug.
 
 Gate:
 

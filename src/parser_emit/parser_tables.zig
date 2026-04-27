@@ -4,7 +4,9 @@ const common = @import("common.zig");
 const optimize = @import("optimize.zig");
 
 /// Errors produced while rendering the textual parser-table dump.
-pub const EmitError = std.mem.Allocator.Error || std.Io.Writer.Error;
+pub const EmitError = std.mem.Allocator.Error || std.Io.Writer.Error || error{
+    ParseActionListTooLarge,
+};
 
 /// Render the textual parser-table dump into an owned buffer.
 pub fn emitSerializedTableAlloc(

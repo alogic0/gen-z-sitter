@@ -14,7 +14,7 @@ pub fn prepareSerializedTableAlloc(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
     options: Options,
-) std.mem.Allocator.Error!serialize.SerializedTable {
+) serialize.ParseActionListError!serialize.SerializedTable {
     if (!options.compact_duplicate_states) return serialized;
     return try compactSerializedTableAlloc(allocator, serialized);
 }
@@ -22,7 +22,7 @@ pub fn prepareSerializedTableAlloc(
 pub fn compactSerializedTableAlloc(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
-) std.mem.Allocator.Error!serialize.SerializedTable {
+) serialize.ParseActionListError!serialize.SerializedTable {
     for (serialized.states, 0..) |serialized_state, index| {
         std.debug.assert(serialized_state.id == index);
     }

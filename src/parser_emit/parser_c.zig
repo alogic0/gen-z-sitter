@@ -10,7 +10,9 @@ const compile_smoke = @import("../compat/compile_smoke.zig");
 const optimize = @import("optimize.zig");
 
 /// Errors produced while rendering parser C into an owned buffer or writer.
-pub const EmitError = std.mem.Allocator.Error || std.Io.Writer.Error;
+pub const EmitError = std.mem.Allocator.Error || std.Io.Writer.Error || error{
+    ParseActionListTooLarge,
+};
 
 /// Row-sharing summary for one emitted parse-table section.
 pub const RowSharingStats = struct {
@@ -58,7 +60,7 @@ pub fn emitParserCAllocWithOptions(
 pub fn collectEmissionStats(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
-) std.mem.Allocator.Error!EmissionStats {
+) (std.mem.Allocator.Error || error{ParseActionListTooLarge})!EmissionStats {
     return try collectEmissionStatsWithOptions(allocator, serialized, .{});
 }
 
@@ -67,7 +69,7 @@ pub fn collectEmissionStatsWithOptions(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
     options: optimize.Options,
-) std.mem.Allocator.Error!EmissionStats {
+) (std.mem.Allocator.Error || error{ParseActionListTooLarge})!EmissionStats {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
