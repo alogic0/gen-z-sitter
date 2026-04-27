@@ -177,7 +177,10 @@ Completed result:
 
 Next broader-coverage candidates from `Next_Steps_2026_04_27.txt`:
 
-- `tree-sitter-python`: indentation-sensitive external scanner state.
+- [x] `tree-sitter-python`: indentation-sensitive external scanner state.
+  Added as `tree_sitter_python_json` at load/prepare boundary. The standalone
+  coarse serialize probe reaches 1139 states but remains blocked, so routine
+  parser-table and external-scanner proofs stay deferred.
 - `tree-sitter-typescript`: large alias/generic grammar surface.
 - `tree-sitter-rust`: large lexer and many parser states.
 

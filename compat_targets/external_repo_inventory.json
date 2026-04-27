@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "total_external_repo_targets": 8,
+  "total_external_repo_targets": 9,
   "passed_external_repo_targets": 7,
   "standalone_parser_proof_targets": 2,
   "family_coverage": [
@@ -51,12 +51,18 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 0
+    },
+    {
+      "family": "python",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 0
     }
   ],
   "boundary_coverage": [
     {
       "boundary_kind": "parser_only",
-      "target_count": 6,
+      "target_count": 7,
       "passed_count": 5
     },
     {
@@ -199,6 +205,22 @@
       "final_classification": "deferred_for_parser_boundary",
       "mismatch_category": "routine_serialize_proof_boundary",
       "notes": "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, currently kept at load/prepare level because full lookahead-sensitive serialization exceeds the bounded compatibility budget"
+    },
+    {
+      "id": "tree_sitter_python_json",
+      "family": "python",
+      "display_name": "tree-sitter-python (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_python/grammar.json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "parser_only",
+      "proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
+      "upstream_repository": "tree-sitter-python",
+      "upstream_revision": "26855eabccb19c6abf499fbc5b8dc7cc9ab8bc64",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "deferred_for_parser_boundary",
+      "mismatch_category": "routine_serialize_proof_boundary",
+      "notes": "real Python grammar snapshot from the local tree-sitter-python repo, initially kept at load/prepare level before testing parser-table serialization and external-scanner runtime-link promotion"
     }
   ]
 }

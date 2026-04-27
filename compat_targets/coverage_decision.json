@@ -37,13 +37,19 @@
       "display_name": "tree-sitter-javascript (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_javascript/grammar.json",
       "notes": "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, currently kept at load/prepare level because full lookahead-sensitive serialization exceeds the bounded compatibility budget"
+    },
+    {
+      "id": "tree_sitter_python_json",
+      "display_name": "tree-sitter-python (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_python/grammar.json",
+      "notes": "real Python grammar snapshot from the local tree-sitter-python repo, initially kept at load/prepare level before testing parser-table serialization and external-scanner runtime-link promotion"
     }
   ],
   "deferred_scanner_targets": [],
   "recommended_next_milestone": "second_wave_parser_only_repo_coverage",
   "recommendation_rationale": [
     "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-    "one deferred parser-only fixture is an intentional upstream-rejected ambiguity, while tree-sitter-javascript is a real external parser-only candidate held at load/prepare because full lookahead-sensitive serialization exceeds the bounded routine budget",
-    "the next promoted milestone should narrow or promote the onboarded JavaScript snapshot before adding another large parser-only grammar to the stable first wave"
+    "one deferred parser-only fixture is an intentional upstream-rejected ambiguity, while JavaScript and Python are real external parser-only candidates held at load/prepare because broader parser-table proofs remain outside the bounded routine budget",
+    "the next promoted milestone should narrow or promote the onboarded JavaScript and Python snapshots before adding another large parser-only grammar to the stable first wave"
   ]
 }

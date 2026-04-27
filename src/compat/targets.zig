@@ -44,6 +44,7 @@ pub const TargetFamily = enum {
     zig,
     json,
     javascript,
+    python,
     c,
     haskell,
     bash,
@@ -380,6 +381,25 @@ pub const shortlist_targets = [_]Target{
         .notes = "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, currently kept at load/prepare level because full lookahead-sensitive serialization exceeds the bounded compatibility budget",
         .success_criteria = "load and prepare the snapshotted upstream grammar.json while documenting that parser-table serialization scale must improve before compile-smoke promotion",
     },
+    .{
+        .id = "tree_sitter_python_json",
+        .display_name = "tree-sitter-python (JSON snapshot)",
+        .grammar_path = "compat_targets/tree_sitter_python/grammar.json",
+        .family = .python,
+        .source_kind = .grammar_json,
+        .boundary_kind = .parser_only,
+        .parser_boundary_check_mode = .prepare_only,
+        .provenance = .{
+            .origin_kind = .external_repo_snapshot,
+            .upstream_repository = "tree-sitter-python",
+            .upstream_revision = "26855eabccb19c6abf499fbc5b8dc7cc9ab8bc64",
+            .upstream_grammar_path = "src/grammar.json",
+        },
+        .candidate_status = .deferred_parser_wave,
+        .expected_blocked = false,
+        .notes = "real Python grammar snapshot from the local tree-sitter-python repo, initially kept at load/prepare level before testing parser-table serialization and external-scanner runtime-link promotion",
+        .success_criteria = "load and prepare the snapshotted upstream grammar.json while keeping full parser-table and external-scanner proofs deferred until bounded measurements are available",
+    },
 };
 
 pub fn shortlistTargets() []const Target {
@@ -402,7 +422,7 @@ pub fn firstWaveTargets() []const Target {
 
 test "stagedTargets exposes a small versioned shortlist" {
     const shortlist = shortlistTargets();
-    try std.testing.expectEqual(@as(usize, 17), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 18), shortlist.len);
     try std.testing.expect(shortlist[0].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
@@ -450,6 +470,10 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[16].family == .javascript);
     try std.testing.expect(shortlist[16].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[16].parser_boundary_check_mode == .prepare_only);
+    try std.testing.expect(shortlist[17].candidate_status == .deferred_parser_wave);
+    try std.testing.expect(shortlist[17].family == .python);
+    try std.testing.expect(shortlist[17].provenance.origin_kind == .external_repo_snapshot);
+    try std.testing.expect(shortlist[17].parser_boundary_check_mode == .prepare_only);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {
