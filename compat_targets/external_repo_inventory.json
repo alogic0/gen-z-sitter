@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "total_external_repo_targets": 6,
-  "passed_external_repo_targets": 6,
+  "total_external_repo_targets": 7,
+  "passed_external_repo_targets": 7,
   "standalone_parser_proof_targets": 2,
   "family_coverage": [
     {
@@ -29,6 +29,12 @@
       "passed_count": 1
     },
     {
+      "family": "json",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 1
+    },
+    {
       "family": "haskell",
       "boundary_kind": "scanner_external_scanner",
       "target_count": 1,
@@ -44,8 +50,8 @@
   "boundary_coverage": [
     {
       "boundary_kind": "parser_only",
-      "target_count": 4,
-      "passed_count": 4
+      "target_count": 5,
+      "passed_count": 5
     },
     {
       "boundary_kind": "scanner_external_scanner",
@@ -122,6 +128,22 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the same routine coarse parser boundary as the larger parser-only snapshots"
+    },
+    {
+      "id": "tree_sitter_json_json",
+      "family": "json",
+      "display_name": "tree-sitter-json (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_json/grammar.json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "parser_only",
+      "proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
+      "upstream_repository": "tree-sitter-json",
+      "upstream_revision": "001c28d7a29832b06b0e831ec77845553c89b56d",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "small real scanner-free parser-only snapshot from the local tree-sitter-json repo, added as the next fast end-to-end real-world regression target"
     },
     {
       "id": "tree_sitter_haskell_json",

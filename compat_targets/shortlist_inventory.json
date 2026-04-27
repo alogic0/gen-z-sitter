@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "boundary": {
-    "total_shortlist_targets": 15,
-    "first_wave_targets": 6,
-    "first_wave_passed": 6,
+    "total_shortlist_targets": 16,
+    "first_wave_targets": 7,
+    "first_wave_passed": 7,
     "first_wave_non_passing": 0,
     "scanner_wave_targets": 7,
     "scanner_wave_passed": 7,
@@ -74,6 +74,15 @@
     },
     {
       "family": "zig",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 1,
+      "control_count": 0,
+      "deferred_count": 0,
+      "blocked_count": 0
+    },
+    {
+      "family": "json",
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
@@ -232,6 +241,22 @@
       "first_failed_stage": null,
       "detail": null,
       "notes": "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the same routine coarse parser boundary as the larger parser-only snapshots"
+    },
+    {
+      "id": "tree_sitter_json_json",
+      "display_name": "tree-sitter-json (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_json/grammar.json",
+      "family": "json",
+      "boundary_kind": "parser_only",
+      "standalone_parser_proof_scope": "none",
+      "candidate_status": "intended_first_wave",
+      "expected_blocked": false,
+      "emission_blocked": false,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "first_failed_stage": null,
+      "detail": null,
+      "notes": "small real scanner-free parser-only snapshot from the local tree-sitter-json repo, added as the next fast end-to-end real-world regression target"
     }
   ],
   "proven_scanner_wave_targets": [

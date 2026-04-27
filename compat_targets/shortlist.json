@@ -140,6 +140,24 @@
       "success_means": "load, prepare, complete the routine coarse serialize-only parser step, emit parser tables plus C tables, emit parser.c, pass compatibility validation, and pass compile-smoke cleanly"
     },
     {
+      "id": "tree_sitter_json_json",
+      "family": "json",
+      "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "full_pipeline",
+      "scanner_boundary_check_mode": "sampled_behavioral",
+      "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
+      "status": "intended_first_wave",
+      "source_kind": "grammar_json",
+      "origin_kind": "external_repo_snapshot",
+      "grammar_path": "compat_targets/tree_sitter_json/grammar.json",
+      "upstream_repository": "tree-sitter-json",
+      "upstream_revision": "001c28d7a29832b06b0e831ec77845553c89b56d",
+      "upstream_grammar_path": "src/grammar.json",
+      "why": "small real scanner-free parser-only snapshot from the local tree-sitter-json repo, added as the next fast end-to-end real-world regression target",
+      "success_means": "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compatibility validation, and compile emitted parser.c"
+    },
+    {
       "id": "tree_sitter_haskell_json",
       "family": "haskell",
       "boundary_kind": "scanner_external_scanner",

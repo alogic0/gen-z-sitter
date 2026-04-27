@@ -154,7 +154,7 @@ fn collectGrammarShapeMetricsAlloc(
     return .{
         .rule_count = grammar.ruleCount(),
         .precedence_count = grammar.precedences.len,
-        .conflict_count = grammar.conflicts.len,
+        .conflict_count = grammar.expected_conflicts.len,
         .external_count = grammar.externals.len,
         .extra_count = grammar.extras.len,
         .inline_rule_count = grammar.inline_rules.len,

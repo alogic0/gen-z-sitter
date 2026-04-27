@@ -74,6 +74,10 @@ const skipped_targets = [_]SkippedMinimizationTarget{
         .reason = "large real-grammar snapshot kept out of fast unit minimization probes",
     },
     .{
+        .target_id = "tree_sitter_json_json",
+        .reason = "real parser-only snapshot kept out of fast unit minimization probes",
+    },
+    .{
         .target_id = "tree_sitter_haskell_json",
         .reason = "large real external-scanner snapshot kept out of fast unit minimization probes",
     },

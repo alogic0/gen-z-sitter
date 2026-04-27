@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "aggregate": {
-    "total_targets": 15,
-    "first_wave_targets": 6,
-    "first_wave_passed": 6,
+    "total_targets": 16,
+    "first_wave_targets": 7,
+    "first_wave_passed": 7,
     "scanner_wave_targets": 7,
     "scanner_wave_passed": 7,
     "deferred_parser_targets": 1,
     "standalone_parser_proof_targets": 3,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
-    "passed_within_current_boundary": 13,
+    "passed_within_current_boundary": 14,
     "frozen_control_fixture": 1,
     "deferred_for_parser_boundary": 1,
     "deferred_for_scanner_boundary": 0,
@@ -91,6 +91,15 @@
     },
     {
       "family": "zig",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 1,
+      "control_count": 0,
+      "deferred_count": 0,
+      "blocked_count": 0
+    },
+    {
+      "family": "json",
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 1,
@@ -354,7 +363,7 @@
         "goto_entry_count": 14,
         "unresolved_entry_count": 2,
         "parser_tables_bytes": 1737,
-        "parser_c_bytes": 15926
+        "parser_c_bytes": 18280
       },
       "blocked_boundary": {
         "unresolved_state_count": 2,
@@ -459,14 +468,14 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 6327,
-        "emitted_state_count": 6327,
+        "serialized_state_count": 1281,
+        "emitted_state_count": 1281,
         "merged_state_count": 0,
-        "action_entry_count": 28091,
-        "goto_entry_count": 4629,
+        "action_entry_count": 3900,
+        "goto_entry_count": 861,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 1076260,
-        "parser_c_bytes": 3470691
+        "parser_tables_bytes": 157190,
+        "parser_c_bytes": 666280
       },
       "blocked_boundary": null
     },
@@ -527,14 +536,14 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 246,
-        "emitted_state_count": 246,
+        "serialized_state_count": 238,
+        "emitted_state_count": 238,
         "merged_state_count": 0,
-        "action_entry_count": 734,
-        "goto_entry_count": 231,
+        "action_entry_count": 717,
+        "goto_entry_count": 228,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 31013,
-        "parser_c_bytes": 148581
+        "parser_tables_bytes": 30269,
+        "parser_c_bytes": 143937
       },
       "blocked_boundary": null
     },
@@ -602,7 +611,7 @@
         "goto_entry_count": 0,
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 613619,
-        "parser_c_bytes": 3981714
+        "parser_c_bytes": 3908039
       },
       "blocked_boundary": null
     },
@@ -670,7 +679,75 @@
         "goto_entry_count": 0,
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 1828411,
-        "parser_c_bytes": 3369790
+        "parser_c_bytes": 3271199
+      },
+      "blocked_boundary": null
+    },
+    {
+      "id": "tree_sitter_json_json",
+      "display_name": "tree-sitter-json (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_json/grammar.json",
+      "family": "json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "full_pipeline",
+      "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
+      "provenance": {
+        "origin_kind": "external_repo_snapshot",
+        "upstream_repository": "tree-sitter-json",
+        "upstream_revision": "001c28d7a29832b06b0e831ec77845553c89b56d",
+        "upstream_grammar_path": "src/grammar.json"
+      },
+      "candidate_status": "intended_first_wave",
+      "expected_blocked": false,
+      "notes": "small real scanner-free parser-only snapshot from the local tree-sitter-json repo, added as the next fast end-to-end real-world regression target",
+      "success_criteria": "load the snapshotted upstream grammar.json, emit all parser surfaces, pass compatibility validation, and compile emitted parser.c",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "load": {
+        "status": "passed",
+        "detail": null
+      },
+      "prepare": {
+        "status": "passed",
+        "detail": null
+      },
+      "serialize": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_tables": {
+        "status": "passed",
+        "detail": null
+      },
+      "emit_parser_c": {
+        "status": "passed",
+        "detail": null
+      },
+      "scanner_boundary_check": {
+        "status": "not_run",
+        "detail": null
+      },
+      "compat_check": {
+        "status": "passed",
+        "detail": null
+      },
+      "compile_smoke": {
+        "status": "passed",
+        "detail": null
+      },
+      "emission": {
+        "blocked": false,
+        "serialized_state_count": 615,
+        "emitted_state_count": 615,
+        "merged_state_count": 0,
+        "action_entry_count": 5635,
+        "goto_entry_count": 110,
+        "unresolved_entry_count": 0,
+        "parser_tables_bytes": 182543,
+        "parser_c_bytes": 364126
       },
       "blocked_boundary": null
     },
@@ -854,7 +931,7 @@
         "goto_entry_count": 3,
         "unresolved_entry_count": 1,
         "parser_tables_bytes": 438,
-        "parser_c_bytes": 10650
+        "parser_c_bytes": 12488
       },
       "blocked_boundary": {
         "unresolved_state_count": 1,

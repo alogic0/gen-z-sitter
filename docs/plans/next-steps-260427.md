@@ -154,10 +154,15 @@ and useful as a fast end-to-end real-world regression target.
 
 Process:
 
-1. Add `tree-sitter-json` `grammar.json` and sample input to `compat_targets/`.
-2. Run at compile-smoke/full parser-only level.
-3. Add it to the shortlist only after the local proof is stable.
-4. Refresh checked-in compatibility artifacts in one explicit batch.
+1. [x] Add `tree-sitter-json` `grammar.json` to `compat_targets/`.
+2. [x] Run at compile-smoke/full parser-only level.
+3. [x] Add it to the shortlist after the local proof is stable.
+4. [x] Refresh checked-in compatibility artifacts in one explicit batch.
+
+Completed result:
+
+- `tree_sitter_json_json` now passes the parser-only compatibility boundary as a
+  fast real scanner-free external snapshot.
 
 ---
 

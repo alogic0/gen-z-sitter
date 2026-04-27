@@ -345,9 +345,9 @@ test "buildExternalRepoInventoryAlloc summarizes the current external evidence" 
     var report = try buildExternalRepoInventoryAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 6), report.total_external_repo_targets);
-    try std.testing.expectEqual(@as(usize, 6), report.passed_external_repo_targets);
-    try std.testing.expectEqual(@as(usize, 6), report.family_coverage.len);
+    try std.testing.expectEqual(@as(usize, 7), report.total_external_repo_targets);
+    try std.testing.expectEqual(@as(usize, 7), report.passed_external_repo_targets);
+    try std.testing.expectEqual(@as(usize, 7), report.family_coverage.len);
     try std.testing.expectEqual(@as(usize, 2), report.boundary_coverage.len);
     try std.testing.expectEqual(targets.BoundaryKind.parser_only, report.boundary_coverage[0].boundary_kind);
     try std.testing.expectEqual(targets.BoundaryKind.scanner_external_scanner, report.boundary_coverage[1].boundary_kind);
@@ -355,11 +355,12 @@ test "buildExternalRepoInventoryAlloc summarizes the current external evidence" 
     try std.testing.expectEqual(targets.TargetFamily.ziggy_schema, report.family_coverage[1].family);
     try std.testing.expectEqual(targets.TargetFamily.c, report.family_coverage[2].family);
     try std.testing.expectEqual(targets.TargetFamily.zig, report.family_coverage[3].family);
-    try std.testing.expectEqual(targets.TargetFamily.haskell, report.family_coverage[4].family);
-    try std.testing.expectEqual(targets.TargetFamily.bash, report.family_coverage[5].family);
+    try std.testing.expectEqual(targets.TargetFamily.json, report.family_coverage[4].family);
+    try std.testing.expectEqual(targets.TargetFamily.haskell, report.family_coverage[5].family);
+    try std.testing.expectEqual(targets.TargetFamily.bash, report.family_coverage[6].family);
     try std.testing.expectEqual(@as(usize, 2), report.current_limitations.len);
     try std.testing.expectEqual(ExternalEvidenceNextStep.broader_compatibility_polish, report.recommended_next_step);
-    try std.testing.expectEqual(@as(usize, 6), report.targets.len);
+    try std.testing.expectEqual(@as(usize, 7), report.targets.len);
 }
 
 test "renderExternalRepoInventoryAlloc matches the checked-in external repo inventory artifact" {

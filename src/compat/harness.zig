@@ -1523,7 +1523,7 @@ test "runStagedTargetsAlloc executes the staged parser-only shortlist" {
     const runs = try runStagedTargetsAlloc(allocator, .{});
     defer result_model.deinitRunResults(allocator, runs);
 
-    try std.testing.expectEqual(@as(usize, 6), runs.len);
+    try std.testing.expectEqual(@as(usize, 7), runs.len);
 
     for (runs) |run| {
         try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, run.final_classification);
@@ -1543,6 +1543,7 @@ test "runStagedTargetsAlloc executes the staged parser-only shortlist" {
     try std.testing.expectEqual(false, runs[3].emission.?.blocked);
     try std.testing.expectEqual(false, runs[4].emission.?.blocked);
     try std.testing.expectEqual(false, runs[5].emission.?.blocked);
+    try std.testing.expectEqual(false, runs[6].emission.?.blocked);
 }
 
 test "runTarget reports infrastructure failures for missing files" {
@@ -1610,7 +1611,7 @@ test "runStagedTargetsAlloc can be rendered to a deterministic JSON report" {
 test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entries" {
     const runs = try cachedShortlistTargetsForTests();
 
-    try std.testing.expectEqual(@as(usize, 15), runs.len);
+    try std.testing.expectEqual(@as(usize, 16), runs.len);
     try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[2].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
@@ -1618,12 +1619,13 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[6].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[8].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.frozen_control_fixture, runs[9].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[10].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[9].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.frozen_control_fixture, runs[10].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[11].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[12].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[13].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[14].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[15].final_classification);
 }
 
 test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_c, and keeps only staged blocked controls" {
@@ -1663,14 +1665,16 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[7].blocked_boundary);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[8].mismatch_category);
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[8].blocked_boundary);
-    try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[9].mismatch_category);
-    try std.testing.expect(runs[9].blocked_boundary != null);
-    try std.testing.expectEqual(@as(usize, 1), runs[9].blocked_boundary.?.reasons.shift_reduce);
-    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[10].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[9].mismatch_category);
+    try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[9].blocked_boundary);
+    try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[10].mismatch_category);
+    try std.testing.expect(runs[10].blocked_boundary != null);
+    try std.testing.expectEqual(@as(usize, 1), runs[10].blocked_boundary.?.reasons.shift_reduce);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[11].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[12].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[13].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[14].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[15].mismatch_category);
 }
 
 test "runShortlistTargetsAlloc promotes tree_sitter_c through compile smoke" {
@@ -1692,23 +1696,7 @@ test "runShortlistTargetsAlloc promotes tree_sitter_c through compile smoke" {
 test "runShortlistTargetsAlloc promotes tree_sitter_haskell through runtime link" {
     const runs = try cachedShortlistTargetsForTests();
 
-    try std.testing.expectEqualStrings("tree_sitter_haskell_json", runs[7].id);
-    try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[7].candidate_status);
-    try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].load.status);
-    try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].prepare.status);
-    try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].serialize.status);
-    try std.testing.expectEqual(result_model.StepStatus.passed, runs[7].scanner_boundary_check.status);
-    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[7].final_classification);
-    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[7].mismatch_category);
-    try std.testing.expectEqual(targets.BoundaryKind.scanner_external_scanner, runs[7].boundary_kind);
-    try std.testing.expectEqual(targets.RealExternalScannerProofScope.full_runtime_link, runs[7].real_external_scanner_proof_scope);
-    try std.testing.expect(std.mem.indexOf(u8, runs[7].success_criteria, "runtime-link fixture") != null);
-}
-
-test "runShortlistTargetsAlloc promotes tree_sitter_bash through runtime link" {
-    const runs = try cachedShortlistTargetsForTests();
-
-    try std.testing.expectEqualStrings("tree_sitter_bash_json", runs[8].id);
+    try std.testing.expectEqualStrings("tree_sitter_haskell_json", runs[8].id);
     try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[8].candidate_status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[8].load.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[8].prepare.status);
@@ -1721,43 +1709,50 @@ test "runShortlistTargetsAlloc promotes tree_sitter_bash through runtime link" {
     try std.testing.expect(std.mem.indexOf(u8, runs[8].success_criteria, "runtime-link fixture") != null);
 }
 
+test "runShortlistTargetsAlloc promotes tree_sitter_bash through runtime link" {
+    const runs = try cachedShortlistTargetsForTests();
+
+    try std.testing.expectEqualStrings("tree_sitter_bash_json", runs[9].id);
+    try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[9].candidate_status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[9].load.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[9].prepare.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[9].serialize.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[9].scanner_boundary_check.status);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[9].final_classification);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[9].mismatch_category);
+    try std.testing.expectEqual(targets.BoundaryKind.scanner_external_scanner, runs[9].boundary_kind);
+    try std.testing.expectEqual(targets.RealExternalScannerProofScope.full_runtime_link, runs[9].real_external_scanner_proof_scope);
+    try std.testing.expect(std.mem.indexOf(u8, runs[9].success_criteria, "runtime-link fixture") != null);
+}
+
 test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked control case" {
     const runs = try cachedShortlistTargetsForTests();
 
-    try std.testing.expectEqualStrings("parse_table_conflict_json", runs[9].id);
-    try std.testing.expectEqual(targets.CandidateStatus.deferred_control_fixture, runs[9].candidate_status);
-    try std.testing.expectEqual(result_model.FinalClassification.frozen_control_fixture, runs[9].final_classification);
-    try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[9].mismatch_category);
-    try std.testing.expectEqual(true, runs[9].expected_blocked);
-    try std.testing.expect(runs[9].blocked_boundary != null);
-    try std.testing.expectEqual(@as(usize, 1), runs[9].blocked_boundary.?.unresolved_entry_count);
-    try std.testing.expectEqualStrings("expr", runs[9].blocked_boundary.?.samples[0].symbol_name);
-    try std.testing.expect(std.mem.indexOf(u8, runs[9].blocked_boundary.?.samples[0].candidate_actions_summary, "reduce:2(expr)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, runs[9].notes, "intentionally ambiguous") != null);
+    try std.testing.expectEqualStrings("parse_table_conflict_json", runs[10].id);
+    try std.testing.expectEqual(targets.CandidateStatus.deferred_control_fixture, runs[10].candidate_status);
+    try std.testing.expectEqual(result_model.FinalClassification.frozen_control_fixture, runs[10].final_classification);
+    try std.testing.expectEqual(result_model.MismatchCategory.intentional_control_fixture, runs[10].mismatch_category);
+    try std.testing.expectEqual(true, runs[10].expected_blocked);
+    try std.testing.expect(runs[10].blocked_boundary != null);
+    try std.testing.expectEqual(@as(usize, 1), runs[10].blocked_boundary.?.unresolved_entry_count);
+    try std.testing.expectEqualStrings("expr", runs[10].blocked_boundary.?.samples[0].symbol_name);
+    try std.testing.expect(std.mem.indexOf(u8, runs[10].blocked_boundary.?.samples[0].candidate_actions_summary, "reduce:2(expr)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[10].notes, "intentionally ambiguous") != null);
 }
 
 test "runShortlistTargetsAlloc promotes scanner-wave targets through the staged scanner boundary" {
     const runs = try cachedShortlistTargetsForTests();
 
-    try std.testing.expectEqualStrings("bracket_lang_json", runs[10].id);
-    try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[10].candidate_status);
-    try std.testing.expectEqual(result_model.StepStatus.passed, runs[10].load.status);
-    try std.testing.expectEqual(result_model.StepStatus.passed, runs[10].prepare.status);
-    try std.testing.expectEqual(result_model.StepStatus.passed, runs[10].serialize.status);
-    try std.testing.expectEqual(result_model.StepStatus.passed, runs[10].scanner_boundary_check.status);
-    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[10].final_classification);
-    try std.testing.expect(std.mem.indexOf(u8, runs[10].success_criteria, "nested item tree") != null);
-
-    try std.testing.expectEqualStrings("hidden_external_fields_json", runs[11].id);
+    try std.testing.expectEqualStrings("bracket_lang_json", runs[11].id);
     try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[11].candidate_status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[11].load.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[11].prepare.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[11].serialize.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[11].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[11].final_classification);
-    try std.testing.expect(std.mem.indexOf(u8, runs[11].success_criteria, "invalid path makes less progress") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[11].success_criteria, "nested item tree") != null);
 
-    try std.testing.expectEqualStrings("hidden_external_fields_js", runs[12].id);
+    try std.testing.expectEqualStrings("hidden_external_fields_json", runs[12].id);
     try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[12].candidate_status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[12].load.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[12].prepare.status);
@@ -1766,21 +1761,30 @@ test "runShortlistTargetsAlloc promotes scanner-wave targets through the staged 
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[12].final_classification);
     try std.testing.expect(std.mem.indexOf(u8, runs[12].success_criteria, "invalid path makes less progress") != null);
 
-    try std.testing.expectEqualStrings("mixed_semantics_json", runs[13].id);
+    try std.testing.expectEqualStrings("hidden_external_fields_js", runs[13].id);
     try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[13].candidate_status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[13].load.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[13].prepare.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[13].serialize.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[13].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[13].final_classification);
-    try std.testing.expect(std.mem.indexOf(u8, runs[13].notes, "extras present elsewhere in the grammar") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[13].success_criteria, "invalid path makes less progress") != null);
 
-    try std.testing.expectEqualStrings("mixed_semantics_js", runs[14].id);
+    try std.testing.expectEqualStrings("mixed_semantics_json", runs[14].id);
     try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[14].candidate_status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[14].load.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[14].prepare.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[14].serialize.status);
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[14].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[14].final_classification);
-    try std.testing.expect(std.mem.indexOf(u8, runs[14].success_criteria, "without depending on extras") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runs[14].notes, "extras present elsewhere in the grammar") != null);
+
+    try std.testing.expectEqualStrings("mixed_semantics_js", runs[15].id);
+    try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[15].candidate_status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[15].load.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[15].prepare.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[15].serialize.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[15].scanner_boundary_check.status);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[15].final_classification);
+    try std.testing.expect(std.mem.indexOf(u8, runs[15].success_criteria, "without depending on extras") != null);
 }
