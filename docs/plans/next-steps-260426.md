@@ -11,10 +11,11 @@ State after M43 (lexer parity), M44 (lexer-state milestone), and M45 Phases 1–
 - **M45 Phase 2** — Multi-action table built during state construction;
   unresolved multi-action entries serialized; `TSUnresolved` side tables and
   lookup helpers emitted in generated C.
-- **M45 Phase 3 infrastructure** — `expected_conflicts` loaded from grammar JSON;
+- **M45 Phase 3 reporting** — `expected_conflicts` loaded from grammar JSON;
   `ExpectedConflictPolicy` helper; reduce/reduce expected-conflict routing;
   `unusedExpectedConflictIndexesAlloc` hook; `expectedConflictReportFromPreparedAlloc`
-  in pipeline; tested in isolation.
+  in pipeline; JSON-summary declared/unused counts; non-strict generate warnings
+  for unused declarations.
 - **M45 Phase 4 bounded minimization** — optional `--minimize` path, core-gated
   state minimization, behavioral equivalence coverage, bounded compat
   minimization probes, and `zig build run-minimize-report`.
@@ -29,30 +30,22 @@ State after M43 (lexer parity), M44 (lexer-state milestone), and M45 Phases 1–
 
 **What is missing.**
 
-`expectedConflictReportFromPreparedAlloc` exists in `src/parse_table/pipeline.zig`
-and is exercised in tests, but nothing in the CLI or harness calls it on a real
-grammar run. Concretely:
+`expectedConflictReportFromPreparedAlloc` is now visible through JSON-summary
+counts and non-strict generate warnings when JSON-summary generation already
+builds the parse table. The remaining semantic gap is narrower:
 
-- Unused `expected_conflicts` declarations produce no user-visible warning.
-- The `hasUnusedExpectedConflicts()` flag is never checked outside tests.
 - Shift/reduce conflicts are not yet routed through `ExpectedConflictPolicy`
   (only reduce/reduce is).
 
 **Work.**
 
-1. Call `expectedConflictReportFromPreparedAlloc` in the CLI generate path
-   (`src/cli/command_generate.zig` or `src/compat/harness.zig`) after build.
-2. If `report.hasUnusedExpectedConflicts()`, emit a structured warning:
-   ```
-   warning: expected_conflicts[N] declared but no conflict found: ["rule_a", "rule_b"]
-   ```
-3. Route shift/reduce conflict candidates through the same `ExpectedConflictPolicy`
+1. Route shift/reduce conflict candidates through the same `ExpectedConflictPolicy`
    matching already used for reduce/reduce.
-4. Add a compat fixture that declares `expected_conflicts`, verifies no error, and
-   verifies the unused-warning fires when the conflict disappears.
+2. Add a compat fixture that declares `expected_conflicts` for a real
+   shift/reduce ambiguity and verifies it is accepted by the policy.
 
-**Gate.** All existing compat targets pass unchanged. Unused-conflict warning fires
-correctly on the new fixture.
+**Gate.** All existing compat targets pass unchanged. The new shift/reduce
+expected-conflict fixture is accepted only when its declaration matches.
 
 ---
 
@@ -77,14 +70,14 @@ set documented in `MILESTONES_45.md`.
 
 ---
 
-## Priority 3 — Pipeline Goldens Refresh
+## Priority 3 — Pipeline Goldens
 
-The `zig build test-pipeline` suite still uses pre-EOF-era string snapshots.
-All test-pipeline targets are isolated from `test-compat-heavy` and `test` so
-this does not affect CI, but the suite stays red.
+`zig build test-pipeline` is passing in the bounded local gate. Keep this
+priority as a maintenance slot for future intentional output changes rather
+than as active stale-golden work.
 
-**Work.** Regenerate the goldens with a single command (whatever `--update` or
-`--bless` flag the pipeline suite accepts) and commit the refreshed snapshots.
+**Work.** When generated pipeline artifacts intentionally change, regenerate the
+goldens with the documented update command and commit the refreshed snapshots.
 
 ---
 
