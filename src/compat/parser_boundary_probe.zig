@@ -4,6 +4,7 @@ const json_support = @import("../support/json.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
+const serialize = @import("../parse_table/serialize.zig");
 const result_model = @import("result.zig");
 const targets = @import("targets.zig");
 
@@ -29,6 +30,7 @@ pub const ParserBoundaryProbeEntry = struct {
     detail: []const u8,
     serialized_state_count: ?usize,
     serialized_blocked: ?bool,
+    blocked_signature_summary: ?[]const u8,
 };
 
 pub const ParserBoundaryProbeReport = struct {
@@ -42,6 +44,7 @@ pub const ParserBoundaryProbeReport = struct {
             allocator.free(entry.display_name);
             allocator.free(entry.grammar_path);
             allocator.free(entry.detail);
+            if (entry.blocked_signature_summary) |summary| allocator.free(summary);
         }
         allocator.free(self.entries);
         self.* = undefined;
@@ -152,6 +155,7 @@ fn probeDeferredParserTargetMetadataAlloc(
             ),
             .serialized_state_count = null,
             .serialized_blocked = null,
+            .blocked_signature_summary = null,
         },
     }
 }
@@ -181,6 +185,7 @@ fn probeSerializeOnlyAlloc(
             .detail = try std.fmt.allocPrint(allocator, "probe load failed: {s}", .{grammar_loader.errorMessage(err)}),
             .serialized_state_count = null,
             .serialized_blocked = null,
+            .blocked_signature_summary = null,
         };
     };
     logProbeDone(target.id, "load", timer);
@@ -203,6 +208,7 @@ fn probeSerializeOnlyAlloc(
             .detail = try std.fmt.allocPrint(allocator, "probe prepare failed: {s}", .{diagnostic.summary}),
             .serialized_state_count = null,
             .serialized_blocked = null,
+            .blocked_signature_summary = null,
         };
     };
     logProbeDone(target.id, "prepare", timer);
@@ -228,6 +234,7 @@ fn probeSerializeOnlyAlloc(
             .detail = try std.fmt.allocPrint(allocator, "probe serialize failed: {s}", .{@errorName(err)}),
             .serialized_state_count = null,
             .serialized_blocked = null,
+            .blocked_signature_summary = null,
         };
     };
     logProbeDone(target.id, "serialize", timer);
@@ -235,6 +242,12 @@ fn probeSerializeOnlyAlloc(
         "[parser_boundary_probe] summary {s} serialized_states={d} blocked={}\n",
         .{ target.id, serialized.states.len, serialized.blocked },
     );
+
+    const blocked_signature_summary = if (serialized.blocked)
+        try formatBlockedSignatureSummaryAlloc(allocator, serialized)
+    else
+        null;
+    errdefer if (blocked_signature_summary) |summary| allocator.free(summary);
 
     return .{
         .id = try allocator.dupe(u8, target.id),
@@ -253,6 +266,113 @@ fn probeSerializeOnlyAlloc(
         ),
         .serialized_state_count = serialized.states.len,
         .serialized_blocked = serialized.blocked,
+        .blocked_signature_summary = blocked_signature_summary,
+    };
+}
+
+const BlockedSignature = struct {
+    symbol_name: []const u8,
+    reason: []const u8,
+    count: usize,
+};
+
+fn formatBlockedSignatureSummaryAlloc(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+) ![]const u8 {
+    var unresolved_state_count: usize = 0;
+    var unresolved_entry_count: usize = 0;
+    var shift_reduce_count: usize = 0;
+    var reduce_reduce_deferred_count: usize = 0;
+    var reduce_reduce_expected_count: usize = 0;
+    var multiple_candidates_count: usize = 0;
+    var unsupported_action_mix_count: usize = 0;
+    var signatures = std.array_list.Managed(BlockedSignature).init(allocator);
+    defer signatures.deinit();
+
+    for (serialized.states) |state| {
+        if (state.unresolved.len == 0) continue;
+        unresolved_state_count += 1;
+        unresolved_entry_count += state.unresolved.len;
+        for (state.unresolved) |entry| {
+            switch (entry.reason) {
+                .shift_reduce, .shift_reduce_expected => shift_reduce_count += 1,
+                .reduce_reduce_deferred => reduce_reduce_deferred_count += 1,
+                .reduce_reduce_expected => reduce_reduce_expected_count += 1,
+                .multiple_candidates => multiple_candidates_count += 1,
+                .unsupported_action_mix => unsupported_action_mix_count += 1,
+            }
+            try recordBlockedSignature(
+                &signatures,
+                symbolNameFor(serialized, entry.symbol),
+                @tagName(entry.reason),
+            );
+        }
+    }
+
+    std.mem.sort(BlockedSignature, signatures.items, {}, struct {
+        fn lessThan(_: void, left: BlockedSignature, right: BlockedSignature) bool {
+            if (left.count != right.count) return left.count > right.count;
+            const symbol_order = std.mem.order(u8, left.symbol_name, right.symbol_name);
+            if (symbol_order != .eq) return symbol_order == .lt;
+            return std.mem.order(u8, left.reason, right.reason) == .lt;
+        }
+    }.lessThan);
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try out.writer.print(
+        "states={d} entries={d} external_scanner_symbols={d} reasons={{shift_reduce:{d}, reduce_reduce_deferred:{d}, reduce_reduce_expected:{d}, multiple_candidates:{d}, unsupported_action_mix:{d}}} dominant=[",
+        .{
+            unresolved_state_count,
+            unresolved_entry_count,
+            serialized.external_scanner.symbols.len,
+            shift_reduce_count,
+            reduce_reduce_deferred_count,
+            reduce_reduce_expected_count,
+            multiple_candidates_count,
+            unsupported_action_mix_count,
+        },
+    );
+    const signature_limit = @min(signatures.items.len, 8);
+    for (signatures.items[0..signature_limit], 0..) |signature, index| {
+        if (index > 0) try out.writer.writeAll("; ");
+        try out.writer.print("{s} {s} count={d}", .{ signature.symbol_name, signature.reason, signature.count });
+    }
+    try out.writer.writeByte(']');
+    return try out.toOwnedSlice();
+}
+
+fn recordBlockedSignature(
+    signatures: *std.array_list.Managed(BlockedSignature),
+    symbol_name: []const u8,
+    reason: []const u8,
+) !void {
+    for (signatures.items) |*signature| {
+        if (!std.mem.eql(u8, signature.symbol_name, symbol_name)) continue;
+        if (!std.mem.eql(u8, signature.reason, reason)) continue;
+        signature.count += 1;
+        return;
+    }
+    try signatures.append(.{
+        .symbol_name = symbol_name,
+        .reason = reason,
+        .count = 1,
+    });
+}
+
+fn symbolNameFor(
+    serialized: serialize.SerializedTable,
+    symbol: @import("../ir/syntax_grammar.zig").SymbolRef,
+) []const u8 {
+    for (serialized.symbols) |info| {
+        if (std.meta.eql(info.ref, symbol)) return info.name;
+    }
+    return switch (symbol) {
+        .end => "end",
+        .terminal => "<unknown-terminal>",
+        .non_terminal => "<unknown-non-terminal>",
+        .external => "<unknown-external>",
     };
 }
 

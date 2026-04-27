@@ -211,6 +211,12 @@ blocked parser-table surfaces per grammar.
    - `tree_sitter_typescript_json`: 5202 coarse states, blocked
    - `tree_sitter_rust_json`: 2839 coarse states, blocked
 
+   Status:
+   - [x] Extend `parser_boundary_probe.json` with
+     `blocked_signature_summary`, including unresolved reason counts, dominant
+     unresolved symbols when present, and external-scanner symbol counts for
+     external-token blocking.
+
 2. Fix or explicitly classify those blocked signatures before changing any
    target from `prepare_only` to a broader routine boundary.
 

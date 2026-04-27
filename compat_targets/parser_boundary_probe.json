@@ -14,7 +14,8 @@
       "probe_failed_stage": "serialize",
       "detail": "no isolated probe is implemented for parser boundary mode full_pipeline",
       "serialized_state_count": null,
-      "serialized_blocked": null
+      "serialized_blocked": null,
+      "blocked_signature_summary": null
     },
     {
       "id": "tree_sitter_javascript_json",
@@ -28,7 +29,8 @@
       "probe_failed_stage": null,
       "detail": "isolated coarse serialize-only parser probe passed with 1606 serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
       "serialized_state_count": 1606,
-      "serialized_blocked": true
+      "serialized_blocked": true,
+      "blocked_signature_summary": "states=0 entries=0 external_scanner_symbols=8 reasons={shift_reduce:0, reduce_reduce_deferred:0, reduce_reduce_expected:0, multiple_candidates:0, unsupported_action_mix:0} dominant=[]"
     },
     {
       "id": "tree_sitter_python_json",
@@ -42,7 +44,8 @@
       "probe_failed_stage": null,
       "detail": "isolated coarse serialize-only parser probe passed with 1139 serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
       "serialized_state_count": 1139,
-      "serialized_blocked": true
+      "serialized_blocked": true,
+      "blocked_signature_summary": "states=0 entries=0 external_scanner_symbols=12 reasons={shift_reduce:0, reduce_reduce_deferred:0, reduce_reduce_expected:0, multiple_candidates:0, unsupported_action_mix:0} dominant=[]"
     },
     {
       "id": "tree_sitter_typescript_json",
@@ -56,7 +59,8 @@
       "probe_failed_stage": null,
       "detail": "isolated coarse serialize-only parser probe passed with 5202 serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
       "serialized_state_count": 5202,
-      "serialized_blocked": true
+      "serialized_blocked": true,
+      "blocked_signature_summary": "states=0 entries=0 external_scanner_symbols=10 reasons={shift_reduce:0, reduce_reduce_deferred:0, reduce_reduce_expected:0, multiple_candidates:0, unsupported_action_mix:0} dominant=[]"
     },
     {
       "id": "tree_sitter_rust_json",
@@ -70,7 +74,8 @@
       "probe_failed_stage": null,
       "detail": "isolated coarse serialize-only parser probe passed with 2839 serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
       "serialized_state_count": 2839,
-      "serialized_blocked": true
+      "serialized_blocked": true,
+      "blocked_signature_summary": "states=0 entries=0 external_scanner_symbols=11 reasons={shift_reduce:0, reduce_reduce_deferred:0, reduce_reduce_expected:0, multiple_candidates:0, unsupported_action_mix:0} dominant=[]"
     }
   ]
 }
