@@ -117,6 +117,38 @@ pub fn reduceConflictCandidate(
     };
 }
 
+pub fn reduceConflictCandidateAlloc(
+    allocator: std.mem.Allocator,
+    state_id: state.StateId,
+    lookahead: syntax_ir.SymbolRef,
+    productions: anytype,
+    candidate_actions: []const actions.ParseAction,
+) std.mem.Allocator.Error!?ConflictCandidate {
+    if (candidate_actions.len == 0) return null;
+    const members = try allocator.alloc(syntax_ir.SymbolRef, candidate_actions.len);
+    errdefer allocator.free(members);
+
+    const candidate = reduceConflictCandidate(
+        members,
+        state_id,
+        lookahead,
+        productions,
+        candidate_actions,
+    ) orelse {
+        allocator.free(members);
+        return null;
+    };
+    return candidate;
+}
+
+pub fn freeConflictCandidates(
+    allocator: std.mem.Allocator,
+    candidates: []const ConflictCandidate,
+) void {
+    for (candidates) |candidate| allocator.free(candidate.members);
+    allocator.free(candidates);
+}
+
 pub fn reduceConflictIsExpected(
     expected_conflicts: []const []const syntax_ir.SymbolRef,
     state_id: state.StateId,
@@ -284,4 +316,33 @@ test "reduceConflictIsExpected rejects mixed action groups" {
         productions[0..],
         &candidate_actions,
     ));
+}
+
+test "reduceConflictCandidateAlloc owns derived member slice" {
+    const Production = struct {
+        lhs: u32,
+    };
+    const productions = [_]Production{
+        .{ .lhs = 0 },
+        .{ .lhs = 3 },
+        .{ .lhs = 4 },
+    };
+    const candidate_actions = [_]actions.ParseAction{
+        .{ .reduce = 1 },
+        .{ .reduce = 2 },
+    };
+
+    const candidate = (try reduceConflictCandidateAlloc(
+        std.testing.allocator,
+        9,
+        .{ .terminal = 2 },
+        productions[0..],
+        &candidate_actions,
+    )).?;
+    defer std.testing.allocator.free(candidate.members);
+
+    try std.testing.expectEqual(@as(state.StateId, 9), candidate.state_id);
+    try std.testing.expectEqual(@as(usize, 2), candidate.members.len);
+    try std.testing.expectEqual(@as(u32, 3), candidate.members[0].non_terminal);
+    try std.testing.expectEqual(@as(u32, 4), candidate.members[1].non_terminal);
 }

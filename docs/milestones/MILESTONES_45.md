@@ -268,6 +268,8 @@ Completed steps:
   members independent of order and reports unused declarations.
 - [x] Route reduce/reduce expected-conflict checks through the shared policy
   helper while preserving current resolution behavior.
+- [x] Expose resolved-table reduce conflict candidates and unused
+  `expected_conflicts` indexes for the future post-build reporting pass.
 
 ---
 

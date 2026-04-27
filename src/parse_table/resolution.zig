@@ -233,6 +233,54 @@ pub const ResolvedActionTable = struct {
             .unresolved = try self.unresolvedDecisionsAlloc(allocator),
         };
     }
+
+    pub fn expectedConflictCandidatesAlloc(
+        self: ResolvedActionTable,
+        allocator: std.mem.Allocator,
+        productions: anytype,
+    ) std.mem.Allocator.Error![]const conflict_resolution.ConflictCandidate {
+        var result = std.array_list.Managed(conflict_resolution.ConflictCandidate).init(allocator);
+        defer result.deinit();
+        errdefer for (result.items) |candidate| allocator.free(candidate.members);
+
+        for (self.states) |resolved| {
+            for (resolved.groups) |group| {
+                switch (group.decision) {
+                    .chosen => {},
+                    .unresolved => |reason| switch (reason) {
+                        .reduce_reduce_deferred, .reduce_reduce_expected => {
+                            const candidate = try conflict_resolution.reduceConflictCandidateAlloc(
+                                allocator,
+                                resolved.state_id,
+                                group.symbol,
+                                productions,
+                                group.candidate_actions,
+                            );
+                            if (candidate) |value| try result.append(value);
+                        },
+                        .multiple_candidates, .shift_reduce, .unsupported_action_mix => {},
+                    },
+                }
+            }
+        }
+
+        return try result.toOwnedSlice();
+    }
+
+    pub fn unusedExpectedConflictIndexesAlloc(
+        self: ResolvedActionTable,
+        allocator: std.mem.Allocator,
+        expected_conflicts: []const []const syntax_ir.SymbolRef,
+        productions: anytype,
+    ) std.mem.Allocator.Error![]const usize {
+        const candidates = try self.expectedConflictCandidatesAlloc(allocator, productions);
+        defer conflict_resolution.freeConflictCandidates(allocator, candidates);
+
+        const policy = conflict_resolution.ExpectedConflictPolicy{
+            .expected_conflicts = expected_conflicts,
+        };
+        return try policy.unusedExpectedIndexesAlloc(allocator, candidates);
+    }
 };
 
 const ProductionResolutionMetadata = struct {
@@ -1070,6 +1118,96 @@ test "resolveActionTableSkeleton exposes a serializer-facing decision snapshot" 
         else => false,
     });
     try std.testing.expectEqual(UnresolvedReason.shift_reduce, snapshot.unresolved[0].reason);
+}
+
+test "ResolvedActionTable exposes reduce conflict candidates" {
+    const allocator = std.testing.allocator;
+    const ProductionInfo = struct {
+        lhs: u32,
+    };
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0 },
+        .{ .lhs = 1 },
+        .{ .lhs = 2 },
+    };
+    const reduce_actions = [_]actions.ParseAction{
+        .{ .reduce = 1 },
+        .{ .reduce = 2 },
+    };
+    const shift_reduce_actions = [_]actions.ParseAction{
+        .{ .shift = 3 },
+        .{ .reduce = 2 },
+    };
+    const resolved = ResolvedActionTable{
+        .states = &[_]ResolvedStateActions{.{
+            .state_id = 4,
+            .groups = &[_]ResolvedActionGroup{
+                .{
+                    .symbol = .{ .terminal = 0 },
+                    .candidate_actions = &reduce_actions,
+                    .decision = .{ .unresolved = .reduce_reduce_deferred },
+                },
+                .{
+                    .symbol = .{ .terminal = 1 },
+                    .candidate_actions = &shift_reduce_actions,
+                    .decision = .{ .unresolved = .shift_reduce },
+                },
+            },
+        }},
+    };
+
+    const candidates = try resolved.expectedConflictCandidatesAlloc(allocator, productions[0..]);
+    defer conflict_resolution.freeConflictCandidates(allocator, candidates);
+
+    try std.testing.expectEqual(@as(usize, 1), candidates.len);
+    try std.testing.expectEqual(@as(state.StateId, 4), candidates[0].state_id);
+    try std.testing.expectEqual(@as(usize, 2), candidates[0].members.len);
+    try std.testing.expectEqual(@as(u32, 1), candidates[0].members[0].non_terminal);
+    try std.testing.expectEqual(@as(u32, 2), candidates[0].members[1].non_terminal);
+}
+
+test "ResolvedActionTable reports unused expected conflict indexes" {
+    const allocator = std.testing.allocator;
+    const ProductionInfo = struct {
+        lhs: u32,
+    };
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0 },
+        .{ .lhs = 1 },
+        .{ .lhs = 2 },
+    };
+    const used_expected = [_]syntax_ir.SymbolRef{
+        .{ .non_terminal = 2 },
+        .{ .non_terminal = 1 },
+    };
+    const unused_expected = [_]syntax_ir.SymbolRef{
+        .{ .non_terminal = 1 },
+        .{ .non_terminal = 9 },
+    };
+    const reduce_actions = [_]actions.ParseAction{
+        .{ .reduce = 1 },
+        .{ .reduce = 2 },
+    };
+    const resolved = ResolvedActionTable{
+        .states = &[_]ResolvedStateActions{.{
+            .state_id = 4,
+            .groups = &[_]ResolvedActionGroup{.{
+                .symbol = .{ .terminal = 0 },
+                .candidate_actions = &reduce_actions,
+                .decision = .{ .unresolved = .reduce_reduce_expected },
+            }},
+        }},
+    };
+
+    const unused = try resolved.unusedExpectedConflictIndexesAlloc(
+        allocator,
+        &.{ &used_expected, &unused_expected },
+        productions[0..],
+    );
+    defer allocator.free(unused);
+
+    try std.testing.expectEqual(@as(usize, 1), unused.len);
+    try std.testing.expectEqual(@as(usize, 1), unused[0]);
 }
 
 test "resolveActionTable keeps reduce/reduce pairs unresolved" {
