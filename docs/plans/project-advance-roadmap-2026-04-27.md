@@ -98,7 +98,7 @@ parity needs tree construction or an explicitly scoped public result model.
 - [x] Define the generated parser result model:
   - temporary internal tree for project tests, or
   - tree-sitter-compatible `TSTree`/`TSNode` ABI.
-- [ ] Add generated value stack entries for shifted terminals and reduced
+- [x] Add generated value stack entries for shifted terminals and reduced
   productions.
 - [ ] Build reduced parent nodes with byte ranges and production IDs.
 - [ ] Preserve alias and field metadata through the emitted tree path.

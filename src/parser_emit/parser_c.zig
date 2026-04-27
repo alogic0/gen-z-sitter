@@ -478,6 +478,7 @@ fn writeRuntimeAction(
 fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n");
+    try writer.writeAll("#define GEN_Z_SITTER_MAX_VALUE_STACK_DEPTH 256\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_NO_NODE UINT16_MAX\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE 3\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_RECOVERY_ATTEMPTS 8\n\n");
@@ -490,9 +491,18 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("  int32_t dynamic_precedence;\n");
     try writer.writeAll("} TSGeneratedParseResult;\n\n");
     try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  TSSymbol symbol;\n");
+    try writer.writeAll("  uint32_t start_byte;\n");
+    try writer.writeAll("  uint32_t end_byte;\n");
+    try writer.writeAll("  uint16_t production_id;\n");
+    try writer.writeAll("  uint16_t child_count;\n");
+    try writer.writeAll("} TSGeneratedValue;\n\n");
+    try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  TSStateId state;\n");
     try writer.writeAll("  TSStateId stack[GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH];\n");
+    try writer.writeAll("  TSGeneratedValue values[GEN_Z_SITTER_MAX_VALUE_STACK_DEPTH];\n");
     try writer.writeAll("  uint16_t stack_len;\n");
+    try writer.writeAll("  uint16_t value_len;\n");
     try writer.writeAll("  uint32_t byte_offset;\n");
     try writer.writeAll("  uint32_t error_count;\n");
     try writer.writeAll("  int32_t dynamic_precedence;\n");
@@ -508,6 +518,7 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("  for (uint16_t i = 0; i < GEN_Z_SITTER_MAX_PARSE_VERSIONS; i++) {\n");
     try writer.writeAll("    set->versions[i].state = 0;\n");
     try writer.writeAll("    set->versions[i].stack_len = 0;\n");
+    try writer.writeAll("    set->versions[i].value_len = 0;\n");
     try writer.writeAll("    set->versions[i].byte_offset = 0;\n");
     try writer.writeAll("    set->versions[i].error_count = 0;\n");
     try writer.writeAll("    set->versions[i].dynamic_precedence = 0;\n");
@@ -524,6 +535,34 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("  version->stack[version->stack_len++] = state;\n");
     try writer.writeAll("  version->state = state;\n");
     try writer.writeAll("  return true;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static bool ts_generated_version_push_value(TSGeneratedParseVersion *version, TSGeneratedValue value) {\n");
+    try writer.writeAll("  if (version->value_len >= GEN_Z_SITTER_MAX_VALUE_STACK_DEPTH) return false;\n");
+    try writer.writeAll("  version->values[version->value_len++] = value;\n");
+    try writer.writeAll("  return true;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static bool ts_generated_version_reduce_value(TSGeneratedParseVersion *version, const TSParseAction *action) {\n");
+    try writer.writeAll("  if (version->value_len < action->reduce.child_count) return false;\n");
+    try writer.writeAll("  uint16_t first_child = version->value_len - action->reduce.child_count;\n");
+    try writer.writeAll("  uint32_t start_byte = action->reduce.child_count > 0 ? version->values[first_child].start_byte : version->byte_offset;\n");
+    try writer.writeAll("  uint32_t end_byte = action->reduce.child_count > 0 ? version->values[version->value_len - 1].end_byte : version->byte_offset;\n");
+    try writer.writeAll("  version->value_len = first_child;\n");
+    try writer.writeAll("  return ts_generated_version_push_value(version, (TSGeneratedValue){\n");
+    try writer.writeAll("    .symbol = action->reduce.symbol,\n");
+    try writer.writeAll("    .start_byte = start_byte,\n");
+    try writer.writeAll("    .end_byte = end_byte,\n");
+    try writer.writeAll("    .production_id = action->reduce.production_id,\n");
+    try writer.writeAll("    .child_count = action->reduce.child_count,\n");
+    try writer.writeAll("  });\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static bool ts_generated_version_push_shift_value(TSGeneratedParseVersion *version, TSSymbol symbol, uint32_t advance_bytes) {\n");
+    try writer.writeAll("  return ts_generated_version_push_value(version, (TSGeneratedValue){\n");
+    try writer.writeAll("    .symbol = symbol,\n");
+    try writer.writeAll("    .start_byte = version->byte_offset,\n");
+    try writer.writeAll("    .end_byte = version->byte_offset + advance_bytes,\n");
+    try writer.writeAll("    .production_id = 0,\n");
+    try writer.writeAll("    .child_count = 0,\n");
+    try writer.writeAll("  });\n");
     try writer.writeAll("}\n\n");
 }
 
@@ -582,6 +621,7 @@ fn writeGlrActionDispatch(writer: anytype) !void {
     try writer.writeAll("    case TSParseActionTypeReduce:\n");
     try writer.writeAll("      version->dynamic_precedence += action->reduce.dynamic_precedence;\n");
     try writer.writeAll("      if (version->stack_len <= action->reduce.child_count) break;\n");
+    try writer.writeAll("      if (!ts_generated_version_reduce_value(version, action)) break;\n");
     try writer.writeAll("      version->stack_len -= action->reduce.child_count;\n");
     try writer.writeAll("      {\n");
     try writer.writeAll("        TSStateId top = version->stack[version->stack_len - 1];\n");
@@ -606,7 +646,9 @@ fn writeGlrActionDispatch(writer: anytype) !void {
     try writer.writeAll("static TSGeneratedParseStep ts_generated_parse_version_step(TSGeneratedParseVersion *version, TSSymbol lookahead_symbol) {\n");
     try writer.writeAll("  const TSParseActionEntry *entry = ts_generated_parse_actions_for(version->state, lookahead_symbol);\n");
     try writer.writeAll("  if (entry->entry.count == 0) return (TSGeneratedParseStep){ .status = TSGeneratedParseStepNoAction };\n");
-    try writer.writeAll("  return ts_generated_apply_parse_action(version, &entry[1].action);\n");
+    try writer.writeAll("  TSGeneratedParseStep step = ts_generated_apply_parse_action(version, &entry[1].action);\n");
+    try writer.writeAll("  if (step.status == TSGeneratedParseStepShift) step.symbol = lookahead_symbol;\n");
+    try writer.writeAll("  return step;\n");
     try writer.writeAll("}\n\n");
     try writer.writeAll("static bool ts_generated_recover_to_stack_action(TSGeneratedParseVersion *version, TSSymbol lookahead_symbol) {\n");
     try writer.writeAll("  if (version->stack_len <= 1) return false;\n");
@@ -726,7 +768,7 @@ fn writeGlrUnresolvedForkHelpers(writer: anytype) !void {
     try writer.writeAll("  set->count++;\n");
     try writer.writeAll("  return true;\n");
     try writer.writeAll("}\n\n");
-    try writer.writeAll("static uint16_t ts_generated_fork_unresolved_actions(TSGeneratedParseVersionSet *set, uint16_t version_index, TSSymbol lookahead_symbol) {\n");
+    try writer.writeAll("static uint16_t ts_generated_fork_unresolved_actions(TSGeneratedParseVersionSet *set, uint16_t version_index, TSSymbol lookahead_symbol, uint32_t advance_bytes) {\n");
     try writer.writeAll("  if (version_index >= set->count) return 0;\n");
     try writer.writeAll("  TSGeneratedParseVersion *base = &set->versions[version_index];\n");
     try writer.writeAll("  const TSUnresolvedEntry *entries = ts_parser_unresolved(base->state);\n");
@@ -741,6 +783,10 @@ fn writeGlrUnresolvedForkHelpers(writer: anytype) !void {
     try writer.writeAll("      if (applied > 0 && !ts_generated_clone_parse_version(set, version_index, &target_index)) return applied;\n");
     try writer.writeAll("      set->versions[target_index].shifted = false;\n");
     try writer.writeAll("      TSGeneratedParseStep step = ts_generated_apply_parse_action(&set->versions[target_index], &action_entry[1 + action_index].action);\n");
+    try writer.writeAll("      if (step.status == TSGeneratedParseStepShift && !ts_generated_version_push_shift_value(&set->versions[target_index], lookahead_symbol, advance_bytes)) {\n");
+    try writer.writeAll("        set->versions[target_index].active = false;\n");
+    try writer.writeAll("        continue;\n");
+    try writer.writeAll("      }\n");
     try writer.writeAll("      if (step.status == TSGeneratedParseStepReduce) (void)ts_generated_drive_version(&set->versions[target_index], lookahead_symbol);\n");
     try writer.writeAll("      applied++;\n");
     try writer.writeAll("    }\n");
@@ -755,8 +801,16 @@ fn writeGlrVersionCondenseHelpers(writer: anytype) !void {
     try writer.writeAll("  if (left->state != right->state) return false;\n");
     try writer.writeAll("  if (left->byte_offset != right->byte_offset) return false;\n");
     try writer.writeAll("  if (left->stack_len != right->stack_len) return false;\n");
+    try writer.writeAll("  if (left->value_len != right->value_len) return false;\n");
     try writer.writeAll("  for (uint16_t index = 0; index < left->stack_len; index++) {\n");
     try writer.writeAll("    if (left->stack[index] != right->stack[index]) return false;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  for (uint16_t index = 0; index < left->value_len; index++) {\n");
+    try writer.writeAll("    if (left->values[index].symbol != right->values[index].symbol) return false;\n");
+    try writer.writeAll("    if (left->values[index].start_byte != right->values[index].start_byte) return false;\n");
+    try writer.writeAll("    if (left->values[index].end_byte != right->values[index].end_byte) return false;\n");
+    try writer.writeAll("    if (left->values[index].production_id != right->values[index].production_id) return false;\n");
+    try writer.writeAll("    if (left->values[index].child_count != right->values[index].child_count) return false;\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("  return true;\n");
     try writer.writeAll("}\n\n");
@@ -850,7 +904,7 @@ fn writeGlrInputLexerHelpers(writer: anytype) !void {
 }
 
 fn writeGlrVersionStepLoop(writer: anytype, has_unresolved: bool) !void {
-    try writer.writeAll("static bool ts_generated_step_parse_versions(TSGeneratedParseVersionSet *set, uint16_t lead_index, TSSymbol lookahead_symbol) {\n");
+    try writer.writeAll("static bool ts_generated_step_parse_versions(TSGeneratedParseVersionSet *set, uint16_t lead_index, TSSymbol lookahead_symbol, uint32_t advance_bytes) {\n");
     try writer.writeAll("  if (lead_index >= set->count || !set->versions[lead_index].active) return false;\n");
     try writer.writeAll("  uint32_t target_byte_offset = set->versions[lead_index].byte_offset;\n");
     try writer.writeAll("  TSStateId target_state = set->versions[lead_index].state;\n");
@@ -861,9 +915,13 @@ fn writeGlrVersionStepLoop(writer: anytype, has_unresolved: bool) !void {
     try writer.writeAll("    if (version->byte_offset != target_byte_offset || version->state != target_state) continue;\n");
     try writer.writeAll("    version->shifted = false;\n");
     if (has_unresolved) {
-        try writer.writeAll("    if (ts_generated_fork_unresolved_actions(set, version_index, lookahead_symbol) != 0) continue;\n");
+        try writer.writeAll("    if (ts_generated_fork_unresolved_actions(set, version_index, lookahead_symbol, advance_bytes) != 0) continue;\n");
     }
     try writer.writeAll("    TSGeneratedParseStep step = ts_generated_drive_version(version, lookahead_symbol);\n");
+    try writer.writeAll("    if (step.status == TSGeneratedParseStepShift && !ts_generated_version_push_shift_value(version, step.symbol, advance_bytes)) {\n");
+    try writer.writeAll("      version->active = false;\n");
+    try writer.writeAll("      continue;\n");
+    try writer.writeAll("    }\n");
     try writer.writeAll("    switch (step.status) {\n");
     try writer.writeAll("      case TSGeneratedParseStepNoAction:\n");
     try writer.writeAll("        version->active = false;\n");
@@ -913,7 +971,7 @@ fn writeGlrMainParseFunction(writer: anytype) !void {
     try writer.writeAll("        return false;\n");
     try writer.writeAll("      }\n");
     try writer.writeAll("    }\n");
-    try writer.writeAll("    bool accepted = ts_generated_step_parse_versions(&set, lead_index, lookahead_symbol);\n");
+    try writer.writeAll("    bool accepted = ts_generated_step_parse_versions(&set, lead_index, lookahead_symbol, advance_bytes);\n");
     try writer.writeAll("    if (accepted) {\n");
     try writer.writeAll("      result.accepted = true;\n");
     try writer.writeAll("      result.consumed_bytes = lead->byte_offset + advance_bytes;\n");
@@ -2124,17 +2182,24 @@ test "emitParserCAlloc emits opt-in GLR parser version storage" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_VALUE_STACK_DEPTH 256\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_NO_NODE UINT16_MAX\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE 3\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_RECOVERY_ATTEMPTS 8\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  bool accepted;\n  uint32_t consumed_bytes;\n  uint16_t root_node;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  uint16_t node_count;\n  uint32_t error_count;\n  int32_t dynamic_precedence;\n} TSGeneratedParseResult;\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSStateId state;\n  TSStateId stack[GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH];\n  uint16_t stack_len;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSSymbol symbol;\n  uint32_t start_byte;\n  uint32_t end_byte;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "} TSGeneratedValue;\n\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSStateId state;\n  TSStateId stack[GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH];\n  TSGeneratedValue values[GEN_Z_SITTER_MAX_VALUE_STACK_DEPTH];\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  uint16_t value_len;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  uint32_t error_count;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  bool shifted;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseVersion versions[GEN_Z_SITTER_MAX_PARSE_VERSIONS];\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_parse_versions_init(TSGeneratedParseVersionSet *set, TSStateId start_state) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_version_push_state(TSGeneratedParseVersion *version, TSStateId state) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_version_push_value(TSGeneratedParseVersion *version, TSGeneratedValue value) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_version_reduce_value(TSGeneratedParseVersion *version, const TSParseAction *action) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_version_push_shift_value(TSGeneratedParseVersion *version, TSSymbol symbol, uint32_t advance_bytes) {\n"));
 }
 
 test "emitParserCAlloc emits opt-in GLR parse table helpers" {
@@ -2189,6 +2254,7 @@ test "emitParserCAlloc emits opt-in GLR action dispatch helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->shifted = true;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->dynamic_precedence += action->reduce.dynamic_precedence;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (version->stack_len <= action->reduce.child_count) break;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_version_reduce_value(version, action)) break;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->stack_len -= action->reduce.child_count;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSStateId next = ts_generated_goto_state(top, action->reduce.symbol);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_version_push_state(version, next)) break;\n"));
@@ -2240,10 +2306,11 @@ test "emitParserCAlloc emits opt-in GLR unresolved fork helpers" {
     defer allocator.free(emitted);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_clone_parse_version(TSGeneratedParseVersionSet *set, uint16_t source_index, uint16_t *target_index) {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static uint16_t ts_generated_fork_unresolved_actions(TSGeneratedParseVersionSet *set, uint16_t version_index, TSSymbol lookahead_symbol) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static uint16_t ts_generated_fork_unresolved_actions(TSGeneratedParseVersionSet *set, uint16_t version_index, TSSymbol lookahead_symbol, uint32_t advance_bytes) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (unresolved->symbol_id != lookahead_symbol) continue;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[target_index].shifted = false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseStep step = ts_generated_apply_parse_action(&set->versions[target_index], &action_entry[1 + action_index].action);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (step.status == TSGeneratedParseStepShift && !ts_generated_version_push_shift_value(&set->versions[target_index], lookahead_symbol, advance_bytes)) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (step.status == TSGeneratedParseStepReduce) (void)ts_generated_drive_version(&set->versions[target_index], lookahead_symbol);\n"));
 }
 
@@ -2269,7 +2336,9 @@ test "emitParserCAlloc emits opt-in GLR version condensation helpers" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_parse_versions_same_position(const TSGeneratedParseVersion *left, const TSGeneratedParseVersion *right) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->stack_len != right->stack_len) return false;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->value_len != right->value_len) return false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->stack[index] != right->stack[index]) return false;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->values[index].symbol != right->values[index].symbol) return false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "uint32_t min_error_count = UINT32_MAX;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[read_index].error_count > min_error_count + GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE"));
@@ -2299,10 +2368,11 @@ test "emitParserCAlloc emits opt-in GLR active-version step loop" {
     });
     defer allocator.free(emitted);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_step_parse_versions(TSGeneratedParseVersionSet *set, uint16_t lead_index, TSSymbol lookahead_symbol) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_step_parse_versions(TSGeneratedParseVersionSet *set, uint16_t lead_index, TSSymbol lookahead_symbol, uint32_t advance_bytes) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "uint32_t target_byte_offset = set->versions[lead_index].byte_offset;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (version->byte_offset != target_byte_offset || version->state != target_state) continue;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseStep step = ts_generated_drive_version(version, lookahead_symbol);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (step.status == TSGeneratedParseStepShift && !ts_generated_version_push_shift_value(version, step.symbol, advance_bytes)) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->shifted = false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->active = false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_condense_parse_versions(set);\n"));
@@ -2365,7 +2435,7 @@ test "emitParserCAlloc emits opt-in GLR raw input parse entry point" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!lead || set.versions[i].byte_offset < lead->byte_offset) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (out_result) *out_result = result;\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool accepted = ts_generated_step_parse_versions(&set, lead_index, lookahead_symbol);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool accepted = ts_generated_step_parse_versions(&set, lead_index, lookahead_symbol, advance_bytes);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "result.accepted = true;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "result.consumed_bytes = lead->byte_offset + advance_bytes;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "result.error_count = lead->error_count;\n"));
