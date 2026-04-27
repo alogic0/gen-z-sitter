@@ -270,6 +270,8 @@ Completed steps:
   helper while preserving current resolution behavior.
 - [x] Expose resolved-table reduce conflict candidates and unused
   `expected_conflicts` indexes for the future post-build reporting pass.
+- [x] Store `expected_conflicts` on `BuildResult` and expose build-level
+  unused expected-conflict reporting.
 
 ---
 

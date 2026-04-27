@@ -6,6 +6,7 @@ const item = @import("item.zig");
 const state = @import("state.zig");
 const conflicts = @import("conflicts.zig");
 const resolution = @import("resolution.zig");
+const conflict_resolution = @import("conflict_resolution.zig");
 const minimize = @import("minimize.zig");
 const rules = @import("../ir/rules.zig");
 const runtime_io = @import("../support/runtime_io.zig");
@@ -1502,6 +1503,7 @@ pub const ProductionInfo = struct {
 pub const BuildResult = struct {
     productions: []const ProductionInfo,
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    expected_conflicts: []const []const syntax_ir.SymbolRef = &.{},
     states: []const state.ParseState,
     lex_state_count: usize,
     lex_state_terminal_sets: []const []const bool = &.{},
@@ -1539,6 +1541,24 @@ pub const BuildResult = struct {
         allocator: std.mem.Allocator,
     ) std.mem.Allocator.Error!resolution.DecisionSnapshot {
         return self.resolved_actions.snapshotAlloc(allocator);
+    }
+
+    pub fn expectedConflictCandidatesAlloc(
+        self: BuildResult,
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error![]const conflict_resolution.ConflictCandidate {
+        return self.resolved_actions.expectedConflictCandidatesAlloc(allocator, self.productions);
+    }
+
+    pub fn unusedExpectedConflictIndexesAlloc(
+        self: BuildResult,
+        allocator: std.mem.Allocator,
+    ) std.mem.Allocator.Error![]const usize {
+        return self.resolved_actions.unusedExpectedConflictIndexesAlloc(
+            allocator,
+            self.expected_conflicts,
+            self.productions,
+        );
     }
 };
 
@@ -1739,6 +1759,7 @@ pub fn buildStatesWithOptions(
         return .{
             .productions = productions,
             .precedence_orderings = grammar.precedence_orderings,
+            .expected_conflicts = grammar.expected_conflicts,
             .states = minimized.states,
             .lex_state_count = lex_states.count,
             .lex_state_terminal_sets = lex_states.terminal_sets,
@@ -1750,6 +1771,7 @@ pub fn buildStatesWithOptions(
     return .{
         .productions = productions,
         .precedence_orderings = grammar.precedence_orderings,
+        .expected_conflicts = grammar.expected_conflicts,
         .states = lex_states.states,
         .lex_state_count = lex_states.count,
         .lex_state_terminal_sets = lex_states.terminal_sets,
@@ -4191,4 +4213,51 @@ test "assignLexStateIdsAlloc reuses ids for equivalent terminal sets determinist
     try std.testing.expectEqual(@as(usize, 2), assigned.terminal_sets.len);
     try std.testing.expectEqualSlices(bool, &.{ true, true }, assigned.terminal_sets[0]);
     try std.testing.expectEqualSlices(bool, &.{ true, false }, assigned.terminal_sets[1]);
+}
+
+test "BuildResult exposes unused expected conflict indexes" {
+    const allocator = std.testing.allocator;
+    const expected_used = [_]syntax_ir.SymbolRef{
+        .{ .non_terminal = 2 },
+        .{ .non_terminal = 1 },
+    };
+    const expected_unused = [_]syntax_ir.SymbolRef{
+        .{ .non_terminal = 1 },
+        .{ .non_terminal = 9 },
+    };
+    const reduce_actions = [_]actions.ParseAction{
+        .{ .reduce = 1 },
+        .{ .reduce = 2 },
+    };
+    const result = BuildResult{
+        .productions = &[_]ProductionInfo{
+            .{ .lhs = 0, .steps = &.{} },
+            .{ .lhs = 1, .steps = &.{} },
+            .{ .lhs = 2, .steps = &.{} },
+        },
+        .precedence_orderings = &.{},
+        .expected_conflicts = &.{ &expected_used, &expected_unused },
+        .states = &.{},
+        .lex_state_count = 0,
+        .actions = .{ .states = &.{} },
+        .resolved_actions = .{ .states = &[_]resolution.ResolvedStateActions{.{
+            .state_id = 4,
+            .groups = &[_]resolution.ResolvedActionGroup{.{
+                .symbol = .{ .terminal = 0 },
+                .candidate_actions = &reduce_actions,
+                .decision = .{ .unresolved = .reduce_reduce_expected },
+            }},
+        }} },
+    };
+
+    const unused = try result.unusedExpectedConflictIndexesAlloc(allocator);
+    defer allocator.free(unused);
+    try std.testing.expectEqual(@as(usize, 1), unused.len);
+    try std.testing.expectEqual(@as(usize, 1), unused[0]);
+
+    const candidates = try result.expectedConflictCandidatesAlloc(allocator);
+    defer conflict_resolution.freeConflictCandidates(allocator, candidates);
+    try std.testing.expectEqual(@as(usize, 1), candidates.len);
+    try std.testing.expectEqual(@as(u32, 1), candidates[0].members[0].non_terminal);
+    try std.testing.expectEqual(@as(u32, 2), candidates[0].members[1].non_terminal);
 }
