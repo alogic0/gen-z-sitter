@@ -273,7 +273,7 @@ pub fn linkAndRunTreeSitterJsonParserAcceptedSample(allocator: std.mem.Allocator
     const parser_c = try emitTreeSitterJsonParserC(arena.allocator());
     try linkAndRunGeneratedParser(allocator, .{
         .parser_c = parser_c,
-        .input = "",
+        .input = "\"x\"",
         .expected_root_type = "document",
         .expected_has_error = false,
     });

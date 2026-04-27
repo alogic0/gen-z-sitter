@@ -190,18 +190,68 @@ For each candidate:
 - [ ] Runtime-link proof on one invalid or partial sample after error recovery.
 - [ ] Artifact refresh.
 
-First batch status:
+Implementation batches, in order:
 
-- [x] `tree_sitter_json_json` remains the scanner-free real JSON baseline with
-  load, prepare, full parser emission, compatibility validation, compile-smoke,
-  and bounded runtime-link proofs.
-- [x] Added accepted runtime-link proof for the real JSON snapshot on the empty
-  document accepted by its `document := repeat(_value)` grammar.
-- [x] Added invalid runtime-link proof for the real JSON snapshot on `x`,
-  asserting that the linked parser reports an error tree.
-- [ ] Broaden JSON runtime-link accepted samples beyond the empty document after
-  the current emitted lexer tokenization gaps for strings and number endings are
-  fixed.
+1. JSON baseline runtime-link proofs.
+   - [x] `tree_sitter_json_json` remains the scanner-free real JSON baseline
+     with load, prepare, full parser emission, compatibility validation,
+     compile-smoke, and bounded runtime-link proofs.
+   - [x] Add accepted runtime-link proof for the real JSON snapshot on the
+     empty document accepted by its `document := repeat(_value)` grammar.
+   - [x] Add invalid runtime-link proof for the real JSON snapshot on `x`,
+     asserting that the linked parser reports an error tree.
+
+2. JSON tokenization follow-up.
+   - [x] Fix duplicate anonymous literal token identities so quoted string
+     content does not force recovery after the opening quote.
+   - [x] Add a focused accepted runtime-link proof for a non-empty real JSON
+     string sample.
+   - [ ] Fix remaining JSON value follow/number-ending gaps exposed by real
+     samples: numeric-value samples still do not finish as accepted input, and
+     object/array samples expose missing reduce lookaheads before separators.
+   - [ ] Broaden JSON accepted runtime-link samples to include at least one
+     number, array, and object after the follow-set gap is fixed.
+   - [ ] Keep the invalid JSON runtime-link proof passing after the lexer fixes.
+
+3. Scanner-free/light real grammar promotion.
+   - [ ] Promote `tree_sitter_ziggy_json` runtime-link proof on one accepted
+     sample if the current full-pipeline compile-smoke surface is enough.
+   - [ ] Promote `tree_sitter_ziggy_schema_json` runtime-link proof on one
+     accepted sample if the current full-pipeline compile-smoke surface is
+     enough.
+   - [ ] Add an invalid or partial sample for whichever Ziggy-family target is
+     promoted first, or document why emitted recovery is not yet sufficient.
+
+4. `tree_sitter_zig_json` promotion beyond coarse serialize.
+   - [ ] Move from routine coarse serialize-only evidence toward parser.c
+     emission and compile-smoke if the bounded cost stays acceptable.
+   - [ ] Add one accepted runtime-link sample after compile-smoke passes.
+   - [ ] Add one invalid or partial runtime-link sample after the accepted
+     sample is stable.
+
+5. Scanner-wave evidence accounting.
+   - [ ] Ensure Bash and Haskell generated GLR scanner runtime-link proofs are
+     reflected in Phase 3 artifacts as promoted scanner-wave evidence.
+   - [ ] Keep Bash/Haskell regular runtime-link proofs and generated GLR
+     runtime-link proofs in the bounded suite.
+   - [ ] Refresh affected compatibility artifacts after this accounting change.
+
+6. TypeScript/Rust bounded promotion probes.
+   - [ ] Try Rust first with a bounded parser-boundary or compile-smoke probe,
+     using the Phase 2.3 scanner classification to avoid broad promotion while
+     scanner symbols remain blocked.
+   - [ ] Try TypeScript only after Rust, and keep it in the heavy/bounded path
+     unless timing has clear headroom.
+   - [ ] Keep JavaScript classified and deferred until construction, emission,
+     and C compile costs have enough headroom.
+
+7. Phase 3 closure.
+   - [ ] Refresh `shortlist_report.json`, `shortlist_inventory.json`,
+     `parser_boundary_probe.json`, and any affected compatibility artifacts.
+   - [ ] Mark the per-candidate checklist above only for surfaces that are
+     actually proven by the final Phase 3 batches.
+   - [ ] Record remaining deferred targets and blockers before moving to Phase
+     4.
 
 Gate:
 

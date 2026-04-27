@@ -442,6 +442,7 @@ const Extractor = struct {
 
         const name = self.lexicalNameForRule(rule_id, preferred_name);
         const kind = self.lexicalKindForRule(rule_id, preferred_name);
+        if (self.findEquivalentLexicalVariable(rule_id, kind)) |index| return index;
         self.lexical_variables.append(.{
             .name = name,
             .kind = kind,
@@ -455,6 +456,39 @@ const Extractor = struct {
             if (variable.rule == rule_id) return @intCast(i);
         }
         return null;
+    }
+
+    fn findEquivalentLexicalVariable(
+        self: *Extractor,
+        rule_id: ir_rules.RuleId,
+        kind: lexical_ir.VariableKind,
+    ) ?u32 {
+        for (self.lexical_variables.items, 0..) |variable, i| {
+            if (variable.kind != kind) continue;
+            if (self.lexicalRulesEquivalent(variable.rule, rule_id)) return @intCast(i);
+        }
+        return null;
+    }
+
+    fn lexicalRulesEquivalent(self: *Extractor, lhs_id: ir_rules.RuleId, rhs_id: ir_rules.RuleId) bool {
+        const lhs = self.prepared.rules[@intCast(lhs_id)];
+        const rhs = self.prepared.rules[@intCast(rhs_id)];
+        return switch (lhs) {
+            .string => |left| switch (rhs) {
+                .string => |right| std.mem.eql(u8, left, right),
+                else => false,
+            },
+            .pattern => |left| switch (rhs) {
+                .pattern => |right| std.mem.eql(u8, left.value, right.value) and optionalStringsEqual(left.flags, right.flags),
+                else => false,
+            },
+            else => false,
+        };
+    }
+
+    fn optionalStringsEqual(lhs: ?[]const u8, rhs: ?[]const u8) bool {
+        if (lhs == null or rhs == null) return lhs == null and rhs == null;
+        return std.mem.eql(u8, lhs.?, rhs.?);
     }
 
     fn ensureRepeatAuxiliary(
@@ -547,7 +581,8 @@ const Extractor = struct {
             },
             .repeat, .repeat1 => |inner| self.isTokenContentRule(inner),
             .metadata => |metadata| self.isTokenContentRule(metadata.inner),
-            .blank, .symbol => false,
+            .blank => true,
+            .symbol => false,
         };
     }
 
@@ -1131,6 +1166,129 @@ test "extractTokens accepts word tokens backed by tokenized composite lexical ru
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
     try std.testing.expectEqualStrings("identifier", extracted.lexical.variables[0].name);
     try std.testing.expectEqual(@as(u32, 6), extracted.lexical.variables[0].rule);
+}
+
+test "extractTokens accepts blank alternatives inside tokenized lexical rules" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "tokenized-optional-tail",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+            .{
+                .name = "number",
+                .symbol = ir_symbols.SymbolId.nonTerminal(1),
+                .kind = .named,
+                .rule = 5,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{
+            .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) },
+            .{ .pattern = .{ .value = "[1-9]", .flags = null } },
+            .{ .pattern = .{ .value = "[0-9]", .flags = null } },
+            .blank,
+            .{ .choice = &.{ 2, 3 } },
+            .{ .metadata = .{
+                .inner = 6,
+                .data = .{
+                    .token = true,
+                },
+            } },
+            .{ .seq = &.{ 1, 4 } },
+        },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(1),
+                .name = "number",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
+    try std.testing.expectEqualStrings("number", extracted.lexical.variables[0].name);
+    try std.testing.expectEqual(@as(u32, 5), extracted.lexical.variables[0].rule);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables[1].productions.len);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables[1].productions[0].steps.len);
+    switch (extracted.syntax.variables[1].productions[0].steps[0].symbol) {
+        .terminal => |terminal| try std.testing.expectEqual(@as(u32, 0), terminal),
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "extractTokens reuses equivalent literal lexical variables" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "duplicate-literals",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 7,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{
+            .{ .string = "\"" },
+            .{ .string = "\"" },
+            .{ .string = "\"" },
+            .{ .string = "\"" },
+            .{ .string = "content" },
+            .{ .seq = &.{ 0, 1 } },
+            .{ .seq = &.{ 2, 4, 3 } },
+            .{ .choice = &.{ 5, 6 } },
+        },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 2), extracted.lexical.variables.len);
+    try std.testing.expectEqualStrings("\"", extracted.lexical.variables[0].name);
+    try std.testing.expectEqualStrings("content", extracted.lexical.variables[1].name);
+    try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables[0].productions[0].steps[0].symbol.terminal);
+    try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables[0].productions[0].steps[1].symbol.terminal);
+    try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables[0].productions[1].steps[0].symbol.terminal);
+    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.variables[0].productions[1].steps[1].symbol.terminal);
+    try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables[0].productions[1].steps[2].symbol.terminal);
 }
 
 test "extractTokens promotes hidden top-level repeats in place and removes them from inline symbols" {

@@ -518,6 +518,113 @@ test "buildSerializedLexTablesAlloc builds one table per terminal set" {
     try std.testing.expect(lexTableAcceptsTerminal(tables[2], 1));
 }
 
+test "buildSerializedLexTablesAlloc accepts nullable token suffixes" {
+    const rules = [_]ir_rules.Rule{
+        .{ .pattern = .{ .value = "[1-9]", .flags = null } },
+        .{ .pattern = .{ .value = "[0-9]", .flags = null } },
+        .blank,
+        .{ .choice = &.{ 1, 2 } },
+        .{ .seq = &.{ 0, 3 } },
+        .{ .metadata = .{
+            .inner = 4,
+            .data = .{ .token = true },
+        } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "number", .kind = .named, .rule = 5 },
+        },
+        .separators = &.{},
+    };
+    const terminal_sets = [_][]const bool{&.{true}};
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const tables = try buildSerializedLexTablesAlloc(
+        arena.allocator(),
+        rules[0..],
+        lexical,
+        terminal_sets[0..],
+    );
+
+    const start = tables[0].start_state_id;
+    var accepts_after_first_digit = false;
+    for (tables[0].states[start].transitions) |transition| {
+        if (!rangeSetContains(transition.ranges, '4')) continue;
+        const target = tables[0].states[transition.next_state_id];
+        accepts_after_first_digit = target.accept_symbol != null;
+    }
+
+    try std.testing.expect(accepts_after_first_digit);
+}
+
+test "buildSerializedLexTablesAlloc accepts JSON-style integers before optional exponent" {
+    const rules = [_]ir_rules.Rule{
+        .{ .string = "-" },
+        .blank,
+        .{ .choice = &.{ 0, 1 } },
+        .{ .string = "0" },
+        .{ .pattern = .{ .value = "[1-9]", .flags = null } },
+        .{ .pattern = .{ .value = "\\d+", .flags = null } },
+        .blank,
+        .{ .choice = &.{ 5, 6 } },
+        .{ .seq = &.{ 4, 7 } },
+        .{ .choice = &.{ 3, 8 } },
+        .{ .seq = &.{ 2, 9 } },
+        .{ .string = "e" },
+        .{ .string = "E" },
+        .{ .choice = &.{ 11, 12 } },
+        .{ .string = "-" },
+        .blank,
+        .{ .choice = &.{ 14, 15 } },
+        .{ .pattern = .{ .value = "\\d+", .flags = null } },
+        .{ .seq = &.{ 16, 17 } },
+        .{ .seq = &.{ 13, 18 } },
+        .blank,
+        .{ .choice = &.{ 19, 20 } },
+        .{ .seq = &.{ 10, 21 } },
+        .{ .metadata = .{
+            .inner = 22,
+            .data = .{ .token = true },
+        } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "number", .kind = .named, .rule = 23 },
+        },
+        .separators = &.{},
+    };
+    const terminal_sets = [_][]const bool{&.{true}};
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const tables = try buildSerializedLexTablesAlloc(
+        arena.allocator(),
+        rules[0..],
+        lexical,
+        terminal_sets[0..],
+    );
+
+    const start = tables[0].start_state_id;
+    var accepts_after_first_digit = false;
+    for (tables[0].states[start].transitions) |transition| {
+        if (!rangeSetContains(transition.ranges, '4')) continue;
+        const target = tables[0].states[transition.next_state_id];
+        accepts_after_first_digit = target.accept_symbol != null;
+    }
+
+    try std.testing.expect(accepts_after_first_digit);
+}
+
+fn rangeSetContains(ranges: []const SerializedCharacterRange, codepoint: u32) bool {
+    for (ranges) |range| {
+        if (range.start <= codepoint and codepoint <= range.end_inclusive) return true;
+    }
+    return false;
+}
+
 test "serializeLexTableAlloc preserves EOF targets" {
     const rules = [_]ir_rules.Rule{
         .{ .string = "a" },
