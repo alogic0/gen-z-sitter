@@ -22,9 +22,11 @@ PoC, and M46 GLR helper scaffolding have landed.
   point; old-subtree prefix reuse by matching `entry_state` + `start_byte`;
   `external_lex_state` guard in place; equivalence yield helper.
 - **JSON compat target** — added and passing at full pipeline level.
-- **Deferred grammar snapshots** — JavaScript (12 K states), Python, TypeScript
-  (5.2 K states), Rust (2.8 K states) registered; all serialize correctly in
-  non-strict mode; each is held at `emit_parser_c` boundary pending GLR loop.
+- **Deferred grammar snapshots** — JavaScript (1606 coarse serialized states),
+  Python (1139), TypeScript (5202), and Rust (2839) are registered. Each is
+  intentionally held at the `prepare_only` routine boundary; standalone coarse
+  serialize probes complete but report `blocked=true`, so parser-table promotion
+  needs narrower follow-up work before any emitted-C promotion.
 - **M46 GLR helpers** — all six helper families emitted behind
   `GEN_Z_SITTER_ENABLE_GLR_LOOP`:
   - `TSGeneratedParseVersion` struct + bounded stack + init + `push_state` (line 476)
@@ -78,6 +80,12 @@ case TSParseActionTypeReduce:
 The `child_count` from `TSParseAction.reduce` carries the production length. The
 goto lookup reuses the already-emitted `ts_generated_goto_state`.
 
+Status:
+
+- [x] Emit reduce-time stack pop, goto lookup, and goto-state push in
+  `ts_generated_apply_parse_action`.
+- [x] Add focused emitter coverage for the generated reduce stack mutation.
+
 ### 1b. Reduce drive loop per version
 
 A single lookahead can trigger a chain of reduces before the next shift. The
@@ -97,6 +105,13 @@ static TSGeneratedParseStep ts_generated_drive_version(
 
 Replace the `ts_generated_parse_version_step` call in `writeGlrVersionStepLoop`
 with `ts_generated_drive_version`.
+
+Status:
+
+- [x] Emit `ts_generated_drive_version` to continue reduce chains for one
+  lookahead.
+- [x] Route the active-version loop through `ts_generated_drive_version`.
+- [x] Add focused emitter coverage for the generated drive helper.
 
 ### 1c. Outer lex + byte_offset advance
 
@@ -167,34 +182,43 @@ add `writeGlrDriveVersionHelper` (1b), add `writeGlrMainParseFunction` (1c).
 
 ---
 
-## Priority 2 — Promote the Deferred Grammar Wave
+## Priority 2 — Narrow and Then Promote the Deferred Grammar Wave
 
 The four deferred targets (JavaScript, Python, TypeScript, Rust) already
-serialize with non-strict mode. They are held at `emit_parser_c` by a
-compat-harness boundary check. Once the GLR loop passes its gate (Priority 1),
-lift that boundary.
+load and prepare quickly. Their standalone coarse serialize probes finish inside
+the bounded harness, but each still reports `blocked=true`. They are held at the
+routine `prepare_only` boundary, not at `emit_parser_c`. Once the GLR loop passes
+its gate (Priority 1), the next step is not a blanket promotion; first narrow the
+blocked parser-table surfaces per grammar.
 
 **Steps.**
 
-1. In `src/compat/targets.zig`, update each deferred target's
-   `parser_boundary_check_mode` from `serialize_only` to `full_pipeline` with
-   `glr_loop: true` in emit options.
+1. For each deferred target, run the standalone parser-boundary probe and record
+   the blocked signatures:
+   - `tree_sitter_javascript_json`: 1606 coarse states, blocked
+   - `tree_sitter_python_json`: 1139 coarse states, blocked
+   - `tree_sitter_typescript_json`: 5202 coarse states, blocked
+   - `tree_sitter_rust_json`: 2839 coarse states, blocked
 
-2. Run `zig build run-compat-target -Dcompat-target=tree_sitter_javascript_json
-   -Dcompat-stop-after=emit_parser_c` and verify it compiles.
+2. Fix or explicitly classify those blocked signatures before changing any
+   target from `prepare_only` to a broader routine boundary.
 
-3. For each target that compiles: run `zig build test-compat-heavy` scoped to
+3. After a target has a non-blocked parser-table proof, update its
+   `parser_boundary_check_mode` to the next narrow boundary (`serialize_only`
+   first, then `full_pipeline`) with `glr_loop: true` in emit options.
+
+4. For each target that compiles: run `zig build test-compat-heavy` scoped to
    that target and verify the C links against tree-sitter's runtime library.
    Check parse result on the sample input.
 
-4. Promote each target's `proof_scope` from `compile_smoke` to
+5. Promote each target's `proof_scope` from `compile_smoke` to
    `full_runtime_link` once the parse produces a non-ERROR result on the sample.
 
-5. For Bash and Haskell, verify the real external-scanner link still works through
+6. For Bash and Haskell, verify the real external-scanner link still works through
    the GLR path (their grammars have no unresolved entries so the GLR loop should
    be a transparent no-op for them).
 
-6. Refresh `shortlist_report.json`, `parser_boundary_probe.json`, and
+7. Refresh `shortlist_report.json`, `parser_boundary_probe.json`, and
    `shortlist_inventory.json`.
 
 **Expected blockers.**

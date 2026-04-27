@@ -563,6 +563,14 @@ fn writeGlrActionDispatch(writer: anytype) !void {
     try writer.writeAll("      break;\n");
     try writer.writeAll("    case TSParseActionTypeReduce:\n");
     try writer.writeAll("      version->dynamic_precedence += action->reduce.dynamic_precedence;\n");
+    try writer.writeAll("      if (version->stack_len <= action->reduce.child_count) break;\n");
+    try writer.writeAll("      version->stack_len -= action->reduce.child_count;\n");
+    try writer.writeAll("      {\n");
+    try writer.writeAll("        TSStateId top = version->stack[version->stack_len - 1];\n");
+    try writer.writeAll("        TSStateId next = ts_generated_goto_state(top, action->reduce.symbol);\n");
+    try writer.writeAll("        if (next == 0) break;\n");
+    try writer.writeAll("        if (!ts_generated_version_push_state(version, next)) break;\n");
+    try writer.writeAll("      }\n");
     try writer.writeAll("      step.status = TSGeneratedParseStepReduce;\n");
     try writer.writeAll("      step.child_count = action->reduce.child_count;\n");
     try writer.writeAll("      step.symbol = action->reduce.symbol;\n");
@@ -581,6 +589,13 @@ fn writeGlrActionDispatch(writer: anytype) !void {
     try writer.writeAll("  const TSParseActionEntry *entry = ts_generated_parse_actions_for(version->state, lookahead_symbol);\n");
     try writer.writeAll("  if (entry->entry.count == 0) return (TSGeneratedParseStep){ .status = TSGeneratedParseStepNoAction };\n");
     try writer.writeAll("  return ts_generated_apply_parse_action(version, &entry[1].action);\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static TSGeneratedParseStep ts_generated_drive_version(TSGeneratedParseVersion *version, TSSymbol lookahead_symbol) {\n");
+    try writer.writeAll("  TSGeneratedParseStep step;\n");
+    try writer.writeAll("  do {\n");
+    try writer.writeAll("    step = ts_generated_parse_version_step(version, lookahead_symbol);\n");
+    try writer.writeAll("  } while (step.status == TSGeneratedParseStepReduce);\n");
+    try writer.writeAll("  return step;\n");
     try writer.writeAll("}\n\n");
 }
 
@@ -731,7 +746,7 @@ fn writeGlrVersionStepLoop(writer: anytype, has_unresolved: bool) !void {
     if (has_unresolved) {
         try writer.writeAll("    if (ts_generated_fork_unresolved_actions(set, version_index, lookahead_symbol) != 0) continue;\n");
     }
-    try writer.writeAll("    TSGeneratedParseStep step = ts_generated_parse_version_step(version, lookahead_symbol);\n");
+    try writer.writeAll("    TSGeneratedParseStep step = ts_generated_drive_version(version, lookahead_symbol);\n");
     try writer.writeAll("    switch (step.status) {\n");
     try writer.writeAll("      case TSGeneratedParseStepNoAction:\n");
     try writer.writeAll("        version->active = false;\n");
@@ -1986,7 +2001,13 @@ test "emitParserCAlloc emits opt-in GLR action dispatch helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static TSGeneratedParseStep ts_generated_apply_parse_action(TSGeneratedParseVersion *version, const TSParseAction *action) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_version_push_state(version, action->shift.state)) break;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->dynamic_precedence += action->reduce.dynamic_precedence;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (version->stack_len <= action->reduce.child_count) break;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->stack_len -= action->reduce.child_count;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSStateId next = ts_generated_goto_state(top, action->reduce.symbol);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_version_push_state(version, next)) break;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static TSGeneratedParseStep ts_generated_parse_version_step(TSGeneratedParseVersion *version, TSSymbol lookahead_symbol) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static TSGeneratedParseStep ts_generated_drive_version(TSGeneratedParseVersion *version, TSSymbol lookahead_symbol) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  } while (step.status == TSGeneratedParseStepReduce);\n"));
 }
 
 test "emitParserCAlloc emits opt-in GLR unresolved fork helpers" {
@@ -2075,7 +2096,7 @@ test "emitParserCAlloc emits opt-in GLR active-version step loop" {
     defer allocator.free(emitted);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_step_parse_versions(TSGeneratedParseVersionSet *set, TSSymbol lookahead_symbol) {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseStep step = ts_generated_parse_version_step(version, lookahead_symbol);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseStep step = ts_generated_drive_version(version, lookahead_symbol);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->active = false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_condense_parse_versions(set);\n"));
 }
