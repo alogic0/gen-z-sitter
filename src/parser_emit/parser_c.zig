@@ -491,7 +491,10 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("  uint16_t production_id;\n");
     try writer.writeAll("  uint16_t child_count;\n");
     try writer.writeAll("  uint16_t first_child;\n");
+    try writer.writeAll("  uint16_t field_map_index;\n");
+    try writer.writeAll("  uint16_t field_map_length;\n");
     try writer.writeAll("  uint16_t children[GEN_Z_SITTER_MAX_NODE_CHILDREN];\n");
+    try writer.writeAll("  TSSymbol child_aliases[GEN_Z_SITTER_MAX_NODE_CHILDREN];\n");
     try writer.writeAll("} TSGeneratedNode;\n\n");
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  bool accepted;\n");
@@ -563,7 +566,7 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("  version->values[version->value_len++] = value;\n");
     try writer.writeAll("  return true;\n");
     try writer.writeAll("}\n\n");
-    try writer.writeAll("static bool ts_generated_version_reduce_value(TSGeneratedParseVersion *version, const TSParseAction *action) {\n");
+    try writer.writeAll("static bool ts_generated_version_reduce_value(TSGeneratedParseVersion *version, const TSParseAction *action, const TSSymbol *alias_sequence, TSMapSlice field_map) {\n");
     try writer.writeAll("  if (version->value_len < action->reduce.child_count) return false;\n");
     try writer.writeAll("  if (action->reduce.child_count > GEN_Z_SITTER_MAX_NODE_CHILDREN) return false;\n");
     try writer.writeAll("  uint16_t first_child = version->value_len - action->reduce.child_count;\n");
@@ -578,9 +581,12 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("    .production_id = action->reduce.production_id,\n");
     try writer.writeAll("    .child_count = action->reduce.child_count,\n");
     try writer.writeAll("    .first_child = first_child_node,\n");
+    try writer.writeAll("    .field_map_index = field_map.index,\n");
+    try writer.writeAll("    .field_map_length = field_map.length,\n");
     try writer.writeAll("  }, &node_id)) return false;\n");
     try writer.writeAll("  for (uint16_t child_index = 0; child_index < action->reduce.child_count; child_index++) {\n");
     try writer.writeAll("    version->nodes[node_id].children[child_index] = version->values[first_child + child_index].node_id;\n");
+    try writer.writeAll("    version->nodes[node_id].child_aliases[child_index] = alias_sequence[child_index];\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("  version->value_len = first_child;\n");
     try writer.writeAll("  return ts_generated_version_push_value(version, (TSGeneratedValue){\n");
@@ -601,6 +607,8 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("    .production_id = 0,\n");
     try writer.writeAll("    .child_count = 0,\n");
     try writer.writeAll("    .first_child = GEN_Z_SITTER_NO_NODE,\n");
+    try writer.writeAll("    .field_map_index = 0,\n");
+    try writer.writeAll("    .field_map_length = 0,\n");
     try writer.writeAll("  }, &node_id)) return false;\n");
     try writer.writeAll("  return ts_generated_version_push_value(version, (TSGeneratedValue){\n");
     try writer.writeAll("    .symbol = symbol,\n");
@@ -668,7 +676,7 @@ fn writeGlrActionDispatch(writer: anytype) !void {
     try writer.writeAll("    case TSParseActionTypeReduce:\n");
     try writer.writeAll("      version->dynamic_precedence += action->reduce.dynamic_precedence;\n");
     try writer.writeAll("      if (version->stack_len <= action->reduce.child_count) break;\n");
-    try writer.writeAll("      if (!ts_generated_version_reduce_value(version, action)) break;\n");
+    try writer.writeAll("      if (!ts_generated_version_reduce_value(version, action, &ts_alias_sequences[action->reduce.production_id][0], ts_field_map_slices[action->reduce.production_id])) break;\n");
     try writer.writeAll("      version->stack_len -= action->reduce.child_count;\n");
     try writer.writeAll("      {\n");
     try writer.writeAll("        TSStateId top = version->stack[version->stack_len - 1];\n");
@@ -868,8 +876,11 @@ fn writeGlrVersionCondenseHelpers(writer: anytype) !void {
     try writer.writeAll("    if (left->nodes[index].production_id != right->nodes[index].production_id) return false;\n");
     try writer.writeAll("    if (left->nodes[index].child_count != right->nodes[index].child_count) return false;\n");
     try writer.writeAll("    if (left->nodes[index].first_child != right->nodes[index].first_child) return false;\n");
+    try writer.writeAll("    if (left->nodes[index].field_map_index != right->nodes[index].field_map_index) return false;\n");
+    try writer.writeAll("    if (left->nodes[index].field_map_length != right->nodes[index].field_map_length) return false;\n");
     try writer.writeAll("    for (uint16_t child_index = 0; child_index < left->nodes[index].child_count; child_index++) {\n");
     try writer.writeAll("      if (left->nodes[index].children[child_index] != right->nodes[index].children[child_index]) return false;\n");
+    try writer.writeAll("      if (left->nodes[index].child_aliases[child_index] != right->nodes[index].child_aliases[child_index]) return false;\n");
     try writer.writeAll("    }\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("  return true;\n");
@@ -1063,6 +1074,38 @@ fn writeGlrMainParseFunction(writer: anytype) !void {
     try writer.writeAll("  bool accepted = ts_generated_parse_result(input, length, &result);\n");
     try writer.writeAll("  if (out_consumed_bytes) *out_consumed_bytes = result.consumed_bytes;\n");
     try writer.writeAll("  return accepted;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static bool ts_generated_append_tree_string(char *buffer, uint32_t capacity, uint32_t *length, const char *text) {\n");
+    try writer.writeAll("  while (*text) {\n");
+    try writer.writeAll("    if (*length + 1 >= capacity) return false;\n");
+    try writer.writeAll("    buffer[(*length)++] = *text++;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  buffer[*length] = 0;\n");
+    try writer.writeAll("  return true;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static bool ts_generated_write_node_string(const TSGeneratedParseResult *result, uint16_t node_id, TSSymbol alias_symbol, char *buffer, uint32_t capacity, uint32_t *length) {\n");
+    try writer.writeAll("  if (node_id == GEN_Z_SITTER_NO_NODE || node_id >= result->node_count) return true;\n");
+    try writer.writeAll("  const TSGeneratedNode *node = &result->nodes[node_id];\n");
+    try writer.writeAll("  TSSymbol symbol = alias_symbol != 0 ? alias_symbol : node->symbol;\n");
+    try writer.writeAll("  if (!ts_symbol_metadata[symbol].named) return true;\n");
+    try writer.writeAll("  if (!ts_generated_append_tree_string(buffer, capacity, length, \"(\")) return false;\n");
+    try writer.writeAll("  if (!ts_generated_append_tree_string(buffer, capacity, length, ts_symbol_names[symbol])) return false;\n");
+    try writer.writeAll("  for (uint16_t child_index = 0; child_index < node->child_count; child_index++) {\n");
+    try writer.writeAll("    uint16_t child_id = node->children[child_index];\n");
+    try writer.writeAll("    if (child_id == GEN_Z_SITTER_NO_NODE || child_id >= result->node_count) continue;\n");
+    try writer.writeAll("    TSSymbol child_symbol = result->nodes[child_id].symbol;\n");
+    try writer.writeAll("    if (!ts_symbol_metadata[child_symbol].named) continue;\n");
+    try writer.writeAll("    if (!ts_generated_append_tree_string(buffer, capacity, length, \" \")) return false;\n");
+    try writer.writeAll("    if (!ts_generated_write_node_string(result, child_id, 0, buffer, capacity, length)) return false;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  return ts_generated_append_tree_string(buffer, capacity, length, \")\");\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("bool ts_generated_result_tree_string(const TSGeneratedParseResult *result, char *buffer, uint32_t capacity) {\n");
+    try writer.writeAll("  if (!result || !buffer || capacity == 0) return false;\n");
+    try writer.writeAll("  buffer[0] = 0;\n");
+    try writer.writeAll("  if (!result->accepted || result->root_node == GEN_Z_SITTER_NO_NODE) return false;\n");
+    try writer.writeAll("  uint32_t length = 0;\n");
+    try writer.writeAll("  return ts_generated_write_node_string(result, result->root_node, 0, buffer, capacity, &length);\n");
     try writer.writeAll("}\n\n");
 }
 
@@ -2249,11 +2292,13 @@ test "emitParserCAlloc emits opt-in GLR parser version storage" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_VALUE_STACK_DEPTH 256\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_GENERATED_NODES 256\n\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_NODE_CHILDREN 16\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_NO_NODE UINT16_MAX\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE 3\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_RECOVERY_ATTEMPTS 8\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSSymbol symbol;\n  uint32_t start_byte;\n  uint32_t end_byte;\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  uint16_t first_child;\n  uint16_t children[GEN_Z_SITTER_MAX_NODE_CHILDREN];\n} TSGeneratedNode;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  uint16_t first_child;\n  uint16_t field_map_index;\n  uint16_t field_map_length;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  uint16_t children[GEN_Z_SITTER_MAX_NODE_CHILDREN];\n  TSSymbol child_aliases[GEN_Z_SITTER_MAX_NODE_CHILDREN];\n} TSGeneratedNode;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  bool accepted;\n  uint32_t consumed_bytes;\n  uint16_t root_node;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  uint32_t error_count;\n  int32_t dynamic_precedence;\n  TSGeneratedNode nodes[GEN_Z_SITTER_MAX_GENERATED_NODES];\n} TSGeneratedParseResult;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSSymbol symbol;\n  uint32_t start_byte;\n  uint32_t end_byte;\n"));
@@ -2269,7 +2314,7 @@ test "emitParserCAlloc emits opt-in GLR parser version storage" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_version_push_state(TSGeneratedParseVersion *version, TSStateId state) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_version_push_node(TSGeneratedParseVersion *version, TSGeneratedNode node, uint16_t *out_node_id) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_version_push_value(TSGeneratedParseVersion *version, TSGeneratedValue value) {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_version_reduce_value(TSGeneratedParseVersion *version, const TSParseAction *action) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_version_reduce_value(TSGeneratedParseVersion *version, const TSParseAction *action, const TSSymbol *alias_sequence, TSMapSlice field_map) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_version_push_shift_value(TSGeneratedParseVersion *version, TSSymbol symbol, uint32_t advance_bytes) {\n"));
 }
 
@@ -2325,7 +2370,7 @@ test "emitParserCAlloc emits opt-in GLR action dispatch helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->shifted = true;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->dynamic_precedence += action->reduce.dynamic_precedence;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (version->stack_len <= action->reduce.child_count) break;\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_version_reduce_value(version, action)) break;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_version_reduce_value(version, action, &ts_alias_sequences[action->reduce.production_id][0], ts_field_map_slices[action->reduce.production_id])) break;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->stack_len -= action->reduce.child_count;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSStateId next = ts_generated_goto_state(top, action->reduce.symbol);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_version_push_state(version, next)) break;\n"));
@@ -2413,6 +2458,9 @@ test "emitParserCAlloc emits opt-in GLR version condensation helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->values[index].node_id != right->values[index].node_id) return false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->node_count != right->node_count) return false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->nodes[index].first_child != right->nodes[index].first_child) return false;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->nodes[index].field_map_index != right->nodes[index].field_map_index) return false;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->nodes[index].field_map_length != right->nodes[index].field_map_length) return false;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->nodes[index].child_aliases[child_index] != right->nodes[index].child_aliases[child_index]) return false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "uint32_t min_error_count = UINT32_MAX;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[read_index].error_count > min_error_count + GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE"));
@@ -2518,6 +2566,9 @@ test "emitParserCAlloc emits opt-in GLR raw input parse entry point" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "result.nodes[node_index] = lead->nodes[node_index];\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool accepted = ts_generated_parse_result(input, length, &result);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool ts_generated_result_tree_string(const TSGeneratedParseResult *result, char *buffer, uint32_t capacity) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_write_node_string(const TSGeneratedParseResult *result, uint16_t node_id, TSSymbol alias_symbol, char *buffer, uint32_t capacity, uint32_t *length) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_symbol_metadata[child_symbol].named) continue;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (set.versions[i].shifted && advance_bytes > 0) set.versions[i].byte_offset += advance_bytes;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set.versions[i].shifted = false;\n"));
 }

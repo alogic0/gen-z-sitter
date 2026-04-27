@@ -62,13 +62,13 @@ pub fn linkAndRunNoExternalTinyGlrResultParser(allocator: std.mem.Allocator) Run
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const parser_c = try emitTinyGlrParserC(arena.allocator());
+    const parser_c = try emitAliasedFieldGlrParserC(arena.allocator());
     try linkAndRunGeneratedParser(allocator, .{
         .parser_c = parser_c,
-        .input = "x",
+        .input = "xy",
         .direct_generated_parse = true,
         .direct_generated_result = true,
-        .expected_consumed_bytes = 1,
+        .expected_consumed_bytes = 2,
     });
 }
 
@@ -312,6 +312,96 @@ fn emitUnresolvedShiftReduceGlrParserC(allocator: std.mem.Allocator) RuntimeLink
         .large_state_count = states.len,
         .productions = productions[0..],
         .parse_action_list = parse_action_list,
+        .lex_modes = lex_modes[0..],
+        .lex_tables = lex_tables[0..],
+        .primary_state_ids = primary_state_ids[0..],
+        .states = states[0..],
+    };
+
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+}
+
+fn emitAliasedFieldGlrParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    const symbols = [_]serialize.SerializedSymbolInfo{
+        .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
+        .{ .ref = .{ .terminal = 1 }, .name = "x", .named = false, .visible = true, .supertype = false, .public_symbol = 1 },
+        .{ .ref = .{ .terminal = 2 }, .name = "y", .named = false, .visible = true, .supertype = false, .public_symbol = 2 },
+        .{ .ref = .{ .non_terminal = 0 }, .name = "source_file", .named = true, .visible = true, .supertype = false, .public_symbol = 3 },
+    };
+    const productions = [_]serialize.SerializedProductionInfo{
+        .{ .lhs = 0, .child_count = 2, .dynamic_precedence = 0 },
+    };
+    const start_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 2 } },
+    };
+    const after_x_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 2 }, .action = .{ .shift = 3 } },
+    };
+    const reduce_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+    };
+    const accept_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
+    };
+    const start_gotos = [_]serialize.SerializedGotoEntry{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 4 },
+    };
+    const states = [_]serialize.SerializedState{
+        .{ .id = 0, .lex_state_id = 0, .actions = start_actions[0..], .gotos = start_gotos[0..], .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = start_actions[0..], .gotos = start_gotos[0..], .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = after_x_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 3, .lex_state_id = 0, .actions = reduce_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 4, .lex_state_id = 0, .actions = accept_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+    };
+    const x_ranges = [_]lexer_serialize.SerializedCharacterRange{.{ .start = 'x', .end_inclusive = 'x' }};
+    const y_ranges = [_]lexer_serialize.SerializedCharacterRange{.{ .start = 'y', .end_inclusive = 'y' }};
+    const start_transitions = [_]lexer_serialize.SerializedLexTransition{
+        .{ .ranges = x_ranges[0..], .next_state_id = 1, .skip = false },
+        .{ .ranges = y_ranges[0..], .next_state_id = 2, .skip = false },
+    };
+    const lex_states = [_]lexer_serialize.SerializedLexState{
+        .{ .accept_symbol = .{ .terminal = 0 }, .transitions = start_transitions[0..] },
+        .{ .accept_symbol = .{ .terminal = 1 }, .transitions = &.{} },
+        .{ .accept_symbol = .{ .terminal = 2 }, .transitions = &.{} },
+    };
+    const lex_tables = [_]lexer_serialize.SerializedLexTable{
+        .{ .start_state_id = 0, .states = lex_states[0..] },
+    };
+    const lex_modes = [_]lexer_serialize.SerializedLexMode{
+        .{ .lex_state = 0 },
+        .{ .lex_state = 0 },
+        .{ .lex_state = 0 },
+        .{ .lex_state = 0 },
+        .{ .lex_state = 0 },
+    };
+    const primary_state_ids = [_]u32{ 0, 1, 2, 3, 4 };
+    const alias_sequences = [_]serialize.SerializedAliasEntry{
+        .{ .production_id = 0, .step_index = 1, .original_symbol = .{ .terminal = 2 }, .name = "renamed_y", .named = true },
+    };
+    const field_names = [_]serialize.SerializedFieldName{
+        .{ .id = 1, .name = "left" },
+    };
+    const field_entries = [_]serialize.SerializedFieldMapEntry{
+        .{ .field_id = 1, .child_index = 0, .inherited = false },
+    };
+    const field_slices = [_]serialize.SerializedFieldMapSlice{
+        .{ .index = 0, .length = 1 },
+    };
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_name = "aliased_field_result",
+        .symbols = symbols[0..],
+        .large_state_count = states.len,
+        .productions = productions[0..],
+        .alias_sequences = alias_sequences[0..],
+        .field_map = .{
+            .names = field_names[0..],
+            .entries = field_entries[0..],
+            .slices = field_slices[0..],
+        },
         .lex_modes = lex_modes[0..],
         .lex_tables = lex_tables[0..],
         .primary_state_ids = primary_state_ids[0..],
@@ -1531,7 +1621,7 @@ fn directGeneratedParseDriverSourceAlloc(
             "  if (parse_ok) return 40;\n  return 0;\n";
     const parse_call =
         if (generated.direct_generated_result)
-            "  TSGeneratedParseResult result = { 0 };\n  bool parse_ok = ts_generated_parse_result(input, (uint32_t)strlen(input), &result);\n  consumed = result.consumed_bytes;\n  if (parse_ok && !result.accepted) return 42;\n  if (parse_ok && result.root_node != 1) return 43;\n  if (parse_ok && result.node_count != 2) return 44;\n  if (parse_ok && result.nodes[result.root_node].start_byte != 0) return 45;\n  if (parse_ok && result.nodes[result.root_node].end_byte != strlen(input)) return 46;\n  if (parse_ok && result.nodes[result.root_node].child_count != 1) return 47;\n  if (parse_ok && result.nodes[result.root_node].children[0] != 0) return 48;\n"
+            "  TSGeneratedParseResult result = { 0 };\n  bool parse_ok = ts_generated_parse_result(input, (uint32_t)strlen(input), &result);\n  consumed = result.consumed_bytes;\n  if (parse_ok && !result.accepted) return 42;\n  if (parse_ok && result.root_node != 2) return 43;\n  if (parse_ok && result.node_count != 3) return 44;\n  if (parse_ok && result.nodes[result.root_node].start_byte != 0) return 45;\n  if (parse_ok && result.nodes[result.root_node].end_byte != strlen(input)) return 46;\n  if (parse_ok && result.nodes[result.root_node].child_count != 2) return 47;\n  if (parse_ok && result.nodes[result.root_node].children[0] != 0) return 48;\n  if (parse_ok && result.nodes[result.root_node].children[1] != 1) return 49;\n  if (parse_ok && result.nodes[result.root_node].field_map_index != 0) return 50;\n  if (parse_ok && result.nodes[result.root_node].field_map_length != 1) return 51;\n  if (parse_ok && result.nodes[result.root_node].child_aliases[0] != 0) return 52;\n  if (parse_ok && result.nodes[result.root_node].child_aliases[1] == 0) return 53;\n  char generated_tree_string[256];\n  if (parse_ok && !ts_generated_result_tree_string(&result, generated_tree_string, sizeof(generated_tree_string))) return 54;\n  TSParser *parser = ts_parser_new();\n  if (parse_ok && !parser) return 55;\n  if (parse_ok && !ts_parser_set_language(parser, tree_sitter_generated())) return 56;\n  TSTree *tree = parse_ok ? ts_parser_parse_string(parser, 0, input, (uint32_t)strlen(input)) : 0;\n  if (parse_ok && !tree) return 57;\n  TSNode root = parse_ok ? ts_tree_root_node(tree) : (TSNode){0};\n  char *runtime_tree_string = parse_ok ? ts_node_string(root) : 0;\n  if (parse_ok && !runtime_tree_string) return 58;\n  bool tree_strings_match = parse_ok ? strcmp(generated_tree_string, runtime_tree_string) == 0 : true;\n  free(runtime_tree_string);\n  if (tree) ts_tree_delete(tree);\n  if (parser) ts_parser_delete(parser);\n  if (!tree_strings_match) return 59;\n"
         else
             "  bool parse_ok = ts_generated_parse(input, (uint32_t)strlen(input), &consumed);\n";
 
@@ -1540,7 +1630,9 @@ fn directGeneratedParseDriverSourceAlloc(
         \\#include <stdint.h>
         \\#include <signal.h>
         \\#include <stdio.h>
+        \\#include <stdlib.h>
         \\#include <string.h>
+        \\#include <tree_sitter/api.h>
         \\#include <unistd.h>
         \\
         \\typedef struct {{
@@ -1550,7 +1642,10 @@ fn directGeneratedParseDriverSourceAlloc(
         \\  uint16_t production_id;
         \\  uint16_t child_count;
         \\  uint16_t first_child;
+        \\  uint16_t field_map_index;
+        \\  uint16_t field_map_length;
         \\  uint16_t children[16];
+        \\  uint16_t child_aliases[16];
         \\}} TSGeneratedNode;
         \\
         \\typedef struct {{
@@ -1563,7 +1658,9 @@ fn directGeneratedParseDriverSourceAlloc(
         \\  TSGeneratedNode nodes[256];
         \\}} TSGeneratedParseResult;
         \\
+        \\const TSLanguage *tree_sitter_generated(void);
         \\bool ts_generated_parse_result(const char *input, uint32_t length, TSGeneratedParseResult *out_result);
+        \\bool ts_generated_result_tree_string(const TSGeneratedParseResult *result, char *buffer, uint32_t capacity);
         \\bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes);
         \\
         \\int main(void) {{
