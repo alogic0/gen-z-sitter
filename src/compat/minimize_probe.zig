@@ -33,6 +33,16 @@ pub const SkippedMinimizationTarget = struct {
     reason: []const u8,
 };
 
+pub const MinimizationReport = struct {
+    probes: []const MinimizationProbe,
+    skipped: []const SkippedMinimizationTarget,
+    aggregate: MinimizationAggregate,
+
+    pub fn deinit(self: MinimizationReport, allocator: std.mem.Allocator) void {
+        allocator.free(self.probes);
+    }
+};
+
 const bounded_target_ids = [_][]const u8{
     "parse_table_tiny_json",
     "behavioral_config_json",
@@ -129,6 +139,22 @@ pub fn aggregateProbes(probes: []const MinimizationProbe) MinimizationAggregate 
     return aggregate;
 }
 
+pub fn buildBoundedReportAlloc(allocator: std.mem.Allocator) !MinimizationReport {
+    const probes = try allocator.alloc(MinimizationProbe, boundedTargetIds().len);
+    errdefer allocator.free(probes);
+
+    for (boundedTargetIds(), 0..) |target_id, index| {
+        const target = findTarget(target_id) orelse return error.UnknownTarget;
+        probes[index] = try probeTargetAlloc(allocator, target);
+    }
+
+    return .{
+        .probes = probes,
+        .skipped = skippedTargets(),
+        .aggregate = aggregateProbes(probes),
+    };
+}
+
 fn isBoundedTarget(target_id: []const u8) bool {
     for (boundedTargetIds()) |bounded_id| {
         if (std.mem.eql(u8, bounded_id, target_id)) return true;
@@ -215,4 +241,26 @@ test "bounded compat minimization probe aggregates target state counts" {
         aggregate.default_state_count - aggregate.minimized_state_count,
         aggregate.merged_state_count,
     );
+}
+
+test "bounded compat minimization report carries probes skips and aggregate" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const report = try buildBoundedReportAlloc(arena.allocator());
+    try std.testing.expectEqual(boundedTargetIds().len, report.probes.len);
+    try std.testing.expectEqual(skippedTargets().len, report.skipped.len);
+    try std.testing.expectEqual(boundedTargetIds().len, report.aggregate.target_count);
+    try std.testing.expect(report.aggregate.default_state_count > 0);
+    try std.testing.expect(report.aggregate.minimized_state_count > 0);
+    try std.testing.expect(report.aggregate.minimized_state_count <= report.aggregate.default_state_count);
+
+    for (report.probes) |probe| {
+        try std.testing.expect(isBoundedTarget(probe.target_id));
+        try std.testing.expect(probe.minimized_state_count <= probe.default_state_count);
+    }
+    for (report.skipped) |skipped| {
+        try std.testing.expect(!isBoundedTarget(skipped.target_id));
+        try std.testing.expect(skipped.reason.len > 0);
+    }
 }

@@ -339,6 +339,8 @@ Completed steps:
   targets while leaving heavy real-grammar targets out of unit tests.
 - [x] Classify every shortlist target as either covered by the bounded
   minimization probe or explicitly skipped with a reason.
+- [x] Add a reusable bounded minimization report with per-target probes,
+  skipped targets, and aggregate counts.
 
 **Risk.** Low. Purely additive. The minimization pass can be toggled off and
 the existing output is unchanged when it is.
