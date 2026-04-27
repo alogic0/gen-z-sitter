@@ -264,6 +264,8 @@ Completed steps:
   top-level JSON spellings, merging them before semantic normalization.
 - [x] Add focused loader/parser tests for valid and malformed
   `expected_conflicts` input.
+- [x] Add a standalone expected-conflict policy helper that matches conflict
+  members independent of order and reports unused declarations.
 
 ---
 

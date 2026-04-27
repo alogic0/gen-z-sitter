@@ -36,6 +36,7 @@ test {
     _ = @import("parse_table/actions.zig");
     _ = @import("parse_table/state.zig");
     _ = @import("parse_table/conflicts.zig");
+    _ = @import("parse_table/conflict_resolution.zig");
     _ = @import("parse_table/debug_dump.zig");
     _ = @import("parse_table/build.zig");
     _ = @import("parse_table/minimize.zig");
