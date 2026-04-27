@@ -114,6 +114,7 @@ pub fn build(b: *std.Build) void {
     const default_runtime_link_filters = &.{
         "linkAndRunNoExternalTinyParser",
         "linkAndRunNoExternalTinyGlrParser",
+        "linkAndRunNoExternalTinyGlrResultParser",
         "linkAndRunUnresolvedShiftReduceGlrParser",
         "linkAndRejectMalformedTinyGlrParser",
         "linkAndRunKeywordReservedParser",

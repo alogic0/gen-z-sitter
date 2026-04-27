@@ -478,8 +478,17 @@ fn writeRuntimeAction(
 fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n");
+    try writer.writeAll("#define GEN_Z_SITTER_NO_NODE UINT16_MAX\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE 3\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_RECOVERY_ATTEMPTS 8\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  bool accepted;\n");
+    try writer.writeAll("  uint32_t consumed_bytes;\n");
+    try writer.writeAll("  uint16_t root_node;\n");
+    try writer.writeAll("  uint16_t node_count;\n");
+    try writer.writeAll("  uint32_t error_count;\n");
+    try writer.writeAll("  int32_t dynamic_precedence;\n");
+    try writer.writeAll("} TSGeneratedParseResult;\n\n");
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  TSStateId state;\n");
     try writer.writeAll("  TSStateId stack[GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH];\n");
@@ -873,7 +882,9 @@ fn writeGlrVersionStepLoop(writer: anytype, has_unresolved: bool) !void {
 }
 
 fn writeGlrMainParseFunction(writer: anytype) !void {
-    try writer.writeAll("bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n");
+    try writer.writeAll("bool ts_generated_parse_result(const char *input, uint32_t length, TSGeneratedParseResult *out_result) {\n");
+    try writer.writeAll("  TSGeneratedParseResult result = { 0 };\n");
+    try writer.writeAll("  result.root_node = GEN_Z_SITTER_NO_NODE;\n");
     try writer.writeAll("  TSGeneratedParseVersionSet set;\n");
     try writer.writeAll("  ts_generated_parse_versions_init(&set, 0);\n");
     try writer.writeAll("  for (;;) {\n");
@@ -886,16 +897,29 @@ fn writeGlrMainParseFunction(writer: anytype) !void {
     try writer.writeAll("        lead_index = i;\n");
     try writer.writeAll("      }\n");
     try writer.writeAll("    }\n");
-    try writer.writeAll("    if (!lead) return false;\n");
+    try writer.writeAll("    if (!lead) {\n");
+    try writer.writeAll("      if (out_result) *out_result = result;\n");
+    try writer.writeAll("      return false;\n");
+    try writer.writeAll("    }\n");
     try writer.writeAll("    TSSymbol lookahead_symbol = 0;\n");
     try writer.writeAll("    uint32_t advance_bytes = 0;\n");
     try writer.writeAll("    if (lead->byte_offset < length) {\n");
-    try writer.writeAll("      if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) return false;\n");
-    try writer.writeAll("      if (advance_bytes == 0) return false;\n");
+    try writer.writeAll("      if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) {\n");
+    try writer.writeAll("        if (out_result) *out_result = result;\n");
+    try writer.writeAll("        return false;\n");
+    try writer.writeAll("      }\n");
+    try writer.writeAll("      if (advance_bytes == 0) {\n");
+    try writer.writeAll("        if (out_result) *out_result = result;\n");
+    try writer.writeAll("        return false;\n");
+    try writer.writeAll("      }\n");
     try writer.writeAll("    }\n");
     try writer.writeAll("    bool accepted = ts_generated_step_parse_versions(&set, lead_index, lookahead_symbol);\n");
     try writer.writeAll("    if (accepted) {\n");
-    try writer.writeAll("      if (out_consumed_bytes) *out_consumed_bytes = lead->byte_offset + advance_bytes;\n");
+    try writer.writeAll("      result.accepted = true;\n");
+    try writer.writeAll("      result.consumed_bytes = lead->byte_offset + advance_bytes;\n");
+    try writer.writeAll("      result.error_count = lead->error_count;\n");
+    try writer.writeAll("      result.dynamic_precedence = lead->dynamic_precedence;\n");
+    try writer.writeAll("      if (out_result) *out_result = result;\n");
     try writer.writeAll("      return true;\n");
     try writer.writeAll("    }\n");
     try writer.writeAll("    bool any_active = false;\n");
@@ -905,8 +929,17 @@ fn writeGlrMainParseFunction(writer: anytype) !void {
     try writer.writeAll("      set.versions[i].shifted = false;\n");
     try writer.writeAll("      any_active = true;\n");
     try writer.writeAll("    }\n");
-    try writer.writeAll("    if (!any_active || advance_bytes == 0) return false;\n");
+    try writer.writeAll("    if (!any_active || advance_bytes == 0) {\n");
+    try writer.writeAll("      if (out_result) *out_result = result;\n");
+    try writer.writeAll("      return false;\n");
+    try writer.writeAll("    }\n");
     try writer.writeAll("  }\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n");
+    try writer.writeAll("  TSGeneratedParseResult result;\n");
+    try writer.writeAll("  bool accepted = ts_generated_parse_result(input, length, &result);\n");
+    try writer.writeAll("  if (out_consumed_bytes) *out_consumed_bytes = result.consumed_bytes;\n");
+    try writer.writeAll("  return accepted;\n");
     try writer.writeAll("}\n\n");
 }
 
@@ -2091,8 +2124,11 @@ test "emitParserCAlloc emits opt-in GLR parser version storage" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_NO_NODE UINT16_MAX\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE 3\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_RECOVERY_ATTEMPTS 8\n\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  bool accepted;\n  uint32_t consumed_bytes;\n  uint16_t root_node;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  uint16_t node_count;\n  uint32_t error_count;\n  int32_t dynamic_precedence;\n} TSGeneratedParseResult;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSStateId state;\n  TSStateId stack[GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH];\n  uint16_t stack_len;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  uint32_t error_count;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  bool shifted;\n"));
@@ -2322,11 +2358,19 @@ test "emitParserCAlloc emits opt-in GLR raw input parse entry point" {
     });
     defer allocator.free(emitted);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool ts_generated_parse_result(const char *input, uint32_t length, TSGeneratedParseResult *out_result) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseResult result = { 0 };\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "result.root_node = GEN_Z_SITTER_NO_NODE;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_parse_versions_init(&set, 0);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!lead || set.versions[i].byte_offset < lead->byte_offset) {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) return false;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (out_result) *out_result = result;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool accepted = ts_generated_step_parse_versions(&set, lead_index, lookahead_symbol);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "result.accepted = true;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "result.consumed_bytes = lead->byte_offset + advance_bytes;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "result.error_count = lead->error_count;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool accepted = ts_generated_parse_result(input, length, &result);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (set.versions[i].shifted && advance_bytes > 0) set.versions[i].byte_offset += advance_bytes;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set.versions[i].shifted = false;\n"));
 }

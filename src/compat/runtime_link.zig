@@ -56,6 +56,22 @@ pub fn linkAndRunNoExternalTinyGlrParser(allocator: std.mem.Allocator) RuntimeLi
     });
 }
 
+pub fn linkAndRunNoExternalTinyGlrResultParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitTinyGlrParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .input = "x",
+        .direct_generated_parse = true,
+        .direct_generated_result = true,
+        .expected_consumed_bytes = 1,
+    });
+}
+
 pub fn linkAndRunUnresolvedShiftReduceGlrParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
 
@@ -1108,6 +1124,7 @@ const GeneratedParserRun = struct {
     expected_child_types: []const []const u8 = &.{},
     expected_tree_string: ?[]const u8 = null,
     direct_generated_parse: bool = false,
+    direct_generated_result: bool = false,
     expected_direct_parse_success: bool = true,
     expected_consumed_bytes: ?u32 = null,
     extra_driver_declarations: []const u8 = "",
@@ -1512,6 +1529,11 @@ fn directGeneratedParseDriverSourceAlloc(
             "  if (!parse_ok) return 40;\n"
         else
             "  if (parse_ok) return 40;\n  return 0;\n";
+    const parse_call =
+        if (generated.direct_generated_result)
+            "  TSGeneratedParseResult result = { 0 };\n  bool parse_ok = ts_generated_parse_result(input, (uint32_t)strlen(input), &result);\n  consumed = result.consumed_bytes;\n  if (parse_ok && !result.accepted) return 42;\n  if (parse_ok && result.root_node != 65535) return 43;\n  if (parse_ok && result.node_count != 0) return 44;\n"
+        else
+            "  bool parse_ok = ts_generated_parse(input, (uint32_t)strlen(input), &consumed);\n";
 
     return try std.fmt.allocPrint(allocator,
         \\#include <stdbool.h>
@@ -1521,13 +1543,23 @@ fn directGeneratedParseDriverSourceAlloc(
         \\#include <string.h>
         \\#include <unistd.h>
         \\
+        \\typedef struct {{
+        \\  bool accepted;
+        \\  uint32_t consumed_bytes;
+        \\  uint16_t root_node;
+        \\  uint16_t node_count;
+        \\  uint32_t error_count;
+        \\  int32_t dynamic_precedence;
+        \\}} TSGeneratedParseResult;
+        \\
+        \\bool ts_generated_parse_result(const char *input, uint32_t length, TSGeneratedParseResult *out_result);
         \\bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes);
         \\
         \\int main(void) {{
         \\  alarm(2);
         \\  const char *input = {s};
         \\  uint32_t consumed = 0;
-        \\  bool parse_ok = ts_generated_parse(input, (uint32_t)strlen(input), &consumed);
+        \\{s}
         \\{s}
         \\  if (consumed != {d}) {{
         \\    fprintf(stderr, "consumed=%u expected=%u\n", consumed, {d});
@@ -1536,7 +1568,7 @@ fn directGeneratedParseDriverSourceAlloc(
         \\  return 0;
         \\}}
         \\
-    , .{ input_literal, success_check, expected_consumed, expected_consumed });
+    , .{ input_literal, parse_call, success_check, expected_consumed, expected_consumed });
 }
 
 fn cStringLiteralAlloc(allocator: std.mem.Allocator, value: []const u8) RuntimeLinkError![]const u8 {
@@ -1579,6 +1611,10 @@ test "linkAndRunNoExternalTinyParser links generated parser with tree-sitter run
 
 test "linkAndRunNoExternalTinyGlrParser calls generated GLR parse entry directly" {
     try linkAndRunNoExternalTinyGlrParser(std.testing.allocator);
+}
+
+test "linkAndRunNoExternalTinyGlrResultParser calls generated GLR result entry directly" {
+    try linkAndRunNoExternalTinyGlrResultParser(std.testing.allocator);
 }
 
 test "linkAndRunUnresolvedShiftReduceGlrParser accepts intended unresolved branch" {
