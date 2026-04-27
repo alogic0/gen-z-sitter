@@ -293,7 +293,7 @@ const Builder = struct {
         var result = std.array_list.Managed(ir.ConflictSet).init(self.allocator);
         defer result.deinit();
 
-        for (self.grammar.conflicts) |conflict_set| {
+        for (self.grammar.expected_conflicts) |conflict_set| {
             var members = std.array_list.Managed(ir_symbols.SymbolId).init(self.allocator);
             defer members.deinit();
 
@@ -922,6 +922,34 @@ test "parseRawGrammar normalizes semantic lists" {
 
     try std.testing.expectEqual(@as(usize, 1), prepared.reserved_word_sets.len);
     try std.testing.expectEqual(@as(usize, 2), prepared.reserved_word_sets[0].members.len);
+}
+
+test "parseRawGrammar lowers expected_conflicts spelling into prepared grammar" {
+    const contents =
+        \\{
+        \\  "name": "expected_conflict_alias",
+        \\  "expected_conflicts": [["source_file", "expr"]],
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "expr" },
+        \\    "expr": { "type": "BLANK" }
+        \\  }
+        \\}
+    ;
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), contents, .{});
+    defer parsed.deinit();
+
+    const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parseRawGrammar(parse_arena.allocator(), &raw_grammar);
+
+    try std.testing.expectEqual(@as(usize, 1), prepared.expected_conflicts.len);
+    try std.testing.expectEqual(@as(usize, 2), prepared.expected_conflicts[0].len);
+    try std.testing.expectEqual(ir_symbols.SymbolKind.non_terminal, prepared.expected_conflicts[0][0].kind);
+    try std.testing.expectEqual(ir_symbols.SymbolKind.non_terminal, prepared.expected_conflicts[0][1].kind);
 }
 
 fn getMetadataRule(prepared: ir.PreparedGrammar, rule_id: ir_rules.RuleId) ir_rules.MetadataRule {

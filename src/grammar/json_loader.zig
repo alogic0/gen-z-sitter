@@ -100,7 +100,7 @@ pub fn parseTopLevel(allocator: std.mem.Allocator, value: std.json.Value) LoadEr
         .version = parseVersion(object.get("version")),
         .rules = try parseRuleEntries(allocator, rules_value),
         .precedences = try parsePrecedences(allocator, object.get("precedences")),
-        .conflicts = try parseConflicts(allocator, object.get("conflicts")),
+        .expected_conflicts = try parseExpectedConflicts(allocator, object),
         .externals = try parseRuleArray(allocator, object.get("externals")),
         .extras = try parseRuleArray(allocator, object.get("extras")),
         .inline_rules = try parseStringArray(allocator, object.get("inline")),
@@ -180,6 +180,25 @@ fn parseConflicts(allocator: std.mem.Allocator, value: ?std.json.Value) LoadErro
         try result.append(try parseStringArrayRequired(allocator, member));
     }
 
+    return try result.toOwnedSlice();
+}
+
+fn parseExpectedConflicts(
+    allocator: std.mem.Allocator,
+    object: std.json.ObjectMap,
+) LoadError![]const raw.ConflictSet {
+    const conflicts = try parseConflicts(allocator, object.get("conflicts"));
+    const expected_conflicts = try parseConflicts(allocator, object.get("expected_conflicts"));
+    if (conflicts.len == 0) return expected_conflicts;
+    if (expected_conflicts.len == 0) return conflicts;
+
+    var result = try std.array_list.Managed(raw.ConflictSet).initCapacity(
+        allocator,
+        conflicts.len + expected_conflicts.len,
+    );
+    defer result.deinit();
+    try result.appendSlice(conflicts);
+    try result.appendSlice(expected_conflicts);
     return try result.toOwnedSlice();
 }
 
@@ -495,4 +514,58 @@ test "loadGrammarJsonFromSlice defaults missing and malformed semantic versions"
     defer malformed.deinit();
 
     try std.testing.expectEqual([3]u8{ 0, 0, 0 }, malformed.grammar.version);
+}
+
+test "loadGrammarJsonFromSlice accepts expected_conflicts spelling" {
+    const contents =
+        \\{
+        \\  "name": "expected_conflict_alias",
+        \\  "expected_conflicts": [["source_file", "expr"]],
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "expr" },
+        \\    "expr": { "type": "BLANK" }
+        \\  }
+        \\}
+    ;
+    var loaded = try loadGrammarJsonFromSlice(std.testing.allocator, contents);
+    defer loaded.deinit();
+
+    try std.testing.expectEqual(@as(usize, 1), loaded.grammar.expected_conflicts.len);
+    try std.testing.expectEqualStrings("source_file", loaded.grammar.expected_conflicts[0][0]);
+    try std.testing.expectEqualStrings("expr", loaded.grammar.expected_conflicts[0][1]);
+}
+
+test "loadGrammarJsonFromSlice merges conflicts and expected_conflicts" {
+    const contents =
+        \\{
+        \\  "name": "merged_conflicts",
+        \\  "conflicts": [["source_file", "expr"]],
+        \\  "expected_conflicts": [["source_file", "term"]],
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "expr" },
+        \\    "expr": { "type": "BLANK" },
+        \\    "term": { "type": "BLANK" }
+        \\  }
+        \\}
+    ;
+    var loaded = try loadGrammarJsonFromSlice(std.testing.allocator, contents);
+    defer loaded.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), loaded.grammar.expected_conflicts.len);
+    try std.testing.expectEqualStrings("expr", loaded.grammar.expected_conflicts[0][1]);
+    try std.testing.expectEqualStrings("term", loaded.grammar.expected_conflicts[1][1]);
+}
+
+test "loadGrammarJsonFromSlice rejects malformed expected_conflicts" {
+    const contents =
+        \\{
+        \\  "name": "bad_expected_conflicts",
+        \\  "expected_conflicts": ["source_file"],
+        \\  "rules": {
+        \\    "source_file": { "type": "BLANK" }
+        \\  }
+        \\}
+    ;
+
+    try std.testing.expectError(error.InvalidRuleShape, loadGrammarJsonFromSlice(std.testing.allocator, contents));
 }

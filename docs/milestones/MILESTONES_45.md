@@ -256,6 +256,15 @@ path is replaced by a deferred check that produces the same error for the
 same grammars (those without `expected_conflicts`). All current compat targets
 should pass without modification.
 
+Completed steps:
+
+- [x] Rename the raw grammar field to `expected_conflicts` and keep lowering it
+  into `PreparedGrammar.expected_conflicts`.
+- [x] Parse both upstream `conflicts` and explicit `expected_conflicts`
+  top-level JSON spellings, merging them before semantic normalization.
+- [x] Add focused loader/parser tests for valid and malformed
+  `expected_conflicts` input.
+
 ---
 
 ## Phase 4 — State Minimization
