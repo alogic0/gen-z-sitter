@@ -14,6 +14,20 @@ pub const MinimizationProbe = struct {
     }
 };
 
+pub const MinimizationAggregate = struct {
+    target_count: usize,
+    default_state_count: usize,
+    minimized_state_count: usize,
+    merged_state_count: usize,
+
+    pub fn addProbe(self: *MinimizationAggregate, probe: MinimizationProbe) void {
+        self.target_count += 1;
+        self.default_state_count += probe.default_state_count;
+        self.minimized_state_count += probe.minimized_state_count;
+        self.merged_state_count += probe.mergedCount();
+    }
+};
+
 pub fn probeTargetAlloc(
     allocator: std.mem.Allocator,
     target: targets.Target,
@@ -41,6 +55,17 @@ pub fn probeTargetAlloc(
         .default_state_count = default_result.states.len,
         .minimized_state_count = minimized_result.states.len,
     };
+}
+
+pub fn aggregateProbes(probes: []const MinimizationProbe) MinimizationAggregate {
+    var aggregate: MinimizationAggregate = .{
+        .target_count = 0,
+        .default_state_count = 0,
+        .minimized_state_count = 0,
+        .merged_state_count = 0,
+    };
+    for (probes) |probe| aggregate.addProbe(probe);
+    return aggregate;
 }
 
 fn findTarget(target_id: []const u8) ?targets.Target {
@@ -81,5 +106,24 @@ test "bounded compat minimization probe reports merged count from state delta" {
     try std.testing.expectEqual(
         probe.default_state_count - probe.minimized_state_count,
         probe.mergedCount(),
+    );
+}
+
+test "bounded compat minimization probe aggregates target state counts" {
+    const probes = [_]MinimizationProbe{
+        try expectBoundedTargetMinimization("parse_table_tiny_json"),
+        try expectBoundedTargetMinimization("behavioral_config_json"),
+        try expectBoundedTargetMinimization("parse_table_conflict_json"),
+        try expectBoundedTargetMinimization("bracket_lang_json"),
+    };
+    const aggregate = aggregateProbes(&probes);
+
+    try std.testing.expectEqual(@as(usize, probes.len), aggregate.target_count);
+    try std.testing.expect(aggregate.default_state_count > 0);
+    try std.testing.expect(aggregate.minimized_state_count > 0);
+    try std.testing.expect(aggregate.minimized_state_count <= aggregate.default_state_count);
+    try std.testing.expectEqual(
+        aggregate.default_state_count - aggregate.minimized_state_count,
+        aggregate.merged_state_count,
     );
 }
