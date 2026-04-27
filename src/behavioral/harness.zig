@@ -55,12 +55,19 @@ pub const Edit = struct {
 
 const terminal_node_production_id = std.math.maxInt(u32);
 
+pub const IncrementalStats = struct {
+    reused_nodes: usize = 0,
+    reused_bytes: usize = 0,
+    fresh_shifted_tokens: usize = 0,
+};
+
 pub const SimulationResult = union(enum) {
     accepted: struct {
         consumed_bytes: usize,
         shifted_tokens: usize,
         error_count: u32 = 0,
         tree: ?ParseNode = null,
+        incremental: IncrementalStats = .{},
     },
     rejected: struct {
         consumed_bytes: usize,
@@ -495,11 +502,18 @@ const ParseVersion = struct {
 };
 
 fn acceptedResult(version: ParseVersion) SimulationResult {
+    const tree = version.root();
+    const reuse = if (tree) |root| summarizeIncrementalStats(root) else IncrementalStats{};
     return .{ .accepted = .{
         .consumed_bytes = version.cursor,
         .shifted_tokens = version.shifted_tokens,
         .error_count = version.error_count,
-        .tree = version.root(),
+        .tree = tree,
+        .incremental = .{
+            .reused_nodes = reuse.reused_nodes,
+            .reused_bytes = reuse.reused_bytes,
+            .fresh_shifted_tokens = version.shifted_tokens,
+        },
     } };
 }
 
@@ -704,13 +718,17 @@ fn stateAllowsIncrementalReuse(state_id: u32, external_lex_states: []const u16) 
 }
 
 fn findReusableNodeAt(old: ParseNode, cursor: u32, entry_state: u32, edit: Edit) ?ParseNode {
-    if (old.start_byte == cursor and old.entry_state == entry_state and old.end_byte <= edit.start_byte) {
+    if (old.start_byte == cursor and old.entry_state == entry_state and nodeEndsBeforeChangedRange(old, edit)) {
         return old;
     }
     for (old.children) |child| {
         if (findReusableNodeAt(child, cursor, entry_state, edit)) |match| return match;
     }
     return null;
+}
+
+fn nodeEndsBeforeChangedRange(node: ParseNode, edit: Edit) bool {
+    return node.end_byte <= edit.start_byte;
 }
 
 fn cloneReusedSubtreeAlloc(allocator: std.mem.Allocator, node: ParseNode) std.mem.Allocator.Error!ParseNode {
@@ -2710,6 +2728,22 @@ const bracket_lang_incremental_grammar_json =
     \\}
 ;
 
+const digit_list_grammar_json =
+    \\{
+    \\  "name": "digit_list",
+    \\  "rules": {
+    \\    "source_file": {
+    \\      "type": "REPEAT",
+    \\      "content": { "type": "SYMBOL", "name": "digit" }
+    \\    },
+    \\    "digit": {
+    \\      "type": "TOKEN",
+    \\      "content": { "type": "PATTERN", "value": "[0-9]" }
+    \\    }
+    \\  }
+    \\}
+;
+
 test "GLR simulation accepts unambiguous input for a conflict grammar without forking" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -2894,6 +2928,20 @@ fn countReusedNodes(node: ParseNode) usize {
     return count;
 }
 
+fn summarizeIncrementalStats(node: ParseNode) IncrementalStats {
+    return .{
+        .reused_nodes = countReusedNodes(node),
+        .reused_bytes = countTopmostReusedBytes(node),
+    };
+}
+
+fn countTopmostReusedBytes(node: ParseNode) usize {
+    if (node.reused) return node.end_byte - node.start_byte;
+    var count: usize = 0;
+    for (node.children) |child| count += countTopmostReusedBytes(child);
+    return count;
+}
+
 test "ParseNode helpers compare trees and mark reusable prefix nodes" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -3003,6 +3051,41 @@ test "simulatePreparedScannerFreeIncremental reuses prefix nodes after append ed
     try std.testing.expect(incremental_result.accepted.shifted_tokens < fresh_result.accepted.shifted_tokens);
     try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), fresh_tree, incremental_tree));
     try std.testing.expect(countReusedNodes(incremental_tree) > 0);
+    try std.testing.expect(incremental_result.accepted.incremental.reused_nodes > 0);
+    try std.testing.expect(incremental_result.accepted.incremental.reused_bytes > 0);
+    try std.testing.expect(incremental_result.accepted.incremental.fresh_shifted_tokens < fresh_result.accepted.shifted_tokens);
+}
+
+test "simulatePreparedScannerFreeIncremental supports start middle and end edits" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), digit_list_grammar_json);
+
+    try expectScannerFreeIncrementalEdit(
+        arena.allocator(),
+        prepared,
+        "123",
+        "9123",
+        .{ .start_byte = 0, .old_end_byte = 0, .new_end_byte = 1 },
+        false,
+    );
+    try expectScannerFreeIncrementalEdit(
+        arena.allocator(),
+        prepared,
+        "123",
+        "193",
+        .{ .start_byte = 1, .old_end_byte = 2, .new_end_byte = 2 },
+        true,
+    );
+    try expectScannerFreeIncrementalEdit(
+        arena.allocator(),
+        prepared,
+        "123",
+        "12",
+        .{ .start_byte = 2, .old_end_byte = 3, .new_end_byte = 2 },
+        true,
+    );
 }
 
 test "simulatePreparedIncrementalWithExternalLexStates blocks unsafe prefix reuse" {
@@ -3123,6 +3206,38 @@ test "bracket_lang incremental fixture does not reuse unsafe external states" {
     try std.testing.expectEqual(fresh_result.accepted.shifted_tokens, incremental_result.accepted.shifted_tokens);
     try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), fresh_tree, incremental_tree));
     try std.testing.expectEqual(@as(usize, 0), countReusedNodes(incremental_tree));
+}
+
+fn expectScannerFreeIncrementalEdit(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    old_input: []const u8,
+    new_input: []const u8,
+    edit: Edit,
+    expect_prefix_reuse: bool,
+) !void {
+    const old_result = try simulatePreparedScannerFree(allocator, prepared, old_input);
+    const fresh_result = try simulatePreparedScannerFree(allocator, prepared, new_input);
+    const incremental_result = try simulatePreparedScannerFreeIncremental(
+        allocator,
+        prepared,
+        old_result.accepted.tree,
+        edit,
+        new_input,
+    );
+
+    const fresh_tree = fresh_result.accepted.tree orelse return error.TestUnexpectedResult;
+    const incremental_tree = incremental_result.accepted.tree orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(fresh_result.accepted.consumed_bytes, incremental_result.accepted.consumed_bytes);
+    try std.testing.expect(parseTreesEquivalent(fresh_tree, incremental_tree));
+    if (expect_prefix_reuse) {
+        try std.testing.expect(incremental_result.accepted.incremental.reused_nodes > 0);
+        try std.testing.expect(incremental_result.accepted.incremental.reused_bytes > 0);
+        try std.testing.expect(incremental_result.accepted.incremental.fresh_shifted_tokens < fresh_result.accepted.shifted_tokens);
+    } else {
+        try std.testing.expectEqual(@as(usize, 0), incremental_result.accepted.incremental.reused_nodes);
+        try std.testing.expectEqual(fresh_result.accepted.shifted_tokens, incremental_result.accepted.incremental.fresh_shifted_tokens);
+    }
 }
 
 fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResult) !void {

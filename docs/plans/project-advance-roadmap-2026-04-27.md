@@ -352,10 +352,10 @@ Gate:
 
 ### 4.2 Edit Model and Reuse Quality
 
-- [ ] Support insert, delete, and replace edits, not only append-like edits.
-- [ ] Track changed byte ranges and invalidate overlapping subtrees.
-- [ ] Add counters for reused nodes, reused bytes, and fresh-shifted tokens.
-- [ ] Add tests for edit-at-start, edit-in-middle, and edit-at-end.
+- [x] Support insert, delete, and replace edits, not only append-like edits.
+- [x] Track changed byte ranges and invalidate overlapping subtrees.
+- [x] Add counters for reused nodes, reused bytes, and fresh-shifted tokens.
+- [x] Add tests for edit-at-start, edit-in-middle, and edit-at-end.
 
 Gate:
 
