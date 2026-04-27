@@ -323,17 +323,19 @@ fn resolveActionTableWithOptionalFirstSets(
         const groups = try allocator.alloc(ResolvedActionGroup, grouped_state.groups.len);
         const parse_state = findState(parse_states, grouped_state.state_id);
         for (grouped_state.groups, 0..) |group, group_index| {
+            const candidate_actions = try actionGroupActionsAlloc(allocator, group);
             const decision = chooseResolvedAction(
                 productions,
                 precedence_orderings,
                 expected_conflicts,
                 parse_state,
                 first_sets,
-                group.entries,
+                group.symbol,
+                candidate_actions,
             );
             groups[group_index] = .{
                 .symbol = group.symbol,
-                .candidate_actions = try dupActions(allocator, group.entries),
+                .candidate_actions = candidate_actions,
                 .decision = if (decision.chosen) |chosen|
                     .{ .chosen = chosen }
                 else
@@ -348,7 +350,15 @@ fn resolveActionTableWithOptionalFirstSets(
     return .{ .states = states };
 }
 
-fn dupActions(
+fn actionGroupActionsAlloc(
+    allocator: std.mem.Allocator,
+    group: actions.ActionGroup,
+) std.mem.Allocator.Error![]const actions.ParseAction {
+    if (group.actions.len != 0) return try allocator.dupe(actions.ParseAction, group.actions);
+    return try actionsFromEntriesAlloc(allocator, group.entries);
+}
+
+fn actionsFromEntriesAlloc(
     allocator: std.mem.Allocator,
     entries: []const actions.ActionEntry,
 ) std.mem.Allocator.Error![]const actions.ParseAction {
@@ -370,23 +380,24 @@ fn chooseResolvedAction(
     expected_conflicts: []const []const syntax_ir.SymbolRef,
     parse_state: ?state.ParseState,
     first_sets: ?first_sets_mod.FirstSets,
-    candidates: []const actions.ActionEntry,
+    symbol: syntax_ir.SymbolRef,
+    candidates: []const actions.ParseAction,
 ) ResolutionDecision {
-    if (candidates.len == 1) return .{ .chosen = candidates[0].action };
+    if (candidates.len == 1) return .{ .chosen = candidates[0] };
 
     if (candidates.len == 2) {
-        const first = candidates[0].action;
-        const second = candidates[1].action;
+        const first = candidates[0];
+        const second = candidates[1];
 
         if (isShift(first) and isReduce(second)) {
             return .{
-                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, candidates[0].symbol, first, second),
+                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, symbol, first, second),
                 .reason = .shift_reduce,
             };
         }
         if (isReduce(first) and isShift(second)) {
             return .{
-                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, candidates[0].symbol, second, first),
+                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, symbol, second, first),
                 .reason = .shift_reduce,
             };
         }

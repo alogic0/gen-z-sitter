@@ -179,6 +179,29 @@ keeps the test suite green while the new path is developed.
 emitted C. Develop behind a build flag (`-Dglr-table=true`) so the existing
 path compiles and passes tests throughout.
 
+**Current branch note.**
+
+The parser already has an intermediate grouped action table and
+`ResolvedActionGroup.candidate_actions`. Continue the migration by moving the
+candidate action slice earlier, one boundary at a time, while preserving the
+existing strict resolved-output path.
+
+Completed steps:
+
+- [x] Add `actions.ActionGroup.actions` as the direct multi-action slice for a
+  `(state, symbol)` group.
+- [x] Populate the action slice when grouping flat state actions.
+- [x] Teach resolution to consume `ActionGroup.actions` instead of deriving
+  candidates only from `ActionEntry` values.
+
+Remaining steps:
+
+- [ ] Build grouped action tables directly during state construction.
+- [ ] Keep flat `ActionTable` only as a debug/compat projection.
+- [ ] Serialize unresolved multi-action entries as strict-mode blockers and
+  diagnostic-mode side-table entries.
+- [ ] Emit the multi-action side table from serialized data.
+
 ---
 
 ## Phase 3 — Offline Conflict Resolution and `expected_conflicts`

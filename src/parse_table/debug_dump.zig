@@ -178,7 +178,10 @@ pub fn writeGroupedActionTableAlloc(
     const grouped_table = try actions.groupActionTable(allocator, action_table);
     defer {
         for (grouped_table.states) |grouped_state| {
-            for (grouped_state.groups) |group| allocator.free(group.entries);
+            for (grouped_state.groups) |group| {
+                allocator.free(group.entries);
+                allocator.free(group.actions);
+            }
             allocator.free(grouped_state.groups);
         }
         allocator.free(grouped_table.states);
