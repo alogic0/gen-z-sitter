@@ -152,25 +152,25 @@ fn buildEntryAlloc(
     else if (std.mem.eql(u8, run.id, "tree_sitter_javascript_json"))
         try std.fmt.allocPrint(
             allocator,
-            "no routine-safe parser boundary step is promoted yet for {s}; the measured standalone coarse serialize-only probe reaches 1606 serialized states but remains blocked, while full lookahead-sensitive serialization stays outside the bounded routine compatibility budget",
+            "no routine-safe parser boundary step is promoted yet for {s}; the measured standalone coarse serialize-only probe reaches 1299 serialized states but remains blocked, while full lookahead-sensitive serialization stays outside the bounded routine compatibility budget",
             .{run.id},
         )
     else if (std.mem.eql(u8, run.id, "tree_sitter_python_json"))
         try std.fmt.allocPrint(
             allocator,
-            "no routine-safe parser boundary step is promoted yet for {s}; the measured standalone coarse serialize-only probe reaches 1139 serialized states but remains blocked, while external-scanner runtime-link proof remains a later promotion step",
+            "no routine-safe parser boundary step is promoted yet for {s}; the measured standalone coarse serialize-only probe reaches 1038 serialized states but remains blocked, while external-scanner runtime-link proof remains a later promotion step",
             .{run.id},
         )
     else if (std.mem.eql(u8, run.id, "tree_sitter_typescript_json"))
         try std.fmt.allocPrint(
             allocator,
-            "no routine-safe parser boundary step is promoted yet for {s}; the measured standalone coarse serialize-only probe reaches 5202 serialized states but remains blocked, so parser-table promotion needs a narrower follow-up",
+            "no routine-safe parser boundary step is promoted yet for {s}; the measured standalone coarse serialize-only probe reaches 5359 serialized states but remains blocked, so parser-table promotion needs a narrower follow-up",
             .{run.id},
         )
     else if (std.mem.eql(u8, run.id, "tree_sitter_rust_json"))
         try std.fmt.allocPrint(
             allocator,
-            "no routine-safe parser boundary step is promoted yet for {s}; the measured standalone coarse serialize-only probe reaches 2839 serialized states but remains blocked, so parser-table promotion needs a narrower follow-up",
+            "no routine-safe parser boundary step is promoted yet for {s}; the measured standalone coarse serialize-only probe reaches 2659 serialized states but remains blocked, so parser-table promotion needs a narrower follow-up",
             .{run.id},
         )
     else
@@ -187,25 +187,25 @@ fn buildEntryAlloc(
     const standalone_probe_detail = if (std.mem.eql(u8, run.id, "tree_sitter_javascript_json"))
         try std.fmt.allocPrint(
             allocator,
-            "standalone coarse serialize-only probe is implemented and reaches 1606 serialized states for {s}, but records blocked=true, so routine lookahead-sensitive serialization remains deferred",
+            "standalone coarse serialize-only probe is implemented and reaches 1299 serialized states for {s}, but records blocked=true, so routine lookahead-sensitive serialization remains deferred",
             .{run.id},
         )
     else if (std.mem.eql(u8, run.id, "tree_sitter_python_json"))
         try std.fmt.allocPrint(
             allocator,
-            "standalone coarse serialize-only probe is implemented and reaches 1139 serialized states for {s}, but records blocked=true, so routine parser-table and external-scanner proofs remain deferred",
+            "standalone coarse serialize-only probe is implemented and reaches 1038 serialized states for {s}, but records blocked=true, so routine parser-table and external-scanner proofs remain deferred",
             .{run.id},
         )
     else if (std.mem.eql(u8, run.id, "tree_sitter_typescript_json"))
         try std.fmt.allocPrint(
             allocator,
-            "standalone coarse serialize-only probe is implemented and reaches 5202 serialized states for {s}, but records blocked=true, so routine parser-table proof remains deferred",
+            "standalone coarse serialize-only probe is implemented and reaches 5359 serialized states for {s}, but records blocked=true, so routine parser-table proof remains deferred",
             .{run.id},
         )
     else if (std.mem.eql(u8, run.id, "tree_sitter_rust_json"))
         try std.fmt.allocPrint(
             allocator,
-            "standalone coarse serialize-only probe is implemented and reaches 2839 serialized states for {s}, but records blocked=true, so routine parser-table proof remains deferred",
+            "standalone coarse serialize-only probe is implemented and reaches 2659 serialized states for {s}, but records blocked=true, so routine parser-table proof remains deferred",
             .{run.id},
         )
     else if (standalone_probe_status == .implemented_passing)
@@ -253,13 +253,13 @@ fn buildEntryAlloc(
         .standalone_probe_status = standalone_probe_status,
         .standalone_probe_detail = standalone_probe_detail,
         .measured_standalone_serialized_state_count = if (std.mem.eql(u8, run.id, "tree_sitter_javascript_json"))
-            1606
+            1299
         else if (std.mem.eql(u8, run.id, "tree_sitter_python_json"))
-            1139
+            1038
         else if (std.mem.eql(u8, run.id, "tree_sitter_typescript_json"))
-            5202
+            5359
         else if (std.mem.eql(u8, run.id, "tree_sitter_rust_json"))
-            2839
+            2659
         else if (standalone_probe_status == .implemented_passing or run.parser_boundary_check_mode == .serialize_only)
             2336
         else

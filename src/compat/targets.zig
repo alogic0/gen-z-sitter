@@ -250,8 +250,8 @@ pub const shortlist_targets = [_]Target{
         .expected_blocked = false,
         .scanner_valid_input_path = "compat_targets/tree_sitter_haskell/valid.txt",
         .scanner_invalid_input_path = "compat_targets/tree_sitter_haskell/invalid.txt",
-        .notes = "real external scanner grammar snapshot from the local tree-sitter-haskell repo, with a focused runtime-link proof that compiles generated parser C against the upstream scanner.c and exercises its initial update/start layout sequence plus a varsym token",
-        .success_criteria = "load the snapshotted upstream grammar.json, extract the external-scanner boundary, and keep the focused Haskell scanner runtime-link fixture passing against the real scanner.c",
+        .notes = "real external scanner grammar snapshot from the local tree-sitter-haskell repo, with focused regular-parser and generated-GLR runtime-link proofs that compile generated parser C against the upstream scanner.c and exercise its initial update/start layout sequence plus a varsym token",
+        .success_criteria = "load the snapshotted upstream grammar.json, extract the external-scanner boundary, and keep both focused Haskell scanner runtime-link fixtures passing against the real scanner.c",
     },
     .{
         .id = "tree_sitter_bash_json",
@@ -272,8 +272,8 @@ pub const shortlist_targets = [_]Target{
         .expected_blocked = false,
         .scanner_valid_input_path = "compat_targets/tree_sitter_bash/valid.txt",
         .scanner_invalid_input_path = "compat_targets/tree_sitter_bash/invalid.txt",
-        .notes = "real external scanner grammar snapshot from the local tree-sitter-bash repo, with a focused runtime-link proof that compiles generated parser C against the upstream scanner.c and exercises the bare-dollar external token ABI",
-        .success_criteria = "load the snapshotted upstream grammar.json, extract the external-scanner boundary, and keep the focused Bash scanner runtime-link fixture passing against the real scanner.c",
+        .notes = "real external scanner grammar snapshot from the local tree-sitter-bash repo, with focused regular-parser and generated-GLR runtime-link proofs that compile generated parser C against the upstream scanner.c and exercise the bare-dollar external token ABI",
+        .success_criteria = "load the snapshotted upstream grammar.json, extract the external-scanner boundary, and keep both focused Bash scanner runtime-link fixtures passing against the real scanner.c",
     },
     .{
         .id = "parse_table_conflict_json",

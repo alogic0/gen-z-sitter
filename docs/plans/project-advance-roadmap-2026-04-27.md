@@ -241,6 +241,10 @@ Implementation batches, in order:
      compile/link, generated parser execution, or recovery behavior.
    - [x] Re-run the runtime-link profiler in the same coarse closure mode used
      by the compat target.
+   - [x] Diagnose the parser-context gap exposed by `const answer = 42;`: the
+     compat-matching coarse closure mode shifts into a state with no terminal
+     actions and an empty lex state, while upstream derives lex states from real
+     terminal entries produced by lookahead-sensitive closure.
    - [ ] Fix the parser-context gap exposed by `const answer = 42;`: the linked
      parser currently shifts `const` and the identifier, then reaches EOF/error
      instead of accepting `=`, the integer expression, and `;`.
@@ -257,30 +261,35 @@ Implementation batches, in order:
      C compile/link in about 4.6s, and linked driver execution in about 13ms.
      Accepted runtime-link promotion remains deferred because the current
      generated parser errors after the variable identifier in
-     `const answer = 42;`.
+     `const answer = 42;`. The focused diagnostic now identifies the immediate
+     cause: `.closure_lookahead_mode = .none` is useful for bounded structural
+     probes, but it is not a correctness-preserving accepted runtime-link mode
+     for Zig because completed closure items lose terminal lookaheads and cannot
+     produce the reductions that make `=` and `;` valid after the declaration
+     header.
 
 5. Scanner-wave evidence accounting.
-   - [ ] Ensure Bash and Haskell generated GLR scanner runtime-link proofs are
+   - [x] Ensure Bash and Haskell generated GLR scanner runtime-link proofs are
      reflected in Phase 3 artifacts as promoted scanner-wave evidence.
-   - [ ] Keep Bash/Haskell regular runtime-link proofs and generated GLR
+   - [x] Keep Bash/Haskell regular runtime-link proofs and generated GLR
      runtime-link proofs in the bounded suite.
-   - [ ] Refresh affected compatibility artifacts after this accounting change.
+   - [x] Refresh affected compatibility artifacts after this accounting change.
 
 6. TypeScript/Rust bounded promotion probes.
-   - [ ] Try Rust first with a bounded parser-boundary or compile-smoke probe,
+   - [x] Try Rust first with a bounded parser-boundary or compile-smoke probe,
      using the Phase 2.3 scanner classification to avoid broad promotion while
      scanner symbols remain blocked.
-   - [ ] Try TypeScript only after Rust, and keep it in the heavy/bounded path
+   - [x] Try TypeScript only after Rust, and keep it in the heavy/bounded path
      unless timing has clear headroom.
-   - [ ] Keep JavaScript classified and deferred until construction, emission,
+   - [x] Keep JavaScript classified and deferred until construction, emission,
      and C compile costs have enough headroom.
 
 7. Phase 3 closure.
-   - [ ] Refresh `shortlist_report.json`, `shortlist_inventory.json`,
+   - [x] Refresh `shortlist_report.json`, `shortlist_inventory.json`,
      `parser_boundary_probe.json`, and any affected compatibility artifacts.
-   - [ ] Mark the per-candidate checklist above only for surfaces that are
+   - [x] Mark the per-candidate checklist above only for surfaces that are
      actually proven by the final Phase 3 batches.
-   - [ ] Record remaining deferred targets and blockers before moving to Phase
+   - [x] Record remaining deferred targets and blockers before moving to Phase
      4.
 
 Gate:

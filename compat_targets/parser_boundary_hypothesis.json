@@ -40,7 +40,7 @@
       "routine_refresh_safe": false,
       "routine_boundary_hypothesis": "no_safe_routine_step_yet",
       "routine_refresh_candidate_mode": null,
-      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_javascript_json; the measured standalone coarse serialize-only probe reaches 1606 serialized states but remains blocked, while full lookahead-sensitive serialization stays outside the bounded routine compatibility budget",
+      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_javascript_json; the measured standalone coarse serialize-only probe reaches 1299 serialized states but remains blocked, while full lookahead-sensitive serialization stays outside the bounded routine compatibility budget",
       "singleton_parser_wave": false,
       "current_proven_steps": [
         "load",
@@ -48,8 +48,8 @@
       ],
       "deferred_from_step": "serialize",
       "standalone_probe_status": "implemented_passing",
-      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and reaches 1606 serialized states for tree_sitter_javascript_json, but records blocked=true, so routine lookahead-sensitive serialization remains deferred",
-      "measured_standalone_serialized_state_count": 1606,
+      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and reaches 1299 serialized states for tree_sitter_javascript_json, but records blocked=true, so routine lookahead-sensitive serialization remains deferred",
+      "measured_standalone_serialized_state_count": 1299,
       "decision": "keep_standalone_probe",
       "rationale": "the next named proof step for tree_sitter_javascript_json is serialize_only; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave target is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet"
     },
@@ -64,7 +64,7 @@
       "routine_refresh_safe": false,
       "routine_boundary_hypothesis": "no_safe_routine_step_yet",
       "routine_refresh_candidate_mode": null,
-      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_python_json; the measured standalone coarse serialize-only probe reaches 1139 serialized states but remains blocked, while external-scanner runtime-link proof remains a later promotion step",
+      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_python_json; the measured standalone coarse serialize-only probe reaches 1038 serialized states but remains blocked, while external-scanner runtime-link proof remains a later promotion step",
       "singleton_parser_wave": false,
       "current_proven_steps": [
         "load",
@@ -72,8 +72,8 @@
       ],
       "deferred_from_step": "serialize",
       "standalone_probe_status": "implemented_passing",
-      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and reaches 1139 serialized states for tree_sitter_python_json, but records blocked=true, so routine parser-table and external-scanner proofs remain deferred",
-      "measured_standalone_serialized_state_count": 1139,
+      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and reaches 1038 serialized states for tree_sitter_python_json, but records blocked=true, so routine parser-table and external-scanner proofs remain deferred",
+      "measured_standalone_serialized_state_count": 1038,
       "decision": "keep_standalone_probe",
       "rationale": "the next named proof step for tree_sitter_python_json is serialize_only; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave target is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet"
     },
@@ -88,7 +88,7 @@
       "routine_refresh_safe": false,
       "routine_boundary_hypothesis": "no_safe_routine_step_yet",
       "routine_refresh_candidate_mode": null,
-      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_typescript_json; the measured standalone coarse serialize-only probe reaches 5202 serialized states but remains blocked, so parser-table promotion needs a narrower follow-up",
+      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_typescript_json; the measured standalone coarse serialize-only probe reaches 5359 serialized states but remains blocked, so parser-table promotion needs a narrower follow-up",
       "singleton_parser_wave": false,
       "current_proven_steps": [
         "load",
@@ -96,8 +96,8 @@
       ],
       "deferred_from_step": "serialize",
       "standalone_probe_status": "implemented_passing",
-      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and reaches 5202 serialized states for tree_sitter_typescript_json, but records blocked=true, so routine parser-table proof remains deferred",
-      "measured_standalone_serialized_state_count": 5202,
+      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and reaches 5359 serialized states for tree_sitter_typescript_json, but records blocked=true, so routine parser-table proof remains deferred",
+      "measured_standalone_serialized_state_count": 5359,
       "decision": "keep_standalone_probe",
       "rationale": "the next named proof step for tree_sitter_typescript_json is serialize_only; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave target is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet"
     },
@@ -112,7 +112,7 @@
       "routine_refresh_safe": false,
       "routine_boundary_hypothesis": "no_safe_routine_step_yet",
       "routine_refresh_candidate_mode": null,
-      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_rust_json; the measured standalone coarse serialize-only probe reaches 2839 serialized states but remains blocked, so parser-table promotion needs a narrower follow-up",
+      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_rust_json; the measured standalone coarse serialize-only probe reaches 2659 serialized states but remains blocked, so parser-table promotion needs a narrower follow-up",
       "singleton_parser_wave": false,
       "current_proven_steps": [
         "load",
@@ -120,8 +120,8 @@
       ],
       "deferred_from_step": "serialize",
       "standalone_probe_status": "implemented_passing",
-      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and reaches 2839 serialized states for tree_sitter_rust_json, but records blocked=true, so routine parser-table proof remains deferred",
-      "measured_standalone_serialized_state_count": 2839,
+      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and reaches 2659 serialized states for tree_sitter_rust_json, but records blocked=true, so routine parser-table proof remains deferred",
+      "measured_standalone_serialized_state_count": 2659,
       "decision": "keep_standalone_probe",
       "rationale": "the next named proof step for tree_sitter_rust_json is serialize_only; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave target is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet"
     }

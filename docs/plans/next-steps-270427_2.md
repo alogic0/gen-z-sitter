@@ -22,8 +22,8 @@ PoC, and M46 GLR helper scaffolding have landed.
   point; old-subtree prefix reuse by matching `entry_state` + `start_byte`;
   `external_lex_state` guard in place; equivalence yield helper.
 - **JSON compat target** — added and passing at full pipeline level.
-- **Deferred grammar snapshots** — JavaScript (1606 coarse serialized states),
-  Python (1139), TypeScript (5202), and Rust (2839) are registered. Each is
+- **Deferred grammar snapshots** — JavaScript (1299 coarse serialized states),
+  Python (1038), TypeScript (5359), and Rust (2659) are registered. Each is
   intentionally held at the `prepare_only` routine boundary; standalone coarse
   serialize probes complete but report `blocked=true`, so parser-table promotion
   needs narrower follow-up work before any emitted-C promotion.
@@ -206,10 +206,10 @@ blocked parser-table surfaces per grammar.
 
 1. For each deferred target, run the standalone parser-boundary probe and record
    the blocked signatures:
-   - `tree_sitter_javascript_json`: 1606 coarse states, blocked
-   - `tree_sitter_python_json`: 1139 coarse states, blocked
-   - `tree_sitter_typescript_json`: 5202 coarse states, blocked
-   - `tree_sitter_rust_json`: 2839 coarse states, blocked
+   - `tree_sitter_javascript_json`: 1299 coarse states, blocked
+   - `tree_sitter_python_json`: 1038 coarse states, blocked
+   - `tree_sitter_typescript_json`: 5359 coarse states, blocked
+   - `tree_sitter_rust_json`: 2659 coarse states, blocked
 
    Status:
    - [x] Extend `parser_boundary_probe.json` with

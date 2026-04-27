@@ -179,15 +179,15 @@ Next broader-coverage candidates from `Next_Steps_2026_04_27.txt`:
 
 - [x] `tree-sitter-python`: indentation-sensitive external scanner state.
   Added as `tree_sitter_python_json` at load/prepare boundary. The standalone
-  coarse serialize probe reaches 1139 states but remains blocked, so routine
+  coarse serialize probe reaches 1038 states but remains blocked, so routine
   parser-table and external-scanner proofs stay deferred.
 - [x] `tree-sitter-typescript`: large alias/generic grammar surface.
   Added as `tree_sitter_typescript_json` at load/prepare boundary. The
-  standalone coarse serialize probe reaches 5202 states but remains blocked, so
+  standalone coarse serialize probe reaches 5359 states but remains blocked, so
   parser-table promotion needs a narrower follow-up.
 - [x] `tree-sitter-rust`: large lexer and many parser states.
   Added as `tree_sitter_rust_json` at load/prepare boundary. The standalone
-  coarse serialize probe reaches 2839 states but remains blocked, so
+  coarse serialize probe reaches 2659 states but remains blocked, so
   parser-table promotion needs a narrower follow-up.
 
 ---

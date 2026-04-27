@@ -27,8 +27,8 @@
       "recommended_next_parser_boundary_check_mode": "prepare_only",
       "probe_status": "passed",
       "probe_failed_stage": null,
-      "detail": "isolated coarse serialize-only parser probe completed with 1606 serialized states but remains blocked; keep the current routine parser boundary until the blocked surface is explicitly resolved",
-      "serialized_state_count": 1606,
+      "detail": "isolated coarse serialize-only parser probe completed with 1299 serialized states but remains blocked; keep the current routine parser boundary until the blocked surface is explicitly resolved",
+      "serialized_state_count": 1299,
       "serialized_blocked": true,
       "blocked_signature_summary": "states=0 entries=0 external_scanner_symbols=8 reasons={shift_reduce:0, reduce_reduce_deferred:0, reduce_reduce_expected:0, multiple_candidates:0, unsupported_action_mix:0} dominant=[]"
     },
@@ -42,8 +42,8 @@
       "recommended_next_parser_boundary_check_mode": "prepare_only",
       "probe_status": "passed",
       "probe_failed_stage": null,
-      "detail": "isolated coarse serialize-only parser probe completed with 1139 serialized states but remains blocked; keep the current routine parser boundary until the blocked surface is explicitly resolved",
-      "serialized_state_count": 1139,
+      "detail": "isolated coarse serialize-only parser probe completed with 1038 serialized states but remains blocked; keep the current routine parser boundary until the blocked surface is explicitly resolved",
+      "serialized_state_count": 1038,
       "serialized_blocked": true,
       "blocked_signature_summary": "states=0 entries=0 external_scanner_symbols=12 reasons={shift_reduce:0, reduce_reduce_deferred:0, reduce_reduce_expected:0, multiple_candidates:0, unsupported_action_mix:0} dominant=[]"
     },
@@ -57,8 +57,8 @@
       "recommended_next_parser_boundary_check_mode": "prepare_only",
       "probe_status": "passed",
       "probe_failed_stage": null,
-      "detail": "isolated coarse serialize-only parser probe completed with 5202 serialized states but remains blocked; keep the current routine parser boundary until the blocked surface is explicitly resolved",
-      "serialized_state_count": 5202,
+      "detail": "isolated coarse serialize-only parser probe completed with 5359 serialized states but remains blocked; keep the current routine parser boundary until the blocked surface is explicitly resolved",
+      "serialized_state_count": 5359,
       "serialized_blocked": true,
       "blocked_signature_summary": "states=0 entries=0 external_scanner_symbols=10 reasons={shift_reduce:0, reduce_reduce_deferred:0, reduce_reduce_expected:0, multiple_candidates:0, unsupported_action_mix:0} dominant=[]"
     },
@@ -72,8 +72,8 @@
       "recommended_next_parser_boundary_check_mode": "prepare_only",
       "probe_status": "passed",
       "probe_failed_stage": null,
-      "detail": "isolated coarse serialize-only parser probe completed with 2839 serialized states but remains blocked; keep the current routine parser boundary until the blocked surface is explicitly resolved",
-      "serialized_state_count": 2839,
+      "detail": "isolated coarse serialize-only parser probe completed with 2659 serialized states but remains blocked; keep the current routine parser boundary until the blocked surface is explicitly resolved",
+      "serialized_state_count": 2659,
       "serialized_blocked": true,
       "blocked_signature_summary": "states=0 entries=0 external_scanner_symbols=11 reasons={shift_reduce:0, reduce_reduce_deferred:0, reduce_reduce_expected:0, multiple_candidates:0, unsupported_action_mix:0} dominant=[]"
     }

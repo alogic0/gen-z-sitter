@@ -365,7 +365,11 @@ pub fn profileTreeSitterZigRuntimeLinkCandidate(allocator: std.mem.Allocator) Ru
         "[zig-runtime-link-profile] serialize_ms={d:.2} states={d} blocked={}\n",
         .{ elapsedMs(serialize_timer), serialized.states.len, serialized.blocked },
     );
+    dumpZigRuntimeLinkContext(serialized, 149);
+    dumpZigRuntimeLinkContext(serialized, 150);
     serialized = try offsetRuntimeStartStateAlloc(arena.allocator(), serialized);
+    dumpZigRuntimeLinkContext(serialized, 150);
+    dumpZigRuntimeLinkContext(serialized, 151);
 
     const emit_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     const parser_c = try parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, .{
@@ -382,6 +386,59 @@ pub fn profileTreeSitterZigRuntimeLinkCandidate(allocator: std.mem.Allocator) Ru
         .input = "const answer = 42;",
         .expected_has_error = true,
     }, "tree_sitter_zig_json");
+}
+
+fn dumpZigRuntimeLinkContext(serialized: serialize.SerializedTable, state_id: u32) void {
+    if (state_id >= serialized.states.len) return;
+    const state_value = serialized.states[state_id];
+    std.debug.print(
+        "[zig-runtime-link-profile] state={d} lex_state={d} actions={d} gotos={d} unresolved={d}\n",
+        .{ state_id, state_value.lex_state_id, state_value.actions.len, state_value.gotos.len, state_value.unresolved.len },
+    );
+    for (state_value.actions) |entry| {
+        std.debug.print(
+            "[zig-runtime-link-profile] state={d} action symbol={s} kind={s}\n",
+            .{ state_id, symbolName(serialized, entry.symbol), parseActionName(entry.action) },
+        );
+    }
+    if (state_value.lex_state_id >= serialized.lex_state_terminal_sets.len) return;
+    const terminal_set = serialized.lex_state_terminal_sets[state_value.lex_state_id];
+    for (terminal_set, 0..) |present, terminal_id| {
+        if (!present) continue;
+        std.debug.print(
+            "[zig-runtime-link-profile] state={d} lex_terminal={s}\n",
+            .{ state_id, symbolName(serialized, .{ .terminal = @intCast(terminal_id) }) },
+        );
+    }
+}
+
+fn parseActionName(action: parse_actions.ParseAction) []const u8 {
+    return switch (action) {
+        .shift => "shift",
+        .reduce => "reduce",
+        .accept => "accept",
+    };
+}
+
+fn symbolName(serialized: serialize.SerializedTable, symbol: syntax_grammar.SymbolRef) []const u8 {
+    for (serialized.symbols) |info| {
+        if (symbolRefEql(info.ref, symbol)) return info.name;
+    }
+    return switch (symbol) {
+        .end => "end",
+        .terminal => "<terminal>",
+        .non_terminal => "<non_terminal>",
+        .external => "<external>",
+    };
+}
+
+fn symbolRefEql(left: syntax_grammar.SymbolRef, right: syntax_grammar.SymbolRef) bool {
+    return switch (left) {
+        .end => right == .end,
+        .terminal => |left_index| right == .terminal and right.terminal == left_index,
+        .non_terminal => |left_index| right == .non_terminal and right.non_terminal == left_index,
+        .external => |left_index| right == .external and right.external == left_index,
+    };
 }
 
 pub fn linkAndRunBashParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
