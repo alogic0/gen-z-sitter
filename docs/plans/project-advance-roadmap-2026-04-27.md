@@ -232,11 +232,16 @@ Implementation batches, in order:
      promoted first, or document why emitted recovery is not yet sufficient.
 
 4. `tree_sitter_zig_json` promotion beyond coarse serialize.
-   - [ ] Move from routine coarse serialize-only evidence toward parser.c
+   - [x] Move from routine coarse serialize-only evidence toward parser.c
      emission and compile-smoke if the bounded cost stays acceptable.
    - [ ] Add one accepted runtime-link sample after compile-smoke passes.
    - [ ] Add one invalid or partial runtime-link sample after the accepted
      sample is stable.
+   - Note: the scoped `tree_sitter_zig_json` compat target currently proves
+     load, prepare, routine coarse serialization, parser table emission,
+     parser.c emission, compatibility validation, and compile-smoke in about
+     7.1s. A direct runtime-link proof on `const answer = 42;` exceeded the
+     30s bounded test limit and remains deferred.
 
 5. Scanner-wave evidence accounting.
    - [ ] Ensure Bash and Haskell generated GLR scanner runtime-link proofs are
