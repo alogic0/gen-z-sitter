@@ -100,22 +100,7 @@ pub const SerializedParseAction = struct {
 const SerializedParseActionContext = struct {
     pub fn hash(_: @This(), value: SerializedParseAction) u64 {
         var hasher = std.hash.Wyhash.init(0);
-        const kind: u8 = @intFromEnum(value.kind);
-        hasher.update(std.mem.asBytes(&kind));
-        switch (value.kind) {
-            .shift => {
-                hasher.update(std.mem.asBytes(&value.state));
-                hasher.update(std.mem.asBytes(&value.extra));
-                hasher.update(std.mem.asBytes(&value.repetition));
-            },
-            .reduce => {
-                hasher.update(std.mem.asBytes(&value.child_count));
-                hashSymbolRef(&hasher, value.symbol);
-                hasher.update(std.mem.asBytes(&value.dynamic_precedence));
-                hasher.update(std.mem.asBytes(&value.production_id));
-            },
-            .accept, .recover => {},
-        }
+        hashSerializedParseAction(&hasher, value);
         return hasher.final();
     }
 
@@ -124,10 +109,55 @@ const SerializedParseActionContext = struct {
     }
 };
 
+fn hashSerializedParseAction(hasher: *std.hash.Wyhash, value: SerializedParseAction) void {
+    const kind: u8 = @intFromEnum(value.kind);
+    hasher.update(std.mem.asBytes(&kind));
+    switch (value.kind) {
+        .shift => {
+            hasher.update(std.mem.asBytes(&value.state));
+            hasher.update(std.mem.asBytes(&value.extra));
+            hasher.update(std.mem.asBytes(&value.repetition));
+        },
+        .reduce => {
+            hasher.update(std.mem.asBytes(&value.child_count));
+            hashSymbolRef(hasher, value.symbol);
+            hasher.update(std.mem.asBytes(&value.dynamic_precedence));
+            hasher.update(std.mem.asBytes(&value.production_id));
+        },
+        .accept, .recover => {},
+    }
+}
+
 const ParseActionListIndexMap = std.HashMap(
     SerializedParseAction,
     u16,
     SerializedParseActionContext,
+    std.hash_map.default_max_load_percentage,
+);
+
+const ParseActionListSliceKey = struct {
+    reusable: bool,
+    actions: []const SerializedParseAction,
+};
+
+const ParseActionListSliceContext = struct {
+    pub fn hash(_: @This(), value: ParseActionListSliceKey) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        hasher.update(std.mem.asBytes(&value.reusable));
+        for (value.actions) |action| hashSerializedParseAction(&hasher, action);
+        return hasher.final();
+    }
+
+    pub fn eql(_: @This(), left: ParseActionListSliceKey, right: ParseActionListSliceKey) bool {
+        if (left.reusable != right.reusable) return false;
+        return serializedParseActionSlicesEql(left.actions, right.actions);
+    }
+};
+
+const ParseActionListSliceIndexMap = std.HashMap(
+    ParseActionListSliceKey,
+    u16,
+    ParseActionListSliceContext,
     std.hash_map.default_max_load_percentage,
 );
 
@@ -573,23 +603,27 @@ pub fn buildParseActionListAlloc(
     defer entries.deinit();
     var single_action_indexes = ParseActionListIndexMap.init(allocator);
     defer single_action_indexes.deinit();
+    var action_slice_indexes = ParseActionListSliceIndexMap.init(allocator);
+    defer action_slice_indexes.deinit();
 
     try entries.append(.{
         .index = 0,
         .reusable = false,
         .actions = &.{},
     });
+    try action_slice_indexes.put(.{ .reusable = false, .actions = &.{} }, 0);
     var next_index: usize = 1;
 
     for (states) |serialized_state| {
         for (serialized_state.actions) |entry| {
             const action_slice = try runtimeActionsFromActionEntryAlloc(allocator, entry, productions);
+            const action_key: ParseActionListSliceKey = .{ .reusable = true, .actions = action_slice };
             if (action_slice.len == 1) {
                 if (single_action_indexes.contains(action_slice[0])) {
                     allocator.free(action_slice);
                     continue;
                 }
-            } else if (parseActionListIndexForRuntimeActionSlice(entries.items, action_slice) != null) {
+            } else if (action_slice_indexes.contains(action_key)) {
                 allocator.free(action_slice);
                 continue;
             }
@@ -602,10 +636,12 @@ pub fn buildParseActionListAlloc(
                 .actions = action_slice,
             });
             if (action_slice.len == 1) try single_action_indexes.put(action_slice[0], index);
+            try action_slice_indexes.put(.{ .reusable = true, .actions = action_slice }, index);
         }
         for (serialized_state.unresolved) |entry| {
             const action_slice = try runtimeActionsFromParseActionSliceAlloc(allocator, entry.candidate_actions, productions);
-            if (parseActionListIndexForRuntimeActionSlice(entries.items, action_slice) != null) {
+            const action_key: ParseActionListSliceKey = .{ .reusable = false, .actions = action_slice };
+            if (action_slice_indexes.contains(action_key)) {
                 allocator.free(action_slice);
                 continue;
             }
@@ -617,6 +653,7 @@ pub fn buildParseActionListAlloc(
                 .reusable = false,
                 .actions = action_slice,
             });
+            try action_slice_indexes.put(.{ .reusable = false, .actions = action_slice }, index);
         }
     }
 
@@ -925,6 +962,7 @@ pub fn parseActionListIndexForActionEntry(
     productions: []const SerializedProductionInfo,
 ) ?u16 {
     for (entries) |candidate| {
+        if (!candidate.reusable) continue;
         if (runtimeActionSlicesEql(candidate.actions, entry, productions)) return candidate.index;
     }
     return null;
@@ -936,6 +974,7 @@ pub fn parseActionListIndexForUnresolvedEntry(
     productions: []const SerializedProductionInfo,
 ) ?u16 {
     for (entries) |candidate| {
+        if (candidate.reusable) continue;
         if (runtimeActionSliceEqlParseActions(candidate.actions, entry.candidate_actions, productions)) return candidate.index;
     }
     return null;
@@ -1077,6 +1116,7 @@ fn parseActionListIndexForRuntimeAction(
     action: SerializedParseAction,
 ) ?u16 {
     for (entries) |entry| {
+        if (!entry.reusable) continue;
         if (entry.actions.len != 1) continue;
         if (serializedParseActionEql(entry.actions[0], action)) return entry.index;
     }
@@ -1088,17 +1128,18 @@ fn parseActionListIndexForRuntimeActionSlice(
     action_slice: []const SerializedParseAction,
 ) ?u16 {
     for (entries) |entry| {
-        if (entry.actions.len != action_slice.len) continue;
-        var equal = true;
-        for (entry.actions, action_slice) |left, right| {
-            if (!serializedParseActionEql(left, right)) {
-                equal = false;
-                break;
-            }
-        }
-        if (equal) return entry.index;
+        if (!entry.reusable) continue;
+        if (serializedParseActionSlicesEql(entry.actions, action_slice)) return entry.index;
     }
     return null;
+}
+
+fn serializedParseActionSlicesEql(left: []const SerializedParseAction, right: []const SerializedParseAction) bool {
+    if (left.len != right.len) return false;
+    for (left, right) |left_action, right_action| {
+        if (!serializedParseActionEql(left_action, right_action)) return false;
+    }
+    return true;
 }
 
 fn serializedParseActionEql(left: SerializedParseAction, right: SerializedParseAction) bool {

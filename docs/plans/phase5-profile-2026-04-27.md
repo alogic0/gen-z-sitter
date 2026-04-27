@@ -18,7 +18,7 @@ construct-stage and allocator-churn counters from the parse-table builder.
 | Target | Result | Serialize | Emit | MaxRSS | Notes |
 |---|---:|---:|---:|---:|---|
 | `tree_sitter_zig_json` | completed | 3748 ms | 508 ms | 362 MB | Coarse follow mode, blocked diagnostic table |
-| `tree_sitter_javascript_json` | bounded serialize failure | 21724 ms | n/a | 573 MB | `ParseActionListTooLarge` before emission |
+| `tree_sitter_javascript_json` | bounded serialize failure | 19205 ms | n/a | 575 MB | `ParseActionListTooLarge` before emission, after hashed action-slice dedup |
 | `tree_sitter_c_json` | timed out under verbose profiling | >30 s | n/a | n/a | Construct profile reached build states and action resolution before timeout |
 | `tree_sitter_rust_json` | timed out | >30 s | n/a | n/a | No summary before timeout |
 | `tree_sitter_typescript_json` | timed out | >30 s | n/a | n/a | No summary before timeout |
@@ -54,5 +54,8 @@ and larger grammar end-to-end timeouts before emission.
   not default bounded-suite runs.
 - Treat `ParseActionListTooLarge` as an explicit large-grammar boundary rather
   than allowing Debug integer overflow.
+- Keep parse-action-list packing on the Phase 5 path: hashed action-slice dedup
+  improved JavaScript by about 12%, but the table still exceeds the `uint16_t`
+  runtime-compatible index space.
 - Profile Rust and TypeScript with a longer explicit diagnostic budget before
   selecting a structural optimization.

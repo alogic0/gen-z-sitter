@@ -385,10 +385,15 @@ Candidate optimizations, only after measurements justify them:
 - [ ] State interning improvements if `state_intern_calls` greatly exceeds
   `state_intern_reused`.
 - [x] Parse-action list and small-table dedup audits for large grammars.
+- [x] Replace linear multi-action-list dedup lookup with hashed action-slice
+  lookup after JavaScript profiling showed parse-action-list growth as the
+  strongest bounded signal.
 
 Current Phase 5 profile note: SymbolSet allocation churn is visible but not the
 dominant C JSON signal; JavaScript now reports an explicit
-`ParseActionListTooLarge` boundary instead of overflowing in Debug.
+`ParseActionListTooLarge` boundary instead of overflowing in Debug. Hashing
+multi-action-list dedup reduced the JavaScript bounded serialize failure from
+about 21.7s to about 19.2s, but not enough to remove the boundary.
 
 Gate:
 
