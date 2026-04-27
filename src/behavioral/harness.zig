@@ -2645,6 +2645,57 @@ fn parseTreesEquivalent(left: ParseNode, right: ParseNode) bool {
     return true;
 }
 
+const TerminalSpan = struct {
+    start_byte: u32,
+    end_byte: u32,
+};
+
+fn incrementalTreesEquivalentAlloc(
+    allocator: std.mem.Allocator,
+    fresh: ParseNode,
+    incremental: ParseNode,
+) std.mem.Allocator.Error!bool {
+    if (parseTreesEquivalent(fresh, incremental)) return true;
+    if (fresh.start_byte != incremental.start_byte) return false;
+    if (fresh.end_byte != incremental.end_byte) return false;
+    if (fresh.is_error != incremental.is_error) return false;
+
+    var fresh_terminals = std.ArrayListUnmanaged(TerminalSpan).empty;
+    defer fresh_terminals.deinit(allocator);
+    var incremental_terminals = std.ArrayListUnmanaged(TerminalSpan).empty;
+    defer incremental_terminals.deinit(allocator);
+
+    try collectTerminalSpans(allocator, &fresh_terminals, fresh);
+    try collectTerminalSpans(allocator, &incremental_terminals, incremental);
+    return terminalSpansEqual(fresh_terminals.items, incremental_terminals.items);
+}
+
+fn collectTerminalSpans(
+    allocator: std.mem.Allocator,
+    terminals: *std.ArrayListUnmanaged(TerminalSpan),
+    node: ParseNode,
+) std.mem.Allocator.Error!void {
+    if (node.production_id == terminal_node_production_id) {
+        try terminals.append(allocator, .{
+            .start_byte = node.start_byte,
+            .end_byte = node.end_byte,
+        });
+        return;
+    }
+    for (node.children) |child| {
+        try collectTerminalSpans(allocator, terminals, child);
+    }
+}
+
+fn terminalSpansEqual(left: []const TerminalSpan, right: []const TerminalSpan) bool {
+    if (left.len != right.len) return false;
+    for (left, right) |left_span, right_span| {
+        if (left_span.start_byte != right_span.start_byte) return false;
+        if (left_span.end_byte != right_span.end_byte) return false;
+    }
+    return true;
+}
+
 fn cloneParseNodeWithReuseMarkersAlloc(
     allocator: std.mem.Allocator,
     fresh: ParseNode,
@@ -2735,6 +2786,45 @@ test "ParseNode helpers compare trees and mark reusable prefix nodes" {
     try std.testing.expectEqual(@as(usize, 2), countReusedNodes(marked));
 }
 
+test "incremental tree equivalence accepts ambiguous shape differences with same yield" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const left_nested_children = try arena.allocator().dupe(ParseNode, &[_]ParseNode{
+        .{ .production_id = terminal_node_production_id, .start_byte = 0, .end_byte = 1, .entry_state = 0 },
+        .{ .production_id = terminal_node_production_id, .start_byte = 1, .end_byte = 2, .entry_state = 1 },
+    });
+    const left_children = try arena.allocator().dupe(ParseNode, &[_]ParseNode{
+        .{ .production_id = 10, .start_byte = 0, .end_byte = 2, .entry_state = 0, .children = left_nested_children },
+        .{ .production_id = terminal_node_production_id, .start_byte = 2, .end_byte = 3, .entry_state = 2 },
+    });
+    const right_nested_children = try arena.allocator().dupe(ParseNode, &[_]ParseNode{
+        .{ .production_id = terminal_node_production_id, .start_byte = 1, .end_byte = 2, .entry_state = 1 },
+        .{ .production_id = terminal_node_production_id, .start_byte = 2, .end_byte = 3, .entry_state = 2 },
+    });
+    const right_children = try arena.allocator().dupe(ParseNode, &[_]ParseNode{
+        .{ .production_id = terminal_node_production_id, .start_byte = 0, .end_byte = 1, .entry_state = 0 },
+        .{ .production_id = 10, .start_byte = 1, .end_byte = 3, .entry_state = 1, .children = right_nested_children },
+    });
+    const left_assoc = ParseNode{
+        .production_id = 20,
+        .start_byte = 0,
+        .end_byte = 3,
+        .entry_state = 0,
+        .children = left_children,
+    };
+    const right_assoc = ParseNode{
+        .production_id = 20,
+        .start_byte = 0,
+        .end_byte = 3,
+        .entry_state = 0,
+        .children = right_children,
+    };
+
+    try std.testing.expect(!parseTreesEquivalent(left_assoc, right_assoc));
+    try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), left_assoc, right_assoc));
+}
+
 test "incremental reuse rejects states with external lex state metadata" {
     try std.testing.expect(stateAllowsIncrementalReuse(0, &[_]u16{0}));
     try std.testing.expect(!stateAllowsIncrementalReuse(1, &[_]u16{ 0, 2 }));
@@ -2761,8 +2851,10 @@ test "simulatePreparedScannerFreeIncremental reuses prefix nodes after append ed
     );
 
     const incremental_tree = incremental_result.accepted.tree orelse return error.TestUnexpectedResult;
+    const fresh_tree = fresh_result.accepted.tree orelse return error.TestUnexpectedResult;
     try std.testing.expectEqual(fresh_result.accepted.consumed_bytes, incremental_result.accepted.consumed_bytes);
     try std.testing.expect(incremental_result.accepted.shifted_tokens < fresh_result.accepted.shifted_tokens);
+    try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), fresh_tree, incremental_tree));
     try std.testing.expect(countReusedNodes(incremental_tree) > 0);
 }
 
