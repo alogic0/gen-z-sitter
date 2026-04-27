@@ -680,11 +680,10 @@ fn writeGlrUnresolvedForkHelpers(writer: anytype) !void {
 }
 
 fn writeGlrVersionCondenseHelpers(writer: anytype) !void {
-    try writer.writeAll("static bool ts_generated_parse_versions_equal(const TSGeneratedParseVersion *left, const TSGeneratedParseVersion *right) {\n");
+    try writer.writeAll("static bool ts_generated_parse_versions_same_position(const TSGeneratedParseVersion *left, const TSGeneratedParseVersion *right) {\n");
     try writer.writeAll("  return left->active == right->active &&\n");
     try writer.writeAll("    left->state == right->state &&\n");
-    try writer.writeAll("    left->byte_offset == right->byte_offset &&\n");
-    try writer.writeAll("    left->dynamic_precedence == right->dynamic_precedence;\n");
+    try writer.writeAll("    left->byte_offset == right->byte_offset;\n");
     try writer.writeAll("}\n\n");
     try writer.writeAll("static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n");
     try writer.writeAll("  uint16_t write_index = 0;\n");
@@ -692,7 +691,10 @@ fn writeGlrVersionCondenseHelpers(writer: anytype) !void {
     try writer.writeAll("    if (!set->versions[read_index].active) continue;\n");
     try writer.writeAll("    bool duplicate = false;\n");
     try writer.writeAll("    for (uint16_t existing_index = 0; existing_index < write_index; existing_index++) {\n");
-    try writer.writeAll("      if (ts_generated_parse_versions_equal(&set->versions[existing_index], &set->versions[read_index])) {\n");
+    try writer.writeAll("      if (ts_generated_parse_versions_same_position(&set->versions[existing_index], &set->versions[read_index])) {\n");
+    try writer.writeAll("        if (set->versions[read_index].dynamic_precedence > set->versions[existing_index].dynamic_precedence) {\n");
+    try writer.writeAll("          set->versions[existing_index].dynamic_precedence = set->versions[read_index].dynamic_precedence;\n");
+    try writer.writeAll("        }\n");
     try writer.writeAll("        duplicate = true;\n");
     try writer.writeAll("        break;\n");
     try writer.writeAll("      }\n");
@@ -2030,9 +2032,10 @@ test "emitParserCAlloc emits opt-in GLR version condensation helpers" {
     });
     defer allocator.free(emitted);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_parse_versions_equal(const TSGeneratedParseVersion *left, const TSGeneratedParseVersion *right) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_parse_versions_same_position(const TSGeneratedParseVersion *left, const TSGeneratedParseVersion *right) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!set->versions[read_index].active) continue;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[existing_index].dynamic_precedence = set->versions[read_index].dynamic_precedence;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->count = write_index;\n"));
 }
 

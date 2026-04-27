@@ -144,6 +144,8 @@ does not yet appear in generated C.
 - [x] Add generated unresolved-action fork helpers for the opt-in GLR loop path.
 - [x] Add generated version condensation helpers for the opt-in GLR loop path.
 - [x] Add a generated active-version step helper for the opt-in GLR loop path.
+- [x] Align generated version condensation with the runtime rule: merge matching
+  state/cursor positions and keep the higher dynamic precedence.
 
 ---
 
