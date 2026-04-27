@@ -341,6 +341,7 @@ Completed steps:
   minimization probe or explicitly skipped with a reason.
 - [x] Add a reusable bounded minimization report with per-target probes,
   skipped targets, and aggregate counts.
+- [x] Add deterministic JSON rendering for the bounded minimization report.
 
 **Risk.** Low. Purely additive. The minimization pass can be toggled off and
 the existing output is unchanged when it is.

@@ -155,6 +155,68 @@ pub fn buildBoundedReportAlloc(allocator: std.mem.Allocator) !MinimizationReport
     };
 }
 
+pub fn renderReportJsonAlloc(
+    allocator: std.mem.Allocator,
+    report: MinimizationReport,
+) ![]const u8 {
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    const writer = &out.writer;
+
+    try writer.writeAll("{\n");
+    try writer.writeAll("  \"aggregate\": { ");
+    try writer.print("\"target_count\": {d}, ", .{report.aggregate.target_count});
+    try writer.print("\"default_state_count\": {d}, ", .{report.aggregate.default_state_count});
+    try writer.print("\"minimized_state_count\": {d}, ", .{report.aggregate.minimized_state_count});
+    try writer.print("\"merged_state_count\": {d}", .{report.aggregate.merged_state_count});
+    try writer.writeAll(" },\n");
+
+    try writer.writeAll("  \"probes\": [\n");
+    for (report.probes, 0..) |probe, index| {
+        try writer.writeAll("    { ");
+        try writer.writeAll("\"target_id\": ");
+        try writeJsonString(writer, probe.target_id);
+        try writer.print(", \"default_state_count\": {d}, ", .{probe.default_state_count});
+        try writer.print("\"minimized_state_count\": {d}, ", .{probe.minimized_state_count});
+        try writer.print("\"merged_state_count\": {d}", .{probe.mergedCount()});
+        try writer.writeAll(" }");
+        if (index + 1 != report.probes.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    try writer.writeAll("  ],\n");
+
+    try writer.writeAll("  \"skipped\": [\n");
+    for (report.skipped, 0..) |skipped, index| {
+        try writer.writeAll("    { ");
+        try writer.writeAll("\"target_id\": ");
+        try writeJsonString(writer, skipped.target_id);
+        try writer.writeAll(", \"reason\": ");
+        try writeJsonString(writer, skipped.reason);
+        try writer.writeAll(" }");
+        if (index + 1 != report.skipped.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    try writer.writeAll("  ]\n");
+    try writer.writeAll("}\n");
+
+    return try out.toOwnedSlice();
+}
+
+fn writeJsonString(writer: anytype, value: []const u8) !void {
+    try writer.writeByte('"');
+    for (value) |ch| {
+        switch (ch) {
+            '"' => try writer.writeAll("\\\""),
+            '\\' => try writer.writeAll("\\\\"),
+            '\n' => try writer.writeAll("\\n"),
+            '\r' => try writer.writeAll("\\r"),
+            '\t' => try writer.writeAll("\\t"),
+            else => try writer.writeByte(ch),
+        }
+    }
+    try writer.writeByte('"');
+}
+
 fn isBoundedTarget(target_id: []const u8) bool {
     for (boundedTargetIds()) |bounded_id| {
         if (std.mem.eql(u8, bounded_id, target_id)) return true;
@@ -263,4 +325,61 @@ test "bounded compat minimization report carries probes skips and aggregate" {
         try std.testing.expect(!isBoundedTarget(skipped.target_id));
         try std.testing.expect(skipped.reason.len > 0);
     }
+}
+
+test "bounded compat minimization report renders deterministic JSON" {
+    const probes = [_]MinimizationProbe{
+        .{
+            .target_id = "small",
+            .default_state_count = 5,
+            .minimized_state_count = 3,
+        },
+    };
+    const skipped = [_]SkippedMinimizationTarget{
+        .{
+            .target_id = "large",
+            .reason = "too expensive for fast tests",
+        },
+    };
+    const report = MinimizationReport{
+        .probes = &probes,
+        .skipped = &skipped,
+        .aggregate = aggregateProbes(&probes),
+    };
+
+    const json = try renderReportJsonAlloc(std.testing.allocator, report);
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expectEqualStrings(
+        \\{
+        \\  "aggregate": { "target_count": 1, "default_state_count": 5, "minimized_state_count": 3, "merged_state_count": 2 },
+        \\  "probes": [
+        \\    { "target_id": "small", "default_state_count": 5, "minimized_state_count": 3, "merged_state_count": 2 }
+        \\  ],
+        \\  "skipped": [
+        \\    { "target_id": "large", "reason": "too expensive for fast tests" }
+        \\  ]
+        \\}
+        \\
+    , json);
+}
+
+test "bounded compat minimization report JSON escapes strings" {
+    const probes = [_]MinimizationProbe{
+        .{
+            .target_id = "quote\"slash\\",
+            .default_state_count = 1,
+            .minimized_state_count = 1,
+        },
+    };
+    const report = MinimizationReport{
+        .probes = &probes,
+        .skipped = &.{},
+        .aggregate = aggregateProbes(&probes),
+    };
+
+    const json = try renderReportJsonAlloc(std.testing.allocator, report);
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, json, 1, "\"target_id\": \"quote\\\"slash\\\\\""));
 }
