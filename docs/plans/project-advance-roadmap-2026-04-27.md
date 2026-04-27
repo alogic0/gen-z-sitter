@@ -150,13 +150,13 @@ Gate:
 
 Use the enhanced `parser_boundary_probe.json` to classify the real snapshots.
 
-- [ ] JavaScript: classify scanner tokens and decide whether a minimal scanner
+- [x] JavaScript: classify scanner tokens and decide whether a minimal scanner
   runtime proof can be built before full promotion.
-- [ ] Python: classify indentation scanner states and test a shallow sample plus
+- [x] Python: classify indentation scanner states and test a shallow sample plus
   one layout-sensitive sample.
-- [ ] TypeScript: classify scanner tokens and run a bounded coarse proof.
-- [ ] Rust: classify scanner tokens and run a bounded coarse proof.
-- [ ] Write target-specific notes in the plan or compatibility artifact before
+- [x] TypeScript: classify scanner tokens and run a bounded coarse proof.
+- [x] Rust: classify scanner tokens and run a bounded coarse proof.
+- [x] Write target-specific notes in the plan or compatibility artifact before
   changing `parser_boundary_check_mode`.
 
 Gate:

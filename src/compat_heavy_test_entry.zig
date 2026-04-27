@@ -6,6 +6,7 @@ test {
     _ = @import("compat/result.zig");
     _ = @import("compat/compile_smoke.zig");
     _ = @import("compat/bounded_harness.zig");
+    _ = @import("compat/deferred_real_grammar_classification.zig");
     _ = @import("compat/parser_boundary_probe.zig");
     _ = @import("compat/shortlist_json.zig");
 }

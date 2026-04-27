@@ -80,6 +80,12 @@ const artifact_entries = [_]ArtifactEntry{
         .description = "inventory of real external scanner proof surfaces",
     },
     .{
+        .path = "compat_targets/deferred_real_grammar_classification.json",
+        .refresh_kind = .routine_refresh,
+        .generator = "update_compat_artifacts.zig",
+        .description = "classification notes for deferred JavaScript, Python, TypeScript, and Rust parser-wave targets",
+    },
+    .{
         .path = "compat_targets/artifact_manifest.json",
         .refresh_kind = .routine_refresh,
         .generator = "update_compat_artifacts.zig",
