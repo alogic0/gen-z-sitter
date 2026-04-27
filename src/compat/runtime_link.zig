@@ -264,6 +264,35 @@ pub fn linkAndRunBracketLangParser(allocator: std.mem.Allocator) RuntimeLinkErro
     });
 }
 
+pub fn linkAndRunTreeSitterJsonParserAcceptedSample(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitTreeSitterJsonParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .input = "",
+        .expected_root_type = "document",
+        .expected_has_error = false,
+    });
+}
+
+pub fn linkAndRunTreeSitterJsonParserInvalidSample(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitTreeSitterJsonParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .input = "x",
+        .expected_has_error = true,
+    });
+}
+
 pub fn linkAndRunBashParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
     try ensureFileAvailableOrSkip(bash_scanner_path);
@@ -1601,6 +1630,18 @@ fn emitForkedStatefulExternalScannerGlrParserC(allocator: std.mem.Allocator) Run
     });
 }
 
+fn emitTreeSitterJsonParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    var serialized = try parse_table_pipeline.serializeRuntimeTableFromGrammarPath(
+        allocator,
+        "compat_targets/tree_sitter_json/grammar.json",
+        .strict,
+    );
+    serialized = try offsetRuntimeStartStateAlloc(allocator, serialized);
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+    });
+}
+
 const GeneratedParserRun = struct {
     parser_c: []const u8,
     input: []const u8,
@@ -1612,6 +1653,7 @@ const GeneratedParserRun = struct {
     expected_root_type: ?[]const u8 = null,
     expected_child_types: []const []const u8 = &.{},
     expected_tree_string: ?[]const u8 = null,
+    expected_has_error: ?bool = null,
     direct_generated_parse: bool = false,
     direct_generated_result: bool = false,
     expected_direct_parse_success: bool = true,
@@ -1990,6 +2032,8 @@ fn driverSourceAlloc(
         generated.expected_tree_string,
     );
     defer allocator.free(tree_check);
+    const error_check = try treeErrorAssertionSourceAlloc(allocator, generated.expected_has_error);
+    defer allocator.free(error_check);
 
     return try std.fmt.allocPrint(allocator,
         \\#include <stdbool.h>
@@ -2025,13 +2069,15 @@ fn driverSourceAlloc(
         \\  if (!tree) return 12;
         \\  TSNode root = ts_tree_root_node(tree);
         \\  bool is_error = ts_node_is_error(root);
+        \\  bool has_error = ts_node_has_error(root);
         \\  const char *type = ts_node_type(root);
         \\  printf("%s\n", type ? type : "<null>");
+        \\{s}
         \\{s}
         \\  ts_tree_delete(tree);
         \\  ts_parser_delete(parser);
         \\{s}
-        \\  return is_error ? 13 : 0;
+        \\  return is_error && {s} ? 13 : 0;
         \\}}
         \\
     , .{
@@ -2041,7 +2087,9 @@ fn driverSourceAlloc(
         generated.language_function_name,
         metadata_check,
         tree_check,
+        error_check,
         generated.after_parser_delete_check,
+        if (generated.expected_has_error == true) "false" else "true",
     });
 }
 
@@ -2091,6 +2139,23 @@ fn treeAssertionSourceAlloc(
     }
 
     return try out.toOwnedSlice();
+}
+
+fn treeErrorAssertionSourceAlloc(
+    allocator: std.mem.Allocator,
+    expected_has_error: ?bool,
+) RuntimeLinkError![]const u8 {
+    const expected = expected_has_error orelse return try allocator.dupe(u8, "");
+    if (expected) {
+        return try allocator.dupe(u8,
+            \\  if (!has_error) return 33;
+            \\
+        );
+    }
+    return try allocator.dupe(u8,
+        \\  if (is_error || has_error) return 34;
+        \\
+    );
 }
 
 fn directGeneratedParseDriverSourceAlloc(
@@ -2259,6 +2324,14 @@ test "linkAndRunForkedStatefulExternalScannerGlrParser isolates forked scanner s
 
 test "linkAndRunBracketLangParser links generated bracket-lang parser with tree-sitter runtime" {
     try linkAndRunBracketLangParser(std.testing.allocator);
+}
+
+test "linkAndRunTreeSitterJsonParserAcceptedSample links real JSON parser on accepted input" {
+    try linkAndRunTreeSitterJsonParserAcceptedSample(std.testing.allocator);
+}
+
+test "linkAndRunTreeSitterJsonParserInvalidSample links real JSON parser on invalid input" {
+    try linkAndRunTreeSitterJsonParserInvalidSample(std.testing.allocator);
 }
 
 test "linkAndRunBashParserWithRealExternalScanner links generated Bash parser with upstream scanner" {

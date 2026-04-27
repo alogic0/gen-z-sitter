@@ -125,6 +125,8 @@ pub fn build(b: *std.Build) void {
         "linkAndRunStatefulExternalScannerParser",
         "linkAndRunForkedStatefulExternalScannerGlrParser",
         "linkAndRunBracketLangParser",
+        "linkAndRunTreeSitterJsonParserAcceptedSample",
+        "linkAndRunTreeSitterJsonParserInvalidSample",
         "linkAndRunBashParserWithRealExternalScanner",
         "linkAndRunBashGeneratedGlrParserWithRealExternalScanner",
         "linkAndRunHaskellParserWithRealExternalScanner",

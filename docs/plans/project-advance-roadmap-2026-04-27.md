@@ -190,6 +190,19 @@ For each candidate:
 - [ ] Runtime-link proof on one invalid or partial sample after error recovery.
 - [ ] Artifact refresh.
 
+First batch status:
+
+- [x] `tree_sitter_json_json` remains the scanner-free real JSON baseline with
+  load, prepare, full parser emission, compatibility validation, compile-smoke,
+  and bounded runtime-link proofs.
+- [x] Added accepted runtime-link proof for the real JSON snapshot on the empty
+  document accepted by its `document := repeat(_value)` grammar.
+- [x] Added invalid runtime-link proof for the real JSON snapshot on `x`,
+  asserting that the linked parser reports an error tree.
+- [ ] Broaden JSON runtime-link accepted samples beyond the empty document after
+  the current emitted lexer tokenization gaps for strings and number endings are
+  fixed.
+
 Gate:
 
 - `shortlist_report.json`, `parser_boundary_probe.json`, and
