@@ -142,6 +142,7 @@ pub fn writeParserCWithOptions(
     try compat.writeContractTypesAndConstants(writer, compatibility);
     if (options.glr_loop) {
         try writer.writeAll("#define GEN_Z_SITTER_ENABLE_GLR_LOOP 1\n\n");
+        try writeGlrVersionStorage(writer);
     }
     if (has_unresolved) try writeUnresolvedEntryType(writer);
     try writer.print("#define STATE_COUNT {d}\n", .{compacted.states.len});
@@ -462,6 +463,31 @@ fn writeRuntimeAction(
         .accept => try writer.writeAll("{ .action = { .type = TSParseActionTypeAccept } }"),
         .recover => try writer.writeAll("{ .action = { .type = TSParseActionTypeRecover } }"),
     }
+}
+
+fn writeGlrVersionStorage(writer: anytype) !void {
+    try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  TSStateId state;\n");
+    try writer.writeAll("  uint32_t byte_offset;\n");
+    try writer.writeAll("  int32_t dynamic_precedence;\n");
+    try writer.writeAll("  bool active;\n");
+    try writer.writeAll("} TSGeneratedParseVersion;\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  TSGeneratedParseVersion versions[GEN_Z_SITTER_MAX_PARSE_VERSIONS];\n");
+    try writer.writeAll("  uint16_t count;\n");
+    try writer.writeAll("} TSGeneratedParseVersionSet;\n\n");
+    try writer.writeAll("static void ts_generated_parse_versions_init(TSGeneratedParseVersionSet *set, TSStateId start_state) {\n");
+    try writer.writeAll("  set->count = 1;\n");
+    try writer.writeAll("  for (uint16_t i = 0; i < GEN_Z_SITTER_MAX_PARSE_VERSIONS; i++) {\n");
+    try writer.writeAll("    set->versions[i].state = 0;\n");
+    try writer.writeAll("    set->versions[i].byte_offset = 0;\n");
+    try writer.writeAll("    set->versions[i].dynamic_precedence = 0;\n");
+    try writer.writeAll("    set->versions[i].active = false;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  set->versions[0].state = start_state;\n");
+    try writer.writeAll("  set->versions[0].active = true;\n");
+    try writer.writeAll("}\n\n");
 }
 
 fn writeUnresolvedEntryType(writer: anytype) !void {
@@ -1701,6 +1727,32 @@ test "emitParserCAlloc emits opt-in GLR loop feature macro" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_ENABLE_GLR_LOOP 1\n\n"));
 }
 
+test "emitParserCAlloc emits opt-in GLR parser version storage" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSStateId state;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseVersion versions[GEN_Z_SITTER_MAX_PARSE_VERSIONS];\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_parse_versions_init(TSGeneratedParseVersionSet *set, TSStateId start_state) {\n"));
+}
+
 test "emitParserCAlloc emits serialized lex modes" {
     const allocator = std.testing.allocator;
     const serialized = serialize.SerializedTable{
@@ -2091,6 +2143,32 @@ test "emitParserCAlloc emits self-contained C that compiles" {
     };
 
     const emitted = try emitParserCAlloc(allocator, serialized);
+    defer allocator.free(emitted);
+
+    var result = try compile_smoke.compileParserC(allocator, emitted);
+    defer result.deinit(allocator);
+
+    try std.testing.expect(result == .success);
+}
+
+test "emitParserCAlloc emits opt-in GLR storage C that compiles" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
     defer allocator.free(emitted);
 
     var result = try compile_smoke.compileParserC(allocator, emitted);

@@ -139,6 +139,8 @@ does not yet appear in generated C.
 
 - [x] Add an internal emitter option and generated C feature macro for the
   emitted parser GLR loop without changing default generated parser output.
+- [x] Add generated parser version storage with a fixed version cap behind the
+  opt-in GLR macro.
 
 ---
 
