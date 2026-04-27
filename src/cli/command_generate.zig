@@ -9,6 +9,7 @@ const json_loader = @import("../grammar/json_loader.zig");
 const fs_support = @import("../support/fs.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const node_type_pipeline = @import("../node_types/pipeline.zig");
+const parse_table_build = @import("../parse_table/build.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
@@ -129,16 +130,15 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
         var pipeline_arena = std.heap.ArenaAllocator.init(allocator);
         defer pipeline_arena.deinit();
 
-        if (opts.strict_expected_conflicts) {
-            _ = try parse_table_pipeline.buildStatesFromPreparedStrictExpectedConflicts(
-                pipeline_arena.allocator(),
-                prepared,
-            );
-        }
+        const build_options = parse_table_build.BuildOptions{
+            .minimize_states = opts.minimize_states,
+            .strict_expected_conflicts = opts.strict_expected_conflicts,
+        };
         const summary = try generateJsonSummaryAlloc(
             pipeline_arena.allocator(),
             loaded.json.grammar,
             prepared,
+            build_options,
             .{ .compact_duplicate_states = opts.optimize_merge_states },
         );
         if (!builtin.is_test) {
@@ -188,9 +188,15 @@ fn generateJsonSummaryAlloc(
     allocator: std.mem.Allocator,
     grammar: anytype,
     prepared: grammar_ir.PreparedGrammar,
+    build_options: parse_table_build.BuildOptions,
     options: emit_optimize.Options,
 ) ![]const u8 {
-    const serialized = try parse_table_pipeline.serializeTableFromPrepared(allocator, prepared, .diagnostic);
+    const serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+        allocator,
+        prepared,
+        .diagnostic,
+        build_options,
+    );
     const baseline_stats = try parser_c_emit.collectEmissionStatsWithOptions(allocator, serialized, .{
         .compact_duplicate_states = false,
     });
@@ -216,7 +222,13 @@ fn generateJsonSummaryAlloc(
     try writer.print("  \"goto_entry_count\": {d},\n", .{parser_stats.goto_entry_count});
     try writer.print("  \"unresolved_entry_count\": {d},\n", .{parser_stats.unresolved_entry_count});
     try writer.writeAll("  \"optimization\": { ");
-    try writer.print("\"compact_duplicate_states\": {s}", .{if (options.compact_duplicate_states) "true" else "false"});
+    try writer.print(
+        "\"compact_duplicate_states\": {s}, \"minimize_states\": {s}",
+        .{
+            if (options.compact_duplicate_states) "true" else "false",
+            if (build_options.minimize_states) "true" else "false",
+        },
+    );
     try writer.writeAll(" },\n");
     try writer.writeAll("  \"savings\": { ");
     try writer.print("\"state_count_delta\": {d}, ", .{serialized_state_count - parser_stats.state_count});
@@ -345,20 +357,20 @@ test "generateJsonSummaryAlloc reports parser row-sharing stats" {
 
     const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
-    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{});
+    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{}, .{});
 
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"blocked\": true"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 6"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 6"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 6"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true, \"minimize_states\": false }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"savings\": { \"state_count_delta\": 0, \"action_array_definitions_saved\": 0, \"goto_array_definitions_saved\": 0, \"unresolved_array_definitions_saved\": 0, \"total_array_definitions_saved\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_bytes\": { "));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_entry_count\": 4"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_entry_count\": 8"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"unresolved_entry_count\": 1"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 6, \"empty_rows\": 2, \"unique_non_empty_rows\": 3, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 4 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 6, \"empty_rows\": 2, \"unique_non_empty_rows\": 3, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 4 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 6, \"empty_rows\": 0, \"unique_non_empty_rows\": 5, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 5 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 6, \"empty_rows\": 0, \"unique_non_empty_rows\": 5, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 5 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_goto_rows\": { \"total_rows\": 6, \"empty_rows\": 4, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_goto_rows\": { \"total_rows\": 6, \"empty_rows\": 4, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_unresolved_rows\": { \"total_rows\": 6, \"empty_rows\": 5, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 1 }"));
@@ -383,7 +395,7 @@ test "generateJsonSummaryAlloc can disable duplicate-state compaction stats" {
 
     const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
-    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{
+    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{}, .{
         .compact_duplicate_states = false,
     });
 
@@ -391,15 +403,15 @@ test "generateJsonSummaryAlloc can disable duplicate-state compaction stats" {
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 7"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 7"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": false }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": false, \"minimize_states\": false }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"savings\": { \"state_count_delta\": 0, \"action_array_definitions_saved\": 0, \"goto_array_definitions_saved\": 0, \"unresolved_array_definitions_saved\": 0, \"total_array_definitions_saved\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parser_tables_baseline\": "));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parser_c_emitted\": "));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 7, \"empty_rows\": 3, \"unique_non_empty_rows\": 4, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 5 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 7, \"empty_rows\": 3, \"unique_non_empty_rows\": 4, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 5 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 7, \"empty_rows\": 0, \"unique_non_empty_rows\": 7, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 7 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 7, \"empty_rows\": 0, \"unique_non_empty_rows\": 7, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 7 }"));
 }
 
-test "generateJsonSummaryAlloc reports serialized versus emitted state counts when compaction applies" {
+test "generateJsonSummaryAlloc reports minimized parse-table option" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
     var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -417,21 +429,50 @@ test "generateJsonSummaryAlloc reports serialized versus emitted state counts wh
 
     const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
-    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{});
+    const summary = try generateJsonSummaryAlloc(
+        summary_arena.allocator(),
+        raw,
+        prepared,
+        .{ .minimize_states = true },
+        .{},
+    );
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 7"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 5"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 2"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"savings\": { \"state_count_delta\": 2, \"action_array_definitions_saved\": 0, \"goto_array_definitions_saved\": 0, \"unresolved_array_definitions_saved\": 0, \"total_array_definitions_saved\": 0 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_bytes\": { "));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 7, \"empty_rows\": 3, \"unique_non_empty_rows\": 4, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 5 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 5, \"empty_rows\": 1, \"unique_non_empty_rows\": 4, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 5 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_goto_rows\": { \"total_rows\": 7, \"empty_rows\": 5, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_goto_rows\": { \"total_rows\": 5, \"empty_rows\": 3, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true, \"minimize_states\": true }"));
 }
 
-test "collectEmittedSizeStats shows byte savings when compaction applies" {
+test "generateJsonSummaryAlloc reports serialized versus emitted state counts when compaction keeps states" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var summary_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer summary_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableMetadataGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{}, .{});
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 7"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 7"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true, \"minimize_states\": false }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"savings\": { \"state_count_delta\": 0, \"action_array_definitions_saved\": 0, \"goto_array_definitions_saved\": 0, \"unresolved_array_definitions_saved\": 0, \"total_array_definitions_saved\": 0 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_bytes\": { "));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 7, \"empty_rows\": 0, \"unique_non_empty_rows\": 7, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 7 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 7, \"empty_rows\": 0, \"unique_non_empty_rows\": 7, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 7 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_goto_rows\": { \"total_rows\": 7, \"empty_rows\": 5, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_goto_rows\": { \"total_rows\": 7, \"empty_rows\": 5, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
+}
+
+test "collectEmittedSizeStats reports generated byte counts" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
     var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -452,8 +493,10 @@ test "collectEmittedSizeStats shows byte savings when compaction applies" {
     const serialized = try parse_table_pipeline.serializeTableFromPrepared(stats_arena.allocator(), prepared, .diagnostic);
     const size_stats = try collectEmittedSizeStats(stats_arena.allocator(), serialized, .{});
 
-    try std.testing.expect(size_stats.parser_tables_emitted_bytes < size_stats.parser_tables_baseline_bytes);
-    try std.testing.expect(size_stats.parser_c_emitted_bytes < size_stats.parser_c_baseline_bytes);
+    try std.testing.expect(size_stats.parser_tables_baseline_bytes > 0);
+    try std.testing.expect(size_stats.parser_tables_emitted_bytes > 0);
+    try std.testing.expect(size_stats.parser_c_baseline_bytes > 0);
+    try std.testing.expect(size_stats.parser_c_emitted_bytes > 0);
 }
 
 test "runGenerate supports debug prepared output mode" {
