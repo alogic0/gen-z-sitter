@@ -7,6 +7,7 @@ const syntax_grammar = @import("../ir/syntax_grammar.zig");
 
 pub const Options = struct {
     compact_duplicate_states: bool = true,
+    glr_loop: bool = false,
 };
 
 pub fn prepareSerializedTableAlloc(

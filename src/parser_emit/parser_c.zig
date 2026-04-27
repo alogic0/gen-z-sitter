@@ -140,6 +140,9 @@ pub fn writeParserCWithOptions(
     if (has_unresolved) try writer.writeAll("#include <string.h>\n\n");
     try compat.writeCompilerOptimizationPragmas(writer, runtime_lex.table.states.len);
     try compat.writeContractTypesAndConstants(writer, compatibility);
+    if (options.glr_loop) {
+        try writer.writeAll("#define GEN_Z_SITTER_ENABLE_GLR_LOOP 1\n\n");
+    }
     if (has_unresolved) try writeUnresolvedEntryType(writer);
     try writer.print("#define STATE_COUNT {d}\n", .{compacted.states.len});
     const large_state_count_value = serializedLargeStateCount(compacted);
@@ -1653,6 +1656,49 @@ test "emitParserCAlloc emits runtime alias sequences" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 2, 0, 3 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 1,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [3] = 3,\n"));
+}
+
+test "emitParserCAlloc keeps emitted GLR loop feature disabled by default" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "GEN_Z_SITTER_ENABLE_GLR_LOOP") == null);
+}
+
+test "emitParserCAlloc emits opt-in GLR loop feature macro" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_ENABLE_GLR_LOOP 1\n\n"));
 }
 
 test "emitParserCAlloc emits serialized lex modes" {

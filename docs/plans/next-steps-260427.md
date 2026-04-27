@@ -135,6 +135,11 @@ does not yet appear in generated C.
 - Existing generated parser C still compiles with the default path.
 - Opt-in GLR loop compiles on small staged fixtures before broad compat runs.
 
+**Completed bounded steps.**
+
+- [x] Add an internal emitter option and generated C feature macro for the
+  emitted parser GLR loop without changing default generated parser output.
+
 ---
 
 ## Priority 4 — Broader Compat Coverage
