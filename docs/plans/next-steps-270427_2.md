@@ -36,22 +36,20 @@ PoC, and M46 GLR helper scaffolding have landed.
   - `ts_generated_condense_parse_versions` (line 694)
   - `ts_generated_step_parse_versions` (line 725)
 
-### What remains in the emitted GLR loop
+### Emitted GLR loop status
 
-Two functional gaps prevent the GLR loop from producing correct parses:
+The two original functional gaps are now implemented. The remaining work is
+focused validation against staged GLR fixtures and deferred real grammars.
 
-**Gap A — Reduce does not pop the stack.**
-`ts_generated_apply_parse_action` (line 556) accumulates `dynamic_precedence`
-and fills the step struct for a reduce, but does not pop `child_count` states
-from `version->stack` and does not push the goto state.
-`ts_generated_step_parse_versions` (line 725) receives `TSGeneratedParseStepReduce`
-and breaks — no stack mutation happens.
+**Closed gap A — Reduce does not pop the stack.**
+`ts_generated_apply_parse_action` now accumulates `dynamic_precedence`, pops
+`child_count` states from `version->stack`, looks up the goto state, and pushes
+that state before returning `TSGeneratedParseStepReduce`.
 
-**Gap B — No outer lex loop.**
-`byte_offset` exists on each version (line 483) but nothing updates it.
-There is no function that: (1) lexes at each version's current offset, (2) drives
-the step loop per lookahead, (3) handles the reduce chain before the next shift,
-and (4) returns an accepted/rejected outcome with a consumed-byte count.
+**Closed gap B — No outer lex loop.**
+`ts_generated_parse` now lexes from active-version byte offsets, drives the GLR
+step loop, advances only versions that shifted, handles divergent active-version
+offsets in bounded groups, and reports the consumed byte count on accept.
 
 ---
 
@@ -176,7 +174,9 @@ Status:
   single shared lookahead position.
 - [x] Track whether each active parse version shifted on the current lookahead
   and only advance byte offsets for shifted versions.
-- [ ] Extend the outer loop to handle divergent active-version byte offsets.
+- [x] Extend the outer loop to handle divergent active-version byte offsets by
+  selecting the earliest active version and stepping only versions at the same
+  byte offset and parse state.
 
 **Files.**
 `src/parser_emit/parser_c.zig` — extend `writeGlrActionDispatch` (1a),

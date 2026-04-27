@@ -799,11 +799,15 @@ fn writeGlrInputLexerHelpers(writer: anytype) !void {
 }
 
 fn writeGlrVersionStepLoop(writer: anytype, has_unresolved: bool) !void {
-    try writer.writeAll("static bool ts_generated_step_parse_versions(TSGeneratedParseVersionSet *set, TSSymbol lookahead_symbol) {\n");
+    try writer.writeAll("static bool ts_generated_step_parse_versions(TSGeneratedParseVersionSet *set, uint16_t lead_index, TSSymbol lookahead_symbol) {\n");
+    try writer.writeAll("  if (lead_index >= set->count || !set->versions[lead_index].active) return false;\n");
+    try writer.writeAll("  uint32_t target_byte_offset = set->versions[lead_index].byte_offset;\n");
+    try writer.writeAll("  TSStateId target_state = set->versions[lead_index].state;\n");
     try writer.writeAll("  uint16_t initial_count = set->count;\n");
     try writer.writeAll("  for (uint16_t version_index = 0; version_index < initial_count; version_index++) {\n");
     try writer.writeAll("    TSGeneratedParseVersion *version = &set->versions[version_index];\n");
     try writer.writeAll("    if (!version->active) continue;\n");
+    try writer.writeAll("    if (version->byte_offset != target_byte_offset || version->state != target_state) continue;\n");
     try writer.writeAll("    version->shifted = false;\n");
     if (has_unresolved) {
         try writer.writeAll("    if (ts_generated_fork_unresolved_actions(set, version_index, lookahead_symbol) != 0) continue;\n");
@@ -832,10 +836,12 @@ fn writeGlrMainParseFunction(writer: anytype) !void {
     try writer.writeAll("  ts_generated_parse_versions_init(&set, 0);\n");
     try writer.writeAll("  for (;;) {\n");
     try writer.writeAll("    TSGeneratedParseVersion *lead = NULL;\n");
+    try writer.writeAll("    uint16_t lead_index = 0;\n");
     try writer.writeAll("    for (uint16_t i = 0; i < set.count; i++) {\n");
-    try writer.writeAll("      if (set.versions[i].active) {\n");
+    try writer.writeAll("      if (!set.versions[i].active) continue;\n");
+    try writer.writeAll("      if (!lead || set.versions[i].byte_offset < lead->byte_offset) {\n");
     try writer.writeAll("        lead = &set.versions[i];\n");
-    try writer.writeAll("        break;\n");
+    try writer.writeAll("        lead_index = i;\n");
     try writer.writeAll("      }\n");
     try writer.writeAll("    }\n");
     try writer.writeAll("    if (!lead) return false;\n");
@@ -845,7 +851,7 @@ fn writeGlrMainParseFunction(writer: anytype) !void {
     try writer.writeAll("      if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) return false;\n");
     try writer.writeAll("      if (advance_bytes == 0) return false;\n");
     try writer.writeAll("    }\n");
-    try writer.writeAll("    bool accepted = ts_generated_step_parse_versions(&set, lookahead_symbol);\n");
+    try writer.writeAll("    bool accepted = ts_generated_step_parse_versions(&set, lead_index, lookahead_symbol);\n");
     try writer.writeAll("    if (accepted) {\n");
     try writer.writeAll("      if (out_consumed_bytes) *out_consumed_bytes = lead->byte_offset + advance_bytes;\n");
     try writer.writeAll("      return true;\n");
@@ -854,6 +860,7 @@ fn writeGlrMainParseFunction(writer: anytype) !void {
     try writer.writeAll("    for (uint16_t i = 0; i < set.count; i++) {\n");
     try writer.writeAll("      if (!set.versions[i].active) continue;\n");
     try writer.writeAll("      if (set.versions[i].shifted && advance_bytes > 0) set.versions[i].byte_offset += advance_bytes;\n");
+    try writer.writeAll("      set.versions[i].shifted = false;\n");
     try writer.writeAll("      any_active = true;\n");
     try writer.writeAll("    }\n");
     try writer.writeAll("    if (!any_active || advance_bytes == 0) return false;\n");
@@ -2195,7 +2202,9 @@ test "emitParserCAlloc emits opt-in GLR active-version step loop" {
     });
     defer allocator.free(emitted);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_step_parse_versions(TSGeneratedParseVersionSet *set, TSSymbol lookahead_symbol) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_step_parse_versions(TSGeneratedParseVersionSet *set, uint16_t lead_index, TSSymbol lookahead_symbol) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "uint32_t target_byte_offset = set->versions[lead_index].byte_offset;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (version->byte_offset != target_byte_offset || version->state != target_state) continue;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseStep step = ts_generated_drive_version(version, lookahead_symbol);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->shifted = false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->active = false;\n"));
@@ -2254,9 +2263,11 @@ test "emitParserCAlloc emits opt-in GLR raw input parse entry point" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_parse_versions_init(&set, 0);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!lead || set.versions[i].byte_offset < lead->byte_offset) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) return false;\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool accepted = ts_generated_step_parse_versions(&set, lookahead_symbol);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool accepted = ts_generated_step_parse_versions(&set, lead_index, lookahead_symbol);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (set.versions[i].shifted && advance_bytes > 0) set.versions[i].byte_offset += advance_bytes;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set.versions[i].shifted = false;\n"));
 }
 
 test "emitParserCAlloc emits serialized lex modes" {
