@@ -129,6 +129,12 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
         var pipeline_arena = std.heap.ArenaAllocator.init(allocator);
         defer pipeline_arena.deinit();
 
+        if (opts.strict_expected_conflicts) {
+            _ = try parse_table_pipeline.buildStatesFromPreparedStrictExpectedConflicts(
+                pipeline_arena.allocator(),
+                prepared,
+            );
+        }
         const summary = try generateJsonSummaryAlloc(
             pipeline_arena.allocator(),
             loaded.json.grammar,
@@ -484,6 +490,35 @@ test "runGenerate supports debug node types output mode" {
         .grammar_path = path,
         .debug_node_types = true,
     });
+}
+
+test "runGenerate json summary supports strict expected conflicts flag" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const contents =
+        \\{
+        \\  "name": "strict_expected_conflict_cli",
+        \\  "expected_conflicts": [["source_file", "expr"]],
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "expr" },
+        \\    "expr": { "type": "STRING", "value": "x" }
+        \\  }
+        \\}
+    ;
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expectError(error.UnusedExpectedConflict, runGenerate(std.testing.allocator, std.testing.io, .{
+        .grammar_path = path,
+        .json_summary = true,
+        .strict_expected_conflicts = true,
+    }));
 }
 
 test "runGenerate writes node-types.json when output directory is provided" {

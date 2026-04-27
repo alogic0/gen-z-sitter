@@ -208,6 +208,10 @@ pub fn buildStatesFromPreparedWithOptions(
     defer allocator.free(effective_build_options.non_terminal_extra_symbols);
     defer allocator.free(effective_build_options.reserved_word_context_names);
     const result = try build.buildStatesWithOptions(allocator, flattened, effective_build_options);
+    if (effective_build_options.strict_expected_conflicts) {
+        const report = try expectedConflictReportFromBuildResultAlloc(allocator, result);
+        try validateExpectedConflictReport(report);
+    }
     logProfileDone("build_states", stage_profile_timer);
     if (progress_log) {
         maybeLogPipelineDone("build_states", timer);
@@ -1365,6 +1369,80 @@ test "buildStatesFromPreparedStrictExpectedConflicts rejects unused expected con
         error.UnusedExpectedConflict,
         buildStatesFromPreparedStrictExpectedConflicts(pipeline_arena.allocator(), prepared),
     );
+}
+
+test "buildStatesFromPreparedWithOptions rejects unused expected conflicts when strict flag is set" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    const contents =
+        \\{
+        \\  "name": "strict_option_unused_expected_conflict",
+        \\  "expected_conflicts": [["source_file", "expr"]],
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "expr" },
+        \\    "expr": { "type": "STRING", "value": "x" }
+        \\  }
+        \\}
+    ;
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+
+    const default_result = try buildStatesFromPreparedWithOptions(
+        pipeline_arena.allocator(),
+        prepared,
+        .{},
+    );
+    try std.testing.expect(default_result.states.len > 0);
+
+    try std.testing.expectError(
+        error.UnusedExpectedConflict,
+        buildStatesFromPreparedWithOptions(
+            pipeline_arena.allocator(),
+            prepared,
+            .{ .strict_expected_conflicts = true },
+        ),
+    );
+}
+
+test "buildStatesFromPreparedWithOptions accepts strict flag without unused expected conflicts" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.parseTableMetadataGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const result = try buildStatesFromPreparedWithOptions(
+        pipeline_arena.allocator(),
+        prepared,
+        .{ .strict_expected_conflicts = true },
+    );
+
+    try std.testing.expect(result.states.len > 0);
 }
 
 test "validateExpectedConflictReport accepts report without unused conflicts" {

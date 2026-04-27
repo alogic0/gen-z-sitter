@@ -22,6 +22,7 @@ pub const GenerateOptions = struct {
     report_states_for_rule: ?[]const u8 = null,
     js_runtime: ?[]const u8 = null,
     optimize_merge_states: bool = true,
+    strict_expected_conflicts: bool = false,
 };
 
 pub const ParseError = error{
@@ -70,6 +71,8 @@ fn parseGenerateArgs(args: []const []const u8) ParseError!GenerateOptions {
             opts.debug_node_types = true;
         } else if (std.mem.eql(u8, arg, "--no-optimize-merge-states")) {
             opts.optimize_merge_states = false;
+        } else if (std.mem.eql(u8, arg, "--strict-expected-conflicts")) {
+            opts.strict_expected_conflicts = true;
         } else if (std.mem.eql(u8, arg, "--output")) {
             i += 1;
             if (i >= args.len) {
@@ -138,6 +141,7 @@ pub fn helpText() []const u8 {
     \\  --report-states-for-rule <rule>
     \\  --js-runtime <runtime>
     \\  --no-optimize-merge-states
+    \\  --strict-expected-conflicts
     \\
     ;
 }
@@ -164,6 +168,12 @@ test "parse generate command with debug node types flag" {
     const cli = try parseArgs(std.testing.allocator, &.{ "gen-z-sitter", "generate", "--debug-node-types", "grammar.json" });
     try std.testing.expect(cli.command == .generate);
     try std.testing.expect(cli.command.generate.debug_node_types);
+}
+
+test "parse generate command with strict expected conflicts flag" {
+    const cli = try parseArgs(std.testing.allocator, &.{ "gen-z-sitter", "generate", "--strict-expected-conflicts", "grammar.json" });
+    try std.testing.expect(cli.command == .generate);
+    try std.testing.expect(cli.command.generate.strict_expected_conflicts);
 }
 
 test "reject missing grammar path" {

@@ -1419,6 +1419,7 @@ pub const BuildOptions = struct {
     reserved_word_context_names: []const []const u8 = &.{},
     non_terminal_extra_symbols: []const syntax_ir.SymbolRef = &.{},
     minimize_states: bool = false,
+    strict_expected_conflicts: bool = false,
 };
 
 fn shouldUseCoarseTransition(options: BuildOptions, source_state_id: state.StateId, symbol: syntax_ir.SymbolRef) bool {
