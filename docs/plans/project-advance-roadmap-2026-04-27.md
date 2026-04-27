@@ -125,7 +125,7 @@ external scanner symbols, not unresolved parse-action signatures.
 - [x] Call `external_scanner_create`, `destroy`, `serialize`, `deserialize`,
   and `scan` from generated code where lex modes require external scanning.
 - [x] Preserve per-version scanner state across forks.
-- [ ] Reuse the Bash and Haskell scanner include-dir/link patterns for generated
+- [x] Reuse the Bash and Haskell scanner include-dir/link patterns for generated
   GLR runtime-link tests.
 
 Gate:
@@ -299,7 +299,7 @@ Gate:
 The project is release-ready only when these are true:
 
 - [ ] JSON and at least two additional real grammars pass full pipeline.
-- [ ] At least one real external-scanner grammar passes generated GLR
+- [x] At least one real external-scanner grammar passes generated GLR
   runtime-link proof.
 - [ ] Generated parser has either tree output or a clearly documented accepted
   temporary result API.

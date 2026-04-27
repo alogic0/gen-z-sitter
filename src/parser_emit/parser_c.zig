@@ -1086,10 +1086,6 @@ fn writeGlrMainParseFunction(writer: anytype) !void {
     try writer.writeAll("        if (out_result) *out_result = result;\n");
     try writer.writeAll("        return false;\n");
     try writer.writeAll("      }\n");
-    try writer.writeAll("      if (advance_bytes == 0) {\n");
-    try writer.writeAll("        if (out_result) *out_result = result;\n");
-    try writer.writeAll("        return false;\n");
-    try writer.writeAll("      }\n");
     try writer.writeAll("    }\n");
     try writer.writeAll("    bool accepted = ts_generated_step_parse_versions(&set, lead_index, lookahead_symbol, advance_bytes);\n");
     try writer.writeAll("    if (accepted) {\n");
@@ -1112,7 +1108,7 @@ fn writeGlrMainParseFunction(writer: anytype) !void {
     try writer.writeAll("      set.versions[i].shifted = false;\n");
     try writer.writeAll("      any_active = true;\n");
     try writer.writeAll("    }\n");
-    try writer.writeAll("    if (!any_active || advance_bytes == 0) {\n");
+    try writer.writeAll("    if (!any_active) {\n");
     try writer.writeAll("      if (out_result) *out_result = result;\n");
     try writer.writeAll("      return false;\n");
     try writer.writeAll("    }\n");

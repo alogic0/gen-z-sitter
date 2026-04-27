@@ -116,7 +116,7 @@ pub fn build(b: *std.Build) void {
         "linkAndRunNoExternalTinyGlrParser",
         "linkAndRunNoExternalTinyGlrResultParser",
         "linkAndRunUnresolvedShiftReduceGlrParser",
-        "linkAndRejectMalformedTinyGlrParser",
+        "linkAndRecoverMalformedTinyGlrParser",
         "linkAndRunKeywordReservedParser",
         "linkAndRunExternalScannerParser",
         "linkAndRunExternalScannerGlrParser",
@@ -124,7 +124,9 @@ pub fn build(b: *std.Build) void {
         "linkAndRunStatefulExternalScannerParser",
         "linkAndRunBracketLangParser",
         "linkAndRunBashParserWithRealExternalScanner",
+        "linkAndRunBashGeneratedGlrParserWithRealExternalScanner",
         "linkAndRunHaskellParserWithRealExternalScanner",
+        "linkAndRunHaskellGeneratedGlrParserWithRealExternalScanner",
     };
     const no_external_link_tests = b.addTest(.{
         .root_module = createTestModule(b, "src/runtime_link_test_entry.zig", target, optimize),

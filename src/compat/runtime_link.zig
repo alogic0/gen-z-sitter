@@ -87,7 +87,7 @@ pub fn linkAndRunUnresolvedShiftReduceGlrParser(allocator: std.mem.Allocator) Ru
     });
 }
 
-pub fn linkAndRejectMalformedTinyGlrParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
+pub fn linkAndRecoverMalformedTinyGlrParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
@@ -98,7 +98,7 @@ pub fn linkAndRejectMalformedTinyGlrParser(allocator: std.mem.Allocator) Runtime
         .parser_c = parser_c,
         .input = "xx",
         .direct_generated_parse = true,
-        .expected_direct_parse_success = false,
+        .expected_consumed_bytes = 1,
     });
 }
 
@@ -234,6 +234,30 @@ pub fn linkAndRunBashParserWithRealExternalScanner(allocator: std.mem.Allocator)
     });
 }
 
+pub fn linkAndRunBashGeneratedGlrParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(bash_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitBashBareDollarGlrParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        bash_scanner_path,
+        arena.allocator(),
+        .limited(512 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{bash_scanner_include_dir},
+        .input = "$",
+        .direct_generated_parse = true,
+        .expected_consumed_bytes = 1,
+    });
+}
+
 pub fn linkAndRunHaskellParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
     try ensureFileAvailableOrSkip(haskell_scanner_path);
@@ -255,6 +279,31 @@ pub fn linkAndRunHaskellParserWithRealExternalScanner(allocator: std.mem.Allocat
         .extra_compile_flags = &.{"-Wno-implicit-function-declaration"},
         .input = "+",
         .expected_root_type = "module",
+    });
+}
+
+pub fn linkAndRunHaskellGeneratedGlrParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(haskell_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitHaskellVarsymGlrParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        haskell_scanner_path,
+        arena.allocator(),
+        .limited(1024 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{haskell_scanner_include_dir},
+        .extra_compile_flags = &.{"-Wno-implicit-function-declaration"},
+        .input = "+",
+        .direct_generated_parse = true,
+        .expected_consumed_bytes = 1,
     });
 }
 
@@ -766,6 +815,23 @@ fn emitExternalScannerParserCWithOptions(
 }
 
 fn emitBashBareDollarParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitBashBareDollarParserCWithOptions(allocator, .{
+        .offset_start_state = true,
+        .glr_loop = false,
+    });
+}
+
+fn emitBashBareDollarGlrParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitBashBareDollarParserCWithOptions(allocator, .{
+        .offset_start_state = false,
+        .glr_loop = true,
+    });
+}
+
+fn emitBashBareDollarParserCWithOptions(
+    allocator: std.mem.Allocator,
+    options: TinyParserOptions,
+) RuntimeLinkError![]const u8 {
     const external_names = [_][]const u8{
         "heredoc_start",
         "simple_heredoc_body",
@@ -834,25 +900,45 @@ fn emitBashBareDollarParserC(allocator: std.mem.Allocator) RuntimeLinkError![]co
     const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
     });
-    const states = try allocator.dupe(serialize.SerializedState, &.{
+    const runtime_states = try allocator.dupe(serialize.SerializedState, &.{
         .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
         .{ .id = 1, .lex_state_id = 0, .actions = start_actions, .gotos = start_gotos, .unresolved = &.{} },
         .{ .id = 2, .lex_state_id = 0, .actions = reduce_actions, .gotos = &.{}, .unresolved = &.{} },
         .{ .id = 3, .lex_state_id = 0, .actions = accept_actions, .gotos = &.{}, .unresolved = &.{} },
     });
+    const glr_start_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = bash_bare_dollar_external_id }, .action = .{ .shift = 1 } },
+    });
+    const glr_start_gotos = try allocator.dupe(serialize.SerializedGotoEntry, &.{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 2 },
+    });
+    const glr_states = try allocator.dupe(serialize.SerializedState, &.{
+        .{ .id = 0, .lex_state_id = 0, .actions = glr_start_actions, .gotos = glr_start_gotos, .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = reduce_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = accept_actions, .gotos = &.{}, .unresolved = &.{} },
+    });
+    const states = if (options.offset_start_state) runtime_states else glr_states;
     const lex_states = try allocator.dupe(lexer_serialize.SerializedLexState, &.{
         .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
     });
     const lex_tables = try allocator.dupe(lexer_serialize.SerializedLexTable, &.{
         .{ .start_state_id = 0, .states = lex_states },
     });
-    const lex_modes = try allocator.dupe(lexer_serialize.SerializedLexMode, &.{
+    const runtime_lex_modes = try allocator.dupe(lexer_serialize.SerializedLexMode, &.{
         .{ .lex_state = 0, .external_lex_state = 0 },
         .{ .lex_state = 0, .external_lex_state = 1 },
         .{ .lex_state = 0, .external_lex_state = 0 },
         .{ .lex_state = 0, .external_lex_state = 0 },
     });
-    const primary_state_ids = try allocator.dupe(u32, &.{ 0, 1, 2, 3 });
+    const glr_lex_modes = try allocator.dupe(lexer_serialize.SerializedLexMode, &.{
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+    });
+    const lex_modes = if (options.offset_start_state) runtime_lex_modes else glr_lex_modes;
+    const runtime_primary_state_ids = try allocator.dupe(u32, &.{ 0, 1, 2, 3 });
+    const glr_primary_state_ids = try allocator.dupe(u32, &.{ 0, 1, 2 });
+    const primary_state_ids = if (options.offset_start_state) runtime_primary_state_ids else glr_primary_state_ids;
 
     const external_symbols = try allocator.alloc(syntax_grammar.SymbolRef, external_names.len);
     for (external_symbols, 0..) |*symbol, index| {
@@ -886,10 +972,28 @@ fn emitBashBareDollarParserC(allocator: std.mem.Allocator) RuntimeLinkError![]co
 
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
         .compact_duplicate_states = false,
+        .glr_loop = options.glr_loop,
     });
 }
 
 fn emitHaskellVarsymParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitHaskellVarsymParserCWithOptions(allocator, .{
+        .offset_start_state = true,
+        .glr_loop = false,
+    });
+}
+
+fn emitHaskellVarsymGlrParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitHaskellVarsymParserCWithOptions(allocator, .{
+        .offset_start_state = false,
+        .glr_loop = true,
+    });
+}
+
+fn emitHaskellVarsymParserCWithOptions(
+    allocator: std.mem.Allocator,
+    options: TinyParserOptions,
+) RuntimeLinkError![]const u8 {
     const external_names = [_][]const u8{
         "fail",
         "semicolon",
@@ -984,7 +1088,7 @@ fn emitHaskellVarsymParserC(allocator: std.mem.Allocator) RuntimeLinkError![]con
     const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
     });
-    const states = try allocator.dupe(serialize.SerializedState, &.{
+    const runtime_states = try allocator.dupe(serialize.SerializedState, &.{
         .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
         .{ .id = 1, .lex_state_id = 0, .actions = start_actions, .gotos = start_gotos, .unresolved = &.{} },
         .{ .id = 2, .lex_state_id = 0, .actions = after_update_actions, .gotos = &.{}, .unresolved = &.{} },
@@ -993,13 +1097,33 @@ fn emitHaskellVarsymParserC(allocator: std.mem.Allocator) RuntimeLinkError![]con
         .{ .id = 5, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
         .{ .id = 6, .lex_state_id = 0, .actions = accept_actions, .gotos = &.{}, .unresolved = &.{} },
     });
+    const glr_start_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = haskell_update_external_id }, .action = .{ .shift = 1 } },
+    });
+    const glr_after_update_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = haskell_start_external_id }, .action = .{ .shift = 2 } },
+    });
+    const glr_after_start_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = haskell_varsym_external_id }, .action = .{ .shift = 3 } },
+    });
+    const glr_start_gotos = try allocator.dupe(serialize.SerializedGotoEntry, &.{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 4 },
+    });
+    const glr_states = try allocator.dupe(serialize.SerializedState, &.{
+        .{ .id = 0, .lex_state_id = 0, .actions = glr_start_actions, .gotos = glr_start_gotos, .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = glr_after_update_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = glr_after_start_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 3, .lex_state_id = 0, .actions = reduce_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 4, .lex_state_id = 0, .actions = accept_actions, .gotos = &.{}, .unresolved = &.{} },
+    });
+    const states = if (options.offset_start_state) runtime_states else glr_states;
     const lex_states = try allocator.dupe(lexer_serialize.SerializedLexState, &.{
         .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
     });
     const lex_tables = try allocator.dupe(lexer_serialize.SerializedLexTable, &.{
         .{ .start_state_id = 0, .states = lex_states },
     });
-    const lex_modes = try allocator.dupe(lexer_serialize.SerializedLexMode, &.{
+    const runtime_lex_modes = try allocator.dupe(lexer_serialize.SerializedLexMode, &.{
         .{ .lex_state = 0, .external_lex_state = 0 },
         .{ .lex_state = 0, .external_lex_state = 1 },
         .{ .lex_state = 0, .external_lex_state = 2 },
@@ -1008,7 +1132,17 @@ fn emitHaskellVarsymParserC(allocator: std.mem.Allocator) RuntimeLinkError![]con
         .{ .lex_state = 0, .external_lex_state = 0 },
         .{ .lex_state = 0, .external_lex_state = 0 },
     });
-    const primary_state_ids = try allocator.dupe(u32, &.{ 0, 1, 2, 3, 4, 5, 6 });
+    const glr_lex_modes = try allocator.dupe(lexer_serialize.SerializedLexMode, &.{
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 2 },
+        .{ .lex_state = 0, .external_lex_state = 3 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+    });
+    const lex_modes = if (options.offset_start_state) runtime_lex_modes else glr_lex_modes;
+    const runtime_primary_state_ids = try allocator.dupe(u32, &.{ 0, 1, 2, 3, 4, 5, 6 });
+    const glr_primary_state_ids = try allocator.dupe(u32, &.{ 0, 1, 2, 3, 4 });
+    const primary_state_ids = if (options.offset_start_state) runtime_primary_state_ids else glr_primary_state_ids;
 
     const external_symbols = try allocator.alloc(syntax_grammar.SymbolRef, external_names.len);
     for (external_symbols, 0..) |*symbol, index| {
@@ -1050,6 +1184,7 @@ fn emitHaskellVarsymParserC(allocator: std.mem.Allocator) RuntimeLinkError![]con
 
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
         .compact_duplicate_states = false,
+        .glr_loop = options.glr_loop,
     });
 }
 
@@ -1783,8 +1918,8 @@ test "linkAndRunUnresolvedShiftReduceGlrParser accepts intended unresolved branc
     try linkAndRunUnresolvedShiftReduceGlrParser(std.testing.allocator);
 }
 
-test "linkAndRejectMalformedTinyGlrParser rejects malformed direct GLR input" {
-    try linkAndRejectMalformedTinyGlrParser(std.testing.allocator);
+test "linkAndRecoverMalformedTinyGlrParser recovers malformed direct GLR input" {
+    try linkAndRecoverMalformedTinyGlrParser(std.testing.allocator);
 }
 
 test "linkAndRunKeywordReservedParser links generated keyword parser with tree-sitter runtime" {
@@ -1815,6 +1950,14 @@ test "linkAndRunBashParserWithRealExternalScanner links generated Bash parser wi
     try linkAndRunBashParserWithRealExternalScanner(std.testing.allocator);
 }
 
+test "linkAndRunBashGeneratedGlrParserWithRealExternalScanner calls generated GLR Bash scanner path" {
+    try linkAndRunBashGeneratedGlrParserWithRealExternalScanner(std.testing.allocator);
+}
+
 test "linkAndRunHaskellParserWithRealExternalScanner links generated Haskell parser with upstream scanner" {
     try linkAndRunHaskellParserWithRealExternalScanner(std.testing.allocator);
+}
+
+test "linkAndRunHaskellGeneratedGlrParserWithRealExternalScanner calls generated GLR Haskell scanner path" {
+    try linkAndRunHaskellGeneratedGlrParserWithRealExternalScanner(std.testing.allocator);
 }
