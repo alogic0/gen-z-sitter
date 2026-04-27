@@ -1223,8 +1223,12 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\  .metadata = { .major_version = 0, .minor_version = 0, .patch_version = 0 },
         \\};
         \\
-        \\const TSLanguage *tree_sitter_generated(void) {
+        \\const TSLanguage *tree_sitter_parse_table_metadata(void) {
         \\  return &ts_language;
+        \\}
+        \\
+        \\const TSLanguage *tree_sitter_generated(void) {
+        \\  return tree_sitter_parse_table_metadata();
         \\}
         \\
         ,
@@ -1659,8 +1663,12 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  .metadata = { .major_version = 0, .minor_version = 0, .patch_version = 0 },
         \\};
         \\
-        \\const TSLanguage *tree_sitter_generated(void) {
+        \\const TSLanguage *tree_sitter_parse_table_conflict(void) {
         \\  return &ts_language;
+        \\}
+        \\
+        \\const TSLanguage *tree_sitter_generated(void) {
+        \\  return tree_sitter_parse_table_conflict();
         \\}
         \\
         ,

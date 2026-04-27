@@ -451,9 +451,7 @@ pub fn writeParserCWithOptions(
         .{ compacted.grammar_version[0], compacted.grammar_version[1], compacted.grammar_version[2] },
     );
     try writer.writeAll("};\n\n");
-    try writer.writeAll("const TSLanguage *tree_sitter_generated(void) {\n");
-    try writer.writeAll("  return &ts_language;\n");
-    try writer.writeAll("}\n");
+    try writeLanguageEntryPoints(writer, compacted.grammar_name);
 }
 
 fn writeRuntimeAction(
@@ -1314,6 +1312,50 @@ fn writeCIdentifierFragment(writer: anytype, value: []const u8) EmitError!void {
         wrote_any = true;
     }
     if (!wrote_any) try writer.writeByte('_');
+}
+
+fn writeLanguageEntryPoints(writer: anytype, grammar_name: []const u8) EmitError!void {
+    const emit_named_entry = !std.mem.eql(u8, grammar_name, "generated");
+    if (emit_named_entry) {
+        try writer.writeAll("const TSLanguage *tree_sitter_");
+        try writeCIdentifierFragment(writer, grammar_name);
+        try writer.writeAll("(void) {\n");
+        try writer.writeAll("  return &ts_language;\n");
+        try writer.writeAll("}\n\n");
+    }
+
+    try writer.writeAll("const TSLanguage *tree_sitter_generated(void) {\n");
+    if (emit_named_entry) {
+        try writer.writeAll("  return tree_sitter_");
+        try writeCIdentifierFragment(writer, grammar_name);
+        try writer.writeAll("();\n");
+    } else {
+        try writer.writeAll("  return &ts_language;\n");
+    }
+    try writer.writeAll("}\n");
+}
+
+test "writeLanguageEntryPoints emits named entry and generated alias" {
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buffer.deinit();
+
+    try writeLanguageEntryPoints(&buffer.writer, "my-language");
+    const emitted = buffer.writer.buffered();
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const TSLanguage *tree_sitter_my_language(void) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "return tree_sitter_my_language();\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const TSLanguage *tree_sitter_generated(void) {\n"));
+}
+
+test "writeLanguageEntryPoints avoids duplicate generated entry" {
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buffer.deinit();
+
+    try writeLanguageEntryPoints(&buffer.writer, "generated");
+    const emitted = buffer.writer.buffered();
+
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "tree_sitter_generated"));
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "return &ts_language;\n") != null);
 }
 
 const RuntimeLexTable = struct {
