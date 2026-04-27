@@ -174,6 +174,8 @@ Status:
 - [x] Add an initial `ts_generated_parse` outer loop that drives active
   versions from raw input and advances parse-version `byte_offset` with a
   single shared lookahead position.
+- [x] Track whether each active parse version shifted on the current lookahead
+  and only advance byte offsets for shifted versions.
 - [ ] Extend the outer loop to handle divergent active-version byte offsets.
 
 **Files.**
