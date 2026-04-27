@@ -79,7 +79,7 @@ needs runtime proof on generated C.
 - [x] Add a tiny scanner-free generated parser fixture with `glr_loop = true`.
 - [x] Add a generated parser runtime-link test that calls `ts_generated_parse`
   directly on accepted input.
-- [ ] Add a fixture with one unresolved shift/reduce conflict and prove both:
+- [x] Add a fixture with one unresolved shift/reduce conflict and prove both:
   unresolved side tables are emitted, and the generated GLR loop accepts the
   intended input.
 - [ ] Add a malformed-input direct `ts_generated_parse` proof once no-action

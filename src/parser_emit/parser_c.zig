@@ -620,6 +620,7 @@ fn writeGlrActionDispatch(writer: anytype) !void {
     try writer.writeAll("    if (step.status == TSGeneratedParseStepNoAction) {\n");
     try writer.writeAll("      if (recovery_attempts++ >= GEN_Z_SITTER_MAX_RECOVERY_ATTEMPTS) return step;\n");
     try writer.writeAll("      if (ts_generated_recover_to_stack_action(version, lookahead_symbol)) continue;\n");
+    try writer.writeAll("      if (lookahead_symbol == 0) return step;\n");
     try writer.writeAll("      version->byte_offset++;\n");
     try writer.writeAll("      version->error_count++;\n");
     try writer.writeAll("      step.status = TSGeneratedParseStepRecover;\n");
@@ -730,7 +731,8 @@ fn writeGlrUnresolvedForkHelpers(writer: anytype) !void {
     try writer.writeAll("      uint16_t target_index = version_index;\n");
     try writer.writeAll("      if (applied > 0 && !ts_generated_clone_parse_version(set, version_index, &target_index)) return applied;\n");
     try writer.writeAll("      set->versions[target_index].shifted = false;\n");
-    try writer.writeAll("      (void)ts_generated_apply_parse_action(&set->versions[target_index], &action_entry[1 + action_index].action);\n");
+    try writer.writeAll("      TSGeneratedParseStep step = ts_generated_apply_parse_action(&set->versions[target_index], &action_entry[1 + action_index].action);\n");
+    try writer.writeAll("      if (step.status == TSGeneratedParseStepReduce) (void)ts_generated_drive_version(&set->versions[target_index], lookahead_symbol);\n");
     try writer.writeAll("      applied++;\n");
     try writer.writeAll("    }\n");
     try writer.writeAll("  }\n");
@@ -740,9 +742,14 @@ fn writeGlrUnresolvedForkHelpers(writer: anytype) !void {
 
 fn writeGlrVersionCondenseHelpers(writer: anytype) !void {
     try writer.writeAll("static bool ts_generated_parse_versions_same_position(const TSGeneratedParseVersion *left, const TSGeneratedParseVersion *right) {\n");
-    try writer.writeAll("  return left->active == right->active &&\n");
-    try writer.writeAll("    left->state == right->state &&\n");
-    try writer.writeAll("    left->byte_offset == right->byte_offset;\n");
+    try writer.writeAll("  if (left->active != right->active) return false;\n");
+    try writer.writeAll("  if (left->state != right->state) return false;\n");
+    try writer.writeAll("  if (left->byte_offset != right->byte_offset) return false;\n");
+    try writer.writeAll("  if (left->stack_len != right->stack_len) return false;\n");
+    try writer.writeAll("  for (uint16_t index = 0; index < left->stack_len; index++) {\n");
+    try writer.writeAll("    if (left->stack[index] != right->stack[index]) return false;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  return true;\n");
     try writer.writeAll("}\n\n");
     try writer.writeAll("static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n");
     try writer.writeAll("  uint32_t min_error_count = UINT32_MAX;\n");
@@ -2158,6 +2165,7 @@ test "emitParserCAlloc emits opt-in GLR action dispatch helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "uint8_t recovery_attempts = 0;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (recovery_attempts++ >= GEN_Z_SITTER_MAX_RECOVERY_ATTEMPTS) return step;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (ts_generated_recover_to_stack_action(version, lookahead_symbol)) continue;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (lookahead_symbol == 0) return step;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->byte_offset++;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "step.status = TSGeneratedParseStepRecover;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  } while (step.status == TSGeneratedParseStepReduce);\n"));
@@ -2199,7 +2207,8 @@ test "emitParserCAlloc emits opt-in GLR unresolved fork helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static uint16_t ts_generated_fork_unresolved_actions(TSGeneratedParseVersionSet *set, uint16_t version_index, TSSymbol lookahead_symbol) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (unresolved->symbol_id != lookahead_symbol) continue;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[target_index].shifted = false;\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_apply_parse_action(&set->versions[target_index], &action_entry[1 + action_index].action)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseStep step = ts_generated_apply_parse_action(&set->versions[target_index], &action_entry[1 + action_index].action);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (step.status == TSGeneratedParseStepReduce) (void)ts_generated_drive_version(&set->versions[target_index], lookahead_symbol);\n"));
 }
 
 test "emitParserCAlloc emits opt-in GLR version condensation helpers" {
@@ -2223,6 +2232,8 @@ test "emitParserCAlloc emits opt-in GLR version condensation helpers" {
     defer allocator.free(emitted);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_parse_versions_same_position(const TSGeneratedParseVersion *left, const TSGeneratedParseVersion *right) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->stack_len != right->stack_len) return false;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->stack[index] != right->stack[index]) return false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "uint32_t min_error_count = UINT32_MAX;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[read_index].error_count > min_error_count + GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE"));

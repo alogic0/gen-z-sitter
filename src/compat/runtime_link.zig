@@ -3,8 +3,10 @@ const build_parse_table = @import("../parse_table/build.zig");
 const ir_rules = @import("../ir/rules.zig");
 const lexical_grammar = @import("../ir/lexical_grammar.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
+const parse_actions = @import("../parse_table/actions.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
+const parse_table_resolution = @import("../parse_table/resolution.zig");
 const serialize = @import("../parse_table/serialize.zig");
 const process_support = @import("../support/process.zig");
 const runtime_io = @import("../support/runtime_io.zig");
@@ -46,6 +48,21 @@ pub fn linkAndRunNoExternalTinyGlrParser(allocator: std.mem.Allocator) RuntimeLi
     defer arena.deinit();
 
     const parser_c = try emitTinyGlrParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .input = "x",
+        .direct_generated_parse = true,
+        .expected_consumed_bytes = 1,
+    });
+}
+
+pub fn linkAndRunUnresolvedShiftReduceGlrParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitUnresolvedShiftReduceGlrParserC(arena.allocator());
     try linkAndRunGeneratedParser(allocator, .{
         .parser_c = parser_c,
         .input = "x",
@@ -204,6 +221,74 @@ fn emitTinyParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
 fn emitTinyGlrParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
     return try emitTinyParserCWithOptions(allocator, .{
         .offset_start_state = false,
+        .glr_loop = true,
+    });
+}
+
+fn emitUnresolvedShiftReduceGlrParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    const symbols = [_]serialize.SerializedSymbolInfo{
+        .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
+        .{ .ref = .{ .terminal = 1 }, .name = "x", .named = false, .visible = true, .supertype = false, .public_symbol = 1 },
+        .{ .ref = .{ .non_terminal = 0 }, .name = "source_file", .named = true, .visible = true, .supertype = false, .public_symbol = 2 },
+    };
+    const productions = [_]serialize.SerializedProductionInfo{
+        .{ .lhs = 0, .child_count = 0, .dynamic_precedence = 0 },
+    };
+    const unresolved_candidates = [_]parse_actions.ParseAction{
+        .{ .shift = 1 },
+        .{ .reduce = 0 },
+    };
+    const unresolved_entries = [_]serialize.SerializedUnresolvedEntry{
+        .{
+            .symbol = .{ .terminal = 1 },
+            .reason = parse_table_resolution.UnresolvedReason.shift_reduce,
+            .candidate_actions = unresolved_candidates[0..],
+        },
+    };
+    const start_gotos = [_]serialize.SerializedGotoEntry{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 2 },
+    };
+    const accept_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
+    };
+    const states = [_]serialize.SerializedState{
+        .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = start_gotos[0..], .unresolved = unresolved_entries[0..] },
+        .{ .id = 1, .lex_state_id = 0, .actions = accept_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+    };
+    const x_ranges = [_]lexer_serialize.SerializedCharacterRange{.{ .start = 'x', .end_inclusive = 'x' }};
+    const x_transitions = [_]lexer_serialize.SerializedLexTransition{
+        .{ .ranges = x_ranges[0..], .next_state_id = 1, .skip = false },
+    };
+    const lex_states = [_]lexer_serialize.SerializedLexState{
+        .{ .accept_symbol = .{ .terminal = 0 }, .transitions = x_transitions[0..] },
+        .{ .accept_symbol = .{ .terminal = 1 }, .transitions = &.{} },
+    };
+    const lex_tables = [_]lexer_serialize.SerializedLexTable{
+        .{ .start_state_id = 0, .states = lex_states[0..] },
+    };
+    const lex_modes = [_]lexer_serialize.SerializedLexMode{
+        .{ .lex_state = 0 },
+        .{ .lex_state = 0 },
+        .{ .lex_state = 0 },
+    };
+    const primary_state_ids = [_]u32{ 0, 1, 2 };
+    const parse_action_list = try serialize.buildParseActionListAlloc(allocator, states[0..], productions[0..]);
+    const serialized = serialize.SerializedTable{
+        .blocked = true,
+        .grammar_name = "unresolved_shift_reduce",
+        .symbols = symbols[0..],
+        .large_state_count = states.len,
+        .productions = productions[0..],
+        .parse_action_list = parse_action_list,
+        .lex_modes = lex_modes[0..],
+        .lex_tables = lex_tables[0..],
+        .primary_state_ids = primary_state_ids[0..],
+        .states = states[0..],
+    };
+
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
         .glr_loop = true,
     });
 }
@@ -1411,6 +1496,7 @@ fn directGeneratedParseDriverSourceAlloc(
         \\#include <stdbool.h>
         \\#include <stdint.h>
         \\#include <signal.h>
+        \\#include <stdio.h>
         \\#include <string.h>
         \\#include <unistd.h>
         \\
@@ -1421,11 +1507,14 @@ fn directGeneratedParseDriverSourceAlloc(
         \\  const char *input = {s};
         \\  uint32_t consumed = 0;
         \\  if (!ts_generated_parse(input, (uint32_t)strlen(input), &consumed)) return 40;
-        \\  if (consumed != {d}) return 41;
+        \\  if (consumed != {d}) {{
+        \\    fprintf(stderr, "consumed=%u expected=%u\n", consumed, {d});
+        \\    return 41;
+        \\  }}
         \\  return 0;
         \\}}
         \\
-    , .{ input_literal, expected_consumed });
+    , .{ input_literal, expected_consumed, expected_consumed });
 }
 
 fn cStringLiteralAlloc(allocator: std.mem.Allocator, value: []const u8) RuntimeLinkError![]const u8 {
@@ -1468,6 +1557,10 @@ test "linkAndRunNoExternalTinyParser links generated parser with tree-sitter run
 
 test "linkAndRunNoExternalTinyGlrParser calls generated GLR parse entry directly" {
     try linkAndRunNoExternalTinyGlrParser(std.testing.allocator);
+}
+
+test "linkAndRunUnresolvedShiftReduceGlrParser accepts intended unresolved branch" {
+    try linkAndRunUnresolvedShiftReduceGlrParser(std.testing.allocator);
 }
 
 test "linkAndRunKeywordReservedParser links generated keyword parser with tree-sitter runtime" {
