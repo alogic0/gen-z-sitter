@@ -216,6 +216,9 @@ blocked parser-table surfaces per grammar.
      `blocked_signature_summary`, including unresolved reason counts, dominant
      unresolved symbols when present, and external-scanner symbol counts for
      external-token blocking.
+   - [x] Keep blocked standalone probe targets at their current routine
+     parser-boundary mode instead of recommending automatic `full_pipeline`
+     promotion.
 
 2. Fix or explicitly classify those blocked signatures before changing any
    target from `prepare_only` to a broader routine boundary.

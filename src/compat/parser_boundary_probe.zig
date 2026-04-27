@@ -248,6 +248,23 @@ fn probeSerializeOnlyAlloc(
     else
         null;
     errdefer if (blocked_signature_summary) |summary| allocator.free(summary);
+    const recommended_after_probe = if (serialized.blocked)
+        target.parser_boundary_check_mode
+    else
+        recommended_next_mode;
+    const detail = if (serialized.blocked)
+        try std.fmt.allocPrint(
+            allocator,
+            "isolated coarse serialize-only parser probe completed with {d} serialized states but remains blocked; keep the current routine parser boundary until the blocked surface is explicitly resolved",
+            .{serialized.states.len},
+        )
+    else
+        try std.fmt.allocPrint(
+            allocator,
+            "isolated coarse serialize-only parser probe passed with {d} serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
+            .{serialized.states.len},
+        );
+    errdefer allocator.free(detail);
 
     return .{
         .id = try allocator.dupe(u8, target.id),
@@ -256,14 +273,10 @@ fn probeSerializeOnlyAlloc(
         .family = target.family,
         .current_parser_boundary_check_mode = target.parser_boundary_check_mode,
         .probed_parser_boundary_check_mode = probed_mode,
-        .recommended_next_parser_boundary_check_mode = recommended_next_mode,
+        .recommended_next_parser_boundary_check_mode = recommended_after_probe,
         .probe_status = .passed,
         .probe_failed_stage = null,
-        .detail = try std.fmt.allocPrint(
-            allocator,
-            "isolated coarse serialize-only parser probe passed with {d} serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
-            .{serialized.states.len},
-        ),
+        .detail = detail,
         .serialized_state_count = serialized.states.len,
         .serialized_blocked = serialized.blocked,
         .blocked_signature_summary = blocked_signature_summary,
@@ -416,4 +429,10 @@ test "buildParserBoundaryProbeFromTargetsAlloc can select deferred parser-wave t
     try std.testing.expectEqualStrings("tree_sitter_python_json", report.entries[2].id);
     try std.testing.expectEqualStrings("tree_sitter_typescript_json", report.entries[3].id);
     try std.testing.expectEqualStrings("tree_sitter_rust_json", report.entries[4].id);
+    try std.testing.expect(report.entries[1].serialized_blocked.?);
+    try std.testing.expect(report.entries[1].blocked_signature_summary != null);
+    try std.testing.expectEqual(
+        targets.ParserBoundaryCheckMode.prepare_only,
+        report.entries[1].recommended_next_parser_boundary_check_mode,
+    );
 }
