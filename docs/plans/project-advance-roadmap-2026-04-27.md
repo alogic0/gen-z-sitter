@@ -342,8 +342,8 @@ trusted for scanner-using grammars.
 
 #### 4.1d Bracket-Lang Incremental Proof
 
-- [ ] Add `bracket_lang` incremental fixture.
-- [ ] Prove scanner-aware incremental parsing does not reuse unsafe subtrees.
+- [x] Add `bracket_lang` incremental fixture.
+- [x] Prove scanner-aware incremental parsing does not reuse unsafe subtrees.
 
 Gate:
 

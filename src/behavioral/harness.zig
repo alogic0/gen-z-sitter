@@ -258,6 +258,7 @@ pub fn simulatePreparedScannerFreeIncremental(
         extracted.lexical,
         input,
         .{ .old_tree = old_tree, .edit = edit },
+        null,
     );
 }
 
@@ -284,6 +285,7 @@ pub fn simulatePreparedIncrementalWithExternalLexStates(
             .edit = edit,
             .external_lex_states = external_lex_states,
         },
+        null,
     );
 }
 
@@ -747,6 +749,7 @@ fn simulateBuiltScannerFree(
         lexical,
         input,
         .none(),
+        null,
     );
 }
 
@@ -758,7 +761,12 @@ fn simulateBuiltScannerFreeWithIncremental(
     lexical: lexical_ir.LexicalGrammar,
     input: []const u8,
     incremental: IncrementalContext,
+    external_boundary: ?scanner_serialize.SerializedExternalScannerBoundary,
 ) BehavioralError!SimulationResult {
+    if (external_boundary) |boundary| {
+        if (lexical.separators.len != 0) return error.UnsupportedExternalScannerGrammar;
+        if (!boundary.isReady()) return error.UnsupportedExternalScannerGrammar;
+    }
     var prepared_lex_tables = try prepareLexStateTables(allocator, result, prepared.rules, lexical, syntax);
     defer prepared_lex_tables.deinit(allocator);
 
@@ -797,6 +805,38 @@ fn simulateBuiltScannerFreeWithIncremental(
 
                 // ---- End of input ----
                 if (versions.items[vi].cursor >= input.len) {
+                    if (external_boundary) |boundary| {
+                        if (selectMatchingExternalAtBoundaryEof(result, state_id, boundary, &versions.items[vi].external_state)) |matched| {
+                            const decision = result.resolved_actions.decisionFor(state_id, matched.symbol) orelse {
+                                updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .missing_action);
+                                killVersion(allocator, &versions, vi);
+                                break :inner;
+                            };
+                            switch (decision) {
+                                .chosen => |action| switch (action) {
+                                    .shift => |target| {
+                                        try versionShift(allocator, &versions.items[vi], state_id, target, matched.len, matched.external_effect);
+                                        vi += 1;
+                                        break :inner;
+                                    },
+                                    .reduce => |prod_id| {
+                                        if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                                            updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
+                                            killVersion(allocator, &versions, vi);
+                                            break :inner;
+                                        }
+                                        continue :inner;
+                                    },
+                                    .accept => return acceptedResult(versions.items[vi]),
+                                },
+                                .unresolved => {
+                                    updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .unresolved_decision);
+                                    killVersion(allocator, &versions, vi);
+                                    break :inner;
+                                },
+                            }
+                        }
+                    }
                     if (selectEofAction(result, state_id)) |fb| switch (fb) {
                         .accept => return acceptedResult(versions.items[vi]),
                         .reduce => |prod_id| {
@@ -838,7 +878,17 @@ fn simulateBuiltScannerFreeWithIncremental(
                 }
 
                 // ---- Lex next token ----
-                const matched_opt = try selectMatchingTerminal(result, state_id, prepared_lex_tables, input[versions.items[vi].cursor..]);
+                const matched_opt = if (external_boundary) |boundary|
+                    try selectMatchingSymbolWithExternalBoundary(
+                        result,
+                        state_id,
+                        prepared_lex_tables,
+                        boundary,
+                        &versions.items[vi].external_state,
+                        input[versions.items[vi].cursor..],
+                    )
+                else
+                    try selectMatchingTerminal(result, state_id, prepared_lex_tables, input[versions.items[vi].cursor..]);
 
                 if (matched_opt == null) {
                     if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
@@ -1372,6 +1422,12 @@ fn matchSupportedExternalPrefix(
     if (std.mem.eql(u8, name, "variable_name")) {
         const len = matchSampledBashVariableName(input) orelse return null;
         return .{ .len = len };
+    }
+    if (std.mem.eql(u8, name, "open_bracket")) {
+        return if (std.mem.startsWith(u8, input, "(")) .{ .len = 1 } else null;
+    }
+    if (std.mem.eql(u8, name, "close_bracket")) {
+        return if (std.mem.startsWith(u8, input, ")")) .{ .len = 1 } else null;
     }
     if (isSampledLayoutStartToken(name)) {
         const newline_indent = scanIndentedNewline(input) orelse return null;
@@ -2624,6 +2680,36 @@ const ambiguous_expr_grammar_json =
     \\}
 ;
 
+const bracket_lang_incremental_grammar_json =
+    \\{
+    \\  "name": "bracket_lang_incremental",
+    \\  "externals": [
+    \\    { "type": "SYMBOL", "name": "open_bracket" },
+    \\    { "type": "SYMBOL", "name": "close_bracket" }
+    \\  ],
+    \\  "rules": {
+    \\    "source": {
+    \\      "type": "REPEAT",
+    \\      "content": { "type": "SYMBOL", "name": "item" }
+    \\    },
+    \\    "item": {
+    \\      "type": "SEQ",
+    \\      "members": [
+    \\        { "type": "SYMBOL", "name": "open_bracket" },
+    \\        {
+    \\          "type": "CHOICE",
+    \\          "members": [
+    \\            { "type": "SYMBOL", "name": "item" },
+    \\            { "type": "BLANK" }
+    \\          ]
+    \\        },
+    \\        { "type": "SYMBOL", "name": "close_bracket" }
+    \\      ]
+    \\    }
+    \\  }
+    \\}
+;
+
 test "GLR simulation accepts unambiguous input for a conflict grammar without forking" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -2976,6 +3062,67 @@ test "tryReuseOldSubtree restores sampled external scanner state" {
     try std.testing.expect(reused);
     try std.testing.expectEqual(@as(usize, 5), version.cursor);
     try std.testing.expectEqualSlices(usize, &[_]usize{ 2, 4 }, version.external_state.layout_indents.items);
+}
+
+test "bracket_lang incremental fixture does not reuse unsafe external states" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), bracket_lang_incremental_grammar_json);
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const flattened = try flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax);
+    const result = try build.buildStates(arena.allocator(), flattened);
+    const external_boundary = try scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax);
+
+    const old_result = try simulateBuiltScannerFreeWithIncremental(
+        arena.allocator(),
+        result,
+        prepared,
+        flattened,
+        extracted.lexical,
+        "(())",
+        .none(),
+        external_boundary,
+    );
+    const fresh_result = try simulateBuiltScannerFreeWithIncremental(
+        arena.allocator(),
+        result,
+        prepared,
+        flattened,
+        extracted.lexical,
+        "(())()",
+        .none(),
+        external_boundary,
+    );
+
+    const external_lex_states = try arena.allocator().alloc(u16, result.states.len);
+    @memset(external_lex_states, 1);
+
+    const incremental_result = try simulateBuiltScannerFreeWithIncremental(
+        arena.allocator(),
+        result,
+        prepared,
+        flattened,
+        extracted.lexical,
+        "(())()",
+        .{
+            .old_tree = old_result.accepted.tree,
+            .edit = .{
+                .start_byte = 4,
+                .old_end_byte = 4,
+                .new_end_byte = 6,
+            },
+            .external_lex_states = external_lex_states,
+        },
+        external_boundary,
+    );
+
+    const fresh_tree = fresh_result.accepted.tree orelse return error.TestUnexpectedResult;
+    const incremental_tree = incremental_result.accepted.tree orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(fresh_result.accepted.consumed_bytes, incremental_result.accepted.consumed_bytes);
+    try std.testing.expectEqual(fresh_result.accepted.shifted_tokens, incremental_result.accepted.shifted_tokens);
+    try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), fresh_tree, incremental_tree));
+    try std.testing.expectEqual(@as(usize, 0), countReusedNodes(incremental_tree));
 }
 
 fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResult) !void {
