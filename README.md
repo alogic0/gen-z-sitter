@@ -78,9 +78,11 @@ zig build test
 zig build test-pipeline
 zig build test-link-runtime
 zig build test-compat-heavy
+zig build run-minimize-report
 ```
 
 `test` and `test-pipeline` are the fast local gates. `test-compat-heavy` is intentionally separate because it exercises larger compatibility targets and can take substantially longer.
+`run-minimize-report` is a bounded diagnostic command. It prints parse-table minimization counts for the staged safe compatibility targets and lists larger or JS-loader targets that are intentionally skipped from fast minimization probes.
 
 Expected current behavior:
 
@@ -89,6 +91,7 @@ Expected current behavior:
 - `generate --debug-node-types` prints generated `node-types.json`
 - `generate --output <dir>` writes `node-types.json` into the target directory
 - `generate --json-summary` prints emitted-surface and optimization statistics for the current parser-emission pipeline
+- `zig build run-minimize-report` prints a deterministic JSON report for the bounded parse-table minimization probe
 
 ## CLI
 

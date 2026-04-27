@@ -344,9 +344,27 @@ Completed steps:
 - [x] Add deterministic JSON rendering for the bounded minimization report.
 - [x] Add a focused build step for printing the bounded minimization JSON
   report without running heavy compatibility targets.
+- [x] Document the bounded minimization report command and local Phase 4 gate.
 
 **Risk.** Low. Purely additive. The minimization pass can be toggled off and
 the existing output is unchanged when it is.
+
+**Local gate.**
+
+Use these bounded commands for routine Phase 4 verification:
+
+```bash
+zig build run-minimize-report
+zig build test
+zig build test-pt
+zig build test-pipeline
+zig build test-behavioral
+```
+
+`run-minimize-report` covers the staged safe JSON targets and explicitly lists
+larger real-grammar or JS-loader targets that are skipped from fast
+minimization probes. Do not treat it as a replacement for manual heavy
+compatibility runs.
 
 ---
 

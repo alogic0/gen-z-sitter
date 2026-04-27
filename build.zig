@@ -1,5 +1,9 @@
 const std = @import("std");
 
+const custom_step_names = [_][]const u8{
+    "run-minimize-report",
+};
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -226,6 +230,10 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_minimize_report.addArgs(args);
     const minimize_report_step = b.step("run-minimize-report", "Print bounded parse-table minimization JSON report");
     minimize_report_step.dependOn(&run_minimize_report.step);
+}
+
+test "custom build steps stay documented" {
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[0], "run-minimize-report"));
 }
 
 fn createTestModule(
