@@ -201,17 +201,26 @@ Implementation batches, in order:
    - [x] Add invalid runtime-link proof for the real JSON snapshot on `x`,
      asserting that the linked parser reports an error tree.
 
-2. JSON tokenization follow-up.
+2. JSON tokenization and follow-set follow-up.
    - [x] Fix duplicate anonymous literal token identities so quoted string
      content does not force recovery after the opening quote.
    - [x] Add a focused accepted runtime-link proof for a non-empty real JSON
      string sample.
-   - [ ] Fix remaining JSON value follow/number-ending gaps exposed by real
-     samples: numeric-value samples still do not finish as accepted input, and
-     object/array samples expose missing reduce lookaheads before separators.
+   - [x] Align the local parse-table item-set builder with upstream
+     tree-sitter's transitive-closure addition model:
+     `lookaheads`, `reserved_lookaheads`, and `propagates_lookaheads`.
+   - [x] Replace the current split `direct_suffix_follow` /
+     `nullable_ancestor_suffix_follow` propagation where it loses enclosing
+     FOLLOW tokens before value separators.
+   - [x] Add a focused parse-table test where a nested value reduces before
+     `,`, `]`, and `}` in JSON-like object/array productions.
+   - [ ] Fix the remaining JSON number-ending proof only after the follow-set
+     propagation test is green; numeric samples currently expose the same
+     missing reduce lookahead surface as object/array samples.
    - [ ] Broaden JSON accepted runtime-link samples to include at least one
      number, array, and object after the follow-set gap is fixed.
-   - [ ] Keep the invalid JSON runtime-link proof passing after the lexer fixes.
+   - [ ] Keep the invalid JSON runtime-link proof passing after the follow-set
+     and lexer fixes.
 
 3. Scanner-free/light real grammar promotion.
    - [ ] Promote `tree_sitter_ziggy_json` runtime-link proof on one accepted
