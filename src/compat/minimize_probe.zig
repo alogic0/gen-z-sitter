@@ -94,6 +94,8 @@ test "bounded compat minimization probe keeps safe target state counts monotonic
         "behavioral_config_json",
         "parse_table_conflict_json",
         "bracket_lang_json",
+        "hidden_external_fields_json",
+        "mixed_semantics_json",
     };
 
     for (target_ids) |target_id| {
@@ -115,6 +117,8 @@ test "bounded compat minimization probe aggregates target state counts" {
         try expectBoundedTargetMinimization("behavioral_config_json"),
         try expectBoundedTargetMinimization("parse_table_conflict_json"),
         try expectBoundedTargetMinimization("bracket_lang_json"),
+        try expectBoundedTargetMinimization("hidden_external_fields_json"),
+        try expectBoundedTargetMinimization("mixed_semantics_json"),
     };
     const aggregate = aggregateProbes(&probes);
 
