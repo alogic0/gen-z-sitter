@@ -402,15 +402,27 @@ about 21.7s to about 19.2s, but not enough to remove the boundary.
   grammar.
 - [x] Add a profile summary for unique single actions, reusable multi-action
   rows, and unresolved rows.
-- [ ] Investigate upstream-compatible packing before widening table values.
-- [ ] Decide whether a wider-index experimental mode is acceptable for
+- [x] Investigate upstream-compatible packing before widening table values.
+- [x] Decide whether a wider-index experimental mode is acceptable for
   non-runtime-compatible generated parsers.
 
 Current JavaScript capacity profile: `entries=23424`, `flat_width=65537`,
-`capacity=65536`, `single_unique=4922`, `unresolved_unique=18501`, and
+`capacity=65536`, `runtime_entries=4923`, `runtime_flat_width=9845`,
+`runtime_headroom=55691`, `diagnostic_overflow_only=true`,
+`single_unique=4922`, `unresolved_unique=18501`, and
 `unresolved_flat_width=55693`. The overflow is one flattened slot beyond the
-runtime-compatible `uint16_t` table value range, with unresolved diagnostic rows
-dominating the remaining capacity pressure.
+runtime-compatible `uint16_t` table value range, and it is caused by blocked
+diagnostic unresolved rows rather than upstream runtime action rows.
+
+Decision: do not widen parser table action values in normal output. Upstream
+runtime tables store parse-table and small-parse-table action indexes as
+`uint16_t`, and upstream generation hashes only resolved `ParseTableEntry`
+values into `ts_parse_actions`. For blocked grammars, the compatible direction
+is to keep unresolved-conflict diagnostics outside the runtime-shaped
+`ts_parse_actions` capacity path or resolve the grammar conflicts before
+runtime emission. A wider-index mode would produce a non-runtime-compatible
+experimental parser surface, so it is deferred until there is an explicit
+consumer for that mode.
 
 Gate:
 

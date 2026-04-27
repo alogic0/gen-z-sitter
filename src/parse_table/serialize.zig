@@ -737,12 +737,21 @@ fn recordParseActionListEntry(profile: *ParseActionListProfile, reusable: bool, 
 
 fn logParseActionListProfile(profile: ParseActionListProfile, next_index: usize) void {
     if (!shouldProfileSerialize()) return;
+    const capacity = std.math.maxInt(u16) + 1;
+    const runtime_entries = profile.single_reusable_unique + profile.multi_reusable_unique + 1;
+    const runtime_flat_width = profile.reusable_flat_width + 1;
+    const runtime_headroom = capacity -| runtime_flat_width;
+    const diagnostic_overflow_only = next_index > capacity and runtime_flat_width <= capacity;
     std.debug.print(
-        "[parse_table_profile] parse_action_list entries={d} flat_width={d} capacity={d} reusable_inputs={d} unresolved_inputs={d} single_unique={d} single_dupes={d} multi_unique={d} multi_dupes={d} unresolved_unique={d} unresolved_dupes={d} reusable_flat_width={d} unresolved_flat_width={d} max_actions_per_entry={d}\n",
+        "[parse_table_profile] parse_action_list entries={d} flat_width={d} capacity={d} runtime_entries={d} runtime_flat_width={d} runtime_headroom={d} diagnostic_overflow_only={} reusable_inputs={d} unresolved_inputs={d} single_unique={d} single_dupes={d} multi_unique={d} multi_dupes={d} unresolved_unique={d} unresolved_dupes={d} reusable_flat_width={d} unresolved_flat_width={d} max_actions_per_entry={d}\n",
         .{
             profile.single_reusable_unique + profile.multi_reusable_unique + profile.unresolved_unique + 1,
             next_index,
-            std.math.maxInt(u16) + 1,
+            capacity,
+            runtime_entries,
+            runtime_flat_width,
+            runtime_headroom,
+            diagnostic_overflow_only,
             profile.reusable_inputs,
             profile.unresolved_inputs,
             profile.single_reusable_unique,

@@ -54,12 +54,15 @@ and larger grammar end-to-end timeouts before emission.
   not default bounded-suite runs.
 - Treat `ParseActionListTooLarge` as an explicit large-grammar boundary rather
   than allowing Debug integer overflow.
-- Keep parse-action-list packing on the Phase 5 path: hashed action-slice dedup
-  improved JavaScript by about 12%, but the table still exceeds the `uint16_t`
-  runtime-compatible index space.
+- Keep parse-action-list packing on the Phase 5 path, but do not widen runtime
+  table values by default. The upstream ABI uses `uint16_t` table values and the
+  JavaScript overflow is diagnostic-only: runtime reusable rows fit easily,
+  while unresolved conflict rows dominate the remaining pressure.
 - JavaScript parse-action-list profile: `entries=23424`, `flat_width=65537`,
-  `capacity=65536`, `single_unique=4922`, `single_dupes=269277`,
-  `unresolved_unique=18501`, `unresolved_dupes=4614`,
-  `unresolved_flat_width=55693`, `max_actions_per_entry=6`.
+  `capacity=65536`, `runtime_entries=4923`, `runtime_flat_width=9845`,
+  `runtime_headroom=55691`, `diagnostic_overflow_only=true`,
+  `single_unique=4922`, `single_dupes=269277`, `unresolved_unique=18501`,
+  `unresolved_dupes=4614`, `unresolved_flat_width=55693`,
+  `max_actions_per_entry=6`.
 - Profile Rust and TypeScript with a longer explicit diagnostic budget before
   selecting a structural optimization.
