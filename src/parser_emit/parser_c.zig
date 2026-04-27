@@ -122,12 +122,14 @@ pub fn writeParserCWithOptions(
 
     const compacted = try optimize.prepareSerializedTableAlloc(arena.allocator(), serialized, options);
     const compatibility = compat.currentRuntimeCompatibility();
+    const has_unresolved = hasUnresolvedStateRows(compacted.states);
     const emitted_symbols = try collectEmittedSymbols(allocator, compacted);
     defer deinitEmittedSymbols(allocator, emitted_symbols);
     const parse_action_list = if (compacted.parse_action_list.len > 0)
         compacted.parse_action_list
     else
         try serialize.buildParseActionListAlloc(arena.allocator(), compacted.states, compacted.productions);
+    const unresolved_owners = try collectStateArrayOwners(arena.allocator(), serialize.SerializedUnresolvedEntry, compacted.states, stateUnresolved);
     const small_parse_table = if (compacted.small_parse_table.rows.len > 0 or compacted.small_parse_table.map.len > 0)
         compacted.small_parse_table
     else
@@ -135,8 +137,10 @@ pub fn writeParserCWithOptions(
     const runtime_lex = try buildRuntimeLexTableAlloc(arena.allocator(), compacted.lex_tables);
 
     try compat.writeContractPrelude(writer, compatibility);
+    if (has_unresolved) try writer.writeAll("#include <string.h>\n\n");
     try compat.writeCompilerOptimizationPragmas(writer, runtime_lex.table.states.len);
     try compat.writeContractTypesAndConstants(writer, compatibility);
+    if (has_unresolved) try writeUnresolvedEntryType(writer);
     try writer.print("#define STATE_COUNT {d}\n", .{compacted.states.len});
     const large_state_count_value = serializedLargeStateCount(compacted);
     try writer.print("#define LARGE_STATE_COUNT {d}\n", .{large_state_count_value});
@@ -327,6 +331,17 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("};\n\n");
 
+    if (has_unresolved) {
+        for (compacted.states, 0..) |serialized_state, index| {
+            if (serialized_state.unresolved.len == 0 or unresolved_owners[index] != index) continue;
+            try writer.print("static const TSUnresolvedEntry ts_state_{d}_unresolved[] = {{\n", .{index});
+            for (serialized_state.unresolved) |entry| {
+                try writeUnresolvedEntry(writer, emitted_symbols, parse_action_list, compacted.productions, entry);
+            }
+            try writer.writeAll("};\n\n");
+        }
+    }
+
     try writer.writeAll("static const TSLexerMode ts_lex_modes[STATE_COUNT] = {\n");
     for (compacted.states, 0..) |_, index| {
         const mode = if (index < compacted.lex_modes.len)
@@ -340,6 +355,7 @@ pub fn writeParserCWithOptions(
         );
     }
     try writer.writeAll("};\n\n");
+    if (has_unresolved) try writeUnresolvedAccessors(writer, compacted.states, unresolved_owners);
     try writeReservedWords(writer, emitted_symbols, compacted.reserved_words);
     try writeExternalScannerTables(writer, emitted_symbols, compacted.grammar_name, compacted.external_scanner);
 
@@ -443,6 +459,91 @@ fn writeRuntimeAction(
         .accept => try writer.writeAll("{ .action = { .type = TSParseActionTypeAccept } }"),
         .recover => try writer.writeAll("{ .action = { .type = TSParseActionTypeRecover } }"),
     }
+}
+
+fn writeUnresolvedEntryType(writer: anytype) !void {
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  uint16_t symbol_id;\n");
+    try writer.writeAll("  uint16_t reason;\n");
+    try writer.writeAll("  uint16_t action_index;\n");
+    try writer.writeAll("  uint16_t action_count;\n");
+    try writer.writeAll("} TSUnresolvedEntry;\n\n");
+}
+
+fn writeUnresolvedEntry(
+    writer: anytype,
+    symbols: []const EmittedSymbol,
+    parse_action_list: []const serialize.SerializedParseActionListEntry,
+    productions: []const serialize.SerializedProductionInfo,
+    entry: serialize.SerializedUnresolvedEntry,
+) !void {
+    const symbol_id = symbolIdForRef(symbols, entry.symbol) orelse return error.OutOfMemory;
+    const action_index = serialize.parseActionListIndexForUnresolvedEntry(parse_action_list, entry, productions) orelse return error.OutOfMemory;
+    try writer.print(
+        "  {{ .symbol_id = {d}, .reason = {d}, .action_index = {d}, .action_count = {d} }},\n",
+        .{ symbol_id, unresolvedReasonCode(entry.reason), action_index, entry.candidate_actions.len },
+    );
+}
+
+fn writeUnresolvedAccessors(
+    writer: anytype,
+    states: []const serialize.SerializedState,
+    owners: []const usize,
+) !void {
+    try writer.writeAll("bool ts_parser_runtime_has_unresolved_states(void) {\n");
+    try writer.writeAll("  return ");
+    try writer.writeAll(if (hasUnresolvedStateRows(states)) "true" else "false");
+    try writer.writeAll(";\n");
+    try writer.writeAll("}\n\n");
+
+    try writer.writeAll("const TSUnresolvedEntry *ts_parser_unresolved(uint16_t state_id) {\n");
+    try writer.writeAll("  switch (state_id) {\n");
+    for (states, 0..) |state_value, index| {
+        if (state_value.unresolved.len == 0) continue;
+        try writer.print("    case {d}: return ts_state_{d}_unresolved;\n", .{ index, owners[index] });
+    }
+    try writer.writeAll("    default: return NULL;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("}\n\n");
+
+    try writer.writeAll("uint16_t ts_parser_unresolved_count(uint16_t state_id) {\n");
+    try writer.writeAll("  switch (state_id) {\n");
+    for (states, 0..) |state_value, index| {
+        if (state_value.unresolved.len == 0) continue;
+        try writer.print("    case {d}: return {d};\n", .{ index, state_value.unresolved.len });
+    }
+    try writer.writeAll("    default: return 0;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("}\n\n");
+
+    try writer.writeAll("bool ts_parser_runtime_state_has_unresolved(uint16_t state_id) {\n");
+    try writer.writeAll("  return ts_parser_unresolved_count(state_id) != 0;\n");
+    try writer.writeAll("}\n\n");
+
+    try writer.writeAll("const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {\n");
+    try writer.writeAll("  const TSUnresolvedEntry *entries = ts_parser_unresolved(state_id);\n");
+    try writer.writeAll("  return entries && index < ts_parser_unresolved_count(state_id) ? &entries[index] : NULL;\n");
+    try writer.writeAll("}\n\n");
+
+    try writer.writeAll("const TSUnresolvedEntry *ts_parser_find_unresolved(uint16_t state_id, const char *symbol) {\n");
+    try writer.writeAll("  const TSUnresolvedEntry *entries = ts_parser_unresolved(state_id);\n");
+    try writer.writeAll("  uint16_t count = ts_parser_unresolved_count(state_id);\n");
+    try writer.writeAll("  for (uint16_t i = 0; i < count; i++) {\n");
+    try writer.writeAll("    if (strcmp(ts_symbol_names[entries[i].symbol_id], symbol) == 0) return &entries[i];\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  return NULL;\n");
+    try writer.writeAll("}\n\n");
+
+    try writer.writeAll("bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {\n");
+    try writer.writeAll("  return ts_parser_find_unresolved(state_id, symbol) != NULL;\n");
+    try writer.writeAll("}\n\n");
+}
+
+fn hasUnresolvedStateRows(states: []const serialize.SerializedState) bool {
+    for (states) |state| {
+        if (state.unresolved.len > 0) return true;
+    }
+    return false;
 }
 
 fn writeSupertypeTables(
@@ -1306,7 +1407,7 @@ test "emitParserCAlloc compacts identical serialized states before row sharing" 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define STATE_COUNT 1\n"));
     try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSActionEntry ts_state_0_actions[] = {\n"));
     try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSGotoEntry ts_state_0_gotos[] = {\n"));
-    try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, "static const TSUnresolvedEntry ts_state_0_unresolved[] = {\n"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSUnresolvedEntry ts_state_0_unresolved[] = {\n"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSParseActionEntry ts_parse_actions[] = {\n"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "[1] = { .entry = { .count = 1, .reusable = true } }"));
 }

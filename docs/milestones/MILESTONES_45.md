@@ -194,13 +194,10 @@ Completed steps:
 - [x] Teach resolution to consume `ActionGroup.actions` instead of deriving
   candidates only from `ActionEntry` values.
 - [x] Build grouped action tables directly during state construction.
-
-Remaining steps:
-
-- [ ] Keep flat `ActionTable` only as a debug/compat projection.
-- [ ] Serialize unresolved multi-action entries as strict-mode blockers and
+- [x] Keep flat `ActionTable` only as a debug/compat projection.
+- [x] Serialize unresolved multi-action entries as strict-mode blockers and
   diagnostic-mode side-table entries.
-- [ ] Emit the multi-action side table from serialized data.
+- [x] Emit the multi-action side table from serialized data.
 
 ---
 

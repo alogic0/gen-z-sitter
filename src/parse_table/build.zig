@@ -1693,9 +1693,10 @@ pub fn buildStatesWithOptions(
         maybeLogBuildDone("construct_states", timer);
         logBuildSummary(
             "construct_states summary states={d} action_states={d}",
-            .{ constructed.states.len, constructed.actions.states.len },
+            .{ constructed.states.len, constructed.grouped_actions.states.len },
         );
     }
+    const action_projection = try actions.actionTableFromGroupedAlloc(allocator, constructed.grouped_actions);
 
     timer = maybeStartTimer(progress_log);
     stage_profile_timer = profileTimer(profile_log);
@@ -1741,7 +1742,7 @@ pub fn buildStatesWithOptions(
             .states = minimized.states,
             .lex_state_count = lex_states.count,
             .lex_state_terminal_sets = lex_states.terminal_sets,
-            .actions = constructed.actions,
+            .actions = action_projection,
             .resolved_actions = minimized.resolved_actions,
         };
     }
@@ -1752,16 +1753,21 @@ pub fn buildStatesWithOptions(
         .states = lex_states.states,
         .lex_state_count = lex_states.count,
         .lex_state_terminal_sets = lex_states.terminal_sets,
-        .actions = constructed.actions,
+        .actions = action_projection,
         .resolved_actions = resolved_actions,
     };
 }
 
 const ConstructedStates = struct {
     states: []const state.ParseState,
-    actions: actions.ActionTable,
     grouped_actions: actions.GroupedActionTable,
 };
+
+fn countGroupedActions(groups: []const actions.ActionGroup) usize {
+    var count: usize = 0;
+    for (groups) |group| count += group.actions.len;
+    return count;
+}
 
 const NonTerminalExtraStart = struct {
     symbol: syntax_ir.SymbolRef,
@@ -2119,7 +2125,6 @@ const StateConstructionEngine = struct {
     closure_expansion_cache: *ClosureExpansionCache,
     successor_seed_state_cache: *SuccessorSeedStateCache,
     state_registry: *StateRegistry,
-    action_states: *std.array_list.Managed(actions.StateActions),
     grouped_action_states: *std.array_list.Managed(actions.GroupedStateActions),
     largest_new_successor: *?SuccessorDiagnostic,
     largest_reused_successor: *?SuccessorDiagnostic,
@@ -2161,11 +2166,6 @@ const StateConstructionEngine = struct {
         addProfileDuration(&construct_profile.reserved_word_ns, reserved_timer);
 
         const actions_timer = profileTimer(construct_profile_enabled);
-        const state_actions = try actions.buildActionsForState(
-            self.allocator,
-            self.productions,
-            mutable_states[state_index],
-        );
         const grouped_state_actions = try actions.buildGroupedActionsForState(
             self.allocator,
             self.productions,
@@ -2173,23 +2173,19 @@ const StateConstructionEngine = struct {
         );
         addProfileDuration(&construct_profile.build_actions_ns, actions_timer);
         const conflicts_timer = profileTimer(construct_profile_enabled);
-        const detected_conflicts = try conflicts.detectConflictsFromActions(
+        const detected_conflicts = try conflicts.detectConflictsFromActionGroups(
             self.allocator,
             mutable_states[state_index],
-            state_actions,
+            grouped_state_actions.groups,
         );
         addProfileDuration(&construct_profile.detect_conflicts_ns, conflicts_timer);
         mutable_states[state_index].conflicts = detected_conflicts;
-        try self.action_states.append(.{
-            .state_id = mutable_states[state_index].id,
-            .entries = state_actions,
-        });
         try self.grouped_action_states.append(grouped_state_actions);
 
         reporter.logStateDone(
             state_index,
             mutable_states[state_index],
-            state_actions.len,
+            countGroupedActions(grouped_state_actions.groups),
             self.state_registry.items().len,
             detected_conflicts.len,
             transition_stats,
@@ -3487,8 +3483,6 @@ fn constructStates(
     reporter.logEnter();
     var state_registry = StateRegistry.init(allocator);
     defer state_registry.deinit();
-    var action_states = std.array_list.Managed(actions.StateActions).init(allocator);
-    defer action_states.deinit();
     var grouped_action_states = std.array_list.Managed(actions.GroupedStateActions).init(allocator);
     defer grouped_action_states.deinit();
     var largest_new_successor: ?SuccessorDiagnostic = null;
@@ -3538,7 +3532,6 @@ fn constructStates(
         .closure_expansion_cache = &closure_expansion_cache,
         .successor_seed_state_cache = &successor_seed_state_cache,
         .state_registry = &state_registry,
-        .action_states = &action_states,
         .grouped_action_states = &grouped_action_states,
         .largest_new_successor = &largest_new_successor,
         .largest_reused_successor = &largest_reused_successor,
@@ -3559,9 +3552,6 @@ fn constructStates(
     );
     return .{
         .states = try state_registry.intoOwnedSlice(),
-        .actions = .{
-            .states = try action_states.toOwnedSlice(),
-        },
         .grouped_actions = .{
             .states = try grouped_action_states.toOwnedSlice(),
         },

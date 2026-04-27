@@ -96,6 +96,30 @@ pub fn detectConflictsFromActions(
     return try conflicts.toOwnedSlice();
 }
 
+pub fn detectConflictsFromActionGroups(
+    allocator: std.mem.Allocator,
+    parse_state: state.ParseState,
+    action_groups: []const actions.ActionGroup,
+) std.mem.Allocator.Error![]const state.Conflict {
+    var conflicts = std.array_list.Managed(state.Conflict).init(allocator);
+    defer conflicts.deinit();
+
+    for (action_groups) |group| {
+        if (group.actions.len < 2) continue;
+        const kind = classifyConflictActions(group.actions);
+        if (kind) |conflict_kind| {
+            const conflict_items = try collectConflictItemsForSymbol(allocator, parse_state.items, group.symbol);
+            try conflicts.append(.{
+                .kind = conflict_kind,
+                .symbol = group.symbol,
+                .items = conflict_items,
+            });
+        }
+    }
+
+    return try conflicts.toOwnedSlice();
+}
+
 fn collectReduceReduceItems(
     allocator: std.mem.Allocator,
     completed_items: []const item.ParseItemSetEntry,
@@ -162,6 +186,22 @@ fn classifyConflict(grouped: []const actions.ActionEntry) ?state.ConflictKind {
 
     for (grouped) |entry| {
         switch (entry.action) {
+            .shift => saw_shift = true,
+            .reduce, .accept => reduce_like_count += 1,
+        }
+    }
+
+    if (saw_shift and reduce_like_count > 0) return .shift_reduce;
+    if (reduce_like_count >= 2) return .reduce_reduce;
+    return null;
+}
+
+fn classifyConflictActions(grouped: []const actions.ParseAction) ?state.ConflictKind {
+    var saw_shift = false;
+    var reduce_like_count: usize = 0;
+
+    for (grouped) |action| {
+        switch (action) {
             .shift => saw_shift = true,
             .reduce, .accept => reduce_like_count += 1,
         }

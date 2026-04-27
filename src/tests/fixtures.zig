@@ -1230,6 +1230,8 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\#include <stdint.h>
         \\#include <stdlib.h>
         \\
+        \\#include <string.h>
+        \\
         \\#define LANGUAGE_VERSION 15
         \\#define MIN_COMPATIBLE_LANGUAGE_VERSION 13
         \\
@@ -1408,6 +1410,13 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  do { result = true; lexer->result_symbol = symbol_value; lexer->mark_end(lexer); } while (0)
         \\#define END_STATE() return result
         \\
+        \\typedef struct {
+        \\  uint16_t symbol_id;
+        \\  uint16_t reason;
+        \\  uint16_t action_index;
+        \\  uint16_t action_count;
+        \\} TSUnresolvedEntry;
+        \\
         \\#define STATE_COUNT 6
         \\#define LARGE_STATE_COUNT 2
         \\#define SYMBOL_COUNT 5
@@ -1537,6 +1546,11 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  [7] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 4, .extra = false, .repetition = false } } },
         \\  [9] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 1, .symbol = 4, .dynamic_precedence = 0, .production_id = 3 } } },
         \\  [11] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 3, .symbol = 4, .dynamic_precedence = 0, .production_id = 2 } } },
+        \\  [13] = { .entry = { .count = 2, .reusable = false } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 4, .extra = false, .repetition = false } } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 3, .symbol = 4, .dynamic_precedence = 0, .production_id = 2 } } },
+        \\};
+        \\
+        \\static const TSUnresolvedEntry ts_state_5_unresolved[] = {
+        \\  { .symbol_id = 1, .reason = 1, .action_index = 13, .action_count = 2 },
         \\};
         \\
         \\static const TSLexerMode ts_lex_modes[STATE_COUNT] = {
@@ -1547,6 +1561,46 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  [4] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\  [5] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\};
+        \\
+        \\bool ts_parser_runtime_has_unresolved_states(void) {
+        \\  return true;
+        \\}
+        \\
+        \\const TSUnresolvedEntry *ts_parser_unresolved(uint16_t state_id) {
+        \\  switch (state_id) {
+        \\    case 5: return ts_state_5_unresolved;
+        \\    default: return NULL;
+        \\  }
+        \\}
+        \\
+        \\uint16_t ts_parser_unresolved_count(uint16_t state_id) {
+        \\  switch (state_id) {
+        \\    case 5: return 1;
+        \\    default: return 0;
+        \\  }
+        \\}
+        \\
+        \\bool ts_parser_runtime_state_has_unresolved(uint16_t state_id) {
+        \\  return ts_parser_unresolved_count(state_id) != 0;
+        \\}
+        \\
+        \\const TSUnresolvedEntry *ts_parser_unresolved_at(uint16_t state_id, uint16_t index) {
+        \\  const TSUnresolvedEntry *entries = ts_parser_unresolved(state_id);
+        \\  return entries && index < ts_parser_unresolved_count(state_id) ? &entries[index] : NULL;
+        \\}
+        \\
+        \\const TSUnresolvedEntry *ts_parser_find_unresolved(uint16_t state_id, const char *symbol) {
+        \\  const TSUnresolvedEntry *entries = ts_parser_unresolved(state_id);
+        \\  uint16_t count = ts_parser_unresolved_count(state_id);
+        \\  for (uint16_t i = 0; i < count; i++) {
+        \\    if (strcmp(ts_symbol_names[entries[i].symbol_id], symbol) == 0) return &entries[i];
+        \\  }
+        \\  return NULL;
+        \\}
+        \\
+        \\bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {
+        \\  return ts_parser_find_unresolved(state_id, symbol) != NULL;
+        \\}
         \\
         \\static const TSLanguage ts_language = {
         \\  .abi_version = LANGUAGE_VERSION,

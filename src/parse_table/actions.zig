@@ -211,6 +211,42 @@ pub fn buildGroupedActionTable(
     return .{ .states = states };
 }
 
+pub fn actionTableFromGroupedAlloc(
+    allocator: std.mem.Allocator,
+    grouped_table: GroupedActionTable,
+) std.mem.Allocator.Error!ActionTable {
+    const states = try allocator.alloc(StateActions, grouped_table.states.len);
+    for (grouped_table.states, 0..) |grouped_state, index| {
+        states[index] = try actionStateFromGroupedAlloc(allocator, grouped_state);
+    }
+    return .{ .states = states };
+}
+
+pub fn actionStateFromGroupedAlloc(
+    allocator: std.mem.Allocator,
+    grouped_state: GroupedStateActions,
+) std.mem.Allocator.Error!StateActions {
+    var count: usize = 0;
+    for (grouped_state.groups) |group| count += group.actions.len;
+
+    const entries = try allocator.alloc(ActionEntry, count);
+    var index: usize = 0;
+    for (grouped_state.groups) |group| {
+        for (group.actions) |action| {
+            entries[index] = .{
+                .symbol = group.symbol,
+                .action = action,
+            };
+            index += 1;
+        }
+    }
+    sortActionEntries(entries);
+    return .{
+        .state_id = grouped_state.state_id,
+        .entries = entries,
+    };
+}
+
 pub fn groupActionsForState(
     allocator: std.mem.Allocator,
     state_id: state.StateId,

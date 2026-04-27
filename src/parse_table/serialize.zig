@@ -598,6 +598,20 @@ pub fn buildParseActionListAlloc(
             });
             if (action_slice.len == 1) try single_action_indexes.put(action_slice[0], index);
         }
+        for (serialized_state.unresolved) |entry| {
+            const action_slice = try runtimeActionsFromParseActionSliceAlloc(allocator, entry.candidate_actions, productions);
+            if (parseActionListIndexForRuntimeActionSlice(entries.items, action_slice) != null) {
+                allocator.free(action_slice);
+                continue;
+            }
+
+            const index: u16 = @intCast(entries.items.len * 2 - 1);
+            try entries.append(.{
+                .index = index,
+                .reusable = false,
+                .actions = action_slice,
+            });
+        }
     }
 
     return try entries.toOwnedSlice();
@@ -903,6 +917,17 @@ pub fn parseActionListIndexForActionEntry(
     return null;
 }
 
+pub fn parseActionListIndexForUnresolvedEntry(
+    entries: []const SerializedParseActionListEntry,
+    entry: SerializedUnresolvedEntry,
+    productions: []const SerializedProductionInfo,
+) ?u16 {
+    for (entries) |candidate| {
+        if (runtimeActionSliceEqlParseActions(candidate.actions, entry.candidate_actions, productions)) return candidate.index;
+    }
+    return null;
+}
+
 fn parseActionListIndexForActionEntryWithMap(
     entries: []const SerializedParseActionListEntry,
     single_action_indexes: *const ParseActionListIndexMap,
@@ -955,6 +980,18 @@ fn runtimeActionsFromActionEntryAlloc(
     return action_slice[0..index];
 }
 
+fn runtimeActionsFromParseActionSliceAlloc(
+    allocator: std.mem.Allocator,
+    values: []const actions.ParseAction,
+    productions: []const SerializedProductionInfo,
+) std.mem.Allocator.Error![]const SerializedParseAction {
+    const action_slice = try allocator.alloc(SerializedParseAction, values.len);
+    for (values, 0..) |value, index| {
+        action_slice[index] = runtimeActionFromParseAction(value, productions);
+    }
+    return action_slice;
+}
+
 fn runtimeActionSlicesEql(
     actions_slice: []const SerializedParseAction,
     entry: SerializedActionEntry,
@@ -980,6 +1017,18 @@ fn runtimeActionSlicesEql(
         cursor += 1;
     }
     return cursor == actions_slice.len;
+}
+
+fn runtimeActionSliceEqlParseActions(
+    actions_slice: []const SerializedParseAction,
+    values: []const actions.ParseAction,
+    productions: []const SerializedProductionInfo,
+) bool {
+    if (actions_slice.len != values.len) return false;
+    for (actions_slice, values) |serialized_action, value| {
+        if (!runtimeActionEql(serialized_action, runtimeActionFromParseAction(value, productions))) return false;
+    }
+    return true;
 }
 
 pub fn runtimeActionFromParseAction(
