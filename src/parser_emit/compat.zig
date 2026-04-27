@@ -163,7 +163,12 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
     try writer.writeAll("  const TSSymbol *supertype_map_entries;\n");
     try writer.writeAll("  TSLanguageMetadata metadata;\n");
     try writer.writeAll("};\n\n");
-    try writer.writeAll("static inline bool set_contains(const TSCharacterRange *ranges, uint32_t len, int32_t lookahead) {\n");
+    try writer.writeAll("#if defined(__GNUC__) || defined(__clang__)\n");
+    try writer.writeAll("#define GEN_Z_SITTER_UNUSED_FUNCTION __attribute__((unused))\n");
+    try writer.writeAll("#else\n");
+    try writer.writeAll("#define GEN_Z_SITTER_UNUSED_FUNCTION\n");
+    try writer.writeAll("#endif\n");
+    try writer.writeAll("static inline bool GEN_Z_SITTER_UNUSED_FUNCTION set_contains(const TSCharacterRange *ranges, uint32_t len, int32_t lookahead) {\n");
     try writer.writeAll("  uint32_t index = 0;\n");
     try writer.writeAll("  uint32_t size = len - index;\n");
     try writer.writeAll("  while (size > 1) {\n");
@@ -180,6 +185,7 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
     try writer.writeAll("  const TSCharacterRange *range = &ranges[index];\n");
     try writer.writeAll("  return lookahead >= range->start && lookahead <= range->end;\n");
     try writer.writeAll("}\n\n");
+    try writer.writeAll("#undef GEN_Z_SITTER_UNUSED_FUNCTION\n\n");
     try writer.writeAll("#define SMALL_STATE(id) ((id) - LARGE_STATE_COUNT)\n");
     try writer.writeAll("#define STATE(id) id\n");
     try writer.writeAll("#define ACTIONS(id) id\n\n");

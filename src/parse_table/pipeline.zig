@@ -624,7 +624,7 @@ fn expectParserCDumpCompiles(contents: []const u8) !void {
 
     var result = try process_support.runCapture(
         std.testing.allocator,
-        &.{ "zig", "cc", "-std=c11", "-c", source_path, "-o", object_path },
+        &.{ "zig", "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-c", source_path, "-o", object_path },
     );
     defer result.deinit(std.testing.allocator);
 

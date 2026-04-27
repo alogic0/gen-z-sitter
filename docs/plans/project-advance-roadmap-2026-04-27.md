@@ -437,7 +437,7 @@ Goal: make generated C robust enough for downstream parser consumers.
   them.
 - [x] Finish TSCharacterRange compatibility if large Unicode grammars need it.
 - [x] Audit generated ABI structs against the tree-sitter runtime headers.
-- [ ] Add compile-smoke tests for C11, common warnings, and large lex tables.
+- [x] Add compile-smoke tests for C11, common warnings, and large lex tables.
 - [ ] Decide when public `tree_sitter_<name>()` naming should replace the
   current generic entry point in generated output.
 
@@ -447,6 +447,9 @@ header structs used by generated parsers, including `TSLexMode`,
 `TSSymbolMetadata`, field/supertype map slices, and the `TSLanguage` layout.
 Compiler pragmas and large-character-set `TSCharacterRange` emission are already
 implemented and kept behind measured lexer-size thresholds.
+The compile-smoke path now uses `zig cc -std=c11 -Wall -Wextra -Werror`, and a
+root test compiles a self-contained contract plus a large-character-set lexer so
+warning regressions are caught before large grammar promotion.
 
 Gate:
 

@@ -47,7 +47,7 @@ pub fn compileParserC(allocator: std.mem.Allocator, contents: []const u8) Compil
 
     var child_result = try process_support.runCapture(
         allocator,
-        &.{ "zig", "cc", "-std=c11", "-c", source_path, "-o", object_path },
+        &.{ "zig", "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-c", source_path, "-o", object_path },
     );
     defer child_result.deinit(allocator);
 

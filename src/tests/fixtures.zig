@@ -975,7 +975,12 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\  TSLanguageMetadata metadata;
         \\};
         \\
-        \\static inline bool set_contains(const TSCharacterRange *ranges, uint32_t len, int32_t lookahead) {
+        \\#if defined(__GNUC__) || defined(__clang__)
+        \\#define GEN_Z_SITTER_UNUSED_FUNCTION __attribute__((unused))
+        \\#else
+        \\#define GEN_Z_SITTER_UNUSED_FUNCTION
+        \\#endif
+        \\static inline bool GEN_Z_SITTER_UNUSED_FUNCTION set_contains(const TSCharacterRange *ranges, uint32_t len, int32_t lookahead) {
         \\  uint32_t index = 0;
         \\  uint32_t size = len - index;
         \\  while (size > 1) {
@@ -992,6 +997,8 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\  const TSCharacterRange *range = &ranges[index];
         \\  return lookahead >= range->start && lookahead <= range->end;
         \\}
+        \\
+        \\#undef GEN_Z_SITTER_UNUSED_FUNCTION
         \\
         \\#define SMALL_STATE(id) ((id) - LARGE_STATE_COUNT)
         \\#define STATE(id) id
@@ -1361,7 +1368,12 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  TSLanguageMetadata metadata;
         \\};
         \\
-        \\static inline bool set_contains(const TSCharacterRange *ranges, uint32_t len, int32_t lookahead) {
+        \\#if defined(__GNUC__) || defined(__clang__)
+        \\#define GEN_Z_SITTER_UNUSED_FUNCTION __attribute__((unused))
+        \\#else
+        \\#define GEN_Z_SITTER_UNUSED_FUNCTION
+        \\#endif
+        \\static inline bool GEN_Z_SITTER_UNUSED_FUNCTION set_contains(const TSCharacterRange *ranges, uint32_t len, int32_t lookahead) {
         \\  uint32_t index = 0;
         \\  uint32_t size = len - index;
         \\  while (size > 1) {
@@ -1378,6 +1390,8 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  const TSCharacterRange *range = &ranges[index];
         \\  return lookahead >= range->start && lookahead <= range->end;
         \\}
+        \\
+        \\#undef GEN_Z_SITTER_UNUSED_FUNCTION
         \\
         \\#define SMALL_STATE(id) ((id) - LARGE_STATE_COUNT)
         \\#define STATE(id) id
