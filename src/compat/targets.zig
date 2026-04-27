@@ -210,8 +210,8 @@ pub const shortlist_targets = [_]Target{
         },
         .candidate_status = .intended_first_wave,
         .expected_blocked = false,
-        .notes = "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the same routine coarse parser boundary as the larger parser-only snapshots",
-        .success_criteria = "load, prepare, complete the routine coarse serialize-only parser step, emit parser tables plus C tables, emit parser.c, pass compatibility validation, and pass compile-smoke cleanly",
+        .notes = "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the routine coarse parser boundary with focused accepted and invalid runtime-link proofs for a variable declaration sample",
+        .success_criteria = "load, prepare, complete the routine coarse serialize-only parser step, keep parser.c compile-smoke evidence, and keep the focused Zig runtime-link samples passing under explicit bounded tests",
     },
     .{
         .id = "tree_sitter_json_json",

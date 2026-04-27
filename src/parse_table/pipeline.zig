@@ -390,6 +390,15 @@ pub fn serializeRuntimeTableFromGrammarPathWithProfile(
     return try serializeRuntimeTableFromGrammarPathMaybeProfile(allocator, path, mode, .{}, profile_label);
 }
 
+pub fn serializeRuntimeTableFromGrammarPathWithBuildOptions(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    mode: serialize.SerializeMode,
+    build_options: build.BuildOptions,
+) (PipelineError || grammar_loader.LoaderError || parse_grammar.ParseGrammarError)!serialize.SerializedTable {
+    return try serializeRuntimeTableFromGrammarPathMaybeProfile(allocator, path, mode, build_options, null);
+}
+
 pub fn serializeRuntimeTableFromGrammarPathWithBuildOptionsProfile(
     allocator: std.mem.Allocator,
     path: []const u8,

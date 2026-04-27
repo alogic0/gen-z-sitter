@@ -650,6 +650,15 @@ const ClosureFollowInfo = struct {
     propagates_lookaheads: bool = false,
 };
 
+const FollowSets = struct {
+    values: []first.SymbolSet,
+
+    fn deinit(self: @This(), allocator: std.mem.Allocator) void {
+        for (self.values) |set| freeSymbolSet(allocator, set);
+        if (self.values.len != 0) allocator.free(self.values);
+    }
+};
+
 const TransitiveClosureAddition = struct {
     production_id: item.ProductionId,
     info: ClosureFollowInfo,
@@ -881,6 +890,17 @@ fn freeParseItemSetEntries(allocator: std.mem.Allocator, entries: []const item.P
 
 fn mergeSymbolSetLookaheads(target: *first.SymbolSet, incoming: first.SymbolSet) bool {
     return item.mergeSymbolSetLookaheads(target, incoming);
+}
+
+fn mergeFollowWithoutEpsilon(target: *first.SymbolSet, incoming: first.SymbolSet) bool {
+    var changed = false;
+    if (incoming.includes_end and !target.includes_end) {
+        target.includes_end = true;
+        changed = true;
+    }
+    changed = first.SymbolBits.merge(&target.terminals, incoming.terminals) or changed;
+    changed = first.SymbolBits.merge(&target.externals, incoming.externals) or changed;
+    return changed;
 }
 
 fn addSymbolToSet(target: *first.SymbolSet, symbol: syntax_ir.SymbolRef) void {
@@ -1339,6 +1359,7 @@ pub const CoarseTransitionSpec = struct {
 
 pub const BuildOptions = struct {
     closure_lookahead_mode: ClosureLookaheadMode = .full,
+    coarse_follow_lookaheads: bool = false,
     closure_pressure_mode: ClosurePressureMode = .none,
     closure_pressure_thresholds: ClosurePressureThresholds = .{},
     coarse_transitions: []const CoarseTransitionSpec = &.{},
@@ -2075,6 +2096,7 @@ const StateConstructionEngine = struct {
     variables: []const syntax_ir.SyntaxVariable,
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
+    follow_sets: []const first.SymbolSet,
     item_set_builder: ParseItemSetBuilder,
     closure_expansion_cache: *ClosureExpansionCache,
     successor_seed_state_cache: *SuccessorSeedStateCache,
@@ -2110,6 +2132,9 @@ const StateConstructionEngine = struct {
         const extra_timer = profileTimer(construct_profile_enabled);
         mutable_states[state_index].transitions = try self.withExtraTransitions(transitions, mutable_states[state_index]);
         addProfileDuration(&construct_profile.extra_transitions_ns, extra_timer);
+        if (self.options.closure_lookahead_mode == .none and self.options.coarse_follow_lookaheads) {
+            self.applyCoarseFollowLookaheads(&mutable_states[state_index]);
+        }
         const reserved_timer = profileTimer(construct_profile_enabled);
         mutable_states[state_index].reserved_word_set_id = reservedWordSetIdForParseState(
             mutable_states[state_index],
@@ -2144,6 +2169,18 @@ const StateConstructionEngine = struct {
             detected_conflicts.len,
             transition_stats,
         );
+    }
+
+    fn applyCoarseFollowLookaheads(self: @This(), parse_state: *state.ParseState) void {
+        const mutable_items = @constCast(parse_state.items);
+        for (mutable_items) |*entry| {
+            if (!entry.lookaheads.isEmpty()) continue;
+            if (entry.item.production_id >= self.productions.len) continue;
+            const production = self.productions[entry.item.production_id];
+            if (entry.item.step_index != production.steps.len) continue;
+            if (production.lhs >= self.follow_sets.len) continue;
+            _ = mergeFollowWithoutEpsilon(&entry.lookaheads, self.follow_sets[production.lhs]);
+        }
     }
 
     fn withExtraTransitions(
@@ -3402,6 +3439,51 @@ fn addNonTerminalExtraStatesAlloc(
     return starts;
 }
 
+fn computeFollowSetsAlloc(
+    allocator: std.mem.Allocator,
+    productions: []const ProductionInfo,
+    first_sets: first.FirstSets,
+    variable_count: usize,
+) BuildError!FollowSets {
+    const values = try allocator.alloc(first.SymbolSet, variable_count);
+    errdefer allocator.free(values);
+
+    var initialized: usize = 0;
+    errdefer for (values[0..initialized]) |set| freeSymbolSet(allocator, set);
+    for (values) |*set| {
+        set.* = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len);
+        initialized += 1;
+    }
+    if (values.len != 0) item.addLookahead(&values[0], .{ .end = {} });
+
+    var changed = true;
+    while (changed) {
+        changed = false;
+        for (productions) |production| {
+            if (production.augmented) continue;
+            if (production.lhs >= values.len) continue;
+            for (production.steps, 0..) |step, step_index| {
+                const non_terminal = switch (step.symbol) {
+                    .non_terminal => |index| index,
+                    else => continue,
+                };
+                if (non_terminal >= values.len) continue;
+
+                const suffix = production.steps[step_index + 1 ..];
+                const suffix_first = try first_sets.firstOfSequence(allocator, suffix);
+                defer freeSymbolSet(allocator, suffix_first);
+
+                changed = mergeFollowWithoutEpsilon(&values[non_terminal], suffix_first) or changed;
+                if (suffix_first.includes_epsilon) {
+                    changed = mergeFollowWithoutEpsilon(&values[non_terminal], values[production.lhs]) or changed;
+                }
+            }
+        }
+    }
+
+    return .{ .values = values };
+}
+
 fn extraSeedGroupIndex(
     allocator: std.mem.Allocator,
     groups: *std.array_list.Managed(ExtraSeedGroup),
@@ -3466,12 +3548,18 @@ fn constructStates(
         options,
         &state_registry,
     );
+    const follow_sets = if (options.closure_lookahead_mode == .none and options.coarse_follow_lookaheads)
+        try computeFollowSetsAlloc(allocator, productions, first_sets, variables.len)
+    else
+        FollowSets{ .values = &.{} };
+    defer follow_sets.deinit(allocator);
 
     var state_engine = StateConstructionEngine{
         .allocator = allocator,
         .variables = variables,
         .productions = productions,
         .first_sets = first_sets,
+        .follow_sets = follow_sets.values,
         .item_set_builder = item_set_builder,
         .closure_expansion_cache = &closure_expansion_cache,
         .successor_seed_state_cache = &successor_seed_state_cache,
@@ -3945,6 +4033,82 @@ test "buildStates reduces nested JSON-like values before separators" {
     try std.testing.expect(hasReduceAction(result.actions, value_number_production, .{ .terminal = comma }));
     try std.testing.expect(hasReduceAction(result.actions, value_number_production, .{ .terminal = rbracket }));
     try std.testing.expect(hasReduceAction(result.actions, value_number_production, .{ .terminal = rbrace }));
+}
+
+test "buildStates uses SLR follow lookaheads for completed coarse closure items" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const const_token: u32 = 0;
+    const var_token: u32 = 1;
+    const identifier: u32 = 2;
+    const eq: u32 = 3;
+    const number: u32 = 4;
+    const semicolon: u32 = 5;
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var decl_with_value_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .symbol = .{ .terminal = eq } },
+        .{ .symbol = .{ .non_terminal = 3 } },
+        .{ .symbol = .{ .terminal = semicolon } },
+    };
+    var decl_without_value_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .symbol = .{ .terminal = semicolon } },
+    };
+    var const_header_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = const_token } },
+        .{ .symbol = .{ .terminal = identifier } },
+    };
+    var var_header_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = var_token } },
+        .{ .symbol = .{ .terminal = identifier } },
+    };
+    var expr_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = number } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "variable_declaration", .kind = .named, .productions = &.{
+                .{ .steps = decl_with_value_steps[0..] },
+                .{ .steps = decl_without_value_steps[0..] },
+            } },
+            .{ .name = "_variable_declaration_header", .kind = .hidden, .productions = &.{
+                .{ .steps = const_header_steps[0..] },
+                .{ .steps = var_header_steps[0..] },
+            } },
+            .{ .name = "expr", .kind = .named, .productions = &.{.{ .steps = expr_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const result = try buildStatesWithOptions(arena.allocator(), grammar, .{
+        .closure_lookahead_mode = .none,
+        .coarse_follow_lookaheads = true,
+    });
+    const header_production = for (result.productions, 0..) |production, production_id| {
+        if (production.augmented) continue;
+        if (production.lhs != 2) continue;
+        if (production.steps.len != 2) continue;
+        switch (production.steps[0].symbol) {
+            .terminal => |terminal| if (terminal == const_token) break @as(u32, @intCast(production_id)),
+            else => {},
+        }
+    } else return error.TestUnexpectedResult;
+
+    try std.testing.expect(hasReduceAction(result.actions, header_production, .{ .terminal = eq }));
+    try std.testing.expect(hasReduceAction(result.actions, header_production, .{ .terminal = semicolon }));
 }
 
 fn hasReduceAction(

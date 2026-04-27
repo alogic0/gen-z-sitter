@@ -136,8 +136,8 @@
       "upstream_repository": "tree-sitter-zig",
       "upstream_revision": "6479aa13f32f701c383083d8b28360ebd682fb7d",
       "upstream_grammar_path": "src/grammar.json",
-      "why": "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the same routine coarse parser boundary as the larger parser-only snapshots",
-      "success_means": "load, prepare, complete the routine coarse serialize-only parser step, emit parser tables plus C tables, emit parser.c, pass compatibility validation, and pass compile-smoke cleanly"
+      "why": "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the routine coarse parser boundary with focused accepted and invalid runtime-link proofs for a variable declaration sample",
+      "success_means": "load, prepare, complete the routine coarse serialize-only parser step, keep parser.c compile-smoke evidence, and keep the focused Zig runtime-link samples passing under explicit bounded tests"
     },
     {
       "id": "tree_sitter_json_json",

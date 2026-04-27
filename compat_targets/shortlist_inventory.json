@@ -276,7 +276,7 @@
       "mismatch_category": "none",
       "first_failed_stage": null,
       "detail": null,
-      "notes": "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the same routine coarse parser boundary as the larger parser-only snapshots"
+      "notes": "real external parser-only grammar snapshot from the local tree-sitter-zig repo, staged through the routine coarse parser boundary with focused accepted and invalid runtime-link proofs for a variable declaration sample"
     },
     {
       "id": "tree_sitter_json_json",

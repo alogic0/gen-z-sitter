@@ -358,7 +358,7 @@ pub fn profileTreeSitterZigRuntimeLinkCandidate(allocator: std.mem.Allocator) Ru
         arena.allocator(),
         "compat_targets/tree_sitter_zig/grammar.json",
         .diagnostic,
-        .{ .closure_lookahead_mode = .none },
+        .{ .closure_lookahead_mode = .none, .coarse_follow_lookaheads = true },
         "tree_sitter_zig_json",
     );
     std.debug.print(
@@ -384,8 +384,37 @@ pub fn profileTreeSitterZigRuntimeLinkCandidate(allocator: std.mem.Allocator) Ru
     try linkAndRunGeneratedParserWithProfile(allocator, .{
         .parser_c = parser_c,
         .input = "const answer = 42;",
-        .expected_has_error = true,
+        .expected_has_error = false,
     }, "tree_sitter_zig_json");
+}
+
+pub fn linkAndRunTreeSitterZigParserAcceptedSample(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitTreeSitterZigParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .input = "const answer = 42;",
+        .expected_root_type = "source_file",
+        .expected_has_error = false,
+    });
+}
+
+pub fn linkAndRunTreeSitterZigParserInvalidSample(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitTreeSitterZigParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .input = "const answer = ;",
+        .expected_has_error = true,
+    });
 }
 
 fn dumpZigRuntimeLinkContext(serialized: serialize.SerializedTable, state_id: u32) void {
@@ -395,19 +424,38 @@ fn dumpZigRuntimeLinkContext(serialized: serialize.SerializedTable, state_id: u3
         "[zig-runtime-link-profile] state={d} lex_state={d} actions={d} gotos={d} unresolved={d}\n",
         .{ state_id, state_value.lex_state_id, state_value.actions.len, state_value.gotos.len, state_value.unresolved.len },
     );
-    for (state_value.actions) |entry| {
+    for (state_value.actions[0..@min(state_value.actions.len, 12)]) |entry| {
         std.debug.print(
             "[zig-runtime-link-profile] state={d} action symbol={s} kind={s}\n",
             .{ state_id, symbolName(serialized, entry.symbol), parseActionName(entry.action) },
         );
     }
+    if (state_value.actions.len > 12) {
+        std.debug.print(
+            "[zig-runtime-link-profile] state={d} action_more={d}\n",
+            .{ state_id, state_value.actions.len - 12 },
+        );
+    }
     if (state_value.lex_state_id >= serialized.lex_state_terminal_sets.len) return;
     const terminal_set = serialized.lex_state_terminal_sets[state_value.lex_state_id];
+    var printed: usize = 0;
     for (terminal_set, 0..) |present, terminal_id| {
         if (!present) continue;
+        if (printed >= 12) break;
         std.debug.print(
             "[zig-runtime-link-profile] state={d} lex_terminal={s}\n",
             .{ state_id, symbolName(serialized, .{ .terminal = @intCast(terminal_id) }) },
+        );
+        printed += 1;
+    }
+    var total: usize = 0;
+    for (terminal_set) |present| {
+        if (present) total += 1;
+    }
+    if (total > printed) {
+        std.debug.print(
+            "[zig-runtime-link-profile] state={d} lex_terminal_more={d}\n",
+            .{ state_id, total - printed },
         );
     }
 }
@@ -1785,6 +1833,20 @@ fn emitTreeSitterJsonParserC(allocator: std.mem.Allocator) RuntimeLinkError![]co
     );
 }
 
+fn emitTreeSitterZigParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    var serialized = try parse_table_pipeline.serializeRuntimeTableFromGrammarPathWithBuildOptions(
+        allocator,
+        "compat_targets/tree_sitter_zig/grammar.json",
+        .diagnostic,
+        .{ .closure_lookahead_mode = .none, .coarse_follow_lookaheads = true },
+    );
+    serialized = try offsetRuntimeStartStateAlloc(allocator, serialized);
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+}
+
 fn emitRuntimeParserCFromGrammarPath(
     allocator: std.mem.Allocator,
     grammar_path: []const u8,
@@ -2545,6 +2607,14 @@ test "linkAndRunTreeSitterZiggyParserInvalidSample links real Ziggy parser on in
 
 test "linkAndRunTreeSitterZiggySchemaParserAcceptedSample links real Ziggy schema parser on accepted input" {
     try linkAndRunTreeSitterZiggySchemaParserAcceptedSample(std.testing.allocator);
+}
+
+test "linkAndRunTreeSitterZigParserAcceptedSample links real Zig parser on accepted input" {
+    try linkAndRunTreeSitterZigParserAcceptedSample(std.testing.allocator);
+}
+
+test "linkAndRunTreeSitterZigParserInvalidSample links real Zig parser on invalid input" {
+    try linkAndRunTreeSitterZigParserInvalidSample(std.testing.allocator);
 }
 
 test "linkAndRunBashParserWithRealExternalScanner links generated Bash parser with upstream scanner" {

@@ -245,12 +245,12 @@ Implementation batches, in order:
      compat-matching coarse closure mode shifts into a state with no terminal
      actions and an empty lex state, while upstream derives lex states from real
      terminal entries produced by lookahead-sensitive closure.
-   - [ ] Fix the parser-context gap exposed by `const answer = 42;`: the linked
+   - [x] Fix the parser-context gap exposed by `const answer = 42;`: the linked
      parser currently shifts `const` and the identifier, then reaches EOF/error
      instead of accepting `=`, the integer expression, and `;`.
-   - [ ] Add one accepted runtime-link sample only after the scoped diagnostic
+   - [x] Add one accepted runtime-link sample only after the scoped diagnostic
      has clear headroom under the bounded test limit.
-   - [ ] Add one invalid or partial runtime-link sample after the accepted
+   - [x] Add one invalid or partial runtime-link sample after the accepted
      sample is stable and bounded.
    - Note: the scoped `tree_sitter_zig_json` compat target currently proves
      load, prepare, routine coarse serialization, parser table emission,
@@ -262,11 +262,12 @@ Implementation batches, in order:
      Accepted runtime-link promotion remains deferred because the current
      generated parser errors after the variable identifier in
      `const answer = 42;`. The focused diagnostic now identifies the immediate
-     cause: `.closure_lookahead_mode = .none` is useful for bounded structural
-     probes, but it is not a correctness-preserving accepted runtime-link mode
-     for Zig because completed closure items lose terminal lookaheads and cannot
-     produce the reductions that make `=` and `;` valid after the declaration
-     header.
+     cause: `.closure_lookahead_mode = .none` produced completed closure items
+     without reduce lookaheads. Coarse closure mode now adds SLR-style FOLLOW
+     lookaheads to completed items, which lets the linked parser reduce the
+     declaration header before `=` and `;`. The accepted Zig runtime-link sample
+     is in the default bounded runtime-link suite; the invalid sample is kept as
+     a focused bounded filter so the default suite retains headroom.
 
 5. Scanner-wave evidence accounting.
    - [x] Ensure Bash and Haskell generated GLR scanner runtime-link proofs are

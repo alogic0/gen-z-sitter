@@ -131,6 +131,7 @@ pub fn build(b: *std.Build) void {
         "linkAndRunTreeSitterZiggyParserAcceptedSample",
         "linkAndRunTreeSitterZiggyParserInvalidSample",
         "linkAndRunTreeSitterZiggySchemaParserAcceptedSample",
+        "linkAndRunTreeSitterZigParserAcceptedSample",
         "linkAndRunBashParserWithRealExternalScanner",
         "linkAndRunBashGeneratedGlrParserWithRealExternalScanner",
         "linkAndRunHaskellParserWithRealExternalScanner",
