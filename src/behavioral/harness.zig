@@ -183,9 +183,18 @@ pub fn simulatePreparedScannerFree(
     prepared: grammar_ir.PreparedGrammar,
     input: []const u8,
 ) BehavioralError!SimulationResult {
+    return try simulatePreparedScannerFreeWithBuildOptions(allocator, prepared, input, .{});
+}
+
+pub fn simulatePreparedScannerFreeWithBuildOptions(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    input: []const u8,
+    options: build.BuildOptions,
+) BehavioralError!SimulationResult {
     const extracted = try extract_tokens.extractTokens(allocator, prepared);
     const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
-    const result = try build.buildStates(allocator, flattened);
+    const result = try build.buildStatesWithOptions(allocator, flattened, options);
     return simulateBuiltScannerFree(allocator, result, prepared, flattened, extracted.lexical, input);
 }
 
@@ -1769,6 +1778,39 @@ test "simulatePreparedScannerFree records recovery for the invalid behavioral co
             );
         },
     }
+}
+
+test "parse-table minimization preserves scanner-free behavioral outcomes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), fixtures.behavioralConfigGrammarJson().contents);
+
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const flattened = try flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax);
+    const default_table = try build.buildStates(arena.allocator(), flattened);
+    const minimized_table = try build.buildStatesWithOptions(arena.allocator(), flattened, .{
+        .minimize_states = true,
+    });
+    try std.testing.expect(minimized_table.states.len <= default_table.states.len);
+
+    const valid_default = try simulatePreparedScannerFree(arena.allocator(), prepared, fixtures.behavioralConfigValidInput().contents);
+    const valid_minimized = try simulatePreparedScannerFreeWithBuildOptions(
+        arena.allocator(),
+        prepared,
+        fixtures.behavioralConfigValidInput().contents,
+        .{ .minimize_states = true },
+    );
+    try expectSameSimulationResult(valid_default, valid_minimized);
+
+    const invalid_default = try simulatePreparedScannerFree(arena.allocator(), prepared, fixtures.behavioralConfigInvalidInput().contents);
+    const invalid_minimized = try simulatePreparedScannerFreeWithBuildOptions(
+        arena.allocator(),
+        prepared,
+        fixtures.behavioralConfigInvalidInput().contents,
+        .{ .minimize_states = true },
+    );
+    try expectSameSimulationResult(invalid_default, invalid_minimized);
 }
 
 test "simulatePreparedScannerFree preserves behavioral config outcomes through grammar.js" {

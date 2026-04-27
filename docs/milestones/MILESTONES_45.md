@@ -327,6 +327,8 @@ Completed steps:
 - [x] Add the minimizer module boundary and default-off build option wiring.
 - [x] Expose minimization through `gen-z-sitter generate --minimize` for JSON
   summary generation.
+- [x] Add behavioral coverage that compares minimized and unminimized
+  scanner-free outcomes and checks the minimized state count does not grow.
 
 **Risk.** Low. Purely additive. The minimization pass can be toggled off and
 the existing output is unchanged when it is.
