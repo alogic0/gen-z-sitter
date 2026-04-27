@@ -44,8 +44,20 @@ const ConstructProfile = struct {
     closure_seed_dupes: usize = 0,
     closure_seed_items: usize = 0,
     closure_seed_bytes: usize = 0,
+    closure_runs: usize = 0,
     closure_items_stored: usize = 0,
     closure_items_returned: usize = 0,
+    closure_expansion_cache_hits: usize = 0,
+    closure_expansion_cache_misses: usize = 0,
+    closure_expansion_cache_scanned: usize = 0,
+    closure_expansion_cache_entries: usize = 0,
+    closure_append_added: usize = 0,
+    closure_append_duplicate_checks: usize = 0,
+    closure_append_duplicate_hits: usize = 0,
+    closure_append_ns: u64 = 0,
+    successor_seed_cache_hits: usize = 0,
+    successor_seed_cache_misses: usize = 0,
+    successor_seed_cache_entries: usize = 0,
     item_set_hash_calls: usize = 0,
     item_set_hash_entries: usize = 0,
     item_set_eql_calls: usize = 0,
@@ -228,13 +240,35 @@ fn logConstructProfile() void {
         },
     );
     std.debug.print(
-        "[parse_table_profile] closure_alloc seed_dupes={d} seed_items={d} seed_mb={d:.2} closure_items_stored={d} state_items_stored={d}\n",
+        "[parse_table_profile] closure_alloc seed_dupes={d} seed_items={d} seed_mb={d:.2} closure_runs={d} closure_items_stored={d} state_items_stored={d}\n",
         .{
             profile.closure_seed_dupes,
             profile.closure_seed_items,
             @as(f64, @floatFromInt(profile.closure_seed_bytes)) / (1024.0 * 1024.0),
+            profile.closure_runs,
             profile.closure_items_stored,
             profile.state_items_stored,
+        },
+    );
+    std.debug.print(
+        "[parse_table_profile] closure_expansion cache_hits={d} cache_misses={d} scanned={d} entries={d} append_added={d} append_checks={d} append_hits={d} append_ms={d:.2}\n",
+        .{
+            profile.closure_expansion_cache_hits,
+            profile.closure_expansion_cache_misses,
+            profile.closure_expansion_cache_scanned,
+            profile.closure_expansion_cache_entries,
+            profile.closure_append_added,
+            profile.closure_append_duplicate_checks,
+            profile.closure_append_duplicate_hits,
+            @as(f64, @floatFromInt(profile.closure_append_ns)) / @as(f64, std.time.ns_per_ms),
+        },
+    );
+    std.debug.print(
+        "[parse_table_profile] successor_seed_cache hits={d} misses={d} entries={d}\n",
+        .{
+            profile.successor_seed_cache_hits,
+            profile.successor_seed_cache_misses,
+            profile.successor_seed_cache_entries,
         },
     );
     std.debug.print(
@@ -439,7 +473,6 @@ const BoolSliceContext = struct {
 };
 
 const StateIdByItemSet = std.HashMap(item.ParseItemSet, state.StateId, ParseItemSetContext, std.hash_map.default_max_load_percentage);
-const ClosedItemsBySeed = std.HashMap(item.ParseItemSet, item.ParseItemSet, ParseItemSetContext, std.hash_map.default_max_load_percentage);
 const CoreIdByItemSetCore = std.HashMap(item.ParseItemSetCore, usize, ParseItemSetCoreContext, std.hash_map.default_max_load_percentage);
 const SymbolIndexMap = std.HashMap(syntax_ir.SymbolRef, usize, SymbolRefContext, std.hash_map.default_max_load_percentage);
 const ClosureItemIndexMap = std.HashMap(item.ParseItem, usize, ParseItemCoreContext, std.hash_map.default_max_load_percentage);
@@ -546,106 +579,67 @@ const ClosureExpansionCacheEntry = struct {
     generated_items: []const item.ParseItemSetEntry,
 };
 
-const ClosureResultCacheEntry = struct {
-    seed_items: item.ParseItemSet,
-    closed_items: item.ParseItemSet,
-};
-
-const ClosureResultCache = struct {
+const ClosureExpansionCache = struct {
     allocator: std.mem.Allocator,
-    entries: std.array_list.Managed(ClosureResultCacheEntry),
-    closed_items_by_seed: ClosedItemsBySeed,
-    hits: usize = 0,
-    misses: usize = 0,
-    core_match_misses: usize = 0,
+    entries: std.array_list.Managed(ClosureExpansionCacheEntry),
 
     fn init(allocator: std.mem.Allocator) @This() {
         return .{
             .allocator = allocator,
-            .entries = std.array_list.Managed(ClosureResultCacheEntry).init(allocator),
-            .closed_items_by_seed = ClosedItemsBySeed.init(allocator),
+            .entries = std.array_list.Managed(ClosureExpansionCacheEntry).init(allocator),
         };
     }
 
     fn deinit(self: *@This()) void {
-        self.closed_items_by_seed.deinit();
+        for (self.entries.items) |entry| {
+            freeSymbolSet(self.allocator, entry.context_follow);
+            for (entry.generated_items) |generated| {
+                freeSymbolSet(self.allocator, generated.lookaheads);
+            }
+            self.allocator.free(entry.generated_items);
+        }
         self.entries.deinit();
     }
 
-    fn getOrBuild(
+    fn find(
+        self: @This(),
+        non_terminal: u32,
+        closure_lookahead_mode: ClosureLookaheadMode,
+        context_follow: first.SymbolSet,
+        following_reserved_word_set_id: u16,
+        production_end_reserved_word_set_id: u16,
+    ) ?[]const item.ParseItemSetEntry {
+        for (self.entries.items) |entry| {
+            if (construct_profile_enabled) construct_profile.closure_expansion_cache_scanned += 1;
+            if (entry.non_terminal != non_terminal) continue;
+            if (entry.closure_lookahead_mode != closure_lookahead_mode) continue;
+            if (closure_lookahead_mode == .none) return entry.generated_items;
+            if (!first.SymbolSet.eql(entry.context_follow, context_follow)) continue;
+            if (entry.following_reserved_word_set_id != following_reserved_word_set_id) continue;
+            if (entry.production_end_reserved_word_set_id != production_end_reserved_word_set_id) continue;
+            return entry.generated_items;
+        }
+        return null;
+    }
+
+    fn append(
         self: *@This(),
-        variables: []const syntax_ir.SyntaxVariable,
-        item_set_builder: ParseItemSetBuilder,
-        seed_items: []const item.ParseItemSetEntry,
-        options: BuildOptions,
-    ) BuildError!item.ParseItemSet {
-        if (options.closure_pressure_mode != .none or options.coarse_transitions.len != 0) {
-            return try item_set_builder.transitiveClosure(
-                self.allocator,
-                variables,
-                .{ .entries = seed_items },
-                options,
-            );
-        }
-
-        const trace_current_transition = shouldTraceCurrentClosure();
-        const seed_item_set = item.ParseItemSet{ .entries = seed_items };
-        if (self.closed_items_by_seed.get(seed_item_set)) |cached| {
-            self.hits += 1;
-            if (construct_profile_enabled) {
-                construct_profile.closure_cache_hits += 1;
-                construct_profile.closure_items_returned += cached.entries.len;
-            }
-            if (shouldLogBuildProgress() or trace_current_transition) {
-                std.debug.print(
-                    "[parse_table/build] gotoItems cache_hit seed_items={d} cached_items={d}\n",
-                    .{ seed_items.len, cached.entries.len },
-                );
-            }
-            return cached;
-        }
-
-        self.misses += 1;
-        if (construct_profile_enabled) construct_profile.closure_cache_misses += 1;
-        if (countDistinctSeedCores(self.entries.items, seed_item_set) > 0) {
-            self.core_match_misses += 1;
-            if (shouldLogBuildProgress() and seed_items.len >= 12) {
-                logBuildSummary(
-                    "closure_result_cache core_miss seed_items={d} cache_entries={d} core_match_misses={d}",
-                    .{ seed_items.len, self.entries.items.len, self.core_match_misses },
-                );
-            }
-        }
-
-        const seed_copy = try self.allocator.dupe(item.ParseItemSetEntry, seed_items);
-        if (construct_profile_enabled) {
-            construct_profile.closure_seed_dupes += 1;
-            construct_profile.closure_seed_items += seed_items.len;
-            construct_profile.closure_seed_bytes += seed_items.len * @sizeOf(item.ParseItemSetEntry);
-        }
-        if (shouldLogBuildProgress() or trace_current_transition) {
-            std.debug.print("[parse_table/build] gotoItems closure_start seed_items={d}\n", .{seed_items.len});
-        }
-        const closed_item_set = try item_set_builder.transitiveClosure(
-            self.allocator,
-            variables,
-            seed_item_set,
-            options,
-        );
-        if (construct_profile_enabled) construct_profile.closure_items_returned += closed_item_set.entries.len;
-        if (shouldLogBuildProgress() or trace_current_transition) {
-            std.debug.print(
-                "[parse_table/build] gotoItems closure_done seed_items={d} closed_items={d}\n",
-                .{ seed_items.len, closed_item_set.entries.len },
-            );
-        }
+        non_terminal: u32,
+        closure_lookahead_mode: ClosureLookaheadMode,
+        context_follow: first.SymbolSet,
+        following_reserved_word_set_id: u16,
+        production_end_reserved_word_set_id: u16,
+        generated_items: []const item.ParseItemSetEntry,
+    ) !void {
         try self.entries.append(.{
-            .seed_items = .{ .entries = seed_copy },
-            .closed_items = closed_item_set,
+            .non_terminal = non_terminal,
+            .closure_lookahead_mode = closure_lookahead_mode,
+            .context_follow = try cloneSymbolSet(self.allocator, context_follow),
+            .following_reserved_word_set_id = following_reserved_word_set_id,
+            .production_end_reserved_word_set_id = production_end_reserved_word_set_id,
+            .generated_items = generated_items,
         });
-        try self.closed_items_by_seed.put(.{ .entries = seed_copy }, closed_item_set);
-        if (construct_profile_enabled) construct_profile.closure_items_stored += closed_item_set.entries.len;
-        return closed_item_set;
+        if (construct_profile_enabled) construct_profile.closure_expansion_cache_entries = self.entries.items.len;
     }
 };
 
@@ -735,8 +729,25 @@ const ParseItemSetBuilder = struct {
         item_set: item.ParseItemSet,
         options: BuildOptions,
     ) BuildError!item.ParseItemSet {
+        return try self.transitiveClosureWithExpansionCache(
+            allocator,
+            variables,
+            item_set,
+            options,
+            null,
+        );
+    }
+
+    fn transitiveClosureWithExpansionCache(
+        self: @This(),
+        allocator: std.mem.Allocator,
+        variables: []const syntax_ir.SyntaxVariable,
+        item_set: item.ParseItemSet,
+        options: BuildOptions,
+        expansion_cache: ?*ClosureExpansionCache,
+    ) BuildError!item.ParseItemSet {
         return .{
-            .entries = try closure(allocator, variables, self, item_set.entries, options),
+            .entries = try closure(allocator, variables, self, item_set.entries, options, expansion_cache),
         };
     }
 };
@@ -849,6 +860,39 @@ fn freeSymbolSet(allocator: std.mem.Allocator, set: first.SymbolSet) void {
     item.freeSymbolSet(allocator, set);
 }
 
+fn cloneParseItemSetEntries(
+    allocator: std.mem.Allocator,
+    entries: []const item.ParseItemSetEntry,
+) ![]const item.ParseItemSetEntry {
+    const cloned = try allocator.alloc(item.ParseItemSetEntry, entries.len);
+    errdefer allocator.free(cloned);
+
+    var cloned_count: usize = 0;
+    errdefer {
+        for (cloned[0..cloned_count]) |entry| {
+            freeSymbolSet(allocator, entry.lookaheads);
+        }
+    }
+
+    for (entries, 0..) |entry, index| {
+        cloned[index] = .{
+            .item = entry.item,
+            .lookaheads = try cloneSymbolSet(allocator, entry.lookaheads),
+            .following_reserved_word_set_id = entry.following_reserved_word_set_id,
+        };
+        cloned_count += 1;
+    }
+
+    return cloned;
+}
+
+fn freeParseItemSetEntries(allocator: std.mem.Allocator, entries: []const item.ParseItemSetEntry) void {
+    for (entries) |entry| {
+        freeSymbolSet(allocator, entry.lookaheads);
+    }
+    allocator.free(entries);
+}
+
 fn mergeSymbolSetLookaheads(target: *first.SymbolSet, incoming: first.SymbolSet) bool {
     return item.mergeSymbolSetLookaheads(target, incoming);
 }
@@ -921,26 +965,6 @@ fn optionalSymbolRefEql(a: ?syntax_ir.SymbolRef, b: ?syntax_ir.SymbolRef) bool {
         return false;
     }
     return b == null;
-}
-
-fn findClosureExpansionCache(
-    entries: []const ClosureExpansionCacheEntry,
-    non_terminal: u32,
-    closure_lookahead_mode: ClosureLookaheadMode,
-    context_follow: first.SymbolSet,
-    following_reserved_word_set_id: u16,
-    production_end_reserved_word_set_id: u16,
-) ?[]const item.ParseItemSetEntry {
-    for (entries) |entry| {
-        if (entry.non_terminal != non_terminal) continue;
-        if (entry.closure_lookahead_mode != closure_lookahead_mode) continue;
-        if (closure_lookahead_mode == .none) return entry.generated_items;
-        if (!first.SymbolSet.eql(entry.context_follow, context_follow)) continue;
-        if (entry.following_reserved_word_set_id != following_reserved_word_set_id) continue;
-        if (entry.production_end_reserved_word_set_id != production_end_reserved_word_set_id) continue;
-        return entry.generated_items;
-    }
-    return null;
 }
 
 const ClosurePressureTrigger = struct {
@@ -1403,6 +1427,10 @@ fn shouldUseCoarseTransition(options: BuildOptions, source_state_id: state.State
         return true;
     }
     return false;
+}
+
+fn canUseSuccessorSeedStateCache(options: BuildOptions) bool {
+    return options.closure_pressure_mode == .none and options.coarse_transitions.len == 0;
 }
 
 fn collectReservedWordContextNamesAlloc(
@@ -2095,7 +2123,8 @@ const StateConstructionEngine = struct {
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
     item_set_builder: ParseItemSetBuilder,
-    closure_result_cache: *ClosureResultCache,
+    closure_expansion_cache: *ClosureExpansionCache,
+    successor_seed_state_cache: *SuccessorSeedStateCache,
     state_registry: *StateRegistry,
     action_states: *std.array_list.Managed(actions.StateActions),
     largest_new_successor: *?SuccessorDiagnostic,
@@ -2259,12 +2288,52 @@ const StateConstructionEngine = struct {
                         );
                     }
                 }
-                break :blk try self.closure_result_cache.getOrBuild(
+                const use_successor_seed_cache = canUseSuccessorSeedStateCache(transition_options);
+                if (use_successor_seed_cache) {
+                    if (self.successor_seed_state_cache.get(group.items.items)) |cached_state_id| {
+                        stats.transition_count += 1;
+                        stats.reused_state_count += 1;
+                        const cached_item_count = self.state_registry.items()[@intCast(cached_state_id)].items.len;
+                        if (cached_item_count > stats.largest_reused_state_items) {
+                            stats.largest_reused_state_items = cached_item_count;
+                            stats.largest_reused_state_symbol = symbol;
+                        }
+                        if (self.largest_reused_successor.* == null or cached_item_count > self.largest_reused_successor.*.?.item_count) {
+                            self.largest_reused_successor.* = .{
+                                .source_state_id = source_state_id,
+                                .symbol = symbol,
+                                .item_count = cached_item_count,
+                                .reused = true,
+                            };
+                            reporter.maybeLogLargestSuccessor("construct_states update largest_reused_successor", self.largest_reused_successor.*.?);
+                        }
+                        try transitions.append(.{ .symbol = symbol, .state = cached_state_id });
+                        continue;
+                    }
+                }
+                if (construct_profile_enabled) {
+                    construct_profile.closure_cache_misses += 1;
+                    construct_profile.closure_seed_items += group.items.items.len;
+                    construct_profile.closure_seed_bytes += group.items.items.len * @sizeOf(item.ParseItemSetEntry);
+                }
+                if (shouldLogBuildProgress() or shouldTraceCurrentClosure()) {
+                    std.debug.print("[parse_table/build] gotoItems closure_start seed_items={d}\n", .{group.items.items.len});
+                }
+                const closed_item_set = try self.item_set_builder.transitiveClosureWithExpansionCache(
+                    self.allocator,
                     self.variables,
-                    self.item_set_builder,
-                    group.items.items,
+                    .{ .entries = group.items.items },
                     transition_options,
+                    self.closure_expansion_cache,
                 );
+                if (construct_profile_enabled) construct_profile.closure_items_returned += closed_item_set.entries.len;
+                if (shouldLogBuildProgress() or shouldTraceCurrentClosure()) {
+                    std.debug.print(
+                        "[parse_table/build] gotoItems closure_done seed_items={d} closed_items={d}\n",
+                        .{ group.items.items.len, closed_item_set.entries.len },
+                    );
+                }
+                break :blk closed_item_set;
             };
             reporter.logTransitionClosed(
                 source_state_id,
@@ -2275,6 +2344,9 @@ const StateConstructionEngine = struct {
             );
             stats.transition_count += 1;
             const interned = try self.state_registry.intern(advanced_item_set);
+            if (canUseSuccessorSeedStateCache(self.options)) {
+                try self.successor_seed_state_cache.put(group.items.items, interned.state_id);
+            }
             if (interned.reused) {
                 stats.reused_state_count += 1;
                 if (advanced_item_set.entries.len > stats.largest_reused_state_items) {
@@ -2318,6 +2390,50 @@ const StateConstructionEngine = struct {
             construct_profile.transition_slice_bytes += transitions.items.len * @sizeOf(state.Transition);
         }
         return try transitions.toOwnedSlice();
+    }
+};
+
+const SuccessorSeedStateCache = struct {
+    allocator: std.mem.Allocator,
+    state_ids_by_seed: StateIdByItemSet,
+    keys: std.array_list.Managed(item.ParseItemSet),
+
+    fn init(allocator: std.mem.Allocator) @This() {
+        return .{
+            .allocator = allocator,
+            .state_ids_by_seed = StateIdByItemSet.init(allocator),
+            .keys = std.array_list.Managed(item.ParseItemSet).init(allocator),
+        };
+    }
+
+    fn deinit(self: *@This()) void {
+        for (self.keys.items) |key| {
+            freeParseItemSetEntries(self.allocator, key.entries);
+        }
+        self.keys.deinit();
+        self.state_ids_by_seed.deinit();
+    }
+
+    fn get(self: @This(), seed_items: []const item.ParseItemSetEntry) ?state.StateId {
+        if (self.state_ids_by_seed.get(.{ .entries = seed_items })) |state_id| {
+            if (construct_profile_enabled) construct_profile.successor_seed_cache_hits += 1;
+            return state_id;
+        }
+        if (construct_profile_enabled) construct_profile.successor_seed_cache_misses += 1;
+        return null;
+    }
+
+    fn put(
+        self: *@This(),
+        seed_items: []const item.ParseItemSetEntry,
+        state_id: state.StateId,
+    ) !void {
+        const seed_copy = try cloneParseItemSetEntries(self.allocator, seed_items);
+        errdefer freeParseItemSetEntries(self.allocator, seed_copy);
+        const key = item.ParseItemSet{ .entries = seed_copy };
+        try self.state_ids_by_seed.put(key, state_id);
+        try self.keys.append(key);
+        if (construct_profile_enabled) construct_profile.successor_seed_cache_entries = self.keys.items.len;
     }
 };
 
@@ -2495,13 +2611,15 @@ const ClosureRun = struct {
     pressure_triggered: bool = false,
     items: std.array_list.Managed(item.ParseItemSetEntry),
     item_indexes: ClosureItemIndexMap,
-    expansion_cache: std.array_list.Managed(ClosureExpansionCacheEntry),
+    local_expansion_cache: ClosureExpansionCache,
+    shared_expansion_cache: ?*ClosureExpansionCache,
 
     fn init(
         allocator: std.mem.Allocator,
         variables: []const syntax_ir.SyntaxVariable,
         item_set_builder: ParseItemSetBuilder,
         options: BuildOptions,
+        expansion_cache: ?*ClosureExpansionCache,
     ) @This() {
         return .{
             .allocator = allocator,
@@ -2514,14 +2632,19 @@ const ClosureRun = struct {
             .effective_closure_lookahead_mode = options.closure_lookahead_mode,
             .items = std.array_list.Managed(item.ParseItemSetEntry).init(allocator),
             .item_indexes = ClosureItemIndexMap.init(allocator),
-            .expansion_cache = std.array_list.Managed(ClosureExpansionCacheEntry).init(allocator),
+            .local_expansion_cache = ClosureExpansionCache.init(allocator),
+            .shared_expansion_cache = expansion_cache,
         };
     }
 
     fn deinit(self: *@This()) void {
-        self.expansion_cache.deinit();
+        self.local_expansion_cache.deinit();
         self.item_indexes.deinit();
         self.items.deinit();
+    }
+
+    fn expansionCache(self: *@This()) *ClosureExpansionCache {
+        return self.shared_expansion_cache orelse &self.local_expansion_cache;
     }
 
     fn seed(self: *@This(), seed_items: []const item.ParseItemSetEntry) !void {
@@ -2583,6 +2706,7 @@ const ClosureRun = struct {
                     context,
                 );
 
+                const append_profile_timer = profileTimer(construct_profile_enabled);
                 const append_timer = maybeStartTimer(self.progress_log);
                 const append_stats = try appendGeneratedItemsToClosure(
                     self.allocator,
@@ -2591,6 +2715,12 @@ const ClosureRun = struct {
                     generated_items,
                     false,
                 );
+                addProfileDuration(&construct_profile.closure_append_ns, append_profile_timer);
+                if (construct_profile_enabled) {
+                    construct_profile.closure_append_added += append_stats.added;
+                    construct_profile.closure_append_duplicate_checks += append_stats.duplicate_checks;
+                    construct_profile.closure_append_duplicate_hits += append_stats.duplicate_hits;
+                }
                 if (self.trace_current_closure and append_stats.added > 0) {
                     std.debug.print(
                         "[parse_table/build] traced_closure append round={d} cursor={d}/{d} non_terminal={d} added={d} duplicate_hits={d} total_items={d}\n",
@@ -2679,14 +2809,15 @@ const ClosureRun = struct {
         non_terminal: u32,
         context: ClosureContext,
     ) ![]const item.ParseItemSetEntry {
-        if (findClosureExpansionCache(
-            self.expansion_cache.items,
+        const cache = self.expansionCache();
+        if (cache.find(
             non_terminal,
             self.effective_closure_lookahead_mode,
             context.following_tokens,
             context.following_reserved_word_set_id,
             context.production_end_reserved_word_set_id,
         )) |cached| {
+            if (construct_profile_enabled) construct_profile.closure_expansion_cache_hits += 1;
             if (self.trace_current_closure and (cursor < 10 or (cursor + 1) % 25 == 0)) {
                 std.debug.print(
                     "[parse_table/build] traced_closure cache_hit round={d} cursor={d}/{d} non_terminal={d} generated_items={d}\n",
@@ -2699,6 +2830,7 @@ const ClosureRun = struct {
             return cached;
         }
 
+        if (construct_profile_enabled) construct_profile.closure_expansion_cache_misses += 1;
         if (self.trace_current_closure and (cursor < 10 or (cursor + 1) % 25 == 0)) {
             std.debug.print(
                 "[parse_table/build] traced_closure cache_miss round={d} cursor={d}/{d} non_terminal={d}\n",
@@ -2717,21 +2849,21 @@ const ClosureRun = struct {
                 .closure_lookahead_mode = self.effective_closure_lookahead_mode,
             },
         );
-        try self.expansion_cache.append(.{
-            .non_terminal = non_terminal,
-            .closure_lookahead_mode = self.effective_closure_lookahead_mode,
-            .context_follow = try cloneSymbolSet(self.allocator, context.following_tokens),
-            .following_reserved_word_set_id = context.following_reserved_word_set_id,
-            .production_end_reserved_word_set_id = context.production_end_reserved_word_set_id,
-            .generated_items = generated,
-        });
+        try cache.append(
+            non_terminal,
+            self.effective_closure_lookahead_mode,
+            context.following_tokens,
+            context.following_reserved_word_set_id,
+            context.production_end_reserved_word_set_id,
+            generated,
+        );
         if (self.progress_log and non_terminal < stats.unique_lookaheads.len) {
             stats.unique_lookaheads[non_terminal] = countDistinctLookaheadsForNonTerminal(
-                self.expansion_cache.items,
+                cache.entries.items,
                 non_terminal,
             );
             stats.unique_first_sets[non_terminal] = countDistinctFirstSetsForNonTerminal(
-                self.expansion_cache.items,
+                cache.entries.items,
                 non_terminal,
             );
             if (self.context_log and (stats.cache_misses[non_terminal] <= 3 or stats.cache_misses[non_terminal] % 25 == 0)) {
@@ -2755,31 +2887,6 @@ const ClosureRun = struct {
         return generated;
     }
 };
-
-fn countDistinctSeedCores(entries: []const ClosureResultCacheEntry, seed_items: item.ParseItemSet) usize {
-    var count: usize = 0;
-    for (entries, 0..) |entry, index| {
-        if (!sameSeedCore(entry.seed_items.entries, seed_items.entries)) continue;
-        var already_seen = false;
-        var previous: usize = 0;
-        while (previous < index) : (previous += 1) {
-            if (!sameSeedCore(entries[previous].seed_items.entries, seed_items.entries)) continue;
-            already_seen = true;
-            break;
-        }
-        if (!already_seen) count += 1;
-    }
-    return count;
-}
-
-fn sameSeedCore(left: []const item.ParseItemSetEntry, right: []const item.ParseItemSetEntry) bool {
-    if (left.len != right.len) return false;
-    for (left, right) |a, b| {
-        if (a.item.production_id != b.item.production_id) return false;
-        if (a.item.step_index != b.item.step_index) return false;
-    }
-    return true;
-}
 
 fn logSuccessorDiagnostic(label: []const u8, variables: []const syntax_ir.SyntaxVariable, diagnostic: SuccessorDiagnostic) void {
     var symbol_buf: [128]u8 = undefined;
@@ -3053,6 +3160,7 @@ test "closure uses precomputed transitive additions to expand leading recursive 
         item_set_builder,
         seed[0..],
         .{},
+        null,
     );
 
     try std.testing.expect(findParseItem(items, item.ParseItem.init(1, 0), .{ .terminal = 0 }) != null);
@@ -3212,6 +3320,7 @@ test "closure preserves named-precedence plus lookahead through recursive contex
         item_set_builder,
         seed[0..],
         .{},
+        null,
     );
 
     try std.testing.expect(findParseItem(items, item.ParseItem.init(4, 0), .{ .terminal = 1 }) != null);
@@ -3404,8 +3513,10 @@ fn constructStates(
     );
     reporter.logInitialClosureDone(start_timer, start_item_set.entries.len);
     try state_registry.appendInitialState(start_item_set);
-    var closure_result_cache = ClosureResultCache.init(allocator);
-    defer closure_result_cache.deinit();
+    var closure_expansion_cache = ClosureExpansionCache.init(allocator);
+    defer closure_expansion_cache.deinit();
+    var successor_seed_state_cache = SuccessorSeedStateCache.init(allocator);
+    defer successor_seed_state_cache.deinit();
     const non_terminal_extra_starts = try addNonTerminalExtraStatesAlloc(
         allocator,
         variables,
@@ -3422,7 +3533,8 @@ fn constructStates(
         .productions = productions,
         .first_sets = first_sets,
         .item_set_builder = item_set_builder,
-        .closure_result_cache = &closure_result_cache,
+        .closure_expansion_cache = &closure_expansion_cache,
+        .successor_seed_state_cache = &successor_seed_state_cache,
         .state_registry = &state_registry,
         .action_states = &action_states,
         .largest_new_successor = &largest_new_successor,
@@ -3511,8 +3623,10 @@ fn closure(
     item_set_builder: ParseItemSetBuilder,
     seed_items: []const item.ParseItemSetEntry,
     options: BuildOptions,
+    expansion_cache: ?*ClosureExpansionCache,
 ) BuildError![]const item.ParseItemSetEntry {
-    var run = ClosureRun.init(allocator, variables, item_set_builder, options);
+    if (construct_profile_enabled) construct_profile.closure_runs += 1;
+    var run = ClosureRun.init(allocator, variables, item_set_builder, options, expansion_cache);
     defer run.deinit();
     try run.seed(seed_items);
 
