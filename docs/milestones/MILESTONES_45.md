@@ -329,6 +329,8 @@ Completed steps:
   summary generation.
 - [x] Add behavioral coverage that compares minimized and unminimized
   scanner-free outcomes and checks the minimized state count does not grow.
+- [x] Constrain minimization candidates by item-set core identity while
+  ignoring lookahead sets.
 
 **Risk.** Low. Purely additive. The minimization pass can be toggled off and
 the existing output is unchanged when it is.

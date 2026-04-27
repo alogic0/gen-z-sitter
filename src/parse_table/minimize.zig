@@ -1,4 +1,5 @@
 const std = @import("std");
+const item = @import("item.zig");
 const resolution = @import("resolution.zig");
 const state = @import("state.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
@@ -217,6 +218,14 @@ fn buildSig(
     };
 
     var entries = std.array_list.Managed(Entry).init(alloc);
+    for (s.items) |entry| {
+        try entries.append(.{
+            .sym_tag = 254,
+            .sym_idx = entry.item.production_id,
+            .kind = @intCast(entry.item.step_index),
+            .value = entry.following_reserved_word_set_id,
+        });
+    }
     try entries.append(.{
         .sym_tag = 255,
         .sym_idx = s.reserved_word_set_id,
@@ -480,6 +489,60 @@ test "minimizeAlloc keeps distinct states separate" {
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
                         .decision = .{ .chosen = .{ .reduce = 1 } },
+                    },
+                },
+            },
+        },
+    };
+
+    const result = try minimizeAlloc(allocator, parse_states[0..], resolved_actions);
+    defer {
+        for (result.states) |s| allocator.free(s.transitions);
+        allocator.free(result.states);
+        allocator.free(result.resolved_actions.states);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), result.states.len);
+    try std.testing.expectEqual(@as(usize, 0), result.merged_count);
+}
+
+test "minimizeAlloc keeps states with different item cores separate" {
+    const allocator = std.testing.allocator;
+
+    var left_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, item.ParseItem.init(0, 1)),
+    };
+    defer for (left_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+
+    var right_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, item.ParseItem.init(1, 1)),
+    };
+    defer for (right_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+
+    const parse_states = [_]state.ParseState{
+        .{ .id = 0, .items = left_items[0..], .transitions = &.{} },
+        .{ .id = 1, .items = right_items[0..], .transitions = &.{} },
+    };
+
+    const resolved_actions = resolution.ResolvedActionTable{
+        .states = &[_]resolution.ResolvedStateActions{
+            .{
+                .state_id = 0,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &.{},
+                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                    },
+                },
+            },
+            .{
+                .state_id = 1,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &.{},
+                        .decision = .{ .chosen = .{ .reduce = 0 } },
                     },
                 },
             },
