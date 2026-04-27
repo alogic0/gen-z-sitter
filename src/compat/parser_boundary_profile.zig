@@ -208,8 +208,8 @@ test "buildParserBoundaryProfileAlloc summarizes deferred parser-only targets" {
     var report = try buildParserBoundaryProfileAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 3), report.target_count);
-    try std.testing.expectEqual(@as(usize, 3), report.entries.len);
+    try std.testing.expectEqual(@as(usize, 4), report.target_count);
+    try std.testing.expectEqual(@as(usize, 4), report.entries.len);
 }
 
 test "renderParserBoundaryProfileAlloc matches the checked-in parser boundary profile artifact" {

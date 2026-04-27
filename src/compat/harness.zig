@@ -1611,7 +1611,7 @@ test "runStagedTargetsAlloc can be rendered to a deterministic JSON report" {
 test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entries" {
     const runs = try cachedShortlistTargetsForTests();
 
-    try std.testing.expectEqual(@as(usize, 18), runs.len);
+    try std.testing.expectEqual(@as(usize, 19), runs.len);
     try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[2].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
@@ -1628,6 +1628,7 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[15].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[16].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[17].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[18].final_classification);
 }
 
 test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_c, and keeps only staged blocked controls" {
@@ -1679,6 +1680,7 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[15].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.routine_serialize_proof_boundary, runs[16].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.routine_serialize_proof_boundary, runs[17].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.routine_serialize_proof_boundary, runs[18].mismatch_category);
 }
 
 test "runShortlistTargetsAlloc promotes tree_sitter_c through compile smoke" {

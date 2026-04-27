@@ -336,6 +336,24 @@
       "upstream_grammar_path": "src/grammar.json",
       "why": "real Python grammar snapshot from the local tree-sitter-python repo, initially kept at load/prepare level before testing parser-table serialization and external-scanner runtime-link promotion",
       "success_means": "load and prepare the snapshotted upstream grammar.json while keeping full parser-table and external-scanner proofs deferred until bounded measurements are available"
+    },
+    {
+      "id": "tree_sitter_typescript_json",
+      "family": "typescript",
+      "boundary_kind": "parser_only",
+      "parser_boundary_check_mode": "prepare_only",
+      "scanner_boundary_check_mode": "sampled_behavioral",
+      "real_external_scanner_proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
+      "status": "deferred_parser_wave",
+      "source_kind": "grammar_json",
+      "origin_kind": "external_repo_snapshot",
+      "grammar_path": "compat_targets/tree_sitter_typescript/grammar.json",
+      "upstream_repository": "tree-sitter-typescript",
+      "upstream_revision": "75b3874edb2dc714fb1fd77a32013d0f8699989f",
+      "upstream_grammar_path": "typescript/src/grammar.json",
+      "why": "real TypeScript grammar snapshot from the local tree-sitter-typescript repo, initially kept at load/prepare level to exercise large alias and generic-type grammar surfaces without promoting a heavy parser-table proof",
+      "success_means": "load and prepare the snapshotted upstream grammar.json while keeping parser-table and runtime-link proofs deferred until bounded measurements are available"
     }
   ]
 }

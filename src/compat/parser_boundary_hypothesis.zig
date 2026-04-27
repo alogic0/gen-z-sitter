@@ -161,6 +161,12 @@ fn buildEntryAlloc(
             "no routine-safe parser boundary step is promoted yet for {s}; the measured standalone coarse serialize-only probe reaches 1139 serialized states but remains blocked, while external-scanner runtime-link proof remains a later promotion step",
             .{run.id},
         )
+    else if (std.mem.eql(u8, run.id, "tree_sitter_typescript_json"))
+        try std.fmt.allocPrint(
+            allocator,
+            "no routine-safe parser boundary step is promoted yet for {s}; the measured standalone coarse serialize-only probe reaches 5202 serialized states but remains blocked, so parser-table promotion needs a narrower follow-up",
+            .{run.id},
+        )
     else
         try std.fmt.allocPrint(
             allocator,
@@ -168,7 +174,7 @@ fn buildEntryAlloc(
             .{run.id},
         );
     const decision: HypothesisDecision = .keep_standalone_probe;
-    const standalone_probe_status: StandaloneProbeStatus = if (std.mem.eql(u8, run.id, "tree_sitter_c_json") or std.mem.eql(u8, run.id, "tree_sitter_javascript_json") or std.mem.eql(u8, run.id, "tree_sitter_python_json"))
+    const standalone_probe_status: StandaloneProbeStatus = if (std.mem.eql(u8, run.id, "tree_sitter_c_json") or std.mem.eql(u8, run.id, "tree_sitter_javascript_json") or std.mem.eql(u8, run.id, "tree_sitter_python_json") or std.mem.eql(u8, run.id, "tree_sitter_typescript_json"))
         .implemented_passing
     else
         .not_implemented;
@@ -182,6 +188,12 @@ fn buildEntryAlloc(
         try std.fmt.allocPrint(
             allocator,
             "standalone coarse serialize-only probe is implemented and reaches 1139 serialized states for {s}, but records blocked=true, so routine parser-table and external-scanner proofs remain deferred",
+            .{run.id},
+        )
+    else if (std.mem.eql(u8, run.id, "tree_sitter_typescript_json"))
+        try std.fmt.allocPrint(
+            allocator,
+            "standalone coarse serialize-only probe is implemented and reaches 5202 serialized states for {s}, but records blocked=true, so routine parser-table proof remains deferred",
             .{run.id},
         )
     else if (standalone_probe_status == .implemented_passing)
@@ -232,6 +244,8 @@ fn buildEntryAlloc(
             1606
         else if (std.mem.eql(u8, run.id, "tree_sitter_python_json"))
             1139
+        else if (std.mem.eql(u8, run.id, "tree_sitter_typescript_json"))
+            5202
         else if (standalone_probe_status == .implemented_passing or run.parser_boundary_check_mode == .serialize_only)
             2336
         else
@@ -283,9 +297,9 @@ test "buildParserBoundaryHypothesisAlloc summarizes the current deferred parser-
     var report = try buildParserBoundaryHypothesisAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 3), report.deferred_parser_wave_target_count);
+    try std.testing.expectEqual(@as(usize, 4), report.deferred_parser_wave_target_count);
     try std.testing.expect(!report.singleton_parser_wave);
-    try std.testing.expectEqual(@as(usize, 3), report.entries.len);
+    try std.testing.expectEqual(@as(usize, 4), report.entries.len);
 }
 
 test "renderParserBoundaryHypothesisAlloc matches the checked-in parser boundary hypothesis artifact" {
