@@ -91,7 +91,7 @@ pub const LexTable = struct {
                     value,
                     .{
                         .chars = transition.chars,
-                        .target_state = 0,
+                        .target_states = &.{},
                         .is_separator = transition.is_separator,
                         .precedence = transition.precedence,
                     },
@@ -150,7 +150,7 @@ pub const LexTable = struct {
                     value,
                     .{
                         .chars = transition.chars,
-                        .target_state = 0,
+                        .target_states = &.{},
                         .is_separator = transition.is_separator,
                         .precedence = transition.precedence,
                     },
@@ -286,6 +286,13 @@ const MatchCursor = struct {
 
 const AdvanceTransition = struct {
     chars: lexer_model.CharacterSet,
+    target_states: []const u32,
+    is_separator: bool,
+    precedence: i32,
+};
+
+const RawAdvanceTransition = struct {
+    chars: lexer_model.CharacterSet,
     target_state: u32,
     is_separator: bool,
     precedence: i32,
@@ -361,7 +368,7 @@ const LexTableBuilder = struct {
 
         for (transition_collection.transitions, 0..) |transition, index| {
             const next_closure_timer = profileTimer(self.profile != null);
-            const next_states = try epsilonClosureAlloc(self.allocator, self.grammar, &.{transition.target_state});
+            const next_states = try epsilonClosureAlloc(self.allocator, self.grammar, transition.target_states);
             if (self.profile) |profile| {
                 profile.next_closure_calls += 1;
                 profile.next_closure_ns += profileElapsedNs(next_closure_timer);
@@ -374,6 +381,9 @@ const LexTableBuilder = struct {
                 .is_separator = transition.is_separator,
                 .precedence = transition.precedence,
             };
+        }
+        for (transition_collection.transitions) |transition| {
+            self.allocator.free(transition.target_states);
         }
         self.allocator.free(transition_collection.transitions);
         self.states.items[state_id].transitions = transitions;
@@ -536,10 +546,10 @@ fn collectTransitionsAlloc(
     grammar: lexer_model.ExpandedLexicalGrammar,
     states: []const u32,
 ) !TransitionCollection {
-    var transitions = std.ArrayListUnmanaged(AdvanceTransition).empty;
+    var raw_transitions = std.ArrayListUnmanaged(RawAdvanceTransition).empty;
     errdefer {
-        for (transitions.items) |*transition| transition.chars.deinit(allocator);
-        transitions.deinit(allocator);
+        for (raw_transitions.items) |*transition| transition.chars.deinit(allocator);
+        raw_transitions.deinit(allocator);
     }
     var has_separator_transitions = false;
 
@@ -547,7 +557,7 @@ fn collectTransitionsAlloc(
         switch (grammar.nfa.states.items[state_id]) {
             .advance => |advance| {
                 if (advance.is_separator) has_separator_transitions = true;
-                try transitions.append(allocator, .{
+                try raw_transitions.append(allocator, .{
                     .chars = try cloneCharacterSet(allocator, advance.chars),
                     .target_state = advance.state_id,
                     .is_separator = advance.is_separator,
@@ -558,15 +568,104 @@ fn collectTransitionsAlloc(
         }
     }
 
+    const transitions = try partitionRawTransitionsAlloc(allocator, raw_transitions.items);
+    for (raw_transitions.items) |*transition| transition.chars.deinit(allocator);
+    raw_transitions.deinit(allocator);
+
     return .{
-        .transitions = try transitions.toOwnedSlice(allocator),
+        .transitions = transitions,
         .has_separator_transitions = has_separator_transitions,
     };
 }
 
 fn freeTransitions(allocator: std.mem.Allocator, transitions: []AdvanceTransition) void {
-    for (transitions) |*transition| transition.chars.deinit(allocator);
+    for (transitions) |*transition| {
+        transition.chars.deinit(allocator);
+        allocator.free(transition.target_states);
+    }
     allocator.free(transitions);
+}
+
+fn partitionRawTransitionsAlloc(
+    allocator: std.mem.Allocator,
+    raw_transitions: []const RawAdvanceTransition,
+) ![]AdvanceTransition {
+    var boundaries = std.ArrayListUnmanaged(u32).empty;
+    defer boundaries.deinit(allocator);
+
+    for (raw_transitions) |transition| {
+        for (transition.chars.ranges.items) |range| {
+            try appendUniqueBoundary(allocator, &boundaries, range.start);
+            try appendUniqueBoundary(allocator, &boundaries, range.end);
+        }
+    }
+    std.mem.sort(u32, boundaries.items, {}, std.sort.asc(u32));
+
+    var transitions = std.ArrayListUnmanaged(AdvanceTransition).empty;
+    errdefer {
+        for (transitions.items) |*transition| {
+            transition.chars.deinit(allocator);
+            allocator.free(transition.target_states);
+        }
+        transitions.deinit(allocator);
+    }
+
+    if (boundaries.items.len < 2) return try transitions.toOwnedSlice(allocator);
+
+    var index: usize = 0;
+    while (index + 1 < boundaries.items.len) : (index += 1) {
+        const start = boundaries.items[index];
+        const end = boundaries.items[index + 1];
+        if (start >= end) continue;
+
+        var target_states = std.ArrayListUnmanaged(u32).empty;
+        defer target_states.deinit(allocator);
+        var is_separator = false;
+        var precedence: i32 = std.math.minInt(i32);
+
+        for (raw_transitions) |transition| {
+            if (!transition.chars.contains(@intCast(start))) continue;
+            try appendUniqueTargetState(allocator, &target_states, transition.target_state);
+            is_separator = is_separator or transition.is_separator;
+            precedence = @max(precedence, transition.precedence);
+        }
+        if (target_states.items.len == 0) continue;
+        std.mem.sort(u32, target_states.items, {}, std.sort.asc(u32));
+
+        var chars = lexer_model.CharacterSet.empty();
+        errdefer chars.deinit(allocator);
+        try chars.addCodepointRange(allocator, start, end);
+        try transitions.append(allocator, .{
+            .chars = chars,
+            .target_states = try target_states.toOwnedSlice(allocator),
+            .is_separator = is_separator,
+            .precedence = precedence,
+        });
+    }
+
+    return try transitions.toOwnedSlice(allocator);
+}
+
+fn appendUniqueBoundary(
+    allocator: std.mem.Allocator,
+    boundaries: *std.ArrayListUnmanaged(u32),
+    value: u32,
+) !void {
+    for (boundaries.items) |existing| {
+        if (existing == value) return;
+    }
+    try boundaries.append(allocator, value);
+}
+
+fn appendUniqueTargetState(
+    allocator: std.mem.Allocator,
+    target_states: *std.ArrayListUnmanaged(u32),
+    value: u32,
+) !void {
+    for (target_states.items) |existing| {
+        if (existing == value) return;
+    }
+    try target_states.append(allocator, value);
 }
 
 fn preferAdvanceOverCompletion(
@@ -683,6 +782,13 @@ fn minimizeLexTable(table: *LexTable) !void {
         for (new_states[group_id].transitions) |*transition| {
             transition.next_state_id = group_ids[transition.next_state_id];
         }
+    }
+
+    for (old_states, 0..) |*old_state, state_index| {
+        if (representative_by_group[group_ids[state_index]] == state_index) continue;
+        table.allocator.free(old_state.nfa_states);
+        for (old_state.transitions) |*transition| transition.chars.deinit(table.allocator);
+        table.allocator.free(old_state.transitions);
     }
 
     table.start_state_id = group_ids[table.start_state_id];

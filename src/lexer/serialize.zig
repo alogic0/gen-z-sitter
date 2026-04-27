@@ -549,13 +549,16 @@ test "buildSerializedLexTablesAlloc accepts nullable token suffixes" {
     );
 
     const start = tables[0].start_state_id;
+    var digit_transition_count: usize = 0;
     var accepts_after_first_digit = false;
     for (tables[0].states[start].transitions) |transition| {
         if (!rangeSetContains(transition.ranges, '4')) continue;
+        digit_transition_count += 1;
         const target = tables[0].states[transition.next_state_id];
         accepts_after_first_digit = target.accept_symbol != null;
     }
 
+    try std.testing.expectEqual(@as(usize, 1), digit_transition_count);
     try std.testing.expect(accepts_after_first_digit);
 }
 

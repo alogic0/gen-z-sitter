@@ -529,7 +529,7 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         \\    #3@0 [terminal:0]
         \\    #4@0 [terminal:0]
         \\    #5@0 [terminal:0]
-        \\    #6@0 [terminal:0, end]
+        \\    #6@0 [terminal:0]
         \\  transitions:
         \\    non_terminal:0 -> 1
         \\    non_terminal:1 -> 2
@@ -584,10 +584,9 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         \\
         \\state 6
         \\  items:
-        \\    #6@1 [terminal:0, end]
+        \\    #6@1 [terminal:0]
         \\  transitions:
         \\  actions:
-        \\    end => reduce 6
         \\    terminal:0 => reduce 6
         \\
         \\state 7
@@ -1802,8 +1801,6 @@ pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
         \\
         \\state 6
         \\  actions:
-        \\    end:
-        \\      reduce 6
         \\    terminal:0:
         \\      reduce 6
         \\
@@ -1851,7 +1848,6 @@ pub fn parseTableReduceReduceActionTableDump() Fixture {
         \\
         \\state 6
         \\  actions:
-        \\    end => reduce 6
         \\    terminal:0 => reduce 6
         \\
         \\state 7
@@ -2382,8 +2378,7 @@ pub fn parseTableNamedPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
-        \\    end: reduce 4
-        \\    terminal:1: reduce 4
+        \\    terminal:0: reduce 4
         \\
         \\state 6
         \\  resolved_actions:
@@ -2422,8 +2417,7 @@ pub fn parseTableNamedPrecedenceShiftResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
-        \\    end: reduce 4
-        \\    terminal:1: reduce 4
+        \\    terminal:0: reduce 4
         \\
         \\state 6
         \\  resolved_actions:
@@ -2532,8 +2526,7 @@ pub fn parseTableDynamicBeatsNamedPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 5
         \\  resolved_actions:
-        \\    end: reduce 4
-        \\    terminal:1: reduce 4
+        \\    terminal:0: reduce 4
         \\
         \\state 6
         \\  resolved_actions:
@@ -2919,7 +2912,6 @@ pub fn parseTableReduceReduceResolvedActionDump() Fixture {
         \\
         \\state 6
         \\  resolved_actions:
-        \\    end: reduce 6
         \\    terminal:0: reduce 6
         \\
         \\state 7

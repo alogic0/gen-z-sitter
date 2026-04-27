@@ -214,12 +214,12 @@ Implementation batches, in order:
      FOLLOW tokens before value separators.
    - [x] Add a focused parse-table test where a nested value reduces before
      `,`, `]`, and `}` in JSON-like object/array productions.
-   - [ ] Fix the remaining JSON number-ending proof only after the follow-set
+   - [x] Fix the remaining JSON number-ending proof only after the follow-set
      propagation test is green; numeric samples currently expose the same
      missing reduce lookahead surface as object/array samples.
-   - [ ] Broaden JSON accepted runtime-link samples to include at least one
+   - [x] Broaden JSON accepted runtime-link samples to include at least one
      number, array, and object after the follow-set gap is fixed.
-   - [ ] Keep the invalid JSON runtime-link proof passing after the follow-set
+   - [x] Keep the invalid JSON runtime-link proof passing after the follow-set
      and lexer fixes.
 
 3. Scanner-free/light real grammar promotion.
