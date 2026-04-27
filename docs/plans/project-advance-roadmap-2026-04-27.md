@@ -307,12 +307,33 @@ trusted for scanner-using grammars.
 
 ### 4.1 Scanner-Aware Incremental Harness
 
-- [ ] Audit all current scanner-free incremental assumptions.
-- [ ] Add `simulateIncrementalWithScanner`.
-- [ ] Do not reuse a subtree when its entry state has non-zero
+#### 4.1a Audit and Invariants
+
+- [x] Document current scanner-free incremental assumptions in code comments
+  near the reuse gate.
+- [x] Add a regression test showing scanner-free append reuse still reuses
+  prefix nodes.
+- [x] Add a regression test showing external scanner state metadata blocks
+  subtree reuse for otherwise reusable nodes.
+
+#### 4.1b Scanner-Aware Reuse Gate
+
+- [x] Add `simulatePreparedIncrementalWithExternalLexStates` as the first
+  scanner-aware incremental entry point.
+- [x] Do not reuse a subtree when its entry state has non-zero
   `external_lex_state`.
-- [ ] Thread scanner state through fresh parsing after a reused subtree.
+- [x] Keep scanner-free incremental tests passing.
+
+#### 4.1c Scanner State Threading
+
+- [ ] Thread serialized scanner state through fresh parsing after a reused
+  subtree.
+- [ ] Add a stateful scanner fixture proving restore-after-reuse behavior.
+
+#### 4.1d Bracket-Lang Incremental Proof
+
 - [ ] Add `bracket_lang` incremental fixture.
+- [ ] Prove scanner-aware incremental parsing does not reuse unsafe subtrees.
 
 Gate:
 

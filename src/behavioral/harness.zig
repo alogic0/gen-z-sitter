@@ -248,6 +248,32 @@ pub fn simulatePreparedScannerFreeIncremental(
     );
 }
 
+pub fn simulatePreparedIncrementalWithExternalLexStates(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    old_tree: ?ParseNode,
+    edit: Edit,
+    input: []const u8,
+    external_lex_states: []const u16,
+) BehavioralError!SimulationResult {
+    const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
+    const result = try build.buildStates(allocator, flattened);
+    return simulateBuiltScannerFreeWithIncremental(
+        allocator,
+        result,
+        prepared,
+        flattened,
+        extracted.lexical,
+        input,
+        .{
+            .old_tree = old_tree,
+            .edit = edit,
+            .external_lex_states = external_lex_states,
+        },
+    );
+}
+
 pub fn simulatePreparedWithFirstExternalBoundary(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
@@ -621,6 +647,10 @@ fn tryReuseOldSubtree(
     version: *ParseVersion,
     incremental: IncrementalContext,
 ) std.mem.Allocator.Error!bool {
+    // Current incremental reuse is only safe when the old subtree can be
+    // entered without restoring scanner-owned state. Scanner-aware parsing must
+    // either provide a zero external lex state for the entry state or skip reuse
+    // and continue with fresh lexing from that point.
     const old_tree = incremental.old_tree orelse return false;
     const edit = incremental.edit orelse return false;
     const cursor: u32 = @intCast(version.cursor);
@@ -2856,6 +2886,35 @@ test "simulatePreparedScannerFreeIncremental reuses prefix nodes after append ed
     try std.testing.expect(incremental_result.accepted.shifted_tokens < fresh_result.accepted.shifted_tokens);
     try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), fresh_tree, incremental_tree));
     try std.testing.expect(countReusedNodes(incremental_tree) > 0);
+}
+
+test "simulatePreparedIncrementalWithExternalLexStates blocks unsafe prefix reuse" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), ambiguous_expr_grammar_json);
+    const old_result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1+2+3");
+    const fresh_result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1+2+3+4");
+    const external_lex_states = [_]u16{1} ** 64;
+    const incremental_result = try simulatePreparedIncrementalWithExternalLexStates(
+        arena.allocator(),
+        prepared,
+        old_result.accepted.tree,
+        .{
+            .start_byte = 5,
+            .old_end_byte = 5,
+            .new_end_byte = 7,
+        },
+        "1+2+3+4",
+        external_lex_states[0..],
+    );
+
+    const incremental_tree = incremental_result.accepted.tree orelse return error.TestUnexpectedResult;
+    const fresh_tree = fresh_result.accepted.tree orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(fresh_result.accepted.consumed_bytes, incremental_result.accepted.consumed_bytes);
+    try std.testing.expectEqual(fresh_result.accepted.shifted_tokens, incremental_result.accepted.shifted_tokens);
+    try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), fresh_tree, incremental_tree));
+    try std.testing.expectEqual(@as(usize, 0), countReusedNodes(incremental_tree));
 }
 
 fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResult) !void {
