@@ -29,6 +29,15 @@ const ParseTableMinimizationStats = struct {
     merged_state_count: usize,
 };
 
+const ExpectedConflictSummary = struct {
+    declared_count: usize,
+    unused_indexes: []const usize,
+
+    pub fn unusedCount(self: ExpectedConflictSummary) usize {
+        return self.unused_indexes.len;
+    }
+};
+
 pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.GenerateOptions) !void {
     if (opts.grammar_path.len == 0) {
         return error.InvalidArguments;
@@ -214,6 +223,7 @@ fn generateJsonSummaryAlloc(
         build_options,
         serialized_state_count,
     );
+    const expected_conflicts = try collectExpectedConflictSummaryAlloc(allocator, prepared);
     const emitted_size_stats = try collectEmittedSizeStats(allocator, serialized, options);
 
     var out: std.Io.Writer.Allocating = .init(allocator);
@@ -247,6 +257,15 @@ fn generateJsonSummaryAlloc(
     try writer.print("\"minimized_state_count\": {d}, ", .{parse_table_minimization.minimized_state_count});
     try writer.print("\"merged_state_count\": {d}", .{parse_table_minimization.merged_state_count});
     try writer.writeAll(" },\n");
+    try writer.writeAll("  \"expected_conflicts\": { ");
+    try writer.print("\"declared_count\": {d}, ", .{expected_conflicts.declared_count});
+    try writer.print("\"unused_count\": {d}, ", .{expected_conflicts.unusedCount()});
+    try writer.writeAll("\"unused_indexes\": [");
+    for (expected_conflicts.unused_indexes, 0..) |unused_index, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writer.print("{d}", .{unused_index});
+    }
+    try writer.writeAll("] },\n");
     try writer.writeAll("  \"savings\": { ");
     try writer.print("\"state_count_delta\": {d}, ", .{serialized_state_count - parser_stats.state_count});
     try writer.print(
@@ -296,6 +315,24 @@ fn generateJsonSummaryAlloc(
     try writer.writeAll("\n}\n");
 
     return try out.toOwnedSlice();
+}
+
+fn collectExpectedConflictSummaryAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+) !ExpectedConflictSummary {
+    if (prepared.expected_conflicts.len == 0) {
+        return .{
+            .declared_count = 0,
+            .unused_indexes = &.{},
+        };
+    }
+
+    const report = try parse_table_pipeline.expectedConflictReportFromPreparedAlloc(allocator, prepared);
+    return .{
+        .declared_count = prepared.expected_conflicts.len,
+        .unused_indexes = report.unused_expected_conflict_indexes,
+    };
 }
 
 fn collectParseTableMinimizationStats(
@@ -412,6 +449,7 @@ test "generateJsonSummaryAlloc reports parser row-sharing stats" {
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true, \"minimize_states\": false }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 6, \"minimized_state_count\": 6, \"merged_state_count\": 0 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"expected_conflicts\": { \"declared_count\": 0, \"unused_count\": 0, \"unused_indexes\": [] }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"savings\": { \"state_count_delta\": 0, \"action_array_definitions_saved\": 0, \"goto_array_definitions_saved\": 0, \"unresolved_array_definitions_saved\": 0, \"total_array_definitions_saved\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_bytes\": { "));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_entry_count\": 8"));
@@ -519,6 +557,35 @@ test "generateJsonSummaryAlloc reports serialized versus emitted state counts wh
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 7, \"empty_rows\": 0, \"unique_non_empty_rows\": 7, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 7 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_goto_rows\": { \"total_rows\": 7, \"empty_rows\": 5, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_goto_rows\": { \"total_rows\": 7, \"empty_rows\": 5, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
+}
+
+test "generateJsonSummaryAlloc reports unused expected conflict indexes" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var summary_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer summary_arena.deinit();
+
+    const contents =
+        \\{
+        \\  "name": "unused_expected_conflict_summary",
+        \\  "expected_conflicts": [["source_file", "expr"]],
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "expr" },
+        \\    "expr": { "type": "STRING", "value": "x" }
+        \\  }
+        \\}
+    ;
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), contents, .{});
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{}, .{});
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"blocked\": false"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"expected_conflicts\": { \"declared_count\": 1, \"unused_count\": 1, \"unused_indexes\": [0] }"));
 }
 
 test "collectEmittedSizeStats reports generated byte counts" {

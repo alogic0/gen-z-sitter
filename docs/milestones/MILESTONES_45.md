@@ -281,6 +281,8 @@ Completed steps:
   unresolved decisions and unused `expected_conflicts`.
 - [x] Move strict serialization's blocking-conflict failure through the
   post-build policy helper while keeping diagnostic serialization unchanged.
+- [x] Expose expected-conflict declared/unused counts in generate JSON
+  summaries.
 
 ---
 
