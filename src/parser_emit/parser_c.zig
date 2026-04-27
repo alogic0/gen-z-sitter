@@ -478,11 +478,13 @@ fn writeRuntimeAction(
 fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n");
+    try writer.writeAll("#define GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE 3\n\n");
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  TSStateId state;\n");
     try writer.writeAll("  TSStateId stack[GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH];\n");
     try writer.writeAll("  uint16_t stack_len;\n");
     try writer.writeAll("  uint32_t byte_offset;\n");
+    try writer.writeAll("  uint32_t error_count;\n");
     try writer.writeAll("  int32_t dynamic_precedence;\n");
     try writer.writeAll("  bool shifted;\n");
     try writer.writeAll("  bool active;\n");
@@ -497,6 +499,7 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("    set->versions[i].state = 0;\n");
     try writer.writeAll("    set->versions[i].stack_len = 0;\n");
     try writer.writeAll("    set->versions[i].byte_offset = 0;\n");
+    try writer.writeAll("    set->versions[i].error_count = 0;\n");
     try writer.writeAll("    set->versions[i].dynamic_precedence = 0;\n");
     try writer.writeAll("    set->versions[i].shifted = false;\n");
     try writer.writeAll("    set->versions[i].active = false;\n");
@@ -719,13 +722,22 @@ fn writeGlrVersionCondenseHelpers(writer: anytype) !void {
     try writer.writeAll("    left->byte_offset == right->byte_offset;\n");
     try writer.writeAll("}\n\n");
     try writer.writeAll("static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n");
+    try writer.writeAll("  uint32_t min_error_count = UINT32_MAX;\n");
+    try writer.writeAll("  for (uint16_t scan_index = 0; scan_index < set->count; scan_index++) {\n");
+    try writer.writeAll("    if (set->versions[scan_index].active && set->versions[scan_index].error_count < min_error_count) {\n");
+    try writer.writeAll("      min_error_count = set->versions[scan_index].error_count;\n");
+    try writer.writeAll("    }\n");
+    try writer.writeAll("  }\n");
     try writer.writeAll("  uint16_t write_index = 0;\n");
     try writer.writeAll("  for (uint16_t read_index = 0; read_index < set->count; read_index++) {\n");
     try writer.writeAll("    if (!set->versions[read_index].active) continue;\n");
+    try writer.writeAll("    if (min_error_count != UINT32_MAX && set->versions[read_index].error_count > min_error_count + GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE) continue;\n");
     try writer.writeAll("    bool duplicate = false;\n");
     try writer.writeAll("    for (uint16_t existing_index = 0; existing_index < write_index; existing_index++) {\n");
     try writer.writeAll("      if (ts_generated_parse_versions_same_position(&set->versions[existing_index], &set->versions[read_index])) {\n");
-    try writer.writeAll("        if (set->versions[read_index].dynamic_precedence > set->versions[existing_index].dynamic_precedence) {\n");
+    try writer.writeAll("        if (set->versions[read_index].error_count < set->versions[existing_index].error_count) {\n");
+    try writer.writeAll("          set->versions[existing_index] = set->versions[read_index];\n");
+    try writer.writeAll("        } else if (set->versions[read_index].error_count == set->versions[existing_index].error_count && set->versions[read_index].dynamic_precedence > set->versions[existing_index].dynamic_precedence) {\n");
     try writer.writeAll("          set->versions[existing_index].dynamic_precedence = set->versions[read_index].dynamic_precedence;\n");
     try writer.writeAll("        }\n");
     try writer.writeAll("        duplicate = true;\n");
@@ -2049,7 +2061,9 @@ test "emitParserCAlloc emits opt-in GLR parser version storage" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE 3\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSStateId state;\n  TSStateId stack[GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH];\n  uint16_t stack_len;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  uint32_t error_count;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  bool shifted;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseVersion versions[GEN_Z_SITTER_MAX_PARSE_VERSIONS];\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_parse_versions_init(TSGeneratedParseVersionSet *set, TSStateId start_state) {\n"));
@@ -2177,7 +2191,10 @@ test "emitParserCAlloc emits opt-in GLR version condensation helpers" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_parse_versions_same_position(const TSGeneratedParseVersion *left, const TSGeneratedParseVersion *right) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "uint32_t min_error_count = UINT32_MAX;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[read_index].error_count > min_error_count + GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!set->versions[read_index].active) continue;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[existing_index] = set->versions[read_index];\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[existing_index].dynamic_precedence = set->versions[read_index].dynamic_precedence;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->count = write_index;\n"));
 }

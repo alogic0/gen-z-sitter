@@ -274,6 +274,15 @@ tree shape when the grammar has unresolved entries.
 
 **Files.** `src/behavioral/harness.zig`, new fixture in behavioral tests.
 
+Status:
+
+- [x] Terminal-yield comparison exists in `incrementalTreesEquivalentAlloc`.
+- [x] Ambiguous tree-shape equivalence is covered by
+  `incremental tree equivalence accepts ambiguous shape differences with same yield`.
+- [x] Incremental scanner-free reuse is covered against the ambiguous expression
+  grammar in `simulatePreparedScannerFreeIncremental reuses prefix nodes after
+  append edit`.
+
 ---
 
 ## Priority 4 — M46 T2: Error Recovery in Emitted Parser
@@ -294,8 +303,7 @@ on invalid input with no partial tree or error node.
      - Stage 2: if stage 1 fails, advance `byte_offset` by one and retry.
      - If both fail after a byte-limit: mark version inactive.
 
-2. Track `error_count` per version (already in the version struct as `error_count`
-   at line 483).
+2. Track `error_count` per version.
 
 3. In `ts_generated_condense_parse_versions`, prune versions whose `error_count`
    exceeds the minimum active version's `error_count` by more than 3 (matching
@@ -305,6 +313,13 @@ on invalid input with no partial tree or error node.
    result contains an ERROR span but still accepts.
 
 **Files.** `src/parser_emit/parser_c.zig` (extend drive loop and condense).
+
+Status:
+
+- [x] Add generated parse-version `error_count` storage.
+- [x] Prune generated parse versions whose `error_count` is more than 3 above
+  the active minimum.
+- [ ] Add generated no-action recovery in `ts_generated_drive_version`.
 
 ---
 
