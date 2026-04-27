@@ -866,7 +866,7 @@ fn writeGlrVersionStepLoop(writer: anytype, has_unresolved: bool) !void {
 }
 
 fn writeGlrMainParseFunction(writer: anytype) !void {
-    try writer.writeAll("static bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n");
+    try writer.writeAll("bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n");
     try writer.writeAll("  TSGeneratedParseVersionSet set;\n");
     try writer.writeAll("  ts_generated_parse_versions_init(&set, 0);\n");
     try writer.writeAll("  for (;;) {\n");
@@ -2311,7 +2311,7 @@ test "emitParserCAlloc emits opt-in GLR raw input parse entry point" {
     });
     defer allocator.free(emitted);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_parse_versions_init(&set, 0);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!lead || set.versions[i].byte_offset < lead->byte_offset) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) return false;\n"));

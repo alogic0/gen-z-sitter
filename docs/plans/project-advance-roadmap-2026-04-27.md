@@ -76,8 +76,8 @@ Gate:
 The emitted GLR loop currently has strong string-level emitter tests, but it
 needs runtime proof on generated C.
 
-- [ ] Add a tiny scanner-free generated parser fixture with `glr_loop = true`.
-- [ ] Add a generated parser runtime-link test that calls `ts_generated_parse`
+- [x] Add a tiny scanner-free generated parser fixture with `glr_loop = true`.
+- [x] Add a generated parser runtime-link test that calls `ts_generated_parse`
   directly on accepted input.
 - [ ] Add a fixture with one unresolved shift/reduce conflict and prove both:
   unresolved side tables are emitted, and the generated GLR loop accepts the

@@ -39,6 +39,21 @@ pub fn linkAndRunNoExternalTinyParser(allocator: std.mem.Allocator) RuntimeLinkE
     });
 }
 
+pub fn linkAndRunNoExternalTinyGlrParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitTinyGlrParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .input = "x",
+        .direct_generated_parse = true,
+        .expected_consumed_bytes = 1,
+    });
+}
+
 pub fn linkAndRunKeywordReservedParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
 
@@ -180,6 +195,28 @@ pub fn linkAndRunHaskellParserWithRealExternalScanner(allocator: std.mem.Allocat
 }
 
 fn emitTinyParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitTinyParserCWithOptions(allocator, .{
+        .offset_start_state = true,
+        .glr_loop = false,
+    });
+}
+
+fn emitTinyGlrParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitTinyParserCWithOptions(allocator, .{
+        .offset_start_state = false,
+        .glr_loop = true,
+    });
+}
+
+const TinyParserOptions = struct {
+    offset_start_state: bool,
+    glr_loop: bool,
+};
+
+fn emitTinyParserCWithOptions(
+    allocator: std.mem.Allocator,
+    options: TinyParserOptions,
+) RuntimeLinkError![]const u8 {
     const rules = [_]ir_rules.Rule{
         .{ .string = "x" },
     };
@@ -222,10 +259,13 @@ fn emitTinyParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
         serialized.lex_state_terminal_sets,
         eof_valids,
     );
-    serialized = try offsetRuntimeStartStateAlloc(allocator, serialized);
+    if (options.offset_start_state) {
+        serialized = try offsetRuntimeStartStateAlloc(allocator, serialized);
+    }
 
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
         .compact_duplicate_states = false,
+        .glr_loop = options.glr_loop,
     });
 }
 
@@ -967,6 +1007,8 @@ const GeneratedParserRun = struct {
     expected_root_type: ?[]const u8 = null,
     expected_child_types: []const []const u8 = &.{},
     expected_tree_string: ?[]const u8 = null,
+    direct_generated_parse: bool = false,
+    expected_consumed_bytes: ?u32 = null,
     extra_driver_declarations: []const u8 = "",
     after_parser_delete_check: []const u8 = "",
 };
@@ -1227,6 +1269,10 @@ fn driverSourceAlloc(
     allocator: std.mem.Allocator,
     generated: GeneratedParserRun,
 ) RuntimeLinkError![]const u8 {
+    if (generated.direct_generated_parse) {
+        return directGeneratedParseDriverSourceAlloc(allocator, generated);
+    }
+
     const input_literal = try cStringLiteralAlloc(allocator, generated.input);
     defer allocator.free(input_literal);
 
@@ -1353,6 +1399,35 @@ fn treeAssertionSourceAlloc(
     return try out.toOwnedSlice();
 }
 
+fn directGeneratedParseDriverSourceAlloc(
+    allocator: std.mem.Allocator,
+    generated: GeneratedParserRun,
+) RuntimeLinkError![]const u8 {
+    const input_literal = try cStringLiteralAlloc(allocator, generated.input);
+    defer allocator.free(input_literal);
+    const expected_consumed = generated.expected_consumed_bytes orelse @as(u32, @intCast(generated.input.len));
+
+    return try std.fmt.allocPrint(allocator,
+        \\#include <stdbool.h>
+        \\#include <stdint.h>
+        \\#include <signal.h>
+        \\#include <string.h>
+        \\#include <unistd.h>
+        \\
+        \\bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes);
+        \\
+        \\int main(void) {{
+        \\  alarm(2);
+        \\  const char *input = {s};
+        \\  uint32_t consumed = 0;
+        \\  if (!ts_generated_parse(input, (uint32_t)strlen(input), &consumed)) return 40;
+        \\  if (consumed != {d}) return 41;
+        \\  return 0;
+        \\}}
+        \\
+    , .{ input_literal, expected_consumed });
+}
+
 fn cStringLiteralAlloc(allocator: std.mem.Allocator, value: []const u8) RuntimeLinkError![]const u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
@@ -1389,6 +1464,10 @@ fn ensureFileAvailableOrSkip(path: []const u8) RuntimeLinkError!void {
 
 test "linkAndRunNoExternalTinyParser links generated parser with tree-sitter runtime" {
     try linkAndRunNoExternalTinyParser(std.testing.allocator);
+}
+
+test "linkAndRunNoExternalTinyGlrParser calls generated GLR parse entry directly" {
+    try linkAndRunNoExternalTinyGlrParser(std.testing.allocator);
 }
 
 test "linkAndRunKeywordReservedParser links generated keyword parser with tree-sitter runtime" {
