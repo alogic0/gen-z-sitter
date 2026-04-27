@@ -11,6 +11,7 @@ const ir_symbols = @import("../ir/symbols.zig");
 const lexical_ir = @import("../ir/lexical_grammar.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
+const runtime_io = @import("../support/runtime_io.zig");
 
 /// Errors produced while converting the parse-table builder output into the
 /// runtime-oriented serialized model.
@@ -22,6 +23,26 @@ pub const SerializeError = std.mem.Allocator.Error || error{
 pub const ParseActionListError = std.mem.Allocator.Error || error{
     ParseActionListTooLarge,
 };
+
+threadlocal var serialize_env_flags_loaded: bool = false;
+threadlocal var serialize_profile_enabled: bool = false;
+
+fn envFlagEnabledRaw(name: []const u8) bool {
+    const value = std.process.Environ.getAlloc(runtime_io.environ(), std.heap.page_allocator, name) catch return false;
+    defer std.heap.page_allocator.free(value);
+
+    if (value.len == 0) return false;
+    if (std.mem.eql(u8, value, "0")) return false;
+    return true;
+}
+
+fn shouldProfileSerialize() bool {
+    if (!serialize_env_flags_loaded) {
+        serialize_profile_enabled = envFlagEnabledRaw("GEN_Z_SITTER_PARSE_TABLE_PROFILE");
+        serialize_env_flags_loaded = true;
+    }
+    return serialize_profile_enabled;
+}
 
 /// Controls whether unresolved parse decisions block serialization.
 pub const SerializeMode = enum {
@@ -605,6 +626,7 @@ pub fn buildParseActionListAlloc(
     defer single_action_indexes.deinit();
     var action_slice_indexes = ParseActionListSliceIndexMap.init(allocator);
     defer action_slice_indexes.deinit();
+    var profile = ParseActionListProfile{};
 
     try entries.append(.{
         .index = 0,
@@ -618,46 +640,122 @@ pub fn buildParseActionListAlloc(
         for (serialized_state.actions) |entry| {
             const action_slice = try runtimeActionsFromActionEntryAlloc(allocator, entry, productions);
             const action_key: ParseActionListSliceKey = .{ .reusable = true, .actions = action_slice };
+            profile.reusable_inputs += 1;
             if (action_slice.len == 1) {
                 if (single_action_indexes.contains(action_slice[0])) {
+                    profile.single_reusable_duplicates += 1;
                     allocator.free(action_slice);
                     continue;
                 }
             } else if (action_slice_indexes.contains(action_key)) {
+                profile.multi_reusable_duplicates += 1;
                 allocator.free(action_slice);
                 continue;
             }
 
-            const index = try checkedParseActionListSpan(next_index, action_slice.len);
+            const index = checkedParseActionListSpan(next_index, action_slice.len) catch |err| {
+                recordParseActionListEntry(&profile, true, action_slice.len);
+                if (action_slice.len == 1) {
+                    profile.single_reusable_unique += 1;
+                } else {
+                    profile.multi_reusable_unique += 1;
+                }
+                logParseActionListProfile(profile, next_index + action_slice.len + 1);
+                allocator.free(action_slice);
+                return err;
+            };
             next_index += action_slice.len + 1;
             try entries.append(.{
                 .index = index,
                 .reusable = true,
                 .actions = action_slice,
             });
-            if (action_slice.len == 1) try single_action_indexes.put(action_slice[0], index);
+            recordParseActionListEntry(&profile, true, action_slice.len);
+            if (action_slice.len == 1) {
+                profile.single_reusable_unique += 1;
+                try single_action_indexes.put(action_slice[0], index);
+            } else {
+                profile.multi_reusable_unique += 1;
+            }
             try action_slice_indexes.put(.{ .reusable = true, .actions = action_slice }, index);
         }
         for (serialized_state.unresolved) |entry| {
             const action_slice = try runtimeActionsFromParseActionSliceAlloc(allocator, entry.candidate_actions, productions);
             const action_key: ParseActionListSliceKey = .{ .reusable = false, .actions = action_slice };
+            profile.unresolved_inputs += 1;
             if (action_slice_indexes.contains(action_key)) {
+                profile.unresolved_duplicates += 1;
                 allocator.free(action_slice);
                 continue;
             }
 
-            const index = try checkedParseActionListSpan(next_index, action_slice.len);
+            const index = checkedParseActionListSpan(next_index, action_slice.len) catch |err| {
+                recordParseActionListEntry(&profile, false, action_slice.len);
+                profile.unresolved_unique += 1;
+                logParseActionListProfile(profile, next_index + action_slice.len + 1);
+                allocator.free(action_slice);
+                return err;
+            };
             next_index += action_slice.len + 1;
             try entries.append(.{
                 .index = index,
                 .reusable = false,
                 .actions = action_slice,
             });
+            recordParseActionListEntry(&profile, false, action_slice.len);
+            profile.unresolved_unique += 1;
             try action_slice_indexes.put(.{ .reusable = false, .actions = action_slice }, index);
         }
     }
 
+    logParseActionListProfile(profile, next_index);
     return try entries.toOwnedSlice();
+}
+
+const ParseActionListProfile = struct {
+    reusable_inputs: usize = 0,
+    unresolved_inputs: usize = 0,
+    single_reusable_unique: usize = 0,
+    single_reusable_duplicates: usize = 0,
+    multi_reusable_unique: usize = 0,
+    multi_reusable_duplicates: usize = 0,
+    unresolved_unique: usize = 0,
+    unresolved_duplicates: usize = 0,
+    reusable_flat_width: usize = 0,
+    unresolved_flat_width: usize = 0,
+    max_actions_per_entry: usize = 0,
+};
+
+fn recordParseActionListEntry(profile: *ParseActionListProfile, reusable: bool, action_count: usize) void {
+    if (reusable) {
+        profile.reusable_flat_width += action_count + 1;
+    } else {
+        profile.unresolved_flat_width += action_count + 1;
+    }
+    profile.max_actions_per_entry = @max(profile.max_actions_per_entry, action_count);
+}
+
+fn logParseActionListProfile(profile: ParseActionListProfile, next_index: usize) void {
+    if (!shouldProfileSerialize()) return;
+    std.debug.print(
+        "[parse_table_profile] parse_action_list entries={d} flat_width={d} capacity={d} reusable_inputs={d} unresolved_inputs={d} single_unique={d} single_dupes={d} multi_unique={d} multi_dupes={d} unresolved_unique={d} unresolved_dupes={d} reusable_flat_width={d} unresolved_flat_width={d} max_actions_per_entry={d}\n",
+        .{
+            profile.single_reusable_unique + profile.multi_reusable_unique + profile.unresolved_unique + 1,
+            next_index,
+            std.math.maxInt(u16) + 1,
+            profile.reusable_inputs,
+            profile.unresolved_inputs,
+            profile.single_reusable_unique,
+            profile.single_reusable_duplicates,
+            profile.multi_reusable_unique,
+            profile.multi_reusable_duplicates,
+            profile.unresolved_unique,
+            profile.unresolved_duplicates,
+            profile.reusable_flat_width,
+            profile.unresolved_flat_width + 1,
+            profile.max_actions_per_entry,
+        },
+    );
 }
 
 fn checkedParseActionListSpan(index: usize, action_count: usize) ParseActionListError!u16 {

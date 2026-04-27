@@ -57,5 +57,9 @@ and larger grammar end-to-end timeouts before emission.
 - Keep parse-action-list packing on the Phase 5 path: hashed action-slice dedup
   improved JavaScript by about 12%, but the table still exceeds the `uint16_t`
   runtime-compatible index space.
+- JavaScript parse-action-list profile: `entries=23424`, `flat_width=65537`,
+  `capacity=65536`, `single_unique=4922`, `single_dupes=269277`,
+  `unresolved_unique=18501`, `unresolved_dupes=4614`,
+  `unresolved_flat_width=55693`, `max_actions_per_entry=6`.
 - Profile Rust and TypeScript with a longer explicit diagnostic budget before
   selecting a structural optimization.

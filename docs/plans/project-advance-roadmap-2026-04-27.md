@@ -395,6 +395,23 @@ dominant C JSON signal; JavaScript now reports an explicit
 multi-action-list dedup reduced the JavaScript bounded serialize failure from
 about 21.7s to about 19.2s, but not enough to remove the boundary.
 
+### 5.3 Parse Action List Capacity
+
+- [x] Replace linear multi-action-list dedup with hashed action-slice lookup.
+- [x] Measure parse-action-list entry count and flattened width per large
+  grammar.
+- [x] Add a profile summary for unique single actions, reusable multi-action
+  rows, and unresolved rows.
+- [ ] Investigate upstream-compatible packing before widening table values.
+- [ ] Decide whether a wider-index experimental mode is acceptable for
+  non-runtime-compatible generated parsers.
+
+Current JavaScript capacity profile: `entries=23424`, `flat_width=65537`,
+`capacity=65536`, `single_unique=4922`, `unresolved_unique=18501`, and
+`unresolved_flat_width=55693`. The overflow is one flattened slot beyond the
+runtime-compatible `uint16_t` table value range, with unresolved diagnostic rows
+dominating the remaining capacity pressure.
+
 Gate:
 
 - No structural optimization lands without before/after numbers on at least one
