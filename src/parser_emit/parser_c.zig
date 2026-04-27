@@ -365,6 +365,7 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("};\n\n");
     if (has_unresolved) try writeUnresolvedAccessors(writer, compacted.states, unresolved_owners);
+    if (options.glr_loop and has_unresolved) try writeGlrUnresolvedForkHelpers(writer);
     try writeReservedWords(writer, emitted_symbols, compacted.reserved_words);
     try writeExternalScannerTables(writer, emitted_symbols, compacted.grammar_name, compacted.external_scanner);
 
@@ -644,6 +645,35 @@ fn writeUnresolvedAccessors(
 
     try writer.writeAll("bool ts_parser_has_unresolved(uint16_t state_id, const char *symbol) {\n");
     try writer.writeAll("  return ts_parser_find_unresolved(state_id, symbol) != NULL;\n");
+    try writer.writeAll("}\n\n");
+}
+
+fn writeGlrUnresolvedForkHelpers(writer: anytype) !void {
+    try writer.writeAll("static bool ts_generated_clone_parse_version(TSGeneratedParseVersionSet *set, uint16_t source_index, uint16_t *target_index) {\n");
+    try writer.writeAll("  if (source_index >= set->count || set->count >= GEN_Z_SITTER_MAX_PARSE_VERSIONS) return false;\n");
+    try writer.writeAll("  *target_index = set->count;\n");
+    try writer.writeAll("  set->versions[set->count] = set->versions[source_index];\n");
+    try writer.writeAll("  set->count++;\n");
+    try writer.writeAll("  return true;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static uint16_t ts_generated_fork_unresolved_actions(TSGeneratedParseVersionSet *set, uint16_t version_index, TSSymbol lookahead_symbol) {\n");
+    try writer.writeAll("  if (version_index >= set->count) return 0;\n");
+    try writer.writeAll("  TSGeneratedParseVersion *base = &set->versions[version_index];\n");
+    try writer.writeAll("  const TSUnresolvedEntry *entries = ts_parser_unresolved(base->state);\n");
+    try writer.writeAll("  uint16_t entry_count = ts_parser_unresolved_count(base->state);\n");
+    try writer.writeAll("  uint16_t applied = 0;\n");
+    try writer.writeAll("  for (uint16_t entry_index = 0; entry_index < entry_count; entry_index++) {\n");
+    try writer.writeAll("    const TSUnresolvedEntry *unresolved = &entries[entry_index];\n");
+    try writer.writeAll("    if (unresolved->symbol_id != lookahead_symbol) continue;\n");
+    try writer.writeAll("    const TSParseActionEntry *action_entry = &ts_parse_actions[unresolved->action_index];\n");
+    try writer.writeAll("    for (uint16_t action_index = 0; action_index < unresolved->action_count; action_index++) {\n");
+    try writer.writeAll("      uint16_t target_index = version_index;\n");
+    try writer.writeAll("      if (applied > 0 && !ts_generated_clone_parse_version(set, version_index, &target_index)) return applied;\n");
+    try writer.writeAll("      (void)ts_generated_apply_parse_action(&set->versions[target_index], &action_entry[1 + action_index].action);\n");
+    try writer.writeAll("      applied++;\n");
+    try writer.writeAll("    }\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  return applied;\n");
     try writer.writeAll("}\n\n");
 }
 
@@ -1882,6 +1912,44 @@ test "emitParserCAlloc emits opt-in GLR action dispatch helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static TSGeneratedParseStep ts_generated_apply_parse_action(TSGeneratedParseVersion *version, const TSParseAction *action) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->dynamic_precedence += action->reduce.dynamic_precedence;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static TSGeneratedParseStep ts_generated_parse_version_step(TSGeneratedParseVersion *version, TSSymbol lookahead_symbol) {\n"));
+}
+
+test "emitParserCAlloc emits opt-in GLR unresolved fork helpers" {
+    const allocator = std.testing.allocator;
+    const candidates = [_]parse_actions.ParseAction{
+        .{ .shift = 1 },
+        .{ .reduce = 0 },
+    };
+    const serialized = serialize.SerializedTable{
+        .blocked = true,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]serialize.SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
+                },
+                .gotos = &.{},
+                .unresolved = &[_]serialize.SerializedUnresolvedEntry{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .reason = .shift_reduce,
+                        .candidate_actions = &candidates,
+                    },
+                },
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_clone_parse_version(TSGeneratedParseVersionSet *set, uint16_t source_index, uint16_t *target_index) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static uint16_t ts_generated_fork_unresolved_actions(TSGeneratedParseVersionSet *set, uint16_t version_index, TSSymbol lookahead_symbol) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (unresolved->symbol_id != lookahead_symbol) continue;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_apply_parse_action(&set->versions[target_index], &action_entry[1 + action_index].action)"));
 }
 
 test "emitParserCAlloc emits serialized lex modes" {
