@@ -335,9 +335,10 @@ trusted for scanner-using grammars.
 
 #### 4.1c Scanner State Threading
 
-- [ ] Thread serialized scanner state through fresh parsing after a reused
-  subtree.
-- [ ] Add a stateful scanner fixture proving restore-after-reuse behavior.
+- [x] Thread sampled serialized scanner-state snapshots through parse nodes and
+  restore the state after a reused subtree.
+- [x] Add a stateful scanner-state reuse regression proving
+  restore-after-reuse behavior.
 
 #### 4.1d Bracket-Lang Incremental Proof
 

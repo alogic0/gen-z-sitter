@@ -42,6 +42,7 @@ pub const ParseNode = struct {
     end_byte: u32,
     entry_state: u32,
     children: []const ParseNode = &.{},
+    external_layout_indents_after: []const usize = &.{},
     is_error: bool = false,
     reused: bool = false,
 };
@@ -149,9 +150,21 @@ const SampledExternalState = struct {
         self.layout_indents.deinit();
     }
 
+    fn clone(self: SampledExternalState) !SampledExternalState {
+        var cloned = SampledExternalState.init(self.layout_indents.allocator);
+        errdefer cloned.deinit();
+        try cloned.layout_indents.appendSlice(self.layout_indents.items);
+        return cloned;
+    }
+
     fn topLayoutIndent(self: SampledExternalState) ?usize {
         if (self.layout_indents.items.len == 0) return null;
         return self.layout_indents.items[self.layout_indents.items.len - 1];
+    }
+
+    fn replaceLayoutIndents(self: *SampledExternalState, layout_indents: []const usize) !void {
+        self.layout_indents.clearRetainingCapacity();
+        try self.layout_indents.appendSlice(layout_indents);
     }
 
     fn applyEffect(self: *SampledExternalState, effect: SampledExternalEffect) !void {
@@ -422,6 +435,7 @@ const MAX_PARSE_VERSIONS: usize = 6;
 const ParseVersion = struct {
     stack: std.ArrayListUnmanaged(u32),
     values: std.ArrayListUnmanaged(ParseNode),
+    external_state: SampledExternalState,
     cursor: usize,
     shifted_tokens: usize,
     dynamic_precedence: i32,
@@ -434,6 +448,7 @@ const ParseVersion = struct {
         return .{
             .stack = s,
             .values = .empty,
+            .external_state = SampledExternalState.init(allocator),
             .cursor = 0,
             .shifted_tokens = 0,
             .dynamic_precedence = 0,
@@ -442,6 +457,7 @@ const ParseVersion = struct {
     }
 
     fn deinit(self: *ParseVersion, allocator: std.mem.Allocator) void {
+        self.external_state.deinit();
         self.values.deinit(allocator);
         self.stack.deinit(allocator);
     }
@@ -451,11 +467,14 @@ const ParseVersion = struct {
         errdefer s.deinit(allocator);
         var values = std.ArrayListUnmanaged(ParseNode).empty;
         errdefer values.deinit(allocator);
+        var external_state = try self.external_state.clone();
+        errdefer external_state.deinit();
         try s.appendSlice(allocator, self.stack.items);
         try values.appendSlice(allocator, self.values.items);
         return .{
             .stack = s,
             .values = values,
+            .external_state = external_state,
             .cursor = self.cursor,
             .shifted_tokens = self.shifted_tokens,
             .dynamic_precedence = self.dynamic_precedence,
@@ -488,15 +507,20 @@ fn versionShift(
     entry_state: u32,
     target: u32,
     token_len: usize,
+    external_effect: SampledExternalEffect,
 ) std.mem.Allocator.Error!void {
     const start_byte = version.cursor;
     const end_byte = version.cursor + token_len;
+    try version.external_state.applyEffect(external_effect);
+    const external_layout_indents_after = try allocator.dupe(usize, version.external_state.layout_indents.items);
+    errdefer allocator.free(external_layout_indents_after);
     try version.stack.append(allocator, target);
     try version.values.append(allocator, .{
         .production_id = terminal_node_production_id,
         .start_byte = @intCast(start_byte),
         .end_byte = @intCast(end_byte),
         .entry_state = entry_state,
+        .external_layout_indents_after = external_layout_indents_after,
     });
     version.cursor = end_byte;
     version.shifted_tokens += 1;
@@ -517,6 +541,8 @@ fn versionReduce(
     const child_start = version.values.items.len - child_count;
     const children = try allocator.dupe(ParseNode, version.values.items[child_start..]);
     errdefer allocator.free(children);
+    const external_layout_indents_after = try allocator.dupe(usize, version.external_state.layout_indents.items);
+    errdefer allocator.free(external_layout_indents_after);
 
     for (0..production.steps.len) |_| _ = version.stack.pop();
     version.values.shrinkRetainingCapacity(child_start);
@@ -530,6 +556,7 @@ fn versionReduce(
         .end_byte = if (children.len == 0) @intCast(version.cursor) else children[children.len - 1].end_byte,
         .entry_state = entry_state,
         .children = children,
+        .external_layout_indents_after = external_layout_indents_after,
     });
     version.dynamic_precedence += production.dynamic_precedence;
     return null;
@@ -665,6 +692,7 @@ fn tryReuseOldSubtree(
     try version.stack.append(allocator, goto_state);
     try version.values.append(allocator, reused);
     version.cursor = node.end_byte;
+    try version.external_state.replaceLayoutIndents(node.external_layout_indents_after);
     return true;
 }
 
@@ -689,12 +717,15 @@ fn cloneReusedSubtreeAlloc(allocator: std.mem.Allocator, node: ParseNode) std.me
     for (node.children, 0..) |child, index| {
         children[index] = try cloneReusedSubtreeAlloc(allocator, child);
     }
+    const external_layout_indents_after = try allocator.dupe(usize, node.external_layout_indents_after);
+    errdefer allocator.free(external_layout_indents_after);
     return .{
         .production_id = node.production_id,
         .start_byte = node.start_byte,
         .end_byte = node.end_byte,
         .entry_state = node.entry_state,
         .children = children,
+        .external_layout_indents_after = external_layout_indents_after,
         .is_error = node.is_error,
         .reused = true,
     };
@@ -862,7 +893,7 @@ fn simulateBuiltScannerFreeWithIncremental(
                 switch (decision.?) {
                     .chosen => |action| switch (action) {
                         .shift => |target| {
-                            try versionShift(allocator, &versions.items[vi], state_id, target, matched.len);
+                            try versionShift(allocator, &versions.items[vi], state_id, target, matched.len, matched.external_effect);
                             vi += 1;
                             break :inner;
                         },
@@ -894,7 +925,7 @@ fn simulateBuiltScannerFreeWithIncremental(
                             var fork = try versions.items[vi].clone(allocator);
                             switch (extra) {
                                 .shift => |target| {
-                                    versionShift(allocator, &fork, state_id, target, matched.len) catch {
+                                    versionShift(allocator, &fork, state_id, target, matched.len, matched.external_effect) catch {
                                         fork.deinit(allocator);
                                         return error.OutOfMemory;
                                     };
@@ -922,7 +953,7 @@ fn simulateBuiltScannerFreeWithIncremental(
                         // Apply candidates[0] to the current version.
                         switch (candidates[0]) {
                             .shift => |target| {
-                                try versionShift(allocator, &versions.items[vi], state_id, target, matched.len);
+                                try versionShift(allocator, &versions.items[vi], state_id, target, matched.len, matched.external_effect);
                                 vi += 1;
                                 break :inner;
                             },
@@ -2666,6 +2697,7 @@ fn parseTreesEquivalent(left: ParseNode, right: ParseNode) bool {
     if (left.end_byte != right.end_byte) return false;
     if (left.entry_state != right.entry_state) return false;
     if (left.is_error != right.is_error) return false;
+    if (!std.mem.eql(usize, left.external_layout_indents_after, right.external_layout_indents_after)) return false;
     if (left.children.len != right.children.len) return false;
     for (left.children, right.children) |left_child, right_child| {
         if (!parseTreesEquivalent(left_child, right_child)) return false;
@@ -2766,6 +2798,7 @@ fn nodeCanReuse(old: ParseNode, fresh: ParseNode, edit: Edit) bool {
     if (old.end_byte != fresh.end_byte) return false;
     if (old.entry_state != fresh.entry_state) return false;
     if (old.is_error != fresh.is_error) return false;
+    if (!std.mem.eql(usize, old.external_layout_indents_after, fresh.external_layout_indents_after)) return false;
     return true;
 }
 
@@ -2913,6 +2946,36 @@ test "simulatePreparedIncrementalWithExternalLexStates blocks unsafe prefix reus
     try std.testing.expectEqual(fresh_result.accepted.shifted_tokens, incremental_result.accepted.shifted_tokens);
     try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), fresh_tree, incremental_tree));
     try std.testing.expectEqual(@as(usize, 0), countReusedNodes(incremental_tree));
+}
+
+test "tryReuseOldSubtree restores sampled external scanner state" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), ambiguous_expr_grammar_json);
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const flattened = try flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax);
+    const result = try build.buildStates(arena.allocator(), flattened);
+    const old_result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1+2+3");
+
+    var old_tree = old_result.accepted.tree orelse return error.TestUnexpectedResult;
+    old_tree.external_layout_indents_after = try arena.allocator().dupe(usize, &[_]usize{ 2, 4 });
+
+    var version = try ParseVersion.initFirst(arena.allocator());
+    defer version.deinit(arena.allocator());
+
+    const reused = try tryReuseOldSubtree(arena.allocator(), result, &version, .{
+        .old_tree = old_tree,
+        .edit = .{
+            .start_byte = 5,
+            .old_end_byte = 5,
+            .new_end_byte = 7,
+        },
+    });
+
+    try std.testing.expect(reused);
+    try std.testing.expectEqual(@as(usize, 5), version.cursor);
+    try std.testing.expectEqualSlices(usize, &[_]usize{ 2, 4 }, version.external_state.layout_indents.items);
 }
 
 fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResult) !void {
