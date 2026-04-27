@@ -143,6 +143,8 @@ does not yet appear in generated C.
   opt-in GLR macro.
 - [x] Add generated parse-table/action/goto lookup helpers for the opt-in GLR
   loop path.
+- [x] Add generated action-dispatch helpers for the opt-in GLR loop path,
+  including shift, reduce, accept, recover, and dynamic-precedence accumulation.
 
 ---
 

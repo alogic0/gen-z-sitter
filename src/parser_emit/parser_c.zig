@@ -337,6 +337,7 @@ pub fn writeParserCWithOptions(
 
     if (options.glr_loop) {
         try writeGlrParseHelpers(writer, large_state_count_value < compacted.states.len);
+        try writeGlrActionDispatch(writer);
     }
 
     if (has_unresolved) {
@@ -519,6 +520,52 @@ fn writeGlrParseHelpers(writer: anytype, has_small_parse_table: bool) !void {
     try writer.writeAll("}\n\n");
     try writer.writeAll("static TSStateId ts_generated_goto_state(TSStateId state, TSSymbol symbol) {\n");
     try writer.writeAll("  return (TSStateId)ts_generated_parse_table_entry(state, symbol);\n");
+    try writer.writeAll("}\n\n");
+}
+
+fn writeGlrActionDispatch(writer: anytype) !void {
+    try writer.writeAll("typedef enum {\n");
+    try writer.writeAll("  TSGeneratedParseStepNoAction,\n");
+    try writer.writeAll("  TSGeneratedParseStepShift,\n");
+    try writer.writeAll("  TSGeneratedParseStepReduce,\n");
+    try writer.writeAll("  TSGeneratedParseStepAccept,\n");
+    try writer.writeAll("  TSGeneratedParseStepRecover,\n");
+    try writer.writeAll("} TSGeneratedParseStepStatus;\n\n");
+    try writer.writeAll("typedef struct {\n");
+    try writer.writeAll("  TSGeneratedParseStepStatus status;\n");
+    try writer.writeAll("  TSStateId next_state;\n");
+    try writer.writeAll("  uint8_t child_count;\n");
+    try writer.writeAll("  TSSymbol symbol;\n");
+    try writer.writeAll("  uint16_t production_id;\n");
+    try writer.writeAll("} TSGeneratedParseStep;\n\n");
+    try writer.writeAll("static TSGeneratedParseStep ts_generated_apply_parse_action(TSGeneratedParseVersion *version, const TSParseAction *action) {\n");
+    try writer.writeAll("  TSGeneratedParseStep step = { 0 };\n");
+    try writer.writeAll("  switch ((TSParseActionType)action->type) {\n");
+    try writer.writeAll("    case TSParseActionTypeShift:\n");
+    try writer.writeAll("      version->state = action->shift.state;\n");
+    try writer.writeAll("      step.status = TSGeneratedParseStepShift;\n");
+    try writer.writeAll("      step.next_state = action->shift.state;\n");
+    try writer.writeAll("      break;\n");
+    try writer.writeAll("    case TSParseActionTypeReduce:\n");
+    try writer.writeAll("      version->dynamic_precedence += action->reduce.dynamic_precedence;\n");
+    try writer.writeAll("      step.status = TSGeneratedParseStepReduce;\n");
+    try writer.writeAll("      step.child_count = action->reduce.child_count;\n");
+    try writer.writeAll("      step.symbol = action->reduce.symbol;\n");
+    try writer.writeAll("      step.production_id = action->reduce.production_id;\n");
+    try writer.writeAll("      break;\n");
+    try writer.writeAll("    case TSParseActionTypeAccept:\n");
+    try writer.writeAll("      step.status = TSGeneratedParseStepAccept;\n");
+    try writer.writeAll("      break;\n");
+    try writer.writeAll("    case TSParseActionTypeRecover:\n");
+    try writer.writeAll("      step.status = TSGeneratedParseStepRecover;\n");
+    try writer.writeAll("      break;\n");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  return step;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static TSGeneratedParseStep ts_generated_parse_version_step(TSGeneratedParseVersion *version, TSSymbol lookahead_symbol) {\n");
+    try writer.writeAll("  const TSParseActionEntry *entry = ts_generated_parse_actions_for(version->state, lookahead_symbol);\n");
+    try writer.writeAll("  if (entry->entry.count == 0) return (TSGeneratedParseStep){ .status = TSGeneratedParseStepNoAction };\n");
+    try writer.writeAll("  return ts_generated_apply_parse_action(version, &entry[1].action);\n");
     try writer.writeAll("}\n\n");
 }
 
@@ -1809,6 +1856,32 @@ test "emitParserCAlloc emits opt-in GLR parse table helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "return ts_parse_table[state][symbol];\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSParseActionEntry *ts_generated_parse_actions_for(TSStateId state, TSSymbol symbol) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static TSStateId ts_generated_goto_state(TSStateId state, TSSymbol symbol) {\n"));
+}
+
+test "emitParserCAlloc emits opt-in GLR action dispatch helpers" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef enum {\n  TSGeneratedParseStepNoAction,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static TSGeneratedParseStep ts_generated_apply_parse_action(TSGeneratedParseVersion *version, const TSParseAction *action) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->dynamic_precedence += action->reduce.dynamic_precedence;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static TSGeneratedParseStep ts_generated_parse_version_step(TSGeneratedParseVersion *version, TSSymbol lookahead_symbol) {\n"));
 }
 
 test "emitParserCAlloc emits serialized lex modes" {
