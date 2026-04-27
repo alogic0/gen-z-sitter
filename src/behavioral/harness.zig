@@ -118,6 +118,7 @@ const PreparedSampledLexTables = struct {
 const IncrementalContext = struct {
     old_tree: ?ParseNode = null,
     edit: ?Edit = null,
+    external_lex_states: []const u16 = &.{},
 
     fn none() IncrementalContext {
         return .{};
@@ -623,7 +624,9 @@ fn tryReuseOldSubtree(
     const old_tree = incremental.old_tree orelse return false;
     const edit = incremental.edit orelse return false;
     const cursor: u32 = @intCast(version.cursor);
-    const node = findReusableNodeAt(old_tree, cursor, version.topState(), edit) orelse return false;
+    const top_state = version.topState();
+    if (!stateAllowsIncrementalReuse(top_state, incremental.external_lex_states)) return false;
+    const node = findReusableNodeAt(old_tree, cursor, top_state, edit) orelse return false;
     if (node.production_id == terminal_node_production_id) return false;
     if (node.end_byte <= node.start_byte) return false;
     if (node.production_id >= result.productions.len) return false;
@@ -635,6 +638,11 @@ fn tryReuseOldSubtree(
     try version.values.append(allocator, reused);
     version.cursor = node.end_byte;
     return true;
+}
+
+fn stateAllowsIncrementalReuse(state_id: u32, external_lex_states: []const u16) bool {
+    if (state_id >= external_lex_states.len) return true;
+    return external_lex_states[state_id] == 0;
 }
 
 fn findReusableNodeAt(old: ParseNode, cursor: u32, entry_state: u32, edit: Edit) ?ParseNode {
@@ -2725,6 +2733,12 @@ test "ParseNode helpers compare trees and mark reusable prefix nodes" {
         .new_end_byte = 3,
     });
     try std.testing.expectEqual(@as(usize, 2), countReusedNodes(marked));
+}
+
+test "incremental reuse rejects states with external lex state metadata" {
+    try std.testing.expect(stateAllowsIncrementalReuse(0, &[_]u16{0}));
+    try std.testing.expect(!stateAllowsIncrementalReuse(1, &[_]u16{ 0, 2 }));
+    try std.testing.expect(stateAllowsIncrementalReuse(3, &[_]u16{ 0, 2 }));
 }
 
 test "simulatePreparedScannerFreeIncremental reuses prefix nodes after append edit" {

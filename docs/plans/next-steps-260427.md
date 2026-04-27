@@ -96,13 +96,12 @@ incremental parsing has a concrete tree to reuse.
 - [x] Add a scanner-free incremental entry point.
 - [x] Reuse unchanged old subtrees in the scanner-free parse loop by matching
   cursor and entry state, then advancing directly to the reused subtree end.
+- [x] Add an explicit external-lex-state guard for incremental subtree reuse.
 
 **Remaining.**
 
 - Tighten equivalence assertions for ambiguous grammars, where fresh and
   incremental parses can choose different valid tree shapes.
-- Add external-lex-state guards before broadening reuse beyond scanner-free
-  fixtures.
 
 **Gate.**
 
