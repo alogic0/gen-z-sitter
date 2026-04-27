@@ -129,6 +129,22 @@ pub fn linkAndRunExternalScannerParser(allocator: std.mem.Allocator) RuntimeLink
     });
 }
 
+pub fn linkAndRunExternalScannerGlrParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitExternalScannerGlrParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = externalScannerSource(),
+        .input = "e",
+        .direct_generated_parse = true,
+        .expected_consumed_bytes = 1,
+    });
+}
+
 pub fn linkAndRunMultiTokenExternalScannerParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
 
@@ -642,6 +658,23 @@ fn emitKeywordReservedParserC(allocator: std.mem.Allocator) RuntimeLinkError![]c
 }
 
 fn emitExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitExternalScannerParserCWithOptions(allocator, .{
+        .offset_start_state = true,
+        .glr_loop = false,
+    });
+}
+
+fn emitExternalScannerGlrParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitExternalScannerParserCWithOptions(allocator, .{
+        .offset_start_state = false,
+        .glr_loop = true,
+    });
+}
+
+fn emitExternalScannerParserCWithOptions(
+    allocator: std.mem.Allocator,
+    options: TinyParserOptions,
+) RuntimeLinkError![]const u8 {
     const symbols = [_]serialize.SerializedSymbolInfo{
         .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
         .{ .ref = .{ .external = 0 }, .name = "external_token", .named = false, .visible = true, .supertype = false, .public_symbol = 1 },
@@ -662,25 +695,45 @@ fn emitExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLinkError![]c
     const accept_actions = [_]serialize.SerializedActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
     };
-    const states = [_]serialize.SerializedState{
+    const runtime_states = [_]serialize.SerializedState{
         .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
         .{ .id = 1, .lex_state_id = 0, .actions = start_actions[0..], .gotos = start_gotos[0..], .unresolved = &.{} },
         .{ .id = 2, .lex_state_id = 0, .actions = reduce_actions[0..], .gotos = &.{}, .unresolved = &.{} },
         .{ .id = 3, .lex_state_id = 0, .actions = accept_actions[0..], .gotos = &.{}, .unresolved = &.{} },
     };
+    const glr_start_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .external = 0 }, .action = .{ .shift = 1 } },
+    };
+    const glr_start_gotos = [_]serialize.SerializedGotoEntry{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 2 },
+    };
+    const glr_states = [_]serialize.SerializedState{
+        .{ .id = 0, .lex_state_id = 0, .actions = glr_start_actions[0..], .gotos = glr_start_gotos[0..], .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = reduce_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = accept_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+    };
+    const states = if (options.offset_start_state) runtime_states[0..] else glr_states[0..];
     const lex_states = [_]lexer_serialize.SerializedLexState{
         .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
     };
     const lex_tables = [_]lexer_serialize.SerializedLexTable{
         .{ .start_state_id = 0, .states = lex_states[0..] },
     };
-    const lex_modes = [_]lexer_serialize.SerializedLexMode{
+    const runtime_lex_modes = [_]lexer_serialize.SerializedLexMode{
         .{ .lex_state = 0, .external_lex_state = 1 },
         .{ .lex_state = 0, .external_lex_state = 1 },
         .{ .lex_state = 0, .external_lex_state = 1 },
         .{ .lex_state = 0, .external_lex_state = 1 },
     };
-    const primary_state_ids = [_]u32{ 0, 1, 2, 3 };
+    const glr_lex_modes = [_]lexer_serialize.SerializedLexMode{
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 1 },
+    };
+    const lex_modes = if (options.offset_start_state) runtime_lex_modes[0..] else glr_lex_modes[0..];
+    const runtime_primary_state_ids = [_]u32{ 0, 1, 2, 3 };
+    const glr_primary_state_ids = [_]u32{ 0, 1, 2 };
+    const primary_state_ids = if (options.offset_start_state) runtime_primary_state_ids[0..] else glr_primary_state_ids[0..];
     const external_symbols = [_]syntax_grammar.SymbolRef{
         .{ .external = 0 },
     };
@@ -696,18 +749,19 @@ fn emitExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLinkError![]c
         .symbols = symbols[0..],
         .large_state_count = states.len,
         .productions = productions[0..],
-        .lex_modes = lex_modes[0..],
+        .lex_modes = lex_modes,
         .lex_tables = lex_tables[0..],
         .external_scanner = .{
             .symbols = external_symbols[0..],
             .states = external_states[0..],
         },
-        .primary_state_ids = primary_state_ids[0..],
-        .states = states[0..],
+        .primary_state_ids = primary_state_ids,
+        .states = states,
     };
 
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
         .compact_duplicate_states = false,
+        .glr_loop = options.glr_loop,
     });
 }
 
@@ -1739,6 +1793,10 @@ test "linkAndRunKeywordReservedParser links generated keyword parser with tree-s
 
 test "linkAndRunExternalScannerParser links generated external scanner parser with tree-sitter runtime" {
     try linkAndRunExternalScannerParser(std.testing.allocator);
+}
+
+test "linkAndRunExternalScannerGlrParser calls generated GLR external scanner path" {
+    try linkAndRunExternalScannerGlrParser(std.testing.allocator);
 }
 
 test "linkAndRunMultiTokenExternalScannerParser links generated multi-token external scanner parser with tree-sitter runtime" {

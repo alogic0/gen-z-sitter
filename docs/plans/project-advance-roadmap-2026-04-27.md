@@ -118,13 +118,13 @@ external scanner symbols, not unresolved parse-action signatures.
 
 ### 2.1 Generated Scanner Callback State
 
-- [ ] Extend generated GLR versions with external scanner payload state where
+- [x] Extend generated GLR versions with external scanner payload state where
   the grammar has external tokens.
-- [ ] Store scanner serialized bytes per parse version, matching tree-sitter's
+- [x] Store scanner serialized bytes per parse version, matching tree-sitter's
   clone/restore semantics.
-- [ ] Call `external_scanner_create`, `destroy`, `serialize`, `deserialize`,
+- [x] Call `external_scanner_create`, `destroy`, `serialize`, `deserialize`,
   and `scan` from generated code where lex modes require external scanning.
-- [ ] Preserve per-version scanner state across forks.
+- [x] Preserve per-version scanner state across forks.
 - [ ] Reuse the Bash and Haskell scanner include-dir/link patterns for generated
   GLR runtime-link tests.
 

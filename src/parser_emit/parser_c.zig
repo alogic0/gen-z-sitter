@@ -123,6 +123,7 @@ pub fn writeParserCWithOptions(
     const compacted = try optimize.prepareSerializedTableAlloc(arena.allocator(), serialized, options);
     const compatibility = compat.currentRuntimeCompatibility();
     const has_unresolved = hasUnresolvedStateRows(compacted.states);
+    const has_external_scanner = compacted.external_scanner.symbols.len != 0 and compacted.external_scanner.states.len != 0;
     const emitted_symbols = try collectEmittedSymbols(allocator, compacted);
     defer deinitEmittedSymbols(allocator, emitted_symbols);
     const parse_action_list = if (compacted.parse_action_list.len > 0)
@@ -142,7 +143,7 @@ pub fn writeParserCWithOptions(
     try compat.writeContractTypesAndConstants(writer, compatibility);
     if (options.glr_loop) {
         try writer.writeAll("#define GEN_Z_SITTER_ENABLE_GLR_LOOP 1\n\n");
-        try writeGlrVersionStorage(writer);
+        try writeGlrVersionStorage(writer, has_external_scanner);
     }
     if (has_unresolved) try writeUnresolvedEntryType(writer);
     try writer.print("#define STATE_COUNT {d}\n", .{compacted.states.len});
@@ -365,13 +366,13 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("};\n\n");
     if (has_unresolved) try writeUnresolvedAccessors(writer, compacted.states, unresolved_owners);
+    try writeExternalScannerTables(writer, emitted_symbols, compacted.grammar_name, compacted.external_scanner);
     if (options.glr_loop and has_unresolved) try writeGlrUnresolvedForkHelpers(writer);
     if (options.glr_loop) try writeGlrVersionCondenseHelpers(writer);
-    if (options.glr_loop) try writeGlrInputLexerHelpers(writer);
+    if (options.glr_loop) try writeGlrInputLexerHelpers(writer, compacted.grammar_name, has_external_scanner);
     if (options.glr_loop) try writeGlrVersionStepLoop(writer, has_unresolved);
     if (options.glr_loop) try writeGlrMainParseFunction(writer);
     try writeReservedWords(writer, emitted_symbols, compacted.reserved_words);
-    try writeExternalScannerTables(writer, emitted_symbols, compacted.grammar_name, compacted.external_scanner);
 
     try writer.writeAll("static const TSLanguage ts_language = {\n");
     try writer.writeAll("  .abi_version = LANGUAGE_VERSION,\n");
@@ -475,12 +476,15 @@ fn writeRuntimeAction(
     }
 }
 
-fn writeGlrVersionStorage(writer: anytype) !void {
+fn writeGlrVersionStorage(writer: anytype, has_external_scanner: bool) !void {
     try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_VALUE_STACK_DEPTH 256\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_GENERATED_NODES 256\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_NODE_CHILDREN 16\n\n");
+    if (has_external_scanner) {
+        try writer.writeAll("#define GEN_Z_SITTER_EXTERNAL_SCANNER_STATE_SIZE 1024\n\n");
+    }
     try writer.writeAll("#define GEN_Z_SITTER_NO_NODE UINT16_MAX\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE 3\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_RECOVERY_ATTEMPTS 8\n\n");
@@ -524,6 +528,10 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("  uint32_t byte_offset;\n");
     try writer.writeAll("  uint32_t error_count;\n");
     try writer.writeAll("  int32_t dynamic_precedence;\n");
+    if (has_external_scanner) {
+        try writer.writeAll("  char external_scanner_state[GEN_Z_SITTER_EXTERNAL_SCANNER_STATE_SIZE];\n");
+        try writer.writeAll("  uint16_t external_scanner_state_len;\n");
+    }
     try writer.writeAll("  bool shifted;\n");
     try writer.writeAll("  bool active;\n");
     try writer.writeAll("} TSGeneratedParseVersion;\n\n");
@@ -541,6 +549,9 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("    set->versions[i].byte_offset = 0;\n");
     try writer.writeAll("    set->versions[i].error_count = 0;\n");
     try writer.writeAll("    set->versions[i].dynamic_precedence = 0;\n");
+    if (has_external_scanner) {
+        try writer.writeAll("    set->versions[i].external_scanner_state_len = 0;\n");
+    }
     try writer.writeAll("    set->versions[i].shifted = false;\n");
     try writer.writeAll("    set->versions[i].active = false;\n");
     try writer.writeAll("  }\n");
@@ -919,7 +930,7 @@ fn writeGlrVersionCondenseHelpers(writer: anytype) !void {
     try writer.writeAll("}\n\n");
 }
 
-fn writeGlrInputLexerHelpers(writer: anytype) !void {
+fn writeGlrInputLexerHelpers(writer: anytype, grammar_name: []const u8, has_external_scanner: bool) !void {
     try writer.writeAll("typedef struct {\n");
     try writer.writeAll("  TSLexer base;\n");
     try writer.writeAll("  const char *input;\n");
@@ -956,7 +967,36 @@ fn writeGlrInputLexerHelpers(writer: anytype) !void {
     try writer.writeAll("  (void)base;\n");
     try writer.writeAll("  (void)format;\n");
     try writer.writeAll("}\n\n");
-    try writer.writeAll("static bool ts_generated_lex_symbol(const char *input, uint32_t length, TSStateId parse_state, TSSymbol *out_symbol, uint32_t *out_advance_bytes) {\n");
+    if (has_external_scanner) {
+        try writer.writeAll("static bool ts_generated_external_scan(TSGeneratedParseVersion *version, TSGeneratedInputLexer *lexer, TSLexerMode mode, TSSymbol *out_symbol, uint32_t *out_advance_bytes) {\n");
+        try writer.writeAll("  if (mode.external_lex_state == 0 || EXTERNAL_TOKEN_COUNT == 0) return false;\n");
+        try writer.writeAll("  void *payload = ");
+        try writeExternalScannerFunctionName(writer, grammar_name, "create");
+        try writer.writeAll("();\n");
+        try writer.writeAll("  ");
+        try writeExternalScannerFunctionName(writer, grammar_name, "deserialize");
+        try writer.writeAll("(payload, version->external_scanner_state, version->external_scanner_state_len);\n");
+        try writer.writeAll("  const bool *valid_symbols = &ts_external_scanner_states[mode.external_lex_state][0];\n");
+        try writer.writeAll("  bool scanned = ");
+        try writeExternalScannerFunctionName(writer, grammar_name, "scan");
+        try writer.writeAll("(payload, &lexer->base, valid_symbols);\n");
+        try writer.writeAll("  if (scanned) {\n");
+        try writer.writeAll("    if (lexer->base.result_symbol >= EXTERNAL_TOKEN_COUNT) scanned = false;\n");
+        try writer.writeAll("    else {\n");
+        try writer.writeAll("      *out_symbol = ts_external_scanner_symbol_map[lexer->base.result_symbol];\n");
+        try writer.writeAll("      *out_advance_bytes = lexer->end_offset;\n");
+        try writer.writeAll("      version->external_scanner_state_len = (uint16_t)");
+        try writeExternalScannerFunctionName(writer, grammar_name, "serialize");
+        try writer.writeAll("(payload, version->external_scanner_state);\n");
+        try writer.writeAll("    }\n");
+        try writer.writeAll("  }\n");
+        try writer.writeAll("  ");
+        try writeExternalScannerFunctionName(writer, grammar_name, "destroy");
+        try writer.writeAll("(payload);\n");
+        try writer.writeAll("  return scanned;\n");
+        try writer.writeAll("}\n\n");
+    }
+    try writer.writeAll("static bool ts_generated_lex_symbol(TSGeneratedParseVersion *version, const char *input, uint32_t length, TSStateId parse_state, TSSymbol *out_symbol, uint32_t *out_advance_bytes) {\n");
     try writer.writeAll("  TSGeneratedInputLexer lexer = { 0 };\n");
     try writer.writeAll("  lexer.input = input;\n");
     try writer.writeAll("  lexer.length = length;\n");
@@ -967,7 +1007,16 @@ fn writeGlrInputLexerHelpers(writer: anytype) !void {
     try writer.writeAll("  lexer.base.eof = ts_generated_input_lexer_eof;\n");
     try writer.writeAll("  lexer.base.log = ts_generated_input_lexer_log;\n");
     try writer.writeAll("  ts_generated_input_lexer_sync(&lexer);\n");
-    try writer.writeAll("  if (!ts_lex(&lexer.base, ts_lex_modes[parse_state].lex_state)) return false;\n");
+    try writer.writeAll("  TSLexerMode mode = ts_lex_modes[parse_state];\n");
+    if (has_external_scanner) {
+        try writer.writeAll("  if (ts_generated_external_scan(version, &lexer, mode, out_symbol, out_advance_bytes)) return true;\n");
+        try writer.writeAll("  lexer.offset = 0;\n");
+        try writer.writeAll("  lexer.end_offset = 0;\n");
+        try writer.writeAll("  ts_generated_input_lexer_sync(&lexer);\n");
+    } else {
+        try writer.writeAll("  (void)version;\n");
+    }
+    try writer.writeAll("  if (!ts_lex(&lexer.base, mode.lex_state)) return false;\n");
     try writer.writeAll("  *out_symbol = lexer.base.result_symbol;\n");
     try writer.writeAll("  *out_advance_bytes = lexer.end_offset;\n");
     try writer.writeAll("  return true;\n");
@@ -1033,7 +1082,7 @@ fn writeGlrMainParseFunction(writer: anytype) !void {
     try writer.writeAll("    TSSymbol lookahead_symbol = 0;\n");
     try writer.writeAll("    uint32_t advance_bytes = 0;\n");
     try writer.writeAll("    if (lead->byte_offset < length) {\n");
-    try writer.writeAll("      if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) {\n");
+    try writer.writeAll("      if (!ts_generated_lex_symbol(lead, input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) {\n");
     try writer.writeAll("        if (out_result) *out_result = result;\n");
     try writer.writeAll("        return false;\n");
     try writer.writeAll("      }\n");
@@ -2525,8 +2574,9 @@ test "emitParserCAlloc emits opt-in GLR raw input lexer adapter" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSLexer base;\n  const char *input;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_input_lexer_advance(TSLexer *base, bool skip) {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_lex_symbol(const char *input, uint32_t length, TSStateId parse_state, TSSymbol *out_symbol, uint32_t *out_advance_bytes) {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_lex(&lexer.base, ts_lex_modes[parse_state].lex_state)) return false;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_lex_symbol(TSGeneratedParseVersion *version, const char *input, uint32_t length, TSStateId parse_state, TSSymbol *out_symbol, uint32_t *out_advance_bytes) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSLexerMode mode = ts_lex_modes[parse_state];\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_lex(&lexer.base, mode.lex_state)) return false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "*out_symbol = lexer.base.result_symbol;\n"));
 }
 
@@ -2555,7 +2605,7 @@ test "emitParserCAlloc emits opt-in GLR raw input parse entry point" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "result.root_node = GEN_Z_SITTER_NO_NODE;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_parse_versions_init(&set, 0);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!lead || set.versions[i].byte_offset < lead->byte_offset) {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_lex_symbol(input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_lex_symbol(lead, input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (out_result) *out_result = result;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool accepted = ts_generated_step_parse_versions(&set, lead_index, lookahead_symbol, advance_bytes);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "result.accepted = true;\n"));
@@ -2865,6 +2915,49 @@ test "emitParserCAlloc emits external scanner symbols and declarations" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .symbol_map = ts_external_scanner_symbol_map,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .create = tree_sitter_external_grammar_external_scanner_create,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .deserialize = tree_sitter_external_grammar_external_scanner_deserialize,\n"));
+}
+
+test "emitParserCAlloc emits opt-in GLR external scanner callback path" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_name = "external grammar",
+        .symbols = &[_]serialize.SerializedSymbolInfo{
+            .{ .ref = .{ .external = 0 }, .name = "OPEN", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
+        },
+        .external_scanner = .{
+            .symbols = &[_]syntax_grammar.SymbolRef{
+                .{ .external = 0 },
+            },
+            .states = &[_][]const bool{
+                &.{false},
+                &.{true},
+            },
+        },
+        .lex_modes = &[_]lexer_serialize.SerializedLexMode{
+            .{ .lex_state = 0, .external_lex_state = 1 },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_EXTERNAL_SCANNER_STATE_SIZE 1024\n\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "char external_scanner_state[GEN_Z_SITTER_EXTERNAL_SCANNER_STATE_SIZE];\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "uint16_t external_scanner_state_len;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_generated_external_scan(TSGeneratedParseVersion *version, TSGeneratedInputLexer *lexer, TSLexerMode mode, TSSymbol *out_symbol, uint32_t *out_advance_bytes) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "tree_sitter_external_grammar_external_scanner_deserialize(payload, version->external_scanner_state, version->external_scanner_state_len);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const bool *valid_symbols = &ts_external_scanner_states[mode.external_lex_state][0];\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "tree_sitter_external_grammar_external_scanner_scan(payload, &lexer->base, valid_symbols);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "*out_symbol = ts_external_scanner_symbol_map[lexer->base.result_symbol];\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->external_scanner_state_len = (uint16_t)tree_sitter_external_grammar_external_scanner_serialize(payload, version->external_scanner_state);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "tree_sitter_external_grammar_external_scanner_destroy(payload);\n"));
 }
 
 test "emitParserCAlloc emits primary state ids by parse state" {
