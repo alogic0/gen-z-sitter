@@ -213,6 +213,19 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_compat_target.addArgs(args);
     const compat_target_step = b.step("run-compat-target", "Run one compatibility target through the harness");
     compat_target_step.dependOn(&run_compat_target.step);
+
+    const minimize_report_runner = b.addExecutable(.{
+        .name = "minimize-report-runner",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/debug_minimize_report.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_minimize_report = b.addRunArtifact(minimize_report_runner);
+    if (b.args) |args| run_minimize_report.addArgs(args);
+    const minimize_report_step = b.step("run-minimize-report", "Print bounded parse-table minimization JSON report");
+    minimize_report_step.dependOn(&run_minimize_report.step);
 }
 
 fn createTestModule(

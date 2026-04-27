@@ -342,6 +342,8 @@ Completed steps:
 - [x] Add a reusable bounded minimization report with per-target probes,
   skipped targets, and aggregate counts.
 - [x] Add deterministic JSON rendering for the bounded minimization report.
+- [x] Add a focused build step for printing the bounded minimization JSON
+  report without running heavy compatibility targets.
 
 **Risk.** Low. Purely additive. The minimization pass can be toggled off and
 the existing output is unchanged when it is.
