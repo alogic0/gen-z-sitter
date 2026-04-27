@@ -46,6 +46,12 @@ pub const ParseNode = struct {
     reused: bool = false,
 };
 
+pub const Edit = struct {
+    start_byte: u32,
+    old_end_byte: u32,
+    new_end_byte: u32,
+};
+
 const terminal_node_production_id = std.math.maxInt(u32);
 
 pub const SimulationResult = union(enum) {
@@ -2512,6 +2518,109 @@ fn countTerminalLeaves(node: ParseNode, byte: u8) usize {
         count += countTerminalLeaves(child, byte);
     }
     return count;
+}
+
+fn parseTreesEquivalent(left: ParseNode, right: ParseNode) bool {
+    if (left.production_id != right.production_id) return false;
+    if (left.start_byte != right.start_byte) return false;
+    if (left.end_byte != right.end_byte) return false;
+    if (left.entry_state != right.entry_state) return false;
+    if (left.is_error != right.is_error) return false;
+    if (left.children.len != right.children.len) return false;
+    for (left.children, right.children) |left_child, right_child| {
+        if (!parseTreesEquivalent(left_child, right_child)) return false;
+    }
+    return true;
+}
+
+fn cloneParseNodeWithReuseMarkersAlloc(
+    allocator: std.mem.Allocator,
+    fresh: ParseNode,
+    old: ?ParseNode,
+    edit: Edit,
+) std.mem.Allocator.Error!ParseNode {
+    var children = try allocator.alloc(ParseNode, fresh.children.len);
+    errdefer allocator.free(children);
+
+    for (fresh.children, 0..) |child, index| {
+        const old_match = findReusableOldNode(old, child, edit);
+        children[index] = try cloneParseNodeWithReuseMarkersAlloc(allocator, child, old_match, edit);
+    }
+
+    return .{
+        .production_id = fresh.production_id,
+        .start_byte = fresh.start_byte,
+        .end_byte = fresh.end_byte,
+        .entry_state = fresh.entry_state,
+        .children = children,
+        .is_error = fresh.is_error,
+        .reused = findReusableOldNode(old, fresh, edit) != null,
+    };
+}
+
+fn findReusableOldNode(old: ?ParseNode, fresh: ParseNode, edit: Edit) ?ParseNode {
+    const root = old orelse return null;
+    if (nodeCanReuse(root, fresh, edit)) return root;
+    for (root.children) |child| {
+        if (findReusableOldNode(child, fresh, edit)) |match| return match;
+    }
+    return null;
+}
+
+fn nodeCanReuse(old: ParseNode, fresh: ParseNode, edit: Edit) bool {
+    if (fresh.start_byte >= edit.new_end_byte) return false;
+    if (fresh.end_byte > edit.start_byte) return false;
+    if (old.production_id != fresh.production_id) return false;
+    if (old.start_byte != fresh.start_byte) return false;
+    if (old.end_byte != fresh.end_byte) return false;
+    if (old.entry_state != fresh.entry_state) return false;
+    if (old.is_error != fresh.is_error) return false;
+    return true;
+}
+
+fn countReusedNodes(node: ParseNode) usize {
+    var count: usize = if (node.reused) 1 else 0;
+    for (node.children) |child| count += countReusedNodes(child);
+    return count;
+}
+
+test "ParseNode helpers compare trees and mark reusable prefix nodes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const old_children = try arena.allocator().dupe(ParseNode, &[_]ParseNode{
+        .{ .production_id = terminal_node_production_id, .start_byte = 0, .end_byte = 1, .entry_state = 0 },
+        .{ .production_id = terminal_node_production_id, .start_byte = 1, .end_byte = 2, .entry_state = 1 },
+    });
+    const fresh_children = try arena.allocator().dupe(ParseNode, &[_]ParseNode{
+        .{ .production_id = terminal_node_production_id, .start_byte = 0, .end_byte = 1, .entry_state = 0 },
+        .{ .production_id = terminal_node_production_id, .start_byte = 1, .end_byte = 2, .entry_state = 1 },
+        .{ .production_id = terminal_node_production_id, .start_byte = 2, .end_byte = 3, .entry_state = 2 },
+    });
+    const old_tree = ParseNode{
+        .production_id = 1,
+        .start_byte = 0,
+        .end_byte = 2,
+        .entry_state = 0,
+        .children = old_children,
+    };
+    const fresh_tree = ParseNode{
+        .production_id = 1,
+        .start_byte = 0,
+        .end_byte = 3,
+        .entry_state = 0,
+        .children = fresh_children,
+    };
+
+    try std.testing.expect(parseTreesEquivalent(old_tree, old_tree));
+    try std.testing.expect(!parseTreesEquivalent(old_tree, fresh_tree));
+
+    const marked = try cloneParseNodeWithReuseMarkersAlloc(arena.allocator(), fresh_tree, old_tree, .{
+        .start_byte = 2,
+        .old_end_byte = 2,
+        .new_end_byte = 3,
+    });
+    try std.testing.expectEqual(@as(usize, 2), countReusedNodes(marked));
 }
 
 fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResult) !void {
