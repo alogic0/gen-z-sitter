@@ -223,12 +223,12 @@ Implementation batches, in order:
      and lexer fixes.
 
 3. Scanner-free/light real grammar promotion.
-   - [ ] Promote `tree_sitter_ziggy_json` runtime-link proof on one accepted
+   - [x] Promote `tree_sitter_ziggy_json` runtime-link proof on one accepted
      sample if the current full-pipeline compile-smoke surface is enough.
-   - [ ] Promote `tree_sitter_ziggy_schema_json` runtime-link proof on one
+   - [x] Promote `tree_sitter_ziggy_schema_json` runtime-link proof on one
      accepted sample if the current full-pipeline compile-smoke surface is
      enough.
-   - [ ] Add an invalid or partial sample for whichever Ziggy-family target is
+   - [x] Add an invalid or partial sample for whichever Ziggy-family target is
      promoted first, or document why emitted recovery is not yet sufficient.
 
 4. `tree_sitter_zig_json` promotion beyond coarse serialize.

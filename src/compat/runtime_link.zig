@@ -293,6 +293,60 @@ pub fn linkAndRunTreeSitterJsonParserInvalidSample(allocator: std.mem.Allocator)
     });
 }
 
+pub fn linkAndRunTreeSitterZiggyParserAcceptedSample(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitRuntimeParserCFromGrammarPath(
+        arena.allocator(),
+        "compat_targets/tree_sitter_ziggy/grammar.json",
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .input = "null",
+        .expected_root_type = "document",
+        .expected_has_error = false,
+    });
+}
+
+pub fn linkAndRunTreeSitterZiggyParserInvalidSample(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitRuntimeParserCFromGrammarPath(
+        arena.allocator(),
+        "compat_targets/tree_sitter_ziggy/grammar.json",
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .input = "@",
+        .expected_root_type = "document",
+        .expected_has_error = true,
+    });
+}
+
+pub fn linkAndRunTreeSitterZiggySchemaParserAcceptedSample(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitRuntimeParserCFromGrammarPath(
+        arena.allocator(),
+        "compat_targets/tree_sitter_ziggy_schema/grammar.json",
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .input = "root = bytes",
+        .expected_root_type = "schema",
+        .expected_has_error = false,
+    });
+}
+
 pub fn linkAndRunBashParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
     try ensureFileAvailableOrSkip(bash_scanner_path);
@@ -1631,9 +1685,19 @@ fn emitForkedStatefulExternalScannerGlrParserC(allocator: std.mem.Allocator) Run
 }
 
 fn emitTreeSitterJsonParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
-    var serialized = try parse_table_pipeline.serializeRuntimeTableFromGrammarPath(
+    return try emitRuntimeParserCFromGrammarPath(
         allocator,
         "compat_targets/tree_sitter_json/grammar.json",
+    );
+}
+
+fn emitRuntimeParserCFromGrammarPath(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+) RuntimeLinkError![]const u8 {
+    var serialized = try parse_table_pipeline.serializeRuntimeTableFromGrammarPath(
+        allocator,
+        grammar_path,
         .strict,
     );
     serialized = try offsetRuntimeStartStateAlloc(allocator, serialized);
@@ -2332,6 +2396,18 @@ test "linkAndRunTreeSitterJsonParserAcceptedSample links real JSON parser on acc
 
 test "linkAndRunTreeSitterJsonParserInvalidSample links real JSON parser on invalid input" {
     try linkAndRunTreeSitterJsonParserInvalidSample(std.testing.allocator);
+}
+
+test "linkAndRunTreeSitterZiggyParserAcceptedSample links real Ziggy parser on accepted input" {
+    try linkAndRunTreeSitterZiggyParserAcceptedSample(std.testing.allocator);
+}
+
+test "linkAndRunTreeSitterZiggyParserInvalidSample links real Ziggy parser on invalid input" {
+    try linkAndRunTreeSitterZiggyParserInvalidSample(std.testing.allocator);
+}
+
+test "linkAndRunTreeSitterZiggySchemaParserAcceptedSample links real Ziggy schema parser on accepted input" {
+    try linkAndRunTreeSitterZiggySchemaParserAcceptedSample(std.testing.allocator);
 }
 
 test "linkAndRunBashParserWithRealExternalScanner links generated Bash parser with upstream scanner" {
