@@ -1,6 +1,6 @@
 # Next Steps — 2026-04-26
 
-State after M43 (lexer parity), M44 (lexer-state milestone), and M45 Phases 1–3
+State after M43 (lexer parity), M44 (lexer-state milestone), and M45 Phases 1–4
 (parse-table algorithm convergence).
 
 ---
@@ -15,6 +15,9 @@ State after M43 (lexer parity), M44 (lexer-state milestone), and M45 Phases 1–
   `ExpectedConflictPolicy` helper; reduce/reduce expected-conflict routing;
   `unusedExpectedConflictIndexesAlloc` hook; `expectedConflictReportFromPreparedAlloc`
   in pipeline; tested in isolation.
+- **M45 Phase 4 bounded minimization** — optional `--minimize` path, core-gated
+  state minimization, behavioral equivalence coverage, bounded compat
+  minimization probes, and `zig build run-minimize-report`.
 - **Compat coverage** — C JSON, Haskell, Bash at `full_runtime_link`; Zig grammar
   target added; `TSCharacterRange` large-charset indexing done.
 - **Performance** — SymbolSet bitset (7.5× bool_alloc_mb reduction); lexer
@@ -55,22 +58,22 @@ correctly on the new fixture.
 
 ## Priority 2 — M45 Phase 4: State Minimization
 
-**What is missing.**
+**Current state.**
 
-`src/parse_table/minimize.zig` (18.7 KB) exists but is not wired into the pipeline.
-The milestone spec calls for: optional post-construction minimization, behavioral
-harness equivalence test, `--minimize` CLI flag.
+The bounded/local Phase 4 path is implemented. `--minimize` is wired into JSON
+summary generation, the minimizer is gated by item-set cores, the behavioral
+harness compares minimized and unminimized outcomes, and
+`zig build run-minimize-report` reports bounded staged-target state counts plus
+explicit skips for heavy real-grammar or JS-loader targets.
 
-**Work.**
+**Remaining manual gate.**
 
-1. Add `--minimize` flag to `GenerateOptions` (`src/cli/args.zig`).
-2. Wire `minimize.zig` into `pipeline.zig` as a post-resolution, pre-serialization
-   step when the flag is set.
-3. Add a behavioral harness equivalence test: same grammar, both paths, assert
-   identical accept/reject decisions on the shortlist sample inputs.
+Do not fold heavy real-grammar minimization checks into fast unit tests. If a
+future change claims broad minimization coverage, run selected large
+compatibility targets manually and compare default/minimized state counts.
 
-**Gate.** Minimized state count ≤ original for all compat targets. Behavioral
-equivalence test passes.
+**Local gate.** Use `zig build run-minimize-report` plus the bounded local test
+set documented in `MILESTONES_45.md`.
 
 ---
 
@@ -133,9 +136,9 @@ reuse requires. The full incremental proof-of-concept follows in M47 proper.
 ## Execution Order
 
 ```
-Phase 3 wire-up  →  Phase 4 (minimize)  →  Pipeline goldens  →  M47 tree builder
+Phase 3 reporting polish  →  Pipeline goldens  →  M47 tree builder
 ```
 
-Phase 3 and Phase 4 are independent and can be done in either order.
-Pipeline goldens is always independent. M47 tree builder is the highest-effort
-item and should follow after M45 is fully closed.
+Phase 4's bounded/local path is complete. Pipeline goldens is always independent.
+M47 tree builder is the highest-effort item and should follow after M45 is fully
+closed.
