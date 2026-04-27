@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "target_count": 4,
+  "target_count": 5,
   "entries": [
     {
       "id": "repeat_choice_seq_js",
@@ -56,6 +56,20 @@
       "probe_failed_stage": null,
       "detail": "isolated coarse serialize-only parser probe passed with 5202 serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
       "serialized_state_count": 5202,
+      "serialized_blocked": true
+    },
+    {
+      "id": "tree_sitter_rust_json",
+      "display_name": "tree-sitter-rust (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_rust/grammar.json",
+      "family": "rust",
+      "current_parser_boundary_check_mode": "prepare_only",
+      "probed_parser_boundary_check_mode": "serialize_only",
+      "recommended_next_parser_boundary_check_mode": "full_pipeline",
+      "probe_status": "passed",
+      "probe_failed_stage": null,
+      "detail": "isolated coarse serialize-only parser probe passed with 2839 serialized states using lookahead-insensitive closure expansion; broader emitted surfaces and full lookahead-sensitive parser proof remain outside the current deferred parser boundary",
+      "serialized_state_count": 2839,
       "serialized_blocked": true
     }
   ]

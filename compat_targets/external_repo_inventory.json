@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "total_external_repo_targets": 10,
+  "total_external_repo_targets": 11,
   "passed_external_repo_targets": 7,
   "standalone_parser_proof_targets": 2,
   "family_coverage": [
@@ -63,12 +63,18 @@
       "boundary_kind": "parser_only",
       "target_count": 1,
       "passed_count": 0
+    },
+    {
+      "family": "rust",
+      "boundary_kind": "parser_only",
+      "target_count": 1,
+      "passed_count": 0
     }
   ],
   "boundary_coverage": [
     {
       "boundary_kind": "parser_only",
-      "target_count": 8,
+      "target_count": 9,
       "passed_count": 5
     },
     {
@@ -243,6 +249,22 @@
       "final_classification": "deferred_for_parser_boundary",
       "mismatch_category": "routine_serialize_proof_boundary",
       "notes": "real TypeScript grammar snapshot from the local tree-sitter-typescript repo, initially kept at load/prepare level to exercise large alias and generic-type grammar surfaces without promoting a heavy parser-table proof"
+    },
+    {
+      "id": "tree_sitter_rust_json",
+      "family": "rust",
+      "display_name": "tree-sitter-rust (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_rust/grammar.json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "parser_only",
+      "proof_scope": "none",
+      "standalone_parser_proof_scope": "none",
+      "upstream_repository": "tree-sitter-rust",
+      "upstream_revision": "77a3747266f4d621d0757825e6b11edcbf991ca5",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "deferred_for_parser_boundary",
+      "mismatch_category": "routine_serialize_proof_boundary",
+      "notes": "real Rust grammar snapshot from the local tree-sitter-rust repo, initially kept at load/prepare level to exercise a large lexer and many parser states without promoting a heavy parser-table proof"
     }
   ]
 }

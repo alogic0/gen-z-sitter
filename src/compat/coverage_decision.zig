@@ -67,8 +67,8 @@ pub fn buildCoverageDecisionAlloc(
     const recommendation_rationale = if (deferred_parser_targets.len != 0)
         try duplicateStringSliceAlloc(allocator, &.{
             "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-            "one deferred parser-only fixture is an intentional upstream-rejected ambiguity, while JavaScript, Python, and TypeScript are real external parser-only candidates held at load/prepare because broader parser-table proofs remain outside the bounded routine budget",
-            "the next promoted milestone should narrow or promote the onboarded JavaScript, Python, and TypeScript snapshots before adding another large parser-only grammar to the stable first wave",
+            "one deferred parser-only fixture is an intentional upstream-rejected ambiguity, while JavaScript, Python, TypeScript, and Rust are real external parser-only candidates held at load/prepare because broader parser-table proofs remain outside the bounded routine budget",
+            "the next promoted milestone should narrow or promote the onboarded JavaScript, Python, TypeScript, and Rust snapshots before adding another large parser-only grammar to the stable first wave",
         })
     else if (deferred_scanner_targets.len == 0)
         try duplicateStringSliceAlloc(allocator, &.{
@@ -277,7 +277,7 @@ test "buildCoverageDecisionAlloc summarizes the current next-step decision" {
     try std.testing.expect(report.primary_deferred_parser_wave_target != null);
     try std.testing.expectEqual(@as(usize, 0), report.standalone_parser_probe_pass_count);
     try std.testing.expectEqual(NextMilestone.second_wave_parser_only_repo_coverage, report.recommended_next_milestone);
-    try std.testing.expectEqual(@as(usize, 5), report.deferred_parser_only_targets.len);
+    try std.testing.expectEqual(@as(usize, 6), report.deferred_parser_only_targets.len);
     try std.testing.expectEqual(@as(usize, 0), report.deferred_scanner_targets.len);
 }
 

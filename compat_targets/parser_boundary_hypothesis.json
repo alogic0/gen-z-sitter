@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "deferred_parser_wave_target_count": 4,
+  "deferred_parser_wave_target_count": 5,
   "singleton_parser_wave": false,
   "entries": [
     {
@@ -100,6 +100,30 @@
       "measured_standalone_serialized_state_count": 5202,
       "decision": "keep_standalone_probe",
       "rationale": "the next named proof step for tree_sitter_typescript_json is serialize_only; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave target is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet"
+    },
+    {
+      "id": "tree_sitter_rust_json",
+      "display_name": "tree-sitter-rust (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_rust/grammar.json",
+      "family": "rust",
+      "current_parser_boundary_check_mode": "prepare_only",
+      "proposed_parser_boundary_check_mode": "serialize_only",
+      "evaluation_surface": "standalone_probe",
+      "routine_refresh_safe": false,
+      "routine_boundary_hypothesis": "no_safe_routine_step_yet",
+      "routine_refresh_candidate_mode": null,
+      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_rust_json; the measured standalone coarse serialize-only probe reaches 2839 serialized states but remains blocked, so parser-table promotion needs a narrower follow-up",
+      "singleton_parser_wave": false,
+      "current_proven_steps": [
+        "load",
+        "prepare"
+      ],
+      "deferred_from_step": "serialize",
+      "standalone_probe_status": "implemented_passing",
+      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and reaches 2839 serialized states for tree_sitter_rust_json, but records blocked=true, so routine parser-table proof remains deferred",
+      "measured_standalone_serialized_state_count": 2839,
+      "decision": "keep_standalone_probe",
+      "rationale": "the next named proof step for tree_sitter_rust_json is serialize_only; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave target is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet"
     }
   ]
 }
