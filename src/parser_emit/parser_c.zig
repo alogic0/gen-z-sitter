@@ -335,6 +335,10 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("};\n\n");
 
+    if (options.glr_loop) {
+        try writeGlrParseHelpers(writer, large_state_count_value < compacted.states.len);
+    }
+
     if (has_unresolved) {
         for (compacted.states, 0..) |serialized_state, index| {
             if (serialized_state.unresolved.len == 0 or unresolved_owners[index] != index) continue;
@@ -487,6 +491,34 @@ fn writeGlrVersionStorage(writer: anytype) !void {
     try writer.writeAll("  }\n");
     try writer.writeAll("  set->versions[0].state = start_state;\n");
     try writer.writeAll("  set->versions[0].active = true;\n");
+    try writer.writeAll("}\n\n");
+}
+
+fn writeGlrParseHelpers(writer: anytype, has_small_parse_table: bool) !void {
+    try writer.writeAll("static uint16_t ts_generated_parse_table_entry(TSStateId state, TSSymbol symbol) {\n");
+    try writer.writeAll("  if (state < LARGE_STATE_COUNT) {\n");
+    try writer.writeAll("    return ts_parse_table[state][symbol];\n");
+    try writer.writeAll("  }\n");
+    if (has_small_parse_table) {
+        try writer.writeAll("  uint32_t index = ts_small_parse_table_map[SMALL_STATE(state)];\n");
+        try writer.writeAll("  uint16_t group_count = ts_small_parse_table[index++];\n");
+        try writer.writeAll("  for (uint16_t group_index = 0; group_index < group_count; group_index++) {\n");
+        try writer.writeAll("    uint16_t value = ts_small_parse_table[index++];\n");
+        try writer.writeAll("    uint16_t symbol_count = ts_small_parse_table[index++];\n");
+        try writer.writeAll("    for (uint16_t symbol_index = 0; symbol_index < symbol_count; symbol_index++) {\n");
+        try writer.writeAll("      if (ts_small_parse_table[index++] == symbol) return value;\n");
+        try writer.writeAll("    }\n");
+        try writer.writeAll("  }\n");
+    } else {
+        try writer.writeAll("  (void)symbol;\n");
+    }
+    try writer.writeAll("  return 0;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static const TSParseActionEntry *ts_generated_parse_actions_for(TSStateId state, TSSymbol symbol) {\n");
+    try writer.writeAll("  return &ts_parse_actions[ts_generated_parse_table_entry(state, symbol)];\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("static TSStateId ts_generated_goto_state(TSStateId state, TSSymbol symbol) {\n");
+    try writer.writeAll("  return (TSStateId)ts_generated_parse_table_entry(state, symbol);\n");
     try writer.writeAll("}\n\n");
 }
 
@@ -1751,6 +1783,32 @@ test "emitParserCAlloc emits opt-in GLR parser version storage" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "typedef struct {\n  TSStateId state;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseVersion versions[GEN_Z_SITTER_MAX_PARSE_VERSIONS];\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_parse_versions_init(TSGeneratedParseVersionSet *set, TSStateId start_state) {\n"));
+}
+
+test "emitParserCAlloc emits opt-in GLR parse table helpers" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static uint16_t ts_generated_parse_table_entry(TSStateId state, TSSymbol symbol) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "return ts_parse_table[state][symbol];\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSParseActionEntry *ts_generated_parse_actions_for(TSStateId state, TSSymbol symbol) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static TSStateId ts_generated_goto_state(TSStateId state, TSSymbol symbol) {\n"));
 }
 
 test "emitParserCAlloc emits serialized lex modes" {

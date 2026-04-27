@@ -141,6 +141,8 @@ does not yet appear in generated C.
   emitted parser GLR loop without changing default generated parser output.
 - [x] Add generated parser version storage with a fixed version cap behind the
   opt-in GLR macro.
+- [x] Add generated parse-table/action/goto lookup helpers for the opt-in GLR
+  loop path.
 
 ---
 
