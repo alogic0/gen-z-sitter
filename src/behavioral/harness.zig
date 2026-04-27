@@ -36,11 +36,24 @@ pub const RejectReason = enum {
     missing_goto,
 };
 
+pub const ParseNode = struct {
+    production_id: u32,
+    start_byte: u32,
+    end_byte: u32,
+    entry_state: u32,
+    children: []const ParseNode = &.{},
+    is_error: bool = false,
+    reused: bool = false,
+};
+
+const terminal_node_production_id = std.math.maxInt(u32);
+
 pub const SimulationResult = union(enum) {
     accepted: struct {
         consumed_bytes: usize,
         shifted_tokens: usize,
         error_count: u32 = 0,
+        tree: ?ParseNode = null,
     },
     rejected: struct {
         consumed_bytes: usize,
@@ -347,6 +360,7 @@ const MAX_PARSE_VERSIONS: usize = 6;
 // One active parse state in the GLR simulation.
 const ParseVersion = struct {
     stack: std.ArrayListUnmanaged(u32),
+    values: std.ArrayListUnmanaged(ParseNode),
     cursor: usize,
     shifted_tokens: usize,
     dynamic_precedence: i32,
@@ -354,24 +368,78 @@ const ParseVersion = struct {
 
     fn initFirst(allocator: std.mem.Allocator) !ParseVersion {
         var s = std.ArrayListUnmanaged(u32).empty;
+        errdefer s.deinit(allocator);
         try s.append(allocator, 0);
-        return .{ .stack = s, .cursor = 0, .shifted_tokens = 0, .dynamic_precedence = 0, .error_count = 0 };
+        return .{
+            .stack = s,
+            .values = .empty,
+            .cursor = 0,
+            .shifted_tokens = 0,
+            .dynamic_precedence = 0,
+            .error_count = 0,
+        };
     }
 
     fn deinit(self: *ParseVersion, allocator: std.mem.Allocator) void {
+        self.values.deinit(allocator);
         self.stack.deinit(allocator);
     }
 
     fn clone(self: ParseVersion, allocator: std.mem.Allocator) !ParseVersion {
         var s = std.ArrayListUnmanaged(u32).empty;
+        errdefer s.deinit(allocator);
+        var values = std.ArrayListUnmanaged(ParseNode).empty;
+        errdefer values.deinit(allocator);
         try s.appendSlice(allocator, self.stack.items);
-        return .{ .stack = s, .cursor = self.cursor, .shifted_tokens = self.shifted_tokens, .dynamic_precedence = self.dynamic_precedence, .error_count = self.error_count };
+        try values.appendSlice(allocator, self.values.items);
+        return .{
+            .stack = s,
+            .values = values,
+            .cursor = self.cursor,
+            .shifted_tokens = self.shifted_tokens,
+            .dynamic_precedence = self.dynamic_precedence,
+            .error_count = self.error_count,
+        };
     }
 
     fn topState(self: ParseVersion) u32 {
         return self.stack.items[self.stack.items.len - 1];
     }
+
+    fn root(self: ParseVersion) ?ParseNode {
+        if (self.values.items.len == 0) return null;
+        return self.values.items[self.values.items.len - 1];
+    }
 };
+
+fn acceptedResult(version: ParseVersion) SimulationResult {
+    return .{ .accepted = .{
+        .consumed_bytes = version.cursor,
+        .shifted_tokens = version.shifted_tokens,
+        .error_count = version.error_count,
+        .tree = version.root(),
+    } };
+}
+
+fn versionShift(
+    allocator: std.mem.Allocator,
+    version: *ParseVersion,
+    entry_state: u32,
+    target: u32,
+    token_len: usize,
+) std.mem.Allocator.Error!void {
+    const start_byte = version.cursor;
+    const end_byte = version.cursor + token_len;
+    try version.stack.append(allocator, target);
+    try version.values.append(allocator, .{
+        .production_id = terminal_node_production_id,
+        .start_byte = @intCast(start_byte),
+        .end_byte = @intCast(end_byte),
+        .entry_state = entry_state,
+    });
+    version.cursor = end_byte;
+    version.shifted_tokens += 1;
+}
 
 // Apply one reduce action to a version. Returns the reject reason on failure, null on success.
 fn versionReduce(
@@ -382,9 +450,26 @@ fn versionReduce(
 ) std.mem.Allocator.Error!?RejectReason {
     const production = result.productions[production_id];
     if (production.steps.len > version.stack.items.len - 1) return .missing_goto;
+    if (production.steps.len > version.values.items.len) return .missing_goto;
+
+    const child_count = production.steps.len;
+    const child_start = version.values.items.len - child_count;
+    const children = try allocator.dupe(ParseNode, version.values.items[child_start..]);
+    errdefer allocator.free(children);
+
     for (0..production.steps.len) |_| _ = version.stack.pop();
+    version.values.shrinkRetainingCapacity(child_start);
+
+    const entry_state = version.topState();
     const goto_state = findGotoState(result, version.topState(), production.lhs) orelse return .missing_goto;
     try version.stack.append(allocator, goto_state);
+    try version.values.append(allocator, .{
+        .production_id = production_id,
+        .start_byte = if (children.len == 0) @intCast(version.cursor) else children[0].start_byte,
+        .end_byte = if (children.len == 0) @intCast(version.cursor) else children[children.len - 1].end_byte,
+        .entry_state = entry_state,
+        .children = children,
+    });
     version.dynamic_precedence += production.dynamic_precedence;
     return null;
 }
@@ -439,6 +524,7 @@ fn recoverFromMissingAction(
             const candidate = version.stack.items[depth - 1];
             if (result.resolved_actions.decisionFor(candidate, m.symbol) != null) {
                 version.stack.shrinkRetainingCapacity(depth);
+                version.values.shrinkRetainingCapacity(depth - 1);
                 version.error_count += 1;
                 return true;
             }
@@ -535,11 +621,7 @@ fn simulateBuiltScannerFree(
                 // ---- End of input ----
                 if (versions.items[vi].cursor >= input.len) {
                     if (selectEofAction(result, state_id)) |fb| switch (fb) {
-                        .accept => return .{ .accepted = .{
-                            .consumed_bytes = versions.items[vi].cursor,
-                            .shifted_tokens = versions.items[vi].shifted_tokens,
-                            .error_count = versions.items[vi].error_count,
-                        } },
+                        .accept => return acceptedResult(versions.items[vi]),
                         .reduce => |prod_id| {
                             if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
                                 updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
@@ -555,11 +637,7 @@ fn simulateBuiltScannerFree(
                         },
                     };
                     if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
-                        .accept => return .{ .accepted = .{
-                            .consumed_bytes = versions.items[vi].cursor,
-                            .shifted_tokens = versions.items[vi].shifted_tokens,
-                            .error_count = versions.items[vi].error_count,
-                        } },
+                        .accept => return acceptedResult(versions.items[vi]),
                         .reduce => |prod_id| {
                             if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
                                 updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
@@ -575,11 +653,7 @@ fn simulateBuiltScannerFree(
                         },
                     };
                     if (stateHasCompletedAugmentedProduction(result, state_id)) {
-                        return .{ .accepted = .{
-                            .consumed_bytes = versions.items[vi].cursor,
-                            .shifted_tokens = versions.items[vi].shifted_tokens,
-                            .error_count = versions.items[vi].error_count,
-                        } };
+                        return acceptedResult(versions.items[vi]);
                     }
                     updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .missing_action);
                     killVersion(allocator, &versions, vi);
@@ -591,11 +665,7 @@ fn simulateBuiltScannerFree(
 
                 if (matched_opt == null) {
                     if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
-                        .accept => return .{ .accepted = .{
-                            .consumed_bytes = versions.items[vi].cursor,
-                            .shifted_tokens = versions.items[vi].shifted_tokens,
-                            .error_count = versions.items[vi].error_count,
-                        } },
+                        .accept => return acceptedResult(versions.items[vi]),
                         .reduce => |prod_id| {
                             if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
                                 updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
@@ -621,11 +691,7 @@ fn simulateBuiltScannerFree(
 
                 if (decision == null) {
                     if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
-                        .accept => return .{ .accepted = .{
-                            .consumed_bytes = versions.items[vi].cursor,
-                            .shifted_tokens = versions.items[vi].shifted_tokens,
-                            .error_count = versions.items[vi].error_count,
-                        } },
+                        .accept => return acceptedResult(versions.items[vi]),
                         .reduce => |prod_id| {
                             if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
                                 updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
@@ -650,9 +716,7 @@ fn simulateBuiltScannerFree(
                 switch (decision.?) {
                     .chosen => |action| switch (action) {
                         .shift => |target| {
-                            try versions.items[vi].stack.append(allocator, target);
-                            versions.items[vi].cursor += matched.len;
-                            versions.items[vi].shifted_tokens += 1;
+                            try versionShift(allocator, &versions.items[vi], state_id, target, matched.len);
                             vi += 1;
                             break :inner;
                         },
@@ -664,11 +728,7 @@ fn simulateBuiltScannerFree(
                             }
                             continue :inner;
                         },
-                        .accept => return .{ .accepted = .{
-                            .consumed_bytes = versions.items[vi].cursor,
-                            .shifted_tokens = versions.items[vi].shifted_tokens,
-                            .error_count = versions.items[vi].error_count,
-                        } },
+                        .accept => return acceptedResult(versions.items[vi]),
                     },
 
                     // GLR: fork one version per candidate action.
@@ -688,12 +748,10 @@ fn simulateBuiltScannerFree(
                             var fork = try versions.items[vi].clone(allocator);
                             switch (extra) {
                                 .shift => |target| {
-                                    fork.stack.append(allocator, target) catch {
+                                    versionShift(allocator, &fork, state_id, target, matched.len) catch {
                                         fork.deinit(allocator);
                                         return error.OutOfMemory;
                                     };
-                                    fork.cursor += matched.len;
-                                    fork.shifted_tokens += 1;
                                     versions.appendAssumeCapacity(fork);
                                 },
                                 .reduce => |prod_id| {
@@ -708,11 +766,9 @@ fn simulateBuiltScannerFree(
                                     }
                                 },
                                 .accept => {
-                                    const c = fork.cursor;
-                                    const s = fork.shifted_tokens;
-                                    const e = fork.error_count;
+                                    const accepted = acceptedResult(fork);
                                     fork.deinit(allocator);
-                                    return .{ .accepted = .{ .consumed_bytes = c, .shifted_tokens = s, .error_count = e } };
+                                    return accepted;
                                 },
                             }
                         }
@@ -720,9 +776,7 @@ fn simulateBuiltScannerFree(
                         // Apply candidates[0] to the current version.
                         switch (candidates[0]) {
                             .shift => |target| {
-                                try versions.items[vi].stack.append(allocator, target);
-                                versions.items[vi].cursor += matched.len;
-                                versions.items[vi].shifted_tokens += 1;
+                                try versionShift(allocator, &versions.items[vi], state_id, target, matched.len);
                                 vi += 1;
                                 break :inner;
                             },
@@ -734,11 +788,7 @@ fn simulateBuiltScannerFree(
                                 }
                                 continue :inner;
                             },
-                            .accept => return .{ .accepted = .{
-                                .consumed_bytes = versions.items[vi].cursor,
-                                .shifted_tokens = versions.items[vi].shifted_tokens,
-                                .error_count = versions.items[vi].error_count,
-                            } },
+                            .accept => return acceptedResult(versions.items[vi]),
                         }
                     },
                 }
@@ -2426,6 +2476,42 @@ test "GLR simulation accepts ambiguous input by forking on the unresolved shift/
             try std.testing.expect(r.reason != .unresolved_decision);
         },
     }
+}
+
+test "simulatePreparedScannerFree returns a parse tree for scanner-free input" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), ambiguous_expr_grammar_json);
+    const result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1+2+3");
+
+    const accepted = result.accepted;
+    const tree = accepted.tree orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(u32, 0), tree.start_byte);
+    try std.testing.expectEqual(@as(u32, 5), tree.end_byte);
+    try std.testing.expect(tree.children.len > 0);
+    try std.testing.expectEqual(@as(usize, 2), countTerminalLeaves(tree, '+'));
+}
+
+fn countTerminalLeaves(node: ParseNode, byte: u8) usize {
+    if (node.children.len == 0) {
+        if (node.production_id == terminal_node_production_id and node.end_byte == node.start_byte + 1) {
+            return 1;
+        }
+        return 0;
+    }
+
+    var count: usize = 0;
+    for (node.children) |child| {
+        if (child.children.len == 0 and child.production_id == terminal_node_production_id and
+            child.end_byte == child.start_byte + 1 and byte == '+')
+        {
+            if (child.start_byte == 1 or child.start_byte == 3) count += 1;
+            continue;
+        }
+        count += countTerminalLeaves(child, byte);
+    }
+    return count;
 }
 
 fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResult) !void {
