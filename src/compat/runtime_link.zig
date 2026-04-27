@@ -161,6 +161,22 @@ pub fn linkAndRunMultiTokenExternalScannerParser(allocator: std.mem.Allocator) R
     });
 }
 
+pub fn linkAndRunMultiTokenExternalScannerGlrParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitMultiTokenExternalScannerGlrParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = multiTokenScannerSource(),
+        .input = "()",
+        .direct_generated_parse = true,
+        .expected_consumed_bytes = 2,
+    });
+}
+
 pub fn linkAndRunStatefulExternalScannerParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
 
@@ -184,6 +200,43 @@ pub fn linkAndRunStatefulExternalScannerParser(allocator: std.mem.Allocator) Run
         \\  if (tree_sitter_stateful_external_grammar_created_count() != 1) return 30;
         \\  if (tree_sitter_stateful_external_grammar_destroyed_count() != 1) return 31;
         \\  if (tree_sitter_stateful_external_grammar_max_depth() != 2) return 32;
+        \\
+        ,
+    });
+}
+
+pub fn linkAndRunForkedStatefulExternalScannerGlrParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitForkedStatefulExternalScannerGlrParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = forkedStatefulScannerSource(),
+        .input = "(x)",
+        .direct_generated_parse = true,
+        .expected_consumed_bytes = 3,
+        .extra_driver_declarations =
+        \\extern unsigned tree_sitter_forked_stateful_external_grammar_close_a_count(void);
+        \\extern unsigned tree_sitter_forked_stateful_external_grammar_close_b_count(void);
+        \\extern unsigned tree_sitter_forked_stateful_external_grammar_deserialize_with_branch_count(void);
+        \\
+        ,
+        .after_parser_delete_check =
+        \\  if (tree_sitter_forked_stateful_external_grammar_close_a_count() != 1) {
+        \\    fprintf(stderr, "close_a=%u\n", tree_sitter_forked_stateful_external_grammar_close_a_count());
+        \\    return 60;
+        \\  }
+        \\  if (tree_sitter_forked_stateful_external_grammar_close_b_count() != 1) {
+        \\    fprintf(stderr, "close_b=%u\n", tree_sitter_forked_stateful_external_grammar_close_b_count());
+        \\    return 61;
+        \\  }
+        \\  if (tree_sitter_forked_stateful_external_grammar_deserialize_with_branch_count() < 2) {
+        \\    fprintf(stderr, "branch_deserialize=%u\n", tree_sitter_forked_stateful_external_grammar_deserialize_with_branch_count());
+        \\    return 62;
+        \\  }
         \\
         ,
     });
@@ -1189,6 +1242,23 @@ fn emitHaskellVarsymParserCWithOptions(
 }
 
 fn emitMultiTokenExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitMultiTokenExternalScannerParserCWithOptions(allocator, .{
+        .offset_start_state = true,
+        .glr_loop = false,
+    });
+}
+
+fn emitMultiTokenExternalScannerGlrParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitMultiTokenExternalScannerParserCWithOptions(allocator, .{
+        .offset_start_state = false,
+        .glr_loop = true,
+    });
+}
+
+fn emitMultiTokenExternalScannerParserCWithOptions(
+    allocator: std.mem.Allocator,
+    options: TinyParserOptions,
+) RuntimeLinkError![]const u8 {
     const symbols = [_]serialize.SerializedSymbolInfo{
         .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
         .{ .ref = .{ .external = 0 }, .name = "OPEN", .named = false, .visible = true, .supertype = false, .public_symbol = 1 },
@@ -1214,27 +1284,54 @@ fn emitMultiTokenExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLin
     const accept_actions = [_]serialize.SerializedActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
     };
-    const states = [_]serialize.SerializedState{
+    const runtime_states = [_]serialize.SerializedState{
         .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
         .{ .id = 1, .lex_state_id = 0, .actions = start_actions[0..], .gotos = start_gotos[0..], .unresolved = &.{} },
         .{ .id = 2, .lex_state_id = 0, .actions = close_actions[0..], .gotos = &.{}, .unresolved = &.{} },
         .{ .id = 3, .lex_state_id = 0, .actions = reduce_actions[0..], .gotos = &.{}, .unresolved = &.{} },
         .{ .id = 4, .lex_state_id = 0, .actions = accept_actions[0..], .gotos = &.{}, .unresolved = &.{} },
     };
+    const glr_start_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .external = 0 }, .action = .{ .shift = 1 } },
+    };
+    const glr_close_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .external = 1 }, .action = .{ .shift = 2 } },
+    };
+    const glr_start_gotos = [_]serialize.SerializedGotoEntry{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 4 },
+    };
+    const glr_states = [_]serialize.SerializedState{
+        .{ .id = 0, .lex_state_id = 0, .actions = glr_start_actions[0..], .gotos = glr_start_gotos[0..], .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = glr_close_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = reduce_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 3, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 4, .lex_state_id = 0, .actions = accept_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+    };
+    const states = if (options.offset_start_state) runtime_states[0..] else glr_states[0..];
     const lex_states = [_]lexer_serialize.SerializedLexState{
         .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
     };
     const lex_tables = [_]lexer_serialize.SerializedLexTable{
         .{ .start_state_id = 0, .states = lex_states[0..] },
     };
-    const lex_modes = [_]lexer_serialize.SerializedLexMode{
+    const runtime_lex_modes = [_]lexer_serialize.SerializedLexMode{
         .{ .lex_state = 0, .external_lex_state = 0 },
         .{ .lex_state = 0, .external_lex_state = 1 },
         .{ .lex_state = 0, .external_lex_state = 2 },
         .{ .lex_state = 0, .external_lex_state = 0 },
         .{ .lex_state = 0, .external_lex_state = 0 },
     };
-    const primary_state_ids = [_]u32{ 0, 1, 2, 3, 4 };
+    const glr_lex_modes = [_]lexer_serialize.SerializedLexMode{
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 2 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+    };
+    const lex_modes = if (options.offset_start_state) runtime_lex_modes[0..] else glr_lex_modes[0..];
+    const runtime_primary_state_ids = [_]u32{ 0, 1, 2, 3, 4 };
+    const glr_primary_state_ids = [_]u32{ 0, 1, 2, 3, 4 };
+    const primary_state_ids = if (options.offset_start_state) runtime_primary_state_ids[0..] else glr_primary_state_ids[0..];
     const external_symbols = [_]syntax_grammar.SymbolRef{
         .{ .external = 0 },
         .{ .external = 1 },
@@ -1254,18 +1351,19 @@ fn emitMultiTokenExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLin
         .symbols = symbols[0..],
         .large_state_count = states.len,
         .productions = productions[0..],
-        .lex_modes = lex_modes[0..],
+        .lex_modes = lex_modes,
         .lex_tables = lex_tables[0..],
         .external_scanner = .{
             .symbols = external_symbols[0..],
             .states = external_states[0..],
         },
-        .primary_state_ids = primary_state_ids[0..],
-        .states = states[0..],
+        .primary_state_ids = primary_state_ids,
+        .states = states,
     };
 
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
         .compact_duplicate_states = false,
+        .glr_loop = options.glr_loop,
     });
 }
 
@@ -1388,6 +1486,118 @@ fn emitBracketLangParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const
     serialized = try offsetRuntimeStartStateAlloc(allocator, serialized);
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
         .compact_duplicate_states = false,
+    });
+}
+
+fn emitForkedStatefulExternalScannerGlrParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    const symbols = [_]serialize.SerializedSymbolInfo{
+        .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
+        .{ .ref = .{ .external = 0 }, .name = "OPEN", .named = false, .visible = true, .supertype = false, .public_symbol = 1 },
+        .{ .ref = .{ .external = 1 }, .name = "BRANCH", .named = false, .visible = true, .supertype = false, .public_symbol = 2 },
+        .{ .ref = .{ .external = 2 }, .name = "CLOSE_A", .named = false, .visible = true, .supertype = false, .public_symbol = 3 },
+        .{ .ref = .{ .external = 3 }, .name = "CLOSE_B", .named = false, .visible = true, .supertype = false, .public_symbol = 4 },
+        .{ .ref = .{ .external = 4 }, .name = "ERROR_SENTINEL", .named = false, .visible = false, .supertype = false, .public_symbol = 5 },
+        .{ .ref = .{ .non_terminal = 0 }, .name = "source_file", .named = true, .visible = true, .supertype = false, .public_symbol = 6 },
+    };
+    const productions = [_]serialize.SerializedProductionInfo{
+        .{ .lhs = 0, .child_count = 3, .dynamic_precedence = 0 },
+        .{ .lhs = 0, .child_count = 3, .dynamic_precedence = 0 },
+    };
+    const start_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .external = 0 }, .action = .{ .shift = 1 } },
+    };
+    const start_gotos = [_]serialize.SerializedGotoEntry{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 6 },
+    };
+    const branch_candidates = [_]parse_actions.ParseAction{
+        .{ .shift = 2 },
+        .{ .shift = 3 },
+    };
+    const branch_unresolved = [_]serialize.SerializedUnresolvedEntry{
+        .{
+            .symbol = .{ .external = 1 },
+            .reason = .shift_reduce_expected,
+            .candidate_actions = branch_candidates[0..],
+        },
+    };
+    const close_a_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .external = 2 }, .action = .{ .shift = 4 } },
+    };
+    const close_b_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .external = 3 }, .action = .{ .shift = 5 } },
+    };
+    const reduce_a_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+    };
+    const reduce_b_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+    };
+    const accept_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
+    };
+    const states = [_]serialize.SerializedState{
+        .{ .id = 0, .lex_state_id = 0, .actions = start_actions[0..], .gotos = start_gotos[0..], .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = branch_unresolved[0..] },
+        .{ .id = 2, .lex_state_id = 0, .actions = close_a_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 3, .lex_state_id = 0, .actions = close_b_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 4, .lex_state_id = 0, .actions = reduce_a_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 5, .lex_state_id = 0, .actions = reduce_b_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 6, .lex_state_id = 0, .actions = accept_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+    };
+    const lex_states = [_]lexer_serialize.SerializedLexState{
+        .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
+    };
+    const lex_tables = [_]lexer_serialize.SerializedLexTable{
+        .{ .start_state_id = 0, .states = lex_states[0..] },
+    };
+    const lex_modes = [_]lexer_serialize.SerializedLexMode{
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 2 },
+        .{ .lex_state = 0, .external_lex_state = 3 },
+        .{ .lex_state = 0, .external_lex_state = 4 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+    };
+    const primary_state_ids = [_]u32{ 0, 1, 2, 3, 4, 5, 6 };
+    const external_symbols = [_]syntax_grammar.SymbolRef{
+        .{ .external = 0 },
+        .{ .external = 1 },
+        .{ .external = 2 },
+        .{ .external = 3 },
+        .{ .external = 4 },
+    };
+    const external_state_0 = [_]bool{ false, false, false, false, false };
+    const external_state_1 = [_]bool{ true, false, false, false, false };
+    const external_state_2 = [_]bool{ false, true, false, false, false };
+    const external_state_3 = [_]bool{ false, false, true, false, false };
+    const external_state_4 = [_]bool{ false, false, false, true, false };
+    const external_states = [_][]const bool{
+        external_state_0[0..],
+        external_state_1[0..],
+        external_state_2[0..],
+        external_state_3[0..],
+        external_state_4[0..],
+    };
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_name = "forked_stateful_external_grammar",
+        .symbols = symbols[0..],
+        .large_state_count = states.len,
+        .productions = productions[0..],
+        .lex_modes = lex_modes[0..],
+        .lex_tables = lex_tables[0..],
+        .external_scanner = .{
+            .symbols = external_symbols[0..],
+            .states = external_states[0..],
+        },
+        .primary_state_ids = primary_state_ids[0..],
+        .states = states[0..],
+    };
+
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
     });
 }
 
@@ -1662,6 +1872,93 @@ fn statefulScannerSource() []const u8 {
     ;
 }
 
+fn forkedStatefulScannerSource() []const u8 {
+    return
+    \\#include <stdbool.h>
+    \\#include <stdint.h>
+    \\#include <stdlib.h>
+    \\#include "parser.h"
+    \\
+    \\enum TokenType {
+    \\  OPEN = 0,
+    \\  BRANCH = 1,
+    \\  CLOSE_A = 2,
+    \\  CLOSE_B = 3,
+    \\  ERROR_SENTINEL = 4,
+    \\};
+    \\
+    \\typedef struct {
+    \\  uint8_t phase;
+    \\} ScannerState;
+    \\
+    \\static unsigned close_a_count;
+    \\static unsigned close_b_count;
+    \\static unsigned deserialize_with_branch_count;
+    \\
+    \\unsigned tree_sitter_forked_stateful_external_grammar_close_a_count(void) { return close_a_count; }
+    \\unsigned tree_sitter_forked_stateful_external_grammar_close_b_count(void) { return close_b_count; }
+    \\unsigned tree_sitter_forked_stateful_external_grammar_deserialize_with_branch_count(void) { return deserialize_with_branch_count; }
+    \\
+    \\void *tree_sitter_forked_stateful_external_grammar_external_scanner_create(void) {
+    \\  return calloc(1, sizeof(ScannerState));
+    \\}
+    \\
+    \\void tree_sitter_forked_stateful_external_grammar_external_scanner_destroy(void *payload) {
+    \\  free(payload);
+    \\}
+    \\
+    \\unsigned tree_sitter_forked_stateful_external_grammar_external_scanner_serialize(void *payload, char *buffer) {
+    \\  ScannerState *state = (ScannerState *)payload;
+    \\  buffer[0] = state ? (char)state->phase : 0;
+    \\  return 1;
+    \\}
+    \\
+    \\void tree_sitter_forked_stateful_external_grammar_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
+    \\  ScannerState *state = (ScannerState *)payload;
+    \\  if (!state) return;
+    \\  state->phase = length >= 1 ? (uint8_t)buffer[0] : 0;
+    \\  if (state->phase == 2) deserialize_with_branch_count++;
+    \\}
+    \\
+    \\bool tree_sitter_forked_stateful_external_grammar_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
+    \\  ScannerState *state = (ScannerState *)payload;
+    \\  if (!state || valid_symbols[ERROR_SENTINEL]) return false;
+    \\  if (valid_symbols[OPEN] && lexer->lookahead == '(') {
+    \\    lexer->result_symbol = OPEN;
+    \\    lexer->advance(lexer, false);
+    \\    lexer->mark_end(lexer);
+    \\    state->phase = 1;
+    \\    return true;
+    \\  }
+    \\  if (valid_symbols[BRANCH] && lexer->lookahead == 'x' && state->phase == 1) {
+    \\    lexer->result_symbol = BRANCH;
+    \\    lexer->advance(lexer, false);
+    \\    lexer->mark_end(lexer);
+    \\    state->phase = 2;
+    \\    return true;
+    \\  }
+    \\  if (valid_symbols[CLOSE_A] && lexer->lookahead == ')' && state->phase == 2) {
+    \\    lexer->result_symbol = CLOSE_A;
+    \\    lexer->advance(lexer, false);
+    \\    lexer->mark_end(lexer);
+    \\    state->phase = 3;
+    \\    close_a_count++;
+    \\    return true;
+    \\  }
+    \\  if (valid_symbols[CLOSE_B] && lexer->lookahead == ')' && state->phase == 2) {
+    \\    lexer->result_symbol = CLOSE_B;
+    \\    lexer->advance(lexer, false);
+    \\    lexer->mark_end(lexer);
+    \\    state->phase = 4;
+    \\    close_b_count++;
+    \\    return true;
+    \\  }
+    \\  return false;
+    \\}
+    \\
+    ;
+}
+
 fn driverSourceAlloc(
     allocator: std.mem.Allocator,
     generated: GeneratedParserRun,
@@ -1851,6 +2148,7 @@ fn directGeneratedParseDriverSourceAlloc(
         \\bool ts_generated_parse_result(const char *input, uint32_t length, TSGeneratedParseResult *out_result);
         \\bool ts_generated_result_tree_string(const TSGeneratedParseResult *result, char *buffer, uint32_t capacity);
         \\bool ts_generated_parse(const char *input, uint32_t length, uint32_t *out_consumed_bytes);
+        \\{s}
         \\
         \\int main(void) {{
         \\  alarm(2);
@@ -1862,10 +2160,19 @@ fn directGeneratedParseDriverSourceAlloc(
         \\    fprintf(stderr, "consumed=%u expected=%u\n", consumed, {d});
         \\    return 41;
         \\  }}
+        \\{s}
         \\  return 0;
         \\}}
         \\
-    , .{ input_literal, parse_call, success_check, expected_consumed, expected_consumed });
+    , .{
+        generated.extra_driver_declarations,
+        input_literal,
+        parse_call,
+        success_check,
+        expected_consumed,
+        expected_consumed,
+        generated.after_parser_delete_check,
+    });
 }
 
 fn cStringLiteralAlloc(allocator: std.mem.Allocator, value: []const u8) RuntimeLinkError![]const u8 {
@@ -1938,8 +2245,16 @@ test "linkAndRunMultiTokenExternalScannerParser links generated multi-token exte
     try linkAndRunMultiTokenExternalScannerParser(std.testing.allocator);
 }
 
+test "linkAndRunMultiTokenExternalScannerGlrParser uses GLR valid-symbol rows" {
+    try linkAndRunMultiTokenExternalScannerGlrParser(std.testing.allocator);
+}
+
 test "linkAndRunStatefulExternalScannerParser links generated stateful external scanner parser with tree-sitter runtime" {
     try linkAndRunStatefulExternalScannerParser(std.testing.allocator);
+}
+
+test "linkAndRunForkedStatefulExternalScannerGlrParser isolates forked scanner state" {
+    try linkAndRunForkedStatefulExternalScannerGlrParser(std.testing.allocator);
 }
 
 test "linkAndRunBracketLangParser links generated bracket-lang parser with tree-sitter runtime" {

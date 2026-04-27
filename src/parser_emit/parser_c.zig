@@ -844,9 +844,11 @@ fn writeGlrUnresolvedForkHelpers(writer: anytype) !void {
     try writer.writeAll("    const TSUnresolvedEntry *unresolved = &entries[entry_index];\n");
     try writer.writeAll("    if (unresolved->symbol_id != lookahead_symbol) continue;\n");
     try writer.writeAll("    const TSParseActionEntry *action_entry = &ts_parse_actions[unresolved->action_index];\n");
+    try writer.writeAll("    TSGeneratedParseVersion source_version = *base;\n");
     try writer.writeAll("    for (uint16_t action_index = 0; action_index < unresolved->action_count; action_index++) {\n");
     try writer.writeAll("      uint16_t target_index = version_index;\n");
     try writer.writeAll("      if (applied > 0 && !ts_generated_clone_parse_version(set, version_index, &target_index)) return applied;\n");
+    try writer.writeAll("      set->versions[target_index] = source_version;\n");
     try writer.writeAll("      set->versions[target_index].shifted = false;\n");
     try writer.writeAll("      TSGeneratedParseStep step = ts_generated_apply_parse_action(&set->versions[target_index], &action_entry[1 + action_index].action);\n");
     try writer.writeAll("      if (step.status == TSGeneratedParseStepShift && !ts_generated_version_push_shift_value(&set->versions[target_index], lookahead_symbol, advance_bytes)) {\n");

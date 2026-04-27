@@ -574,6 +574,7 @@ pub fn buildParseActionListAlloc(
         .reusable = false,
         .actions = &.{},
     });
+    var next_index: u16 = 1;
 
     for (states) |serialized_state| {
         for (serialized_state.actions) |entry| {
@@ -588,7 +589,8 @@ pub fn buildParseActionListAlloc(
                 continue;
             }
 
-            const index: u16 = @intCast(entries.items.len * 2 - 1);
+            const index = next_index;
+            next_index += @intCast(action_slice.len + 1);
             try entries.append(.{
                 .index = index,
                 .reusable = true,
@@ -603,7 +605,8 @@ pub fn buildParseActionListAlloc(
                 continue;
             }
 
-            const index: u16 = @intCast(entries.items.len * 2 - 1);
+            const index = next_index;
+            next_index += @intCast(action_slice.len + 1);
             try entries.append(.{
                 .index = index,
                 .reusable = false,
@@ -2823,6 +2826,53 @@ test "buildParseActionListAlloc keeps reductions before repetition shifts" {
     try std.testing.expectEqual(
         list[1].index,
         parseActionListIndexForActionEntry(list, states[0].actions[0], productions[0..]).?,
+    );
+}
+
+test "buildParseActionListAlloc indexes rows by flattened action width" {
+    const allocator = std.testing.allocator;
+    const productions = [_]SerializedProductionInfo{
+        .{ .lhs = 0, .child_count = 1, .dynamic_precedence = 0 },
+    };
+    const candidates = [_]actions.ParseAction{
+        .{ .shift = 2 },
+        .{ .shift = 3 },
+    };
+    const states = [_]SerializedState{
+        .{
+            .id = 0,
+            .actions = &[_]SerializedActionEntry{
+                .{ .symbol = .{ .external = 0 }, .action = .{ .shift = 1 } },
+            },
+            .gotos = &.{},
+            .unresolved = &[_]SerializedUnresolvedEntry{
+                .{
+                    .symbol = .{ .external = 1 },
+                    .reason = .shift_reduce_expected,
+                    .candidate_actions = candidates[0..],
+                },
+            },
+        },
+        .{
+            .id = 1,
+            .actions = &[_]SerializedActionEntry{
+                .{ .symbol = .{ .external = 2 }, .action = .{ .shift = 4 } },
+            },
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+    };
+
+    const list = try buildParseActionListAlloc(allocator, states[0..], productions[0..]);
+    defer deinitParseActionList(allocator, list);
+
+    try std.testing.expectEqual(@as(u16, 1), list[1].index);
+    try std.testing.expectEqual(@as(u16, 3), list[2].index);
+    try std.testing.expectEqual(@as(usize, 2), list[2].actions.len);
+    try std.testing.expectEqual(@as(u16, 6), list[3].index);
+    try std.testing.expectEqual(
+        @as(u16, 3),
+        parseActionListIndexForUnresolvedEntry(list, states[0].unresolved[0], productions[0..]).?,
     );
 }
 

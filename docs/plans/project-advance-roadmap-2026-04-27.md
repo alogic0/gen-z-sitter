@@ -135,10 +135,10 @@ Gate:
 
 ### 2.2 External Scanner Valid-Symbol Tables
 
-- [ ] Verify `ts_external_scanner_states` and external symbol ordering match the
+- [x] Verify `ts_external_scanner_states` and external symbol ordering match the
   generated scanner callback contract.
-- [ ] Add tests where two external tokens are valid in different states.
-- [ ] Add a stateful scanner test where serialize/deserialize is required after
+- [x] Add tests where two external tokens are valid in different states.
+- [x] Add a stateful scanner test where serialize/deserialize is required after
   a GLR fork.
 
 Gate:
