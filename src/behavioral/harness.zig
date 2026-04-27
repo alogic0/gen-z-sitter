@@ -217,6 +217,38 @@ pub fn simulatePreparedScannerFreeWithBuildOptions(
     return simulateBuiltScannerFree(allocator, result, prepared, flattened, extracted.lexical, input);
 }
 
+pub fn simulatePreparedScannerFreeIncremental(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    old_tree: ?ParseNode,
+    edit: Edit,
+    input: []const u8,
+) BehavioralError!SimulationResult {
+    const fresh = try simulatePreparedScannerFree(allocator, prepared, input);
+    return try markIncrementalReuseAlloc(allocator, fresh, old_tree, edit);
+}
+
+fn markIncrementalReuseAlloc(
+    allocator: std.mem.Allocator,
+    result: SimulationResult,
+    old_tree: ?ParseNode,
+    edit: Edit,
+) std.mem.Allocator.Error!SimulationResult {
+    return switch (result) {
+        .rejected => result,
+        .accepted => |accepted| blk: {
+            const tree = accepted.tree orelse break :blk result;
+            const marked = try cloneParseNodeWithReuseMarkersAlloc(allocator, tree, old_tree, edit);
+            break :blk .{ .accepted = .{
+                .consumed_bytes = accepted.consumed_bytes,
+                .shifted_tokens = accepted.shifted_tokens,
+                .error_count = accepted.error_count,
+                .tree = marked,
+            } };
+        },
+    };
+}
+
 pub fn simulatePreparedWithFirstExternalBoundary(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
@@ -2621,6 +2653,31 @@ test "ParseNode helpers compare trees and mark reusable prefix nodes" {
         .new_end_byte = 3,
     });
     try std.testing.expectEqual(@as(usize, 2), countReusedNodes(marked));
+}
+
+test "simulatePreparedScannerFreeIncremental returns an equivalent tree with reused prefix markers" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), ambiguous_expr_grammar_json);
+    const old_result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1+2+3");
+    const fresh_result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1+2+3+4");
+    const incremental_result = try simulatePreparedScannerFreeIncremental(
+        arena.allocator(),
+        prepared,
+        old_result.accepted.tree,
+        .{
+            .start_byte = 5,
+            .old_end_byte = 5,
+            .new_end_byte = 7,
+        },
+        "1+2+3+4",
+    );
+
+    const fresh_tree = fresh_result.accepted.tree orelse return error.TestUnexpectedResult;
+    const incremental_tree = incremental_result.accepted.tree orelse return error.TestUnexpectedResult;
+    try std.testing.expect(parseTreesEquivalent(fresh_tree, incremental_tree));
+    try std.testing.expect(countReusedNodes(incremental_tree) > 0);
 }
 
 fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResult) !void {

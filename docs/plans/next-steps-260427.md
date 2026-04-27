@@ -57,6 +57,14 @@ incremental parsing has a concrete tree to reuse.
 - A focused scanner-free test parses `1+2+3` and asserts the accepted tree spans
   the full input and contains the expected terminal leaves.
 
+**Completed bounded steps.**
+
+- [x] Add `ParseNode`.
+- [x] Add scanner-free GLR value stacks.
+- [x] Build terminal nodes on shift and parent nodes on reduce.
+- [x] Return the accepted scanner-free root as `SimulationResult.accepted.tree`.
+- [x] Add focused scanner-free tree coverage.
+
 ---
 
 ## Priority 2 — M47 Incremental Parsing Proof-of-Concept
@@ -80,6 +88,18 @@ incremental parsing has a concrete tree to reuse.
    - `entry_state == current parse state`
 4. Reuse the subtree by advancing to `end_byte` and pushing the node.
 5. Skip reuse for states with external lex state once that metadata is exposed.
+
+**Completed bounded steps.**
+
+- [x] Add `Edit`.
+- [x] Add tree equivalence and reusable-prefix marker helpers.
+- [x] Add a scanner-free incremental entry point that returns a fresh parse tree
+  annotated with reusable old subtrees.
+
+**Remaining.**
+
+- Replace the fresh-parse wrapper with parser-loop subtree skipping.
+- Assert specific prefix nodes are reused after appending `+4`.
 
 **Gate.**
 
