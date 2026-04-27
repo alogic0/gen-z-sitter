@@ -272,6 +272,7 @@ Completed steps:
   `expected_conflicts` indexes for the future post-build reporting pass.
 - [x] Store `expected_conflicts` on `BuildResult` and expose build-level
   unused expected-conflict reporting.
+- [x] Expose a pipeline-level expected-conflict report for unused declarations.
 
 ---
 

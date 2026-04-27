@@ -135,6 +135,14 @@ pub const PipelineError =
     std.json.ParseError(std.json.Scanner) ||
     std.mem.Allocator.Error;
 
+pub const ExpectedConflictReport = struct {
+    unused_expected_conflict_indexes: []const usize,
+
+    pub fn hasUnusedExpectedConflicts(self: ExpectedConflictReport) bool {
+        return self.unused_expected_conflict_indexes.len != 0;
+    }
+};
+
 pub fn generateStateDumpFromPrepared(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
@@ -194,6 +202,23 @@ pub fn buildStatesFromPreparedWithOptions(
         );
     }
     return result;
+}
+
+pub fn expectedConflictReportFromPreparedAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+) PipelineError!ExpectedConflictReport {
+    const result = try buildStatesFromPrepared(allocator, prepared);
+    return try expectedConflictReportFromBuildResultAlloc(allocator, result);
+}
+
+pub fn expectedConflictReportFromBuildResultAlloc(
+    allocator: std.mem.Allocator,
+    result: build.BuildResult,
+) std.mem.Allocator.Error!ExpectedConflictReport {
+    return .{
+        .unused_expected_conflict_indexes = try result.unusedExpectedConflictIndexesAlloc(allocator),
+    };
 }
 
 fn reservedWordContextNamesAlloc(
@@ -1251,6 +1276,42 @@ test "buildStatesFromPrepared rejects unresolved conflict grammar in strict seri
         error.UnresolvedDecisions,
         serialize.serializeBuildResult(pipeline_arena.allocator(), result, .strict),
     );
+}
+
+test "expectedConflictReportFromPrepared reports unused expected conflicts" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    const contents =
+        \\{
+        \\  "name": "unused_expected_conflict",
+        \\  "expected_conflicts": [["source_file", "expr"]],
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "expr" },
+        \\    "expr": { "type": "STRING", "value": "x" }
+        \\  }
+        \\}
+    ;
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const report = try expectedConflictReportFromPreparedAlloc(pipeline_arena.allocator(), prepared);
+
+    try std.testing.expect(report.hasUnusedExpectedConflicts());
+    try std.testing.expectEqual(@as(usize, 1), report.unused_expected_conflict_indexes.len);
+    try std.testing.expectEqual(@as(usize, 0), report.unused_expected_conflict_indexes[0]);
 }
 
 test "serializeTableFromPrepared attaches serialized lex tables for an unambiguous grammar" {
