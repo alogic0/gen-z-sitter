@@ -12,7 +12,8 @@ State after M43 (lexer parity), M44 (lexer-state milestone), and M45 Phases 1–
   unresolved multi-action entries serialized; `TSUnresolved` side tables and
   lookup helpers emitted in generated C.
 - **M45 Phase 3 reporting** — `expected_conflicts` loaded from grammar JSON;
-  `ExpectedConflictPolicy` helper; reduce/reduce expected-conflict routing;
+  `ExpectedConflictPolicy` helper; reduce/reduce and shift/reduce
+  expected-conflict routing;
   `unusedExpectedConflictIndexesAlloc` hook; `expectedConflictReportFromPreparedAlloc`
   in pipeline; JSON-summary declared/unused counts; non-strict generate warnings
   for unused declarations.
@@ -26,22 +27,19 @@ State after M43 (lexer parity), M44 (lexer-state milestone), and M45 Phases 1–
 
 ---
 
-## Priority 1 — M45 Phase 3 Completion: Wire Conflict Reporting into CLI
+## Priority 1 — M45 Phase 3 Completion: Compatibility Fixture
 
 **What is missing.**
 
 `expectedConflictReportFromPreparedAlloc` is now visible through JSON-summary
 counts and non-strict generate warnings when JSON-summary generation already
-builds the parse table. The remaining semantic gap is narrower:
-
-- Shift/reduce conflicts are not yet routed through `ExpectedConflictPolicy`
-  (only reduce/reduce is).
+builds the parse table. Shift/reduce conflicts are routed through
+`ExpectedConflictPolicy` in the resolver. The remaining work is fixture-level
+coverage rather than resolver plumbing.
 
 **Work.**
 
-1. Route shift/reduce conflict candidates through the same `ExpectedConflictPolicy`
-   matching already used for reduce/reduce.
-2. Add a compat fixture that declares `expected_conflicts` for a real
+1. Add a compat fixture that declares `expected_conflicts` for a real
    shift/reduce ambiguity and verifies it is accepted by the policy.
 
 **Gate.** All existing compat targets pass unchanged. The new shift/reduce

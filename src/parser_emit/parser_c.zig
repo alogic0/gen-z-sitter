@@ -1216,6 +1216,7 @@ fn actionKindCode(action: @import("../parse_table/actions.zig").ParseAction) u16
 fn unresolvedReasonCode(reason: @import("../parse_table/resolution.zig").UnresolvedReason) u16 {
     return switch (reason) {
         .shift_reduce => 1,
+        .shift_reduce_expected => 1,
         .reduce_reduce_deferred => 2,
         .reduce_reduce_expected => 2,
         .multiple_candidates => 3,

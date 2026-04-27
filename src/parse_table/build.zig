@@ -1552,7 +1552,7 @@ pub const BuildResult = struct {
         self: BuildResult,
         allocator: std.mem.Allocator,
     ) std.mem.Allocator.Error![]const conflict_resolution.ConflictCandidate {
-        return self.resolved_actions.expectedConflictCandidatesAlloc(allocator, self.productions);
+        return self.resolved_actions.expectedConflictCandidatesAlloc(allocator, self.productions, self.states);
     }
 
     pub fn unusedExpectedConflictIndexesAlloc(
@@ -1563,6 +1563,7 @@ pub const BuildResult = struct {
             allocator,
             self.expected_conflicts,
             self.productions,
+            self.states,
         );
     }
 };

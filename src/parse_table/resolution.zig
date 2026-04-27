@@ -9,6 +9,7 @@ const syntax_ir = @import("../ir/syntax_grammar.zig");
 pub const UnresolvedReason = enum {
     multiple_candidates,
     shift_reduce,
+    shift_reduce_expected,
     reduce_reduce_deferred,
     reduce_reduce_expected,
     unsupported_action_mix,
@@ -136,7 +137,7 @@ pub const ResolvedActionTable = struct {
                 switch (group.decision) {
                     .chosen => {},
                     .unresolved => |reason| {
-                        if (reason != .reduce_reduce_expected) return true;
+                        if (reason != .reduce_reduce_expected and reason != .shift_reduce_expected) return true;
                     },
                 }
             }
@@ -238,6 +239,7 @@ pub const ResolvedActionTable = struct {
         self: ResolvedActionTable,
         allocator: std.mem.Allocator,
         productions: anytype,
+        parse_states: []const state.ParseState,
     ) std.mem.Allocator.Error![]const conflict_resolution.ConflictCandidate {
         var result = std.array_list.Managed(conflict_resolution.ConflictCandidate).init(allocator);
         defer result.deinit();
@@ -258,7 +260,20 @@ pub const ResolvedActionTable = struct {
                             );
                             if (candidate) |value| try result.append(value);
                         },
-                        .multiple_candidates, .shift_reduce, .unsupported_action_mix => {},
+                        .shift_reduce, .shift_reduce_expected => {
+                            const parse_state = findState(parse_states, resolved.state_id) orelse continue;
+                            const candidate = try shiftReduceConflictCandidateAlloc(
+                                allocator,
+                                resolved.state_id,
+                                group.symbol,
+                                productions,
+                                parse_state,
+                                null,
+                                group.candidate_actions,
+                            );
+                            if (candidate) |value| try result.append(value);
+                        },
+                        .multiple_candidates, .unsupported_action_mix => {},
                     },
                 }
             }
@@ -272,8 +287,9 @@ pub const ResolvedActionTable = struct {
         allocator: std.mem.Allocator,
         expected_conflicts: []const []const syntax_ir.SymbolRef,
         productions: anytype,
+        parse_states: []const state.ParseState,
     ) std.mem.Allocator.Error![]const usize {
-        const candidates = try self.expectedConflictCandidatesAlloc(allocator, productions);
+        const candidates = try self.expectedConflictCandidatesAlloc(allocator, productions, parse_states);
         defer conflict_resolution.freeConflictCandidates(allocator, candidates);
 
         const policy = conflict_resolution.ExpectedConflictPolicy{
@@ -439,15 +455,31 @@ fn chooseResolvedAction(
         const second = candidates[1];
 
         if (isShift(first) and isReduce(second)) {
+            const chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, symbol, first, second);
             return .{
-                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, symbol, first, second),
-                .reason = .shift_reduce,
+                .chosen = chosen,
+                .reason = if (chosen == null and shiftReduceIsExpected(
+                    productions,
+                    expected_conflicts,
+                    parse_state,
+                    first_sets,
+                    symbol,
+                    candidates,
+                )) .shift_reduce_expected else .shift_reduce,
             };
         }
         if (isReduce(first) and isShift(second)) {
+            const chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, symbol, second, first);
             return .{
-                .chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, symbol, second, first),
-                .reason = .shift_reduce,
+                .chosen = chosen,
+                .reason = if (chosen == null and shiftReduceIsExpected(
+                    productions,
+                    expected_conflicts,
+                    parse_state,
+                    first_sets,
+                    symbol,
+                    candidates,
+                )) .shift_reduce_expected else .shift_reduce,
             };
         }
         if (isReduce(first) and isReduce(second)) {
@@ -489,6 +521,128 @@ fn reduceReduceIsExpected(
         productions,
         candidates,
     );
+}
+
+fn shiftReduceIsExpected(
+    productions: anytype,
+    expected_conflicts: []const []const syntax_ir.SymbolRef,
+    parse_state: ?state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
+    symbol: syntax_ir.SymbolRef,
+    candidates: []const actions.ParseAction,
+) bool {
+    const resolved_state = parse_state orelse return false;
+    var members_buffer: [64]syntax_ir.SymbolRef = undefined;
+    const candidate = shiftReduceConflictCandidate(
+        &members_buffer,
+        resolved_state.id,
+        symbol,
+        productions,
+        resolved_state,
+        first_sets,
+        candidates,
+    ) orelse return false;
+    const policy = conflict_resolution.ExpectedConflictPolicy{ .expected_conflicts = expected_conflicts };
+    return policy.isExpected(candidate);
+}
+
+fn shiftReduceConflictCandidateAlloc(
+    allocator: std.mem.Allocator,
+    state_id: state.StateId,
+    lookahead: syntax_ir.SymbolRef,
+    productions: anytype,
+    parse_state: state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
+    candidate_actions: []const actions.ParseAction,
+) std.mem.Allocator.Error!?conflict_resolution.ConflictCandidate {
+    const members = try allocator.alloc(syntax_ir.SymbolRef, candidate_actions.len + parse_state.items.len);
+    errdefer allocator.free(members);
+
+    const candidate = shiftReduceConflictCandidate(
+        members,
+        state_id,
+        lookahead,
+        productions,
+        parse_state,
+        first_sets,
+        candidate_actions,
+    ) orelse {
+        allocator.free(members);
+        return null;
+    };
+
+    const owned_members = try allocator.dupe(syntax_ir.SymbolRef, candidate.members);
+    allocator.free(members);
+    return .{
+        .state_id = candidate.state_id,
+        .lookahead = candidate.lookahead,
+        .members = owned_members,
+    };
+}
+
+fn shiftReduceConflictCandidate(
+    members_buffer: []syntax_ir.SymbolRef,
+    state_id: state.StateId,
+    lookahead: syntax_ir.SymbolRef,
+    productions: anytype,
+    parse_state: state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
+    candidate_actions: []const actions.ParseAction,
+) ?conflict_resolution.ConflictCandidate {
+    if (candidate_actions.len == 0) return null;
+
+    var saw_shift = false;
+    var saw_reduce = false;
+    var member_count: usize = 0;
+    for (candidate_actions) |action| {
+        switch (action) {
+            .shift => saw_shift = true,
+            .reduce => |production_id| {
+                saw_reduce = true;
+                if (production_id >= productions.len) return null;
+                member_count = appendUniqueConflictMember(
+                    members_buffer,
+                    member_count,
+                    .{ .non_terminal = productions[production_id].lhs },
+                ) orelse return null;
+            },
+            else => return null,
+        }
+    }
+    if (!saw_shift or !saw_reduce) return null;
+
+    for (parse_state.items) |entry| {
+        if (entry.item.production_id >= productions.len) continue;
+        const production = productions[entry.item.production_id];
+        if (entry.item.step_index >= production.steps.len) continue;
+        const step = production.steps[entry.item.step_index];
+        if (!symbolCanStartLookahead(first_sets, step.symbol, lookahead)) continue;
+        member_count = appendUniqueConflictMember(
+            members_buffer,
+            member_count,
+            .{ .non_terminal = production.lhs },
+        ) orelse return null;
+    }
+
+    if (member_count == 0) return null;
+    return .{
+        .state_id = state_id,
+        .lookahead = lookahead,
+        .members = members_buffer[0..member_count],
+    };
+}
+
+fn appendUniqueConflictMember(
+    members: []syntax_ir.SymbolRef,
+    member_count: usize,
+    symbol: syntax_ir.SymbolRef,
+) ?usize {
+    for (members[0..member_count]) |existing| {
+        if (symbolRefEql(existing, symbol)) return member_count;
+    }
+    if (member_count >= members.len) return null;
+    members[member_count] = symbol;
+    return member_count + 1;
 }
 
 const PrecedenceComparison = enum {
@@ -1124,6 +1278,7 @@ test "ResolvedActionTable exposes reduce conflict candidates" {
     const allocator = std.testing.allocator;
     const ProductionInfo = struct {
         lhs: u32,
+        steps: []const syntax_ir.ProductionStep = &.{},
     };
     const productions = [_]ProductionInfo{
         .{ .lhs = 0 },
@@ -1156,7 +1311,7 @@ test "ResolvedActionTable exposes reduce conflict candidates" {
         }},
     };
 
-    const candidates = try resolved.expectedConflictCandidatesAlloc(allocator, productions[0..]);
+    const candidates = try resolved.expectedConflictCandidatesAlloc(allocator, productions[0..], &.{});
     defer conflict_resolution.freeConflictCandidates(allocator, candidates);
 
     try std.testing.expectEqual(@as(usize, 1), candidates.len);
@@ -1170,6 +1325,7 @@ test "ResolvedActionTable reports unused expected conflict indexes" {
     const allocator = std.testing.allocator;
     const ProductionInfo = struct {
         lhs: u32,
+        steps: []const syntax_ir.ProductionStep = &.{},
     };
     const productions = [_]ProductionInfo{
         .{ .lhs = 0 },
@@ -1203,11 +1359,82 @@ test "ResolvedActionTable reports unused expected conflict indexes" {
         allocator,
         &.{ &used_expected, &unused_expected },
         productions[0..],
+        &.{},
     );
     defer allocator.free(unused);
 
     try std.testing.expectEqual(@as(usize, 1), unused.len);
     try std.testing.expectEqual(@as(usize, 1), unused[0]);
+}
+
+test "resolveActionTable marks declared shift reduce conflicts expected" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = &[_]syntax_ir.ProductionStep{.{ .symbol = .{ .terminal = 0 } }} },
+        .{ .lhs = 1, .steps = &.{} },
+    };
+    const expected = [_]syntax_ir.SymbolRef{.{ .non_terminal = 1 }};
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, item.ParseItem.init(1, 0)),
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, item.ParseItem.init(2, 0), .{ .terminal = 0 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+
+    const parse_states = [_]state.ParseState{.{
+        .id = 3,
+        .items = &parse_items,
+        .transitions = &.{},
+    }};
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{.{
+            .state_id = 3,
+            .groups = &[_]actions.ActionGroup{.{
+                .symbol = .{ .terminal = 0 },
+                .entries = &[_]actions.ActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                },
+            }},
+        }},
+    };
+
+    const resolved = try resolveActionTableWithContext(
+        allocator,
+        productions[0..],
+        &.{},
+        &.{&expected},
+        &parse_states,
+        grouped,
+    );
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectUnresolvedGroup(resolved.groupsForState(3)[0], .shift_reduce_expected, 2);
+    try std.testing.expect(!resolved.hasBlockingUnresolvedDecisions());
+
+    const unused = try resolved.unusedExpectedConflictIndexesAlloc(
+        allocator,
+        &.{&expected},
+        productions[0..],
+        &parse_states,
+    );
+    defer allocator.free(unused);
+    try std.testing.expectEqual(@as(usize, 0), unused.len);
 }
 
 test "resolveActionTable keeps reduce/reduce pairs unresolved" {

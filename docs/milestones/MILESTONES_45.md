@@ -283,6 +283,8 @@ Completed steps:
   post-build policy helper while keeping diagnostic serialization unchanged.
 - [x] Expose expected-conflict declared/unused counts in generate JSON
   summaries.
+- [x] Route shift/reduce expected-conflict checks through the shared policy
+  helper and keep declared matches non-blocking.
 
 ---
 
