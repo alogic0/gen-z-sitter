@@ -133,7 +133,8 @@ pub const PipelineError =
     parser_c_emit.EmitError ||
     debug_dump.DebugDumpError ||
     std.json.ParseError(std.json.Scanner) ||
-    std.mem.Allocator.Error;
+    std.mem.Allocator.Error ||
+    error{UnusedExpectedConflict};
 
 pub const ExpectedConflictReport = struct {
     unused_expected_conflict_indexes: []const usize,
@@ -142,6 +143,10 @@ pub const ExpectedConflictReport = struct {
         return self.unused_expected_conflict_indexes.len != 0;
     }
 };
+
+pub fn validateExpectedConflictReport(report: ExpectedConflictReport) error{UnusedExpectedConflict}!void {
+    if (report.hasUnusedExpectedConflicts()) return error.UnusedExpectedConflict;
+}
 
 pub fn generateStateDumpFromPrepared(
     allocator: std.mem.Allocator,
@@ -159,6 +164,16 @@ pub fn buildStatesFromPrepared(
     prepared: grammar_ir.PreparedGrammar,
 ) PipelineError!build.BuildResult {
     return try buildStatesFromPreparedWithOptions(allocator, prepared, .{});
+}
+
+pub fn buildStatesFromPreparedStrictExpectedConflicts(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+) PipelineError!build.BuildResult {
+    const result = try buildStatesFromPrepared(allocator, prepared);
+    const report = try expectedConflictReportFromBuildResultAlloc(allocator, result);
+    try validateExpectedConflictReport(report);
+    return result;
 }
 
 pub fn buildStatesFromPreparedWithOptions(
@@ -1312,6 +1327,52 @@ test "expectedConflictReportFromPrepared reports unused expected conflicts" {
     try std.testing.expect(report.hasUnusedExpectedConflicts());
     try std.testing.expectEqual(@as(usize, 1), report.unused_expected_conflict_indexes.len);
     try std.testing.expectEqual(@as(usize, 0), report.unused_expected_conflict_indexes[0]);
+}
+
+test "buildStatesFromPreparedStrictExpectedConflicts rejects unused expected conflicts" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    const contents =
+        \\{
+        \\  "name": "strict_unused_expected_conflict",
+        \\  "expected_conflicts": [["source_file", "expr"]],
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "expr" },
+        \\    "expr": { "type": "STRING", "value": "x" }
+        \\  }
+        \\}
+    ;
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+
+    const default_result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
+    try std.testing.expect(default_result.states.len > 0);
+    try std.testing.expectError(
+        error.UnusedExpectedConflict,
+        buildStatesFromPreparedStrictExpectedConflicts(pipeline_arena.allocator(), prepared),
+    );
+}
+
+test "validateExpectedConflictReport accepts report without unused conflicts" {
+    const report = ExpectedConflictReport{
+        .unused_expected_conflict_indexes = &.{},
+    };
+
+    try validateExpectedConflictReport(report);
 }
 
 test "serializeTableFromPrepared attaches serialized lex tables for an unambiguous grammar" {

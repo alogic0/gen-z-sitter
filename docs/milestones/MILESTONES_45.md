@@ -273,6 +273,8 @@ Completed steps:
 - [x] Store `expected_conflicts` on `BuildResult` and expose build-level
   unused expected-conflict reporting.
 - [x] Expose a pipeline-level expected-conflict report for unused declarations.
+- [x] Add an explicit strict pipeline helper that rejects unused
+  `expected_conflicts` while leaving the default build path unchanged.
 
 ---
 
