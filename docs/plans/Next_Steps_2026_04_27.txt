@@ -1,0 +1,179 @@
+Next Steps — 2026-04-27
+Picks up after docs/plans/next-steps-260426.md is complete: M45 fully closed (Phase 3 reporting wired, Phase 4 state minimization done), pipeline goldens current, M47 tree builder (ParseNode + value stack) merged.
+
+What Is Now True
+Generator produces correct parser.c for C JSON, Bash, Haskell, Zig grammars at full_runtime_link proof level.
+Behavioral harness has full GLR simulation: multi-version stacks, condenseVersions, dynamic_precedence, two-stage error recovery.
+Grammar.js evaluation exists via src/grammar/js_loader.zig (Node.js subprocess).
+TSUnresolved side tables emitted in generated C; accessor helpers generated.
+State minimization integrated behind --minimize; behavioral equivalence tested.
+Syntax tree (ParseNode) exists in the behavioral harness with byte ranges.
+The remaining gap is that the emitted parser.c is still single-action. The behavioral harness GLR logic does not yet appear in the generated C.
+
+Priority 1 — M46 T1: GLR Loop in Emitted Parser
+What is missing.
+
+The emitted parser.c parse loop takes the first action and stops. Tree-sitter’s runtime forks into multiple concurrent stack versions for states with multi-action entries, prunes by error cost and dynamic precedence, and accepts on the first surviving version that reaches the augmented end state.
+
+The TSUnresolved side tables are already emitted (M45 Phase 2). The behavioral harness already encodes the full algorithm. What remains is translating that algorithm into the C template emitted by parser_c.zig.
+
+Implementation shape (from docs/milestones/MILESTONES_46.md T1).
+
+Context struct — add to the emitted parser context:
+
+#define TS_MAX_VERSIONS 6
+typedef struct { uint16_t *stack; uint16_t stack_len; uint32_t cursor;
+                 int32_t  dynamic_precedence; uint32_t error_count; } TSVersion;
+TSVersion ts_versions[TS_MAX_VERSIONS];
+uint16_t  ts_version_count;
+c
+Copy
+Outer-inner loop shape — replace the current linear advance loop with:
+
+do {
+  for each active version: {
+    lex one token at version.cursor;
+    look up (state, token) in parse table;
+    if no action: attempt error recovery on this version;
+    if shift: push new state, advance cursor;
+    if reduce: pop N, lookup goto, push new state;
+    if accept: record accepted version;
+    if TSUnresolved entry: fork one new version per extra action;
+  }
+  condense_versions();  // merge identical (state, cursor) pairs
+} while (version_count > 0 && !accepted);
+c
+Copy
+Fork — when ts_parser_unresolved(state_id) returns a non-null entry: for each extra action beyond the primary, copy the current version into a new slot (up to TS_MAX_VERSIONS) and apply the alternative action there.
+
+condense_versions() — after each full lookahead step, scan all pairs; for any two versions with identical cursor and identical stack top, keep the one with higher dynamic_precedence and discard the other.
+
+Dynamic precedence — accumulate dynamic_precedence from each reduce production (carried in the serialized production table). Use it as the tiebreaker in condense_versions.
+
+Error recovery in the loop — port the harness recoverFromMissingAction logic: stage-1 (scan backward for a state that handles the lookahead), stage-2 (skip one byte/token). Increment error_count on any recovery. Prune versions whose error_count exceeds the minimum surviving version by more than a threshold (tree-sitter uses 3).
+
+Wire into behavioral harness — add a flag to run both the existing harness path and the emitted-C path on the same input, asserting identical accepted/rejected outcome for all shortlist sample inputs. This catches divergence without waiting for a full compat run.
+
+Files. src/parser_emit/parser_c.zig (loop template), src/parser_emit/parser_tables.zig (dynamic_precedence in production table), src/parse_table/serialize.zig (confirm dynamic_precedence is serialized), src/compat/harness.zig (dual-path gate test).
+
+Gate.
+
+All current compat shortlist targets pass through the new loop.
+The behavioral harness dual-path test passes for all shortlist grammars.
+Grammars without any TSUnresolved entries (the majority) show no behavioral change — they never fork, so the outer loop is a no-op.
+Risk. High — touches the generated parse loop. Develop behind -Dglr-loop=true build flag so the existing single-action path keeps compiling and passing tests throughout development.
+
+Priority 2 — M46 T2 Remainder: Error Recovery in Emitted Parser
+Prerequisite. T1 (GLR loop) must be complete and passing.
+
+What is missing.
+
+The behavioral harness two-stage error recovery exists and is tested. The emitted parser.c has no RECOVER action and produces no ERROR nodes — invalid input causes a hard parse failure with no partial tree.
+
+Implementation shape.
+
+RECOVER action in table — add ts_action_recover constant to the emitted C action enum.
+
+ERROR node construction — when all versions fail (no surviving path), emit an ERROR node spanning the skipped bytes and restart parsing from the recovery state.
+
+Test — parse a grammar with deliberate invalid input and assert:
+
+a partial tree is produced (not a hard failure)
+the tree contains an is_error = true node spanning the bad input
+valid input following the error is correctly parsed into a sibling node
+Files. src/parser_emit/parser_c.zig, src/parser_emit/compat.zig, src/behavioral/harness.zig (integration assertion).
+
+Gate. Error recovery behavioral test from M46 passes against the emitted parser, not just against the harness simulation.
+
+Priority 3 — M47: Full Incremental Parsing Proof-of-Concept
+Prerequisite. M47 tree builder (ParseNode + value stack) from next-steps-260426.md Priority 4 must be merged.
+
+What is missing.
+
+The tree builder produces a complete ParseNode tree per parse. What remains is the reuse logic: threading an old tree into a new parse and skipping re-parsing of unchanged subtrees.
+
+Implementation shape (from docs/incremental-parsing-plan.md).
+
+Edit representation — add to src/behavioral/:
+
+pub const Edit = struct {
+    start_byte: u32,
+    old_end_byte: u32,
+    new_end_byte: u32,
+};
+zig
+Copy
+simulateIncremental entry point — new function in harness.zig accepting old_tree: ?ParseNode and edit: Edit alongside the grammar and input. Delegates to the existing GLR loop with one additional check at each advance step.
+
+Reuse check in the advance loop — before lexing at cursor:
+
+if old_tree has a subtree node N such that:
+  N.start_byte == cursor
+  AND cursor >= edit.new_end_byte   (node starts at or after edit end)
+  AND parse_state == N.entry_state
+then reuse N: advance cursor to N.end_byte, push N's reduction
+
+Copy
+external_lex_state guard — skip reuse for any node whose entry_state has external_lex_state != 0 in the serialized lex modes table. Add external_lex_state: u16 to TSRuntimeStateInfo in parser_c.zig if not already present.
+
+Test — parse "1+2+3", apply edit append("+4"), incremental reparse "1+2+3+4". Assert:
+
+nodes for "1", "+", "2", "+", "3" carry reused = true
+only the new "+" and "4" nodes are freshly parsed
+the resulting tree is byte-for-byte equivalent to a fresh parse of "1+2+3+4"
+Add reused: bool to ParseNode for the assertion above. Remove or gate behind a build flag for release builds.
+
+Files. src/behavioral/harness.zig (simulateIncremental, reuse loop), src/behavioral/parse_node.zig (if split from harness; Edit struct), src/parser_emit/parser_c.zig (external_lex_state in runtime state info).
+
+Gate.
+
+Fresh parse and incremental parse of identical input produce identical trees for all shortlist sample inputs.
+Incremental parse of appended input reuses the expected prefix.
+No regressions in zig build test-behavioral.
+Priority 4 — Broader Compat Coverage
+The current shortlist has 15 targets. The next meaningful additions that exercise features not yet stressed in the suite:
+
+Candidate	Feature gap it exercises
+tree-sitter-javascript	Complex external scanner, template literals, large lex table
+tree-sitter-python	Indentation-sensitive layout (external scanner stateful depth stack)
+tree-sitter-typescript	Superset grammar, heavy alias sequences, generic types
+tree-sitter-rust	Large number of states, lifetime tokens, heavy lexer
+tree-sitter-json	Small, simple — useful as a fast correctness regression target
+
+all grammars are in ${HOME}/prog/tree-sitter-grammars/
+For each new target the process is:
+
+Add grammar.json + sample input to compat_targets/.
+Run at compile_smoke level first; fix any emitter gaps.
+Promote to full_runtime_link if an external scanner exists; link against upstream scanner C using the same include-dir pattern as Bash/Haskell.
+Add to shortlist and refresh shortlist_report.json.
+JSON is the fastest first addition — its grammar is small, has no external scanner, and a passing JSON target proves the generator works end-to-end on a minimal real-world language. Start there.
+
+Deferred
+#pragma GCC optimize ("O0") for large lex tables — no correctness impact; affects C compile time for grammars with >300 lex states. (docs/gap-audit-260426.md Gap 3.)
+TSTree / TSNode public ABI compatibility — matching tree-sitter’s public C API for the syntax tree is a separate task beyond the behavioral proof-of-concept. Not needed until gen-z-sitter is used as a drop-in replacement at the API level.
+Multi-language embedding (ts_set_included_ranges) — out of scope until basic incremental parsing is stable.
+Execution Order
+T1 (GLR loop in emitted parser)
+    → T2 (error recovery in emitted parser)
+        → verify against all shortlist targets
+
+M47 tree builder [from next-steps-260426]
+    → M47 incremental PoC (Priority 3 above)
+
+Broader compat (Priority 4) — independent; start with JSON target anytime.
+
+Copy
+T1 and M47 are independent tracks. T1 is higher effort and higher impact on the generated C quality. M47 tree builder + incremental PoC is bounded work that proves a key differentiating capability. Run both tracks in parallel if bandwidth allows; otherwise T1 first.
+
+Table of Contents
+Search headings...
+Next Steps — 2026-04-27
+What Is Now True
+Priority 1 — M46 T1: GLR Loop in Emitted Parser
+Priority 2 — M46 T2 Remainder: Error Recovery in Emitted Parser
+Priority 3 — M47: Full Incremental Parsing Proof-of-Concept
+Priority 4 — Broader Compat Coverage
+Deferred
+Execution Order
+
