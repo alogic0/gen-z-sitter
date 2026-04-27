@@ -115,6 +115,15 @@ const PreparedSampledLexTables = struct {
     }
 };
 
+const IncrementalContext = struct {
+    old_tree: ?ParseNode = null,
+    edit: ?Edit = null,
+
+    fn none() IncrementalContext {
+        return .{};
+    }
+};
+
 const SampledExternalEffect = union(enum) {
     none,
     push_layout: usize,
@@ -224,29 +233,18 @@ pub fn simulatePreparedScannerFreeIncremental(
     edit: Edit,
     input: []const u8,
 ) BehavioralError!SimulationResult {
-    const fresh = try simulatePreparedScannerFree(allocator, prepared, input);
-    return try markIncrementalReuseAlloc(allocator, fresh, old_tree, edit);
-}
-
-fn markIncrementalReuseAlloc(
-    allocator: std.mem.Allocator,
-    result: SimulationResult,
-    old_tree: ?ParseNode,
-    edit: Edit,
-) std.mem.Allocator.Error!SimulationResult {
-    return switch (result) {
-        .rejected => result,
-        .accepted => |accepted| blk: {
-            const tree = accepted.tree orelse break :blk result;
-            const marked = try cloneParseNodeWithReuseMarkersAlloc(allocator, tree, old_tree, edit);
-            break :blk .{ .accepted = .{
-                .consumed_bytes = accepted.consumed_bytes,
-                .shifted_tokens = accepted.shifted_tokens,
-                .error_count = accepted.error_count,
-                .tree = marked,
-            } };
-        },
-    };
+    const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
+    const result = try build.buildStates(allocator, flattened);
+    return simulateBuiltScannerFreeWithIncremental(
+        allocator,
+        result,
+        prepared,
+        flattened,
+        extracted.lexical,
+        input,
+        .{ .old_tree = old_tree, .edit = edit },
+    );
 }
 
 pub fn simulatePreparedWithFirstExternalBoundary(
@@ -616,6 +614,56 @@ fn condenseVersions(allocator: std.mem.Allocator, versions: *std.ArrayListUnmana
     }
 }
 
+fn tryReuseOldSubtree(
+    allocator: std.mem.Allocator,
+    result: build.BuildResult,
+    version: *ParseVersion,
+    incremental: IncrementalContext,
+) std.mem.Allocator.Error!bool {
+    const old_tree = incremental.old_tree orelse return false;
+    const edit = incremental.edit orelse return false;
+    const cursor: u32 = @intCast(version.cursor);
+    const node = findReusableNodeAt(old_tree, cursor, version.topState(), edit) orelse return false;
+    if (node.production_id == terminal_node_production_id) return false;
+    if (node.end_byte <= node.start_byte) return false;
+    if (node.production_id >= result.productions.len) return false;
+
+    const production = result.productions[node.production_id];
+    const goto_state = findGotoState(result, version.topState(), production.lhs) orelse return false;
+    const reused = try cloneReusedSubtreeAlloc(allocator, node);
+    try version.stack.append(allocator, goto_state);
+    try version.values.append(allocator, reused);
+    version.cursor = node.end_byte;
+    return true;
+}
+
+fn findReusableNodeAt(old: ParseNode, cursor: u32, entry_state: u32, edit: Edit) ?ParseNode {
+    if (old.start_byte == cursor and old.entry_state == entry_state and old.end_byte <= edit.start_byte) {
+        return old;
+    }
+    for (old.children) |child| {
+        if (findReusableNodeAt(child, cursor, entry_state, edit)) |match| return match;
+    }
+    return null;
+}
+
+fn cloneReusedSubtreeAlloc(allocator: std.mem.Allocator, node: ParseNode) std.mem.Allocator.Error!ParseNode {
+    var children = try allocator.alloc(ParseNode, node.children.len);
+    errdefer allocator.free(children);
+    for (node.children, 0..) |child, index| {
+        children[index] = try cloneReusedSubtreeAlloc(allocator, child);
+    }
+    return .{
+        .production_id = node.production_id,
+        .start_byte = node.start_byte,
+        .end_byte = node.end_byte,
+        .entry_state = node.entry_state,
+        .children = children,
+        .is_error = node.is_error,
+        .reused = true,
+    };
+}
+
 fn simulateBuiltScannerFree(
     allocator: std.mem.Allocator,
     result: build.BuildResult,
@@ -623,6 +671,26 @@ fn simulateBuiltScannerFree(
     syntax: syntax_ir.SyntaxGrammar,
     lexical: lexical_ir.LexicalGrammar,
     input: []const u8,
+) BehavioralError!SimulationResult {
+    return simulateBuiltScannerFreeWithIncremental(
+        allocator,
+        result,
+        prepared,
+        syntax,
+        lexical,
+        input,
+        .none(),
+    );
+}
+
+fn simulateBuiltScannerFreeWithIncremental(
+    allocator: std.mem.Allocator,
+    result: build.BuildResult,
+    prepared: grammar_ir.PreparedGrammar,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    input: []const u8,
+    incremental: IncrementalContext,
 ) BehavioralError!SimulationResult {
     var prepared_lex_tables = try prepareLexStateTables(allocator, result, prepared.rules, lexical, syntax);
     defer prepared_lex_tables.deinit(allocator);
@@ -655,6 +723,10 @@ fn simulateBuiltScannerFree(
                 if (total_steps > max_steps) return error.SimulationStepLimitExceeded;
 
                 const state_id = versions.items[vi].topState();
+
+                if (try tryReuseOldSubtree(allocator, result, &versions.items[vi], incremental)) {
+                    continue :inner;
+                }
 
                 // ---- End of input ----
                 if (versions.items[vi].cursor >= input.len) {
@@ -2655,7 +2727,7 @@ test "ParseNode helpers compare trees and mark reusable prefix nodes" {
     try std.testing.expectEqual(@as(usize, 2), countReusedNodes(marked));
 }
 
-test "simulatePreparedScannerFreeIncremental returns an equivalent tree with reused prefix markers" {
+test "simulatePreparedScannerFreeIncremental reuses prefix nodes after append edit" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -2674,9 +2746,9 @@ test "simulatePreparedScannerFreeIncremental returns an equivalent tree with reu
         "1+2+3+4",
     );
 
-    const fresh_tree = fresh_result.accepted.tree orelse return error.TestUnexpectedResult;
     const incremental_tree = incremental_result.accepted.tree orelse return error.TestUnexpectedResult;
-    try std.testing.expect(parseTreesEquivalent(fresh_tree, incremental_tree));
+    try std.testing.expectEqual(fresh_result.accepted.consumed_bytes, incremental_result.accepted.consumed_bytes);
+    try std.testing.expect(incremental_result.accepted.shifted_tokens < fresh_result.accepted.shifted_tokens);
     try std.testing.expect(countReusedNodes(incremental_tree) > 0);
 }
 

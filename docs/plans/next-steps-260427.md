@@ -93,13 +93,16 @@ incremental parsing has a concrete tree to reuse.
 
 - [x] Add `Edit`.
 - [x] Add tree equivalence and reusable-prefix marker helpers.
-- [x] Add a scanner-free incremental entry point that returns a fresh parse tree
-  annotated with reusable old subtrees.
+- [x] Add a scanner-free incremental entry point.
+- [x] Reuse unchanged old subtrees in the scanner-free parse loop by matching
+  cursor and entry state, then advancing directly to the reused subtree end.
 
 **Remaining.**
 
-- Replace the fresh-parse wrapper with parser-loop subtree skipping.
-- Assert specific prefix nodes are reused after appending `+4`.
+- Tighten equivalence assertions for ambiguous grammars, where fresh and
+  incremental parses can choose different valid tree shapes.
+- Add external-lex-state guards before broadening reuse beyond scanner-free
+  fixtures.
 
 **Gate.**
 
