@@ -3694,10 +3694,11 @@ fn treeAssertionSourceAlloc(
             \\  char *tree_string = ts_node_string(root);
             \\  if (!tree_string) return 28;
             \\  bool tree_matches = strcmp(tree_string, "{s}") == 0;
+            \\  if (!tree_matches) fprintf(stderr, "tree string mismatch\nexpected: %s\nactual:   %s\n", "{s}", tree_string);
             \\  free(tree_string);
             \\  if (!tree_matches) return 29;
             \\
-        , .{tree_string});
+        , .{ tree_string, tree_string });
     }
 
     return try out.toOwnedSlice();

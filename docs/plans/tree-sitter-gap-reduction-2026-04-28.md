@@ -747,8 +747,8 @@ advance by the full lexed token length instead of a single byte.
 Batch 74 note: invalid runtime-link samples were added for JSON and Ziggy, but
 they remain focused known-gap tests rather than default bounded release checks.
 JSON still diverges from the upstream-observed `(document (ERROR (UNEXPECTED
-'x')))` tree, and Ziggy still diverges from `(document (ERROR (UNEXPECTED
-'@')))`.
+'x')))` tree by producing `(ERROR (UNEXPECTED 'x'))`, and Ziggy still diverges
+from `(document (ERROR (UNEXPECTED '@')))` by producing `(document (ERROR))`.
 
 Batch 91 note: the default `test-link-runtime` filter list now excludes known
 failing recovery probes while leaving the focused tests available by name. This
@@ -761,6 +761,12 @@ driver had omitted recovery counters that generated parser.c now writes, which
 caused a stack-canary crash before assertions could run.
 `GEN_Z_SITTER_KEEP_RUNTIME_LINK_TEMP` can retain generated runtime-link temp
 directories for this class of focused debugging.
+
+Batch 93 note: runtime-link tree-string assertion failures now print both the
+expected and actual tree strings. This captured the concrete remaining invalid
+recovery deltas: JSON is missing the `document` wrapper around the recovered
+ERROR node, while Ziggy preserves the wrapper but drops the unexpected-token
+payload inside the ERROR node.
 
 ### 5.3 Incremental Parsing and Reuse
 
