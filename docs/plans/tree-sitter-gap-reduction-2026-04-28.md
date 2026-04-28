@@ -397,6 +397,11 @@ local `conflict-summary.json`; the expected shift/reduce fixture records
 `shift_reduce_expected: 1`, while the unexpected fixture records
 `shift_reduce: 1`.
 
+Batch 55 note: `conflict-summary.json` now also records chosen decision counts
+by action kind plus max candidate width. Resolved precedence and associativity
+fixtures are therefore visible in compare-upstream artifacts instead of only in
+resolved-action-table golden text.
+
 ### 3.3 Token Conflicts and Lexical Precedence
 
 - [ ] Reproduce upstream token conflict analysis for overlapping literals,

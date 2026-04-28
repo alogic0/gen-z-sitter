@@ -326,11 +326,12 @@ pub fn generateLocalConflictSummaryJsonAlloc(
     const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
     const result = try parse_table_pipeline.buildStatesFromPrepared(arena.allocator(), prepared);
     const unresolved = try result.unresolvedDecisionsAlloc(arena.allocator());
+    const chosen = try result.chosenDecisionsAlloc(arena.allocator());
     const expected_report = try parse_table_pipeline.expectedConflictReportFromBuildResultAlloc(arena.allocator(), result);
 
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
-    try writeConflictSummaryJson(&out.writer, prepared.expected_conflicts.len, expected_report.unused_expected_conflict_indexes, unresolved);
+    try writeConflictSummaryJson(&out.writer, prepared.expected_conflicts.len, expected_report.unused_expected_conflict_indexes, chosen, unresolved);
     return try out.toOwnedSlice();
 }
 
@@ -1051,8 +1052,10 @@ fn writeConflictSummaryJson(
     writer: anytype,
     declared_expected_count: usize,
     unused_expected_indexes: []const usize,
+    chosen: []const @import("../parse_table/resolution.zig").ChosenDecisionRef,
     unresolved: []const @import("../parse_table/resolution.zig").UnresolvedDecisionRef,
 ) !void {
+    const chosen_counts = chosenDecisionCounts(chosen);
     const counts = conflictReasonCounts(unresolved);
     try writer.writeAll("{\n");
     try writeUsizeField(writer, 2, "declared_expected_conflict_count", declared_expected_count, true);
@@ -1063,6 +1066,13 @@ fn writeConflictSummaryJson(
         try writer.print("{d}", .{index_value});
     }
     try writer.writeAll("],\n");
+    try writeUsizeField(writer, 2, "chosen_count", chosen.len, true);
+    try writer.writeAll("  \"chosen_actions\": {\n");
+    try writeUsizeField(writer, 4, "shift", chosen_counts.shift, true);
+    try writeUsizeField(writer, 4, "reduce", chosen_counts.reduce, true);
+    try writeUsizeField(writer, 4, "accept", chosen_counts.accept, true);
+    try writeUsizeField(writer, 4, "max_candidate_count", chosen_counts.max_candidate_count, false);
+    try writer.writeAll("  },\n");
     try writeUsizeField(writer, 2, "unresolved_count", unresolved.len, true);
     try writer.writeAll("  \"unresolved_reasons\": {\n");
     try writeUsizeField(writer, 4, "multiple_candidates", counts.multiple_candidates, true);
@@ -1073,6 +1083,26 @@ fn writeConflictSummaryJson(
     try writeUsizeField(writer, 4, "unsupported_action_mix", counts.unsupported_action_mix, false);
     try writer.writeAll("  }\n");
     try writer.writeAll("}\n");
+}
+
+const ChosenDecisionCounts = struct {
+    shift: usize = 0,
+    reduce: usize = 0,
+    accept: usize = 0,
+    max_candidate_count: usize = 0,
+};
+
+fn chosenDecisionCounts(chosen: []const @import("../parse_table/resolution.zig").ChosenDecisionRef) ChosenDecisionCounts {
+    var counts = ChosenDecisionCounts{};
+    for (chosen) |decision| {
+        counts.max_candidate_count = @max(counts.max_candidate_count, decision.candidate_actions.len);
+        switch (decision.action) {
+            .shift => counts.shift += 1,
+            .reduce => counts.reduce += 1,
+            .accept => counts.accept += 1,
+        }
+    }
+    return counts;
 }
 
 const ConflictReasonCounts = struct {
@@ -2556,7 +2586,28 @@ test "generateLocalConflictSummaryJsonAlloc writes unresolved reason counts" {
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"declared_expected_conflict_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unused_expected_conflict_indexes\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_actions\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_reasons\"") != null);
+}
+
+test "generateLocalConflictSummaryJsonAlloc writes resolved precedence decisions" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.parseTablePrecedenceGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalConflictSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"reduce\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"max_candidate_count\": 2") != null);
 }
 
 test "generateLocalConflictSummaryJsonAlloc distinguishes expected shift reduce conflicts" {
