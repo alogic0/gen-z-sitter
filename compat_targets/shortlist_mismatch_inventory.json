@@ -1,17 +1,7 @@
 {
   "schema_version": 1,
   "first_wave_non_passing_count": 0,
-  "parser_only_incompatibilities": [
-    {
-      "id": "repeat_choice_seq_js",
-      "display_name": "Repeat Choice Seq (JS)",
-      "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
-      "candidate_status": "deferred_parser_wave",
-      "first_failed_stage": "emit_parser_c",
-      "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:13, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:10, reduce:2(_entry)] count=1], samples=[state 9 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:10, reduce:2(_entry)]; state 12 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:13, reduce:3(_entry)]]",
-      "notes": "staged parser-only JS fixture intentionally mirrors an upstream-rejected ambiguity: tree-sitter reports an unresolved _entry shift/reduce conflict and requires associativity or an explicit conflict declaration"
-    }
-  ],
+  "parser_only_incompatibilities": [],
   "scanner_boundary_targets": [],
   "grammar_input_shape_issues": [],
   "compile_surface_issues": [],
@@ -43,15 +33,6 @@
       "first_failed_stage": "serialize",
       "detail": "routine lookahead-sensitive serialize proof is deferred for tree_sitter_typescript_json: the current stable shortlist only proves load and prepare here, while the only passing next proof is the standalone coarse serialize-only probe",
       "notes": "real TypeScript grammar snapshot from the local tree-sitter-typescript repo, initially kept at load/prepare level to exercise large alias and generic-type grammar surfaces without promoting a heavy parser-table proof"
-    },
-    {
-      "id": "tree_sitter_rust_json",
-      "display_name": "tree-sitter-rust (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_rust/grammar.json",
-      "candidate_status": "deferred_parser_wave",
-      "first_failed_stage": "serialize",
-      "detail": "routine lookahead-sensitive serialize proof is deferred for tree_sitter_rust_json: the current stable shortlist only proves load and prepare here, while the only passing next proof is the standalone coarse serialize-only probe",
-      "notes": "real Rust grammar snapshot from the local tree-sitter-rust repo, initially kept at load/prepare level to exercise a large lexer and many parser states without promoting a heavy parser-table proof"
     }
   ],
   "deferred_control_targets": [

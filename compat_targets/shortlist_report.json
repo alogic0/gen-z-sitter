@@ -2,31 +2,31 @@
   "schema_version": 1,
   "aggregate": {
     "total_targets": 20,
-    "first_wave_targets": 7,
-    "first_wave_passed": 7,
+    "first_wave_targets": 9,
+    "first_wave_passed": 9,
     "scanner_wave_targets": 7,
     "scanner_wave_passed": 7,
-    "deferred_parser_targets": 5,
-    "standalone_parser_proof_targets": 3,
+    "deferred_parser_targets": 3,
+    "standalone_parser_proof_targets": 4,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
-    "passed_within_current_boundary": 14,
+    "passed_within_current_boundary": 16,
     "frozen_control_fixture": 1,
-    "deferred_for_parser_boundary": 5,
+    "deferred_for_parser_boundary": 3,
     "deferred_for_scanner_boundary": 0,
     "failed_due_to_parser_only_gap": 0,
     "out_of_scope_for_scanner_boundary": 0,
     "infrastructure_failure": 0,
-    "blocked_targets": 2,
+    "blocked_targets": 3,
     "blocked_control_targets": 1,
     "mismatch_categories": {
       "grammar_input_load_mismatch": 0,
       "preparation_lowering_mismatch": 0,
-      "routine_serialize_proof_boundary": 4,
+      "routine_serialize_proof_boundary": 3,
       "routine_emitted_surface_proof_boundary": 0,
       "scanner_external_scanner_boundary_gap": 0,
       "parse_table_construction_gap": 0,
-      "shift_reduce_boundary": 1,
+      "shift_reduce_boundary": 0,
       "intentional_control_fixture": 1,
       "emitted_surface_structural_gap": 0,
       "compile_smoke_failure": 0,
@@ -57,9 +57,9 @@
       "family": "repeat_choice_seq",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 0,
+      "passed_count": 1,
       "control_count": 0,
-      "deferred_count": 1,
+      "deferred_count": 0,
       "blocked_count": 1
     },
     {
@@ -192,10 +192,10 @@
       "family": "rust",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 0,
+      "passed_count": 1,
       "control_count": 0,
-      "deferred_count": 1,
-      "blocked_count": 0
+      "deferred_count": 0,
+      "blocked_count": 1
     }
   ],
   "results": [
@@ -263,7 +263,9 @@
         "goto_entry_count": 2,
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 232,
-        "parser_c_bytes": 10616
+        "parser_c_bytes": 11351,
+        "emit_parser_c_ms": null,
+        "compile_smoke_ms": null
       },
       "blocked_boundary": null
     },
@@ -331,7 +333,9 @@
         "goto_entry_count": 19,
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 3651,
-        "parser_c_bytes": 32185
+        "parser_c_bytes": 32920,
+        "emit_parser_c_ms": null,
+        "compile_smoke_ms": null
       },
       "blocked_boundary": null
     },
@@ -351,13 +355,13 @@
         "upstream_revision": null,
         "upstream_grammar_path": null
       },
-      "candidate_status": "deferred_parser_wave",
+      "candidate_status": "intended_first_wave",
       "expected_blocked": true,
       "notes": "staged parser-only JS fixture intentionally mirrors an upstream-rejected ambiguity: tree-sitter reports an unresolved _entry shift/reduce conflict and requires associativity or an explicit conflict declaration",
       "success_criteria": "load through node and keep the upstream-rejected 2-entry _entry shift/reduce parser-boundary signature stable; this fixture must not be used as a parser-generation promotion target",
-      "first_failed_stage": "emit_parser_c",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "shift_reduce_boundary",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
       "load": {
         "status": "passed",
         "detail": null
@@ -375,19 +379,19 @@
         "detail": null
       },
       "emit_parser_c": {
-        "status": "failed",
-        "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:13, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:10, reduce:2(_entry)] count=1], samples=[state 9 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:10, reduce:2(_entry)]; state 12 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:13, reduce:3(_entry)]]"
+        "status": "passed",
+        "detail": null
       },
       "scanner_boundary_check": {
         "status": "not_run",
         "detail": null
       },
       "compat_check": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "compile_smoke": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "emission": {
@@ -399,7 +403,9 @@
         "goto_entry_count": 14,
         "unresolved_entry_count": 2,
         "parser_tables_bytes": 1781,
-        "parser_c_bytes": 19745
+        "parser_c_bytes": 19856,
+        "emit_parser_c_ms": null,
+        "compile_smoke_ms": null
       },
       "blocked_boundary": {
         "unresolved_state_count": 2,
@@ -504,14 +510,16 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 546,
-        "emitted_state_count": 546,
+        "serialized_state_count": 540,
+        "emitted_state_count": 540,
         "merged_state_count": 0,
-        "action_entry_count": 1917,
-        "goto_entry_count": 812,
+        "action_entry_count": 1903,
+        "goto_entry_count": 810,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 86692,
-        "parser_c_bytes": 293285
+        "parser_tables_bytes": 85882,
+        "parser_c_bytes": 289858,
+        "emit_parser_c_ms": null,
+        "compile_smoke_ms": null
       },
       "blocked_boundary": null
     },
@@ -579,7 +587,9 @@
         "goto_entry_count": 231,
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 28803,
-        "parser_c_bytes": 138479
+        "parser_c_bytes": 139548,
+        "emit_parser_c_ms": null,
+        "compile_smoke_ms": null
       },
       "blocked_boundary": null
     },
@@ -640,14 +650,16 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 1556,
+        "serialized_state_count": 1558,
         "emitted_state_count": 0,
         "merged_state_count": 0,
         "action_entry_count": 0,
         "goto_entry_count": 0,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 529541,
-        "parser_c_bytes": 4977550
+        "parser_tables_bytes": 531599,
+        "parser_c_bytes": 5091498,
+        "emit_parser_c_ms": null,
+        "compile_smoke_ms": null
       },
       "blocked_boundary": null
     },
@@ -708,14 +720,16 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 1559,
+        "serialized_state_count": 1569,
         "emitted_state_count": 0,
         "merged_state_count": 0,
         "action_entry_count": 0,
         "goto_entry_count": 0,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 1683283,
-        "parser_c_bytes": 3355728
+        "parser_tables_bytes": 1696891,
+        "parser_c_bytes": 3018009,
+        "emit_parser_c_ms": null,
+        "compile_smoke_ms": null
       },
       "blocked_boundary": null
     },
@@ -783,7 +797,9 @@
         "goto_entry_count": 102,
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 14800,
-        "parser_c_bytes": 61800
+        "parser_c_bytes": 62535,
+        "emit_parser_c_ms": null,
+        "compile_smoke_ms": null
       },
       "blocked_boundary": null
     },
@@ -967,7 +983,9 @@
         "goto_entry_count": 3,
         "unresolved_entry_count": 1,
         "parser_tables_bytes": 438,
-        "parser_c_bytes": 13442
+        "parser_c_bytes": 13866,
+        "emit_parser_c_ms": null,
+        "compile_smoke_ms": null
       },
       "blocked_boundary": {
         "unresolved_state_count": 1,
@@ -984,7 +1002,7 @@
             "state_id": 5,
             "symbol_kind": "terminal",
             "symbol_index": 0,
-            "symbol_name": "expr",
+            "symbol_name": "+",
             "reason": "shift_reduce",
             "candidate_count": 2,
             "candidate_actions_summary": "shift:4, reduce:2(expr)"
@@ -992,7 +1010,7 @@
         ],
         "dominant_signatures": [
           {
-            "symbol_name": "expr",
+            "symbol_name": "+",
             "reason": "shift_reduce",
             "candidate_actions_summary": "shift:4, reduce:2(expr)",
             "count": 1
@@ -1471,22 +1489,22 @@
       "family": "rust",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
-      "parser_boundary_check_mode": "prepare_only",
+      "parser_boundary_check_mode": "serialize_only",
       "real_external_scanner_proof_scope": "none",
-      "standalone_parser_proof_scope": "none",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
         "upstream_repository": "tree-sitter-rust",
         "upstream_revision": "77a3747266f4d621d0757825e6b11edcbf991ca5",
         "upstream_grammar_path": "src/grammar.json"
       },
-      "candidate_status": "deferred_parser_wave",
+      "candidate_status": "intended_first_wave",
       "expected_blocked": false,
-      "notes": "real Rust grammar snapshot from the local tree-sitter-rust repo, initially kept at load/prepare level to exercise a large lexer and many parser states without promoting a heavy parser-table proof",
-      "success_criteria": "load and prepare the snapshotted upstream grammar.json while keeping parser-table and runtime-link proofs deferred until bounded measurements are available",
-      "first_failed_stage": "serialize",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "routine_serialize_proof_boundary",
+      "notes": "real Rust grammar snapshot from the local tree-sitter-rust repo, now promoted to the bounded coarse serialize-only parser proof while full lookahead-sensitive parser-table emission remains deferred",
+      "success_criteria": "load, prepare, and complete the bounded coarse serialize-only parser step while keeping full parser-table and runtime-link proofs deferred until bounded measurements are available",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
       "load": {
         "status": "passed",
         "detail": null
@@ -1496,15 +1514,15 @@
         "detail": null
       },
       "serialize": {
-        "status": "failed",
-        "detail": "routine lookahead-sensitive serialize proof is deferred for tree_sitter_rust_json: the current stable shortlist only proves load and prepare here, while the only passing next proof is the standalone coarse serialize-only probe"
+        "status": "passed",
+        "detail": null
       },
       "emit_parser_tables": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "emit_parser_c": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "scanner_boundary_check": {
@@ -1512,14 +1530,26 @@
         "detail": null
       },
       "compat_check": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "compile_smoke": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
-      "emission": null,
+      "emission": {
+        "blocked": true,
+        "serialized_state_count": 2660,
+        "emitted_state_count": 0,
+        "merged_state_count": 0,
+        "action_entry_count": 0,
+        "goto_entry_count": 0,
+        "unresolved_entry_count": 0,
+        "parser_tables_bytes": 1168141,
+        "parser_c_bytes": 4792224,
+        "emit_parser_c_ms": null,
+        "compile_smoke_ms": null
+      },
       "blocked_boundary": null
     }
   ]

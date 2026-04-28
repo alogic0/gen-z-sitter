@@ -1,31 +1,25 @@
 {
   "schema_version": 1,
-  "first_wave_target_count": 7,
-  "first_wave_passed_count": 7,
+  "first_wave_target_count": 9,
+  "first_wave_passed_count": 9,
   "first_wave_non_passing_count": 0,
   "parser_only_boundary_proven": true,
   "deferred_parser_wave_singleton": false,
   "primary_deferred_parser_wave_target": {
-    "id": "repeat_choice_seq_js",
-    "display_name": "Repeat Choice Seq (JS)",
-    "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
-    "notes": "staged parser-only JS fixture intentionally mirrors an upstream-rejected ambiguity: tree-sitter reports an unresolved _entry shift/reduce conflict and requires associativity or an explicit conflict declaration"
+    "id": "tree_sitter_javascript_json",
+    "display_name": "tree-sitter-javascript (JSON snapshot)",
+    "grammar_path": "compat_targets/tree_sitter_javascript/grammar.json",
+    "notes": "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, currently kept at load/prepare level because full lookahead-sensitive serialization exceeds the bounded compatibility budget"
   },
   "standalone_parser_probe_pass_count": 0,
   "proven_boundary": [
-    "7 intended first-wave parser-only targets are currently in the run set",
-    "7 intended first-wave targets currently pass within the staged parser-only boundary",
+    "9 intended first-wave parser-only targets are currently in the run set",
+    "9 intended first-wave targets currently pass within the staged parser-only boundary",
     "7 intended scanner-wave targets currently pass within the staged scanner boundary",
     "0 shortlist target currently carries a passing standalone coarse serialize-only probe outside the routine shortlist boundary",
-    "2 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
+    "3 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
   ],
   "deferred_parser_only_targets": [
-    {
-      "id": "repeat_choice_seq_js",
-      "display_name": "Repeat Choice Seq (JS)",
-      "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
-      "notes": "staged parser-only JS fixture intentionally mirrors an upstream-rejected ambiguity: tree-sitter reports an unresolved _entry shift/reduce conflict and requires associativity or an explicit conflict declaration"
-    },
     {
       "id": "parse_table_conflict_json",
       "display_name": "Parse Table Conflict (JSON)",
@@ -49,12 +43,6 @@
       "display_name": "tree-sitter-typescript (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_typescript/grammar.json",
       "notes": "real TypeScript grammar snapshot from the local tree-sitter-typescript repo, initially kept at load/prepare level to exercise large alias and generic-type grammar surfaces without promoting a heavy parser-table proof"
-    },
-    {
-      "id": "tree_sitter_rust_json",
-      "display_name": "tree-sitter-rust (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_rust/grammar.json",
-      "notes": "real Rust grammar snapshot from the local tree-sitter-rust repo, initially kept at load/prepare level to exercise a large lexer and many parser states without promoting a heavy parser-table proof"
     }
   ],
   "deferred_scanner_targets": [],

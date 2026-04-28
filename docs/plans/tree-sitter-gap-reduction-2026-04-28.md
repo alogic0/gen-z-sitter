@@ -567,7 +567,7 @@ Use this order unless profiling shows a clear reason to change it:
 - [ ] C: scanner-free baseline for broad syntax and larger tables.
 - [ ] Bash: real external scanner proof with shell-specific samples.
 - [ ] Haskell: layout-sensitive external scanner proof.
-- [ ] Rust: scanner/regex-heavy target before JavaScript.
+- [x] Rust: scanner/regex-heavy target before JavaScript.
 - [ ] Python: indentation-sensitive target after scanner state improves.
 - [ ] JavaScript: large conflict/regex/keyword target.
 - [ ] TypeScript: defer until JavaScript surfaces are stable.
@@ -588,6 +588,12 @@ Batch 30 note: compatibility runs now have opt-in timing fields for parser C
 emission and compile smoke in `EmissionSnapshot`. The single-target debug runner
 can enable and print them with `--profile-timings` without making checked-in
 compat reports nondeterministic by default.
+
+Batch 32 note: `tree_sitter_rust_json` is promoted from prepare-only to the
+bounded coarse serialize-only parser proof. The refreshed compatibility
+artifacts record it as passing the current boundary with 2660 serialized states
+and a blocked diagnostic table, while full lookahead-sensitive parser-table
+parity remains deferred.
 
 ## Phase 7 — Performance and Capacity
 
@@ -611,7 +617,7 @@ Gate:
 - [x] Move diagnostic-only unresolved action data out of runtime action-list
   capacity paths where possible.
 - [x] Add explicit errors for targets that exceed runtime-compatible limits.
-- [ ] Defer wider experimental indexes until there is a user-visible consumer.
+- [x] Defer wider experimental indexes until there is a user-visible consumer.
 
 Gate:
 
@@ -631,6 +637,12 @@ experimental GLR loop is enabled and needs those candidates for forking.
 Batch 29 note: `generate --emit-parser-c` now reports runtime table capacity
 overflows as user-facing grammar/runtime-limit diagnostics instead of falling
 through to a generic internal error.
+
+Batch 31 note: wider runtime indexes remain intentionally deferred. The current
+implementation keeps normal generated output on the Tree-sitter-shaped
+`uint16_t` table model, reports capacity overflows explicitly, and avoids
+introducing a wider experimental ABI until there is a concrete user-visible
+consumer for it.
 
 ### 7.3 C Compile Time
 

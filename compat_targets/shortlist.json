@@ -57,7 +57,7 @@
       "scanner_boundary_check_mode": "sampled_behavioral",
       "real_external_scanner_proof_scope": "none",
       "standalone_parser_proof_scope": "none",
-      "status": "deferred_parser_wave",
+      "status": "intended_first_wave",
       "source_kind": "grammar_js",
       "origin_kind": "staged_in_repo",
       "grammar_path": "compat_targets/repeat_choice_seq/grammar.js",
@@ -359,19 +359,19 @@
       "id": "tree_sitter_rust_json",
       "family": "rust",
       "boundary_kind": "parser_only",
-      "parser_boundary_check_mode": "prepare_only",
+      "parser_boundary_check_mode": "serialize_only",
       "scanner_boundary_check_mode": "sampled_behavioral",
       "real_external_scanner_proof_scope": "none",
-      "standalone_parser_proof_scope": "none",
-      "status": "deferred_parser_wave",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
+      "status": "intended_first_wave",
       "source_kind": "grammar_json",
       "origin_kind": "external_repo_snapshot",
       "grammar_path": "compat_targets/tree_sitter_rust/grammar.json",
       "upstream_repository": "tree-sitter-rust",
       "upstream_revision": "77a3747266f4d621d0757825e6b11edcbf991ca5",
       "upstream_grammar_path": "src/grammar.json",
-      "why": "real Rust grammar snapshot from the local tree-sitter-rust repo, initially kept at load/prepare level to exercise a large lexer and many parser states without promoting a heavy parser-table proof",
-      "success_means": "load and prepare the snapshotted upstream grammar.json while keeping parser-table and runtime-link proofs deferred until bounded measurements are available"
+      "why": "real Rust grammar snapshot from the local tree-sitter-rust repo, now promoted to the bounded coarse serialize-only parser proof while full lookahead-sensitive parser-table emission remains deferred",
+      "success_means": "load, prepare, and complete the bounded coarse serialize-only parser step while keeping full parser-table and runtime-link proofs deferred until bounded measurements are available"
     }
   ]
 }
