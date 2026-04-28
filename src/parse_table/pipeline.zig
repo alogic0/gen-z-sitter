@@ -1896,6 +1896,7 @@ test "attachKeywordLexTableAlloc exposes unmapped real reserved-word strings" {
     }, prepared, extracted.lexical);
 
     try std.testing.expect(serialized.keyword_lex_table == null);
+    try std.testing.expect(serialized.keyword_unmapped_reserved_word_count > 0);
 }
 
 test "serializeTableFromPrepared carries promoted default aliases into alias sequences" {

@@ -1703,6 +1703,7 @@ fn writeLexTableSummaryJson(
     try writeU64HexField(writer, 2, "accept_symbol_hash", counts.accept_symbol_hash, true);
     try writeU64HexField(writer, 2, "transition_target_hash", counts.transition_target_hash, true);
     try writeU64HexField(writer, 2, "range_hash", counts.range_hash, true);
+    try writeUsizeField(writer, 2, "keyword_unmapped_reserved_word_count", serialized.keyword_unmapped_reserved_word_count, true);
     try writer.writeAll("  \"keyword_table\": ");
     if (serialized.keyword_lex_table) |keyword_table| {
         try writeLexTableCountsObject(writer, countLexTable(keyword_table));
@@ -3069,6 +3070,7 @@ test "generateLocalLexTableSummaryJsonAlloc writes lexer table counts" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"accept_symbol_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_target_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"range_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_unmapped_reserved_word_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_table\": null") != null);
 }
 
@@ -3099,6 +3101,7 @@ test "writeLexTableSummaryJson writes keyword table counts" {
     const json = out.written();
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_table\": {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_unmapped_reserved_word_count\": 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"accept_symbol_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_target_hash\"") != null);
 }

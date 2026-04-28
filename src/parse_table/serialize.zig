@@ -303,6 +303,7 @@ pub const SerializedTable = struct {
     lex_state_terminal_sets: []const []const bool = &.{},
     lex_tables: []const lexer_serialize.SerializedLexTable = &.{},
     keyword_lex_table: ?lexer_serialize.SerializedLexTable = null,
+    keyword_unmapped_reserved_word_count: usize = 0,
     primary_state_ids: []const state.StateId = &.{},
     word_token: ?syntax_ir.SymbolRef = null,
     reserved_words: SerializedReservedWords = .{},
@@ -591,6 +592,9 @@ pub fn attachKeywordLexTableAlloc(
 ) (std.mem.Allocator.Error || lexer_serialize.SerializeError)!SerializedTable {
     if (prepared.word_token == null or prepared.reserved_word_sets.len == 0) return serialized;
 
+    var result = serialized;
+    result.keyword_unmapped_reserved_word_count = countUnmappedReservedWords(prepared, lexical);
+
     const terminal_set = try buildKeywordTerminalSetAlloc(allocator, prepared, lexical);
     defer allocator.free(terminal_set);
     var any_terminal = false;
@@ -600,7 +604,7 @@ pub fn attachKeywordLexTableAlloc(
             break;
         }
     }
-    if (!any_terminal) return serialized;
+    if (!any_terminal) return result;
 
     const tables = try lexer_serialize.buildSerializedLexTablesAlloc(
         allocator,
@@ -610,7 +614,6 @@ pub fn attachKeywordLexTableAlloc(
     );
     defer allocator.free(tables);
 
-    var result = serialized;
     result.keyword_lex_table = tables[0];
     return result;
 }
@@ -1700,6 +1703,19 @@ fn buildKeywordTerminalSetAlloc(
     return terminal_set;
 }
 
+fn countUnmappedReservedWords(
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) usize {
+    var count: usize = 0;
+    for (prepared.reserved_word_sets) |reserved_set| {
+        for (reserved_set.members) |member_rule| {
+            if (terminalRefForLexicalRule(lexical, member_rule) == null) count += 1;
+        }
+    }
+    return count;
+}
+
 const BuiltExternalScannerStates = struct {
     states: []const []const bool,
     state_ids: []const u16,
@@ -2660,6 +2676,7 @@ test "attachKeywordLexTableAlloc builds keyword table from reserved words" {
     try std.testing.expect(serialized.keyword_lex_table != null);
     const keyword_lex_table = serialized.keyword_lex_table.?;
     try std.testing.expect(keyword_lex_table.states.len > 0);
+    try std.testing.expectEqual(@as(usize, 0), serialized.keyword_unmapped_reserved_word_count);
     try std.testing.expect(lexTableAcceptsSymbol(keyword_lex_table, .{ .terminal = 0 }));
     try std.testing.expect(lexTableAcceptsSymbol(keyword_lex_table, .{ .terminal = 1 }));
     try std.testing.expect(!lexTableAcceptsSymbol(keyword_lex_table, .{ .terminal = 2 }));

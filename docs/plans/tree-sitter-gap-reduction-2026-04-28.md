@@ -562,6 +562,12 @@ runtime keyword symbols. The next algorithm step is to reproduce upstream's
 reserved-string symbol mapping instead of only handling reserved members that
 already correspond to lexical variables.
 
+Batch 76 note: the keyword gap is now visible in lex summary artifacts through
+`keyword_unmapped_reserved_word_count`. The counter is zero for local fixtures
+where reserved members already map to lexical variables, and positive for the
+real JavaScript reserved-string probe. This keeps the remaining upstream
+reserved-string symbol mapping gap machine-readable.
+
 ### 4.3 Emitted Lexer C Parity
 
 - [x] Compare generated lex function structure at the summary level, not by
