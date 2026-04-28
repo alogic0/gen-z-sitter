@@ -605,13 +605,18 @@ Gate:
 - [ ] Keep runtime-compatible `uint16_t` table limits for normal output.
 - [ ] Move diagnostic-only unresolved action data out of runtime action-list
   capacity paths where possible.
-- [ ] Add explicit errors for targets that exceed runtime-compatible limits.
+- [x] Add explicit errors for targets that exceed runtime-compatible limits.
 - [ ] Defer wider experimental indexes until there is a user-visible consumer.
 
 Gate:
 
 - JavaScript-style diagnostic overflow is reported without corrupting
   runtime-shaped tables.
+
+Batch 27 note: parser C emission now validates runtime-shaped `uint16_t`
+capacity boundaries before rendering tables, returning named errors for
+oversized state, large-state, symbol, production, field, parse-action, and
+lexer-state surfaces.
 
 ### 7.3 C Compile Time
 

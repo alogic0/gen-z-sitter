@@ -12,6 +12,13 @@ const optimize = @import("optimize.zig");
 /// Errors produced while rendering parser C into an owned buffer or writer.
 pub const EmitError = std.mem.Allocator.Error || std.Io.Writer.Error || error{
     ParseActionListTooLarge,
+    RuntimeFieldCountTooLarge,
+    RuntimeLargeStateCountTooLarge,
+    RuntimeLexStateCountTooLarge,
+    RuntimeParseActionListTooLarge,
+    RuntimeProductionCountTooLarge,
+    RuntimeStateCountTooLarge,
+    RuntimeSymbolCountTooLarge,
 };
 
 /// Row-sharing summary for one emitted parse-table section.
@@ -132,6 +139,7 @@ pub fn writeParserCWithOptions(
         compacted.parse_action_list
     else
         try serialize.buildParseActionListAlloc(arena.allocator(), compacted.states, compacted.productions);
+    try validateRuntimeTableLimits(compacted, emitted_symbols, parse_action_list);
     const unresolved_owners = try collectStateArrayOwners(arena.allocator(), serialize.SerializedUnresolvedEntry, compacted.states, stateUnresolved);
     const small_parse_table = if (compacted.small_parse_table.rows.len > 0 or compacted.small_parse_table.map.len > 0)
         compacted.small_parse_table
@@ -1426,6 +1434,43 @@ fn serializedLargeStateCount(serialized: serialize.SerializedTable) usize {
     return @min(serialized.states.len, 2);
 }
 
+fn validateRuntimeTableLimits(
+    serialized: serialize.SerializedTable,
+    emitted_symbols: []const EmittedSymbol,
+    parse_action_list: []const serialize.SerializedParseActionListEntry,
+) EmitError!void {
+    if (!fitsRuntimeU16(serialized.states.len)) return error.RuntimeStateCountTooLarge;
+    if (!fitsRuntimeU16(serializedLargeStateCount(serialized))) return error.RuntimeLargeStateCountTooLarge;
+    if (!fitsRuntimeU16(emitted_symbols.len)) return error.RuntimeSymbolCountTooLarge;
+    if (!fitsRuntimeU16(serialized.productions.len)) return error.RuntimeProductionCountTooLarge;
+    if (!fitsRuntimeU16(serialized.field_map.names.len)) return error.RuntimeFieldCountTooLarge;
+    try validateRuntimeLexStateLimit(serialized.lex_tables);
+    for (parse_action_list) |entry| {
+        if (entry.index > std.math.maxInt(u16)) return error.RuntimeParseActionListTooLarge;
+        if (entry.actions.len > std.math.maxInt(u16) - entry.index) return error.RuntimeParseActionListTooLarge;
+        for (entry.actions) |action| {
+            switch (action.kind) {
+                .shift => if (!fitsRuntimeU16(action.state)) return error.RuntimeStateCountTooLarge,
+                .reduce => if (!fitsRuntimeU16(action.production_id)) return error.RuntimeProductionCountTooLarge,
+                .accept, .recover => {},
+            }
+        }
+    }
+}
+
+fn validateRuntimeLexStateLimit(lex_tables: []const lexer_serialize.SerializedLexTable) EmitError!void {
+    var state_count: usize = 0;
+    for (lex_tables) |table| {
+        if (!fitsRuntimeU16(state_count + table.start_state_id)) return error.RuntimeLexStateCountTooLarge;
+        state_count += table.states.len;
+        if (!fitsRuntimeU16(state_count)) return error.RuntimeLexStateCountTooLarge;
+    }
+}
+
+fn fitsRuntimeU16(value: usize) bool {
+    return value <= std.math.maxInt(u16);
+}
+
 fn tokenCount(symbols: []const EmittedSymbol) usize {
     var count: usize = 0;
     for (symbols) |symbol| {
@@ -2018,6 +2063,64 @@ test "emitParserCAlloc emits EOF as builtin symbol zero" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = \"end\",\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .visible = false, .named = false, .supertype = false },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    [0] = ACTIONS("));
+}
+
+test "emitParserCAlloc rejects state counts beyond runtime table width" {
+    const allocator = std.testing.allocator;
+    const states = try allocator.alloc(serialize.SerializedState, std.math.maxInt(u16) + 1);
+    defer allocator.free(states);
+
+    for (states, 0..) |*serialized_state, index| {
+        serialized_state.* = .{
+            .id = @intCast(index),
+            .actions = &.{},
+            .gotos = &.{},
+            .unresolved = &.{},
+        };
+    }
+
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = states,
+    };
+
+    try std.testing.expectError(
+        error.RuntimeStateCountTooLarge,
+        emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false }),
+    );
+}
+
+test "emitParserCAlloc rejects lex state counts beyond runtime table width" {
+    const allocator = std.testing.allocator;
+    const lex_states = try allocator.alloc(lexer_serialize.SerializedLexState, std.math.maxInt(u16) + 1);
+    defer allocator.free(lex_states);
+
+    for (lex_states) |*lex_state| {
+        lex_state.* = .{
+            .accept_symbol = null,
+            .transitions = &.{},
+        };
+    }
+
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+        .lex_tables = &[_]lexer_serialize.SerializedLexTable{
+            .{
+                .start_state_id = 0,
+                .states = lex_states,
+            },
+        },
+    };
+
+    try std.testing.expectError(error.RuntimeLexStateCountTooLarge, emitParserCAlloc(allocator, serialized));
 }
 
 test "emitParserCAlloc compacts identical serialized states before row sharing" {
