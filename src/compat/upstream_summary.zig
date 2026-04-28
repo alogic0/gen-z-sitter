@@ -5,6 +5,7 @@ const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const grammar_ir = @import("../ir/grammar_ir.zig");
 const ir_rules = @import("../ir/rules.zig");
+const ir_symbols = @import("../ir/symbols.zig");
 const lexical_ir = @import("../ir/lexical_grammar.zig");
 const lexer_model = @import("../lexer/model.zig");
 const node_type_pipeline = @import("../node_types/pipeline.zig");
@@ -81,9 +82,21 @@ pub const PreparedIrSummary = struct {
     reserved_word_set_count: usize,
     prepared_variable_hash: u64,
     prepared_symbol_hash: u64,
+    prepared_reserved_word_set_hash: u64,
+    prepared_conflict_hash: u64,
+    prepared_precedence_hash: u64,
+    prepared_inline_hash: u64,
+    prepared_supertype_hash: u64,
+    prepared_word_token_hash: u64,
     extracted_syntax_variable_count: usize,
     extracted_syntax_production_count: usize,
     extracted_syntax_step_count: usize,
+    extracted_extra_symbol_hash: u64,
+    extracted_expected_conflict_hash: u64,
+    extracted_precedence_hash: u64,
+    extracted_inline_hash: u64,
+    extracted_supertype_hash: u64,
+    extracted_word_token_hash: u64,
     extracted_lexical_variable_count: usize,
     extracted_lexical_separator_count: usize,
     extracted_lexical_hash: u64,
@@ -2132,6 +2145,73 @@ fn hashPreparedSymbols(prepared: grammar_ir.PreparedGrammar) u64 {
     return hasher.final();
 }
 
+fn hashPreparedReservedWordSets(prepared: grammar_ir.PreparedGrammar) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (prepared.reserved_word_sets) |set| {
+        hashString(&hasher, set.context_name);
+        for (set.members) |member| hashU32(&hasher, member);
+        hashTag(&hasher, "reserved_word_set_end");
+    }
+    return hasher.final();
+}
+
+fn hashPreparedConflictSets(prepared: grammar_ir.PreparedGrammar) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (prepared.expected_conflicts) |set| {
+        hashSymbolIdArray(&hasher, set);
+        hashTag(&hasher, "prepared_conflict_end");
+    }
+    return hasher.final();
+}
+
+fn hashPreparedPrecedenceOrderings(prepared: grammar_ir.PreparedGrammar) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (prepared.precedence_orderings) |ordering| {
+        for (ordering) |entry| hashPreparedPrecedenceEntry(&hasher, entry);
+        hashTag(&hasher, "prepared_precedence_ordering_end");
+    }
+    return hasher.final();
+}
+
+fn hashPreparedPrecedenceEntry(hasher: *std.hash.Wyhash, entry: grammar_ir.PrecedenceEntry) void {
+    switch (entry) {
+        .name => |name| {
+            hashTag(hasher, "name");
+            hashString(hasher, name);
+        },
+        .symbol => |symbol| {
+            hashTag(hasher, "symbol");
+            hashSymbolId(hasher, symbol);
+        },
+    }
+}
+
+fn hashSymbolIdArray(hasher: *std.hash.Wyhash, symbols: []const ir_symbols.SymbolId) void {
+    for (symbols) |symbol| hashSymbolId(hasher, symbol);
+}
+
+fn hashSymbolId(hasher: *std.hash.Wyhash, symbol: ir_symbols.SymbolId) void {
+    hashTag(hasher, @tagName(symbol.kind));
+    hashU32(hasher, symbol.index);
+}
+
+fn hashOptionalSymbolId(maybe_symbol: ?ir_symbols.SymbolId) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    if (maybe_symbol) |symbol| {
+        hashBool(&hasher, true);
+        hashSymbolId(&hasher, symbol);
+    } else {
+        hashBool(&hasher, false);
+    }
+    return hasher.final();
+}
+
+fn hashSymbolIds(symbols: []const ir_symbols.SymbolId) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashSymbolIdArray(&hasher, symbols);
+    return hasher.final();
+}
+
 fn hashLexicalGrammar(grammar: lexical_ir.LexicalGrammar) u64 {
     var hasher = std.hash.Wyhash.init(0);
     for (grammar.variables) |variable| {
@@ -2143,6 +2223,54 @@ fn hashLexicalGrammar(grammar: lexical_ir.LexicalGrammar) u64 {
         hashTag(&hasher, @tagName(variable.source_kind));
     }
     for (grammar.separators) |separator| hashU32(&hasher, separator);
+    return hasher.final();
+}
+
+fn hashSymbolRefArray(values: []const syntax_ir.SymbolRef) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (values) |value| hashSymbolRef(&hasher, value);
+    return hasher.final();
+}
+
+fn hashSymbolRefSets(sets: []const []const syntax_ir.SymbolRef) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (sets) |set| {
+        for (set) |symbol| hashSymbolRef(&hasher, symbol);
+        hashTag(&hasher, "symbol_ref_set_end");
+    }
+    return hasher.final();
+}
+
+fn hashSyntaxPrecedenceOrderings(orderings: []const []const syntax_ir.PrecedenceEntry) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (orderings) |ordering| {
+        for (ordering) |entry| hashSyntaxPrecedenceEntry(&hasher, entry);
+        hashTag(&hasher, "syntax_precedence_ordering_end");
+    }
+    return hasher.final();
+}
+
+fn hashSyntaxPrecedenceEntry(hasher: *std.hash.Wyhash, entry: syntax_ir.PrecedenceEntry) void {
+    switch (entry) {
+        .name => |name| {
+            hashTag(hasher, "name");
+            hashString(hasher, name);
+        },
+        .symbol => |symbol| {
+            hashTag(hasher, "symbol");
+            hashSymbolRef(hasher, symbol);
+        },
+    }
+}
+
+fn hashOptionalSymbolRef(maybe_symbol: ?syntax_ir.SymbolRef) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    if (maybe_symbol) |symbol| {
+        hashBool(&hasher, true);
+        hashSymbolRef(&hasher, symbol);
+    } else {
+        hashBool(&hasher, false);
+    }
     return hasher.final();
 }
 
@@ -2278,9 +2406,21 @@ pub fn writePreparedIrSummaryJson(writer: anytype, summary: PreparedIrSummary, i
     try writeUsizeField(writer, indent + 2, "reserved_word_set_count", summary.reserved_word_set_count, true);
     try writeU64HexField(writer, indent + 2, "prepared_variable_hash", summary.prepared_variable_hash, true);
     try writeU64HexField(writer, indent + 2, "prepared_symbol_hash", summary.prepared_symbol_hash, true);
+    try writeU64HexField(writer, indent + 2, "prepared_reserved_word_set_hash", summary.prepared_reserved_word_set_hash, true);
+    try writeU64HexField(writer, indent + 2, "prepared_conflict_hash", summary.prepared_conflict_hash, true);
+    try writeU64HexField(writer, indent + 2, "prepared_precedence_hash", summary.prepared_precedence_hash, true);
+    try writeU64HexField(writer, indent + 2, "prepared_inline_hash", summary.prepared_inline_hash, true);
+    try writeU64HexField(writer, indent + 2, "prepared_supertype_hash", summary.prepared_supertype_hash, true);
+    try writeU64HexField(writer, indent + 2, "prepared_word_token_hash", summary.prepared_word_token_hash, true);
     try writeUsizeField(writer, indent + 2, "extracted_syntax_variable_count", summary.extracted_syntax_variable_count, true);
     try writeUsizeField(writer, indent + 2, "extracted_syntax_production_count", summary.extracted_syntax_production_count, true);
     try writeUsizeField(writer, indent + 2, "extracted_syntax_step_count", summary.extracted_syntax_step_count, true);
+    try writeU64HexField(writer, indent + 2, "extracted_extra_symbol_hash", summary.extracted_extra_symbol_hash, true);
+    try writeU64HexField(writer, indent + 2, "extracted_expected_conflict_hash", summary.extracted_expected_conflict_hash, true);
+    try writeU64HexField(writer, indent + 2, "extracted_precedence_hash", summary.extracted_precedence_hash, true);
+    try writeU64HexField(writer, indent + 2, "extracted_inline_hash", summary.extracted_inline_hash, true);
+    try writeU64HexField(writer, indent + 2, "extracted_supertype_hash", summary.extracted_supertype_hash, true);
+    try writeU64HexField(writer, indent + 2, "extracted_word_token_hash", summary.extracted_word_token_hash, true);
     try writeUsizeField(writer, indent + 2, "extracted_lexical_variable_count", summary.extracted_lexical_variable_count, true);
     try writeUsizeField(writer, indent + 2, "extracted_lexical_separator_count", summary.extracted_lexical_separator_count, true);
     try writeU64HexField(writer, indent + 2, "extracted_lexical_hash", summary.extracted_lexical_hash, true);
@@ -2555,9 +2695,21 @@ fn preparedIrSummary(
         .reserved_word_set_count = prepared.reserved_word_sets.len,
         .prepared_variable_hash = hashPreparedVariables(prepared),
         .prepared_symbol_hash = hashPreparedSymbols(prepared),
+        .prepared_reserved_word_set_hash = hashPreparedReservedWordSets(prepared),
+        .prepared_conflict_hash = hashPreparedConflictSets(prepared),
+        .prepared_precedence_hash = hashPreparedPrecedenceOrderings(prepared),
+        .prepared_inline_hash = hashSymbolIds(prepared.variables_to_inline),
+        .prepared_supertype_hash = hashSymbolIds(prepared.supertype_symbols),
+        .prepared_word_token_hash = hashOptionalSymbolId(prepared.word_token),
         .extracted_syntax_variable_count = extracted.syntax.variables.len,
         .extracted_syntax_production_count = countProductions(extracted.syntax.variables),
         .extracted_syntax_step_count = countSteps(extracted.syntax.variables),
+        .extracted_extra_symbol_hash = hashSymbolRefArray(extracted.syntax.extra_symbols),
+        .extracted_expected_conflict_hash = hashSymbolRefSets(extracted.syntax.expected_conflicts),
+        .extracted_precedence_hash = hashSyntaxPrecedenceOrderings(extracted.syntax.precedence_orderings),
+        .extracted_inline_hash = hashSymbolRefArray(extracted.syntax.variables_to_inline),
+        .extracted_supertype_hash = hashSymbolRefArray(extracted.syntax.supertype_symbols),
+        .extracted_word_token_hash = hashOptionalSymbolRef(extracted.syntax.word_token),
         .extracted_lexical_variable_count = extracted.lexical.variables.len,
         .extracted_lexical_separator_count = extracted.lexical.separators.len,
         .extracted_lexical_hash = hashLexicalGrammar(extracted.lexical),
@@ -2957,7 +3109,7 @@ test "generateLocalPreparedIrSummaryAlloc summarizes preparation stages" {
 
     try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "grammar.json",
-        .data = fixtures.validBlankGrammarJson().contents,
+        .data = fixtures.validResolvedGrammarJson().contents,
     });
 
     const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
@@ -2969,8 +3121,28 @@ test "generateLocalPreparedIrSummaryAlloc summarizes preparation stages" {
     try std.testing.expect(summary.rule_count > 0);
     try std.testing.expect(summary.stage_order_hash != 0);
     try std.testing.expect(summary.prepared_variable_hash != 0);
+    try std.testing.expect(summary.prepared_symbol_hash != 0);
+    try std.testing.expect(summary.prepared_reserved_word_set_hash != 0);
+    try std.testing.expect(summary.prepared_conflict_hash != 0);
+    try std.testing.expect(summary.prepared_inline_hash != 0);
+    try std.testing.expect(summary.prepared_supertype_hash != 0);
+    try std.testing.expect(summary.prepared_word_token_hash != 0);
     try std.testing.expect(summary.extracted_syntax_variable_count > 0);
+    try std.testing.expect(summary.extracted_extra_symbol_hash != 0);
+    try std.testing.expect(summary.extracted_expected_conflict_hash != 0);
+    try std.testing.expect(summary.extracted_inline_hash != 0);
+    try std.testing.expect(summary.extracted_supertype_hash != 0);
+    try std.testing.expect(summary.extracted_word_token_hash != 0);
     try std.testing.expect(summary.flattened_syntax_hash != 0);
+
+    var json: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer json.deinit();
+    try writePreparedIrSummaryJson(&json.writer, summary, 0);
+    const rendered = json.written();
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\"prepared_reserved_word_set_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\"prepared_conflict_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\"extracted_expected_conflict_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\"extracted_word_token_hash\"") != null);
 }
 
 test "generateLocalPreparedIrSnapshotJsonAlloc writes diffable sections" {

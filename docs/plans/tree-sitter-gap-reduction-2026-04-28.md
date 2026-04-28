@@ -206,6 +206,8 @@ Gate:
     variable counts.
   - [x] Include prepared word-token and reserved-word set details in
     `prepared-ir.json`.
+  - [x] Add granular prepared/extracted hashes for conflicts, precedence,
+    inline/supertypes, reserved sets, extras, and word-token metadata.
 - [ ] Reproduce upstream repeat expansion and dedup behavior where local names
   or rule shapes still differ.
 - [ ] Reproduce upstream token extraction behavior for hidden terminals,
@@ -569,6 +571,12 @@ lexer model more closely: non-capturing `(?:...)` groups and lazy quantifier
 suffixes remain feature-counted but no longer mark a pattern unsupported, while
 unsupported `(?...)` group prefixes, anchors, numeric backreferences, and
 control escapes are still reported as unsupported diagnostics.
+
+Batch 88 note: prepared-IR summaries now expose granular hashes for prepared
+reserved/conflict/precedence/inline/supertype/word-token metadata and extracted
+extra/conflict/precedence/inline/supertype/word-token metadata. This gives the
+future upstream/local prepared-IR diff stable comparison keys before a direct
+upstream prepared-IR dump exists.
 
 ### 4.2 Lex Table Construction
 
