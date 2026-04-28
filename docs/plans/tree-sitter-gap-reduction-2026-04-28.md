@@ -340,6 +340,9 @@ lookahead, conflict, and minimization gaps.
     item origins, lookaheads, reserved lookaheads, and transitions.
   - [x] Include production LHS, production length, and completed-item markers
     in item-set snapshots.
+  - [x] Add selected-state item-set comparison counts and hashes for kernel
+    items, closure items, completed items, lookaheads, reserved lookaheads, and
+    transitions.
   - [ ] Add upstream-shaped item-set comparison.
 - [ ] Compare kernel items, closure additions, lookaheads, reserved lookaheads,
   and propagation flags against upstream concepts from `item_set_builder.rs`.
@@ -357,6 +360,12 @@ Batch 83 note: item-set snapshots now include production context for every
 item: LHS symbol index, production step count, and an `at_end` marker. This
 makes reduce-item and closure-shape comparisons easier to inspect alongside
 existing origin, lookahead, reserved-lookahead, and transition fields.
+
+Batch 89 note: item-set snapshots now include a compact `comparison` block for
+selected states. It records counts and hashes for kernel items, closure items,
+completed items, lookaheads, reserved lookaheads, and transitions so future
+upstream/local state comparison can use stable keys instead of scanning the
+verbose entry list first.
 
 Batch 15 note: local comparison artifacts now include `parse-states.txt`, using
 the existing deterministic item-set/state dump. This is the local side of the

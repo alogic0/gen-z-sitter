@@ -875,6 +875,21 @@ const ParseStateSummary = struct {
     conflict_hash: u64,
 };
 
+const ItemSetComparisonSummary = struct {
+    selected_state_count: usize,
+    kernel_item_count: usize,
+    closure_item_count: usize,
+    completed_item_count: usize,
+    lookahead_item_count: usize,
+    reserved_lookahead_item_count: usize,
+    kernel_hash: u64,
+    closure_hash: u64,
+    completed_item_hash: u64,
+    lookahead_hash: u64,
+    reserved_lookahead_hash: u64,
+    transition_hash: u64,
+};
+
 fn parseStateSummary(result: @import("../parse_table/build.zig").BuildResult) ParseStateSummary {
     var core_hasher = std.hash.Wyhash.init(0);
     var lookahead_hasher = std.hash.Wyhash.init(0);
@@ -964,6 +979,8 @@ fn writeItemSetSnapshotJson(
     try writer.writeAll(",\n");
     try writeUsizeField(writer, 2, "state_count", result.states.len, true);
     try writeUsizeField(writer, 2, "selected_state_count", selected_count, true);
+    try writeItemSetComparisonJson(writer, result, prepared, report_states_for_rule, 2);
+    try writer.writeAll(",\n");
     try writeIndent(writer, 2);
     try writer.writeAll("\"states\": [");
     if (selected_count != 0) try writer.writeByte('\n');
@@ -979,6 +996,130 @@ fn writeItemSetSnapshotJson(
     if (selected_count != 0) try writeIndent(writer, 2);
     try writer.writeAll("]\n");
     try writer.writeAll("}\n");
+}
+
+fn writeItemSetComparisonJson(
+    writer: anytype,
+    result: @import("../parse_table/build.zig").BuildResult,
+    prepared: grammar_ir.PreparedGrammar,
+    report_states_for_rule: ?[]const u8,
+    indent: usize,
+) !void {
+    const summary = itemSetComparisonSummary(result, prepared, report_states_for_rule);
+    try writeIndent(writer, indent);
+    try writer.writeAll("\"comparison\": {\n");
+    try writeUsizeField(writer, indent + 2, "selected_state_count", summary.selected_state_count, true);
+    try writeUsizeField(writer, indent + 2, "kernel_item_count", summary.kernel_item_count, true);
+    try writeUsizeField(writer, indent + 2, "closure_item_count", summary.closure_item_count, true);
+    try writeUsizeField(writer, indent + 2, "completed_item_count", summary.completed_item_count, true);
+    try writeUsizeField(writer, indent + 2, "lookahead_item_count", summary.lookahead_item_count, true);
+    try writeUsizeField(writer, indent + 2, "reserved_lookahead_item_count", summary.reserved_lookahead_item_count, true);
+    try writeU64HexField(writer, indent + 2, "kernel_hash", summary.kernel_hash, true);
+    try writeU64HexField(writer, indent + 2, "closure_hash", summary.closure_hash, true);
+    try writeU64HexField(writer, indent + 2, "completed_item_hash", summary.completed_item_hash, true);
+    try writeU64HexField(writer, indent + 2, "lookahead_hash", summary.lookahead_hash, true);
+    try writeU64HexField(writer, indent + 2, "reserved_lookahead_hash", summary.reserved_lookahead_hash, true);
+    try writeU64HexField(writer, indent + 2, "transition_hash", summary.transition_hash, false);
+    try writeIndent(writer, indent);
+    try writer.writeByte('}');
+}
+
+fn itemSetComparisonSummary(
+    result: @import("../parse_table/build.zig").BuildResult,
+    prepared: grammar_ir.PreparedGrammar,
+    report_states_for_rule: ?[]const u8,
+) ItemSetComparisonSummary {
+    var kernel_hasher = std.hash.Wyhash.init(0);
+    var closure_hasher = std.hash.Wyhash.init(0);
+    var completed_hasher = std.hash.Wyhash.init(0);
+    var lookahead_hasher = std.hash.Wyhash.init(0);
+    var reserved_lookahead_hasher = std.hash.Wyhash.init(0);
+    var transition_hasher = std.hash.Wyhash.init(0);
+    var summary: ItemSetComparisonSummary = .{
+        .selected_state_count = 0,
+        .kernel_item_count = 0,
+        .closure_item_count = 0,
+        .completed_item_count = 0,
+        .lookahead_item_count = 0,
+        .reserved_lookahead_item_count = 0,
+        .kernel_hash = 0,
+        .closure_hash = 0,
+        .completed_item_hash = 0,
+        .lookahead_hash = 0,
+        .reserved_lookahead_hash = 0,
+        .transition_hash = 0,
+    };
+
+    for (result.states) |parse_state| {
+        if (!stateMatchesRule(result, prepared, parse_state, report_states_for_rule)) continue;
+        summary.selected_state_count += 1;
+        for (parse_state.items) |entry| {
+            if (std.mem.eql(u8, itemOrigin(result, entry), "kernel")) {
+                summary.kernel_item_count += 1;
+                hashItemSetComparisonEntry(&kernel_hasher, result, parse_state.id, entry);
+            } else {
+                summary.closure_item_count += 1;
+                hashItemSetComparisonEntry(&closure_hasher, result, parse_state.id, entry);
+            }
+            if (!entry.lookaheads.isEmpty()) {
+                summary.lookahead_item_count += 1;
+                hashItemSetComparisonEntry(&lookahead_hasher, result, parse_state.id, entry);
+                hashSymbolSet(&lookahead_hasher, entry.lookaheads);
+            }
+            if (entry.following_reserved_word_set_id != 0) {
+                summary.reserved_lookahead_item_count += 1;
+                hashItemSetComparisonEntry(&reserved_lookahead_hasher, result, parse_state.id, entry);
+                hashU32(&reserved_lookahead_hasher, entry.following_reserved_word_set_id);
+            }
+            if (itemAtEnd(result, entry)) {
+                summary.completed_item_count += 1;
+                hashItemSetComparisonEntry(&completed_hasher, result, parse_state.id, entry);
+            }
+        }
+        for (parse_state.transitions) |transition| {
+            hashU32(&transition_hasher, parse_state.id);
+            hashSymbolRef(&transition_hasher, transition.symbol);
+            hashU32(&transition_hasher, transition.state);
+            hashBool(&transition_hasher, transition.extra);
+        }
+    }
+
+    summary.kernel_hash = kernel_hasher.final();
+    summary.closure_hash = closure_hasher.final();
+    summary.completed_item_hash = completed_hasher.final();
+    summary.lookahead_hash = lookahead_hasher.final();
+    summary.reserved_lookahead_hash = reserved_lookahead_hasher.final();
+    summary.transition_hash = transition_hasher.final();
+    return summary;
+}
+
+fn hashItemSetComparisonEntry(
+    hasher: *std.hash.Wyhash,
+    result: @import("../parse_table/build.zig").BuildResult,
+    state_id: u32,
+    entry: @import("../parse_table/item.zig").ParseItemSetEntry,
+) void {
+    hashU32(hasher, state_id);
+    hashU32(hasher, entry.item.production_id);
+    hashU32(hasher, entry.item.step_index);
+    hashU32(hasher, entry.following_reserved_word_set_id);
+    if (entry.item.production_id < result.productions.len) {
+        const production = result.productions[entry.item.production_id];
+        hashBool(hasher, true);
+        hashU32(hasher, production.lhs);
+        hashUsize(hasher, production.steps.len);
+        hashBool(hasher, entry.item.step_index >= production.steps.len);
+    } else {
+        hashBool(hasher, false);
+    }
+}
+
+fn itemAtEnd(
+    result: @import("../parse_table/build.zig").BuildResult,
+    entry: @import("../parse_table/item.zig").ParseItemSetEntry,
+) bool {
+    if (entry.item.production_id >= result.productions.len) return false;
+    return entry.item.step_index >= result.productions[entry.item.production_id].steps.len;
 }
 
 fn stateMatchesRule(
@@ -3273,6 +3414,11 @@ test "generateLocalItemSetSnapshotJsonAlloc writes selected item-set entries" {
     defer std.testing.allocator.free(json);
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"selected_rule\": \"source_file\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"comparison\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"kernel_item_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"closure_item_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"completed_item_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"reserved_lookahead_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"production_lhs\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"production_step_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"at_end\"") != null);
