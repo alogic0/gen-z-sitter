@@ -1,0 +1,41 @@
+{
+  "name": "parse_table_missing_expected_conflict",
+  "conflicts": [["expr"]],
+  "rules": {
+    "source_file": {
+      "type": "CHOICE",
+      "members": [
+        { "type": "SYMBOL", "name": "expr" },
+        { "type": "SYMBOL", "name": "term" }
+      ]
+    },
+    "expr": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            { "type": "SYMBOL", "name": "expr" },
+            { "type": "STRING", "value": "+" },
+            { "type": "SYMBOL", "name": "expr" }
+          ]
+        },
+        { "type": "STRING", "value": "x" }
+      ]
+    },
+    "term": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            { "type": "SYMBOL", "name": "term" },
+            { "type": "STRING", "value": "*" },
+            { "type": "SYMBOL", "name": "term" }
+          ]
+        },
+        { "type": "STRING", "value": "y" }
+      ]
+    }
+  }
+}

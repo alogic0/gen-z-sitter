@@ -1309,15 +1309,24 @@ fn writeConflictSummaryJson(
 ) !void {
     const chosen_counts = chosenDecisionCounts(chosen, result.productions);
     const counts = conflictReasonCounts(unresolved);
+    const expected_conflict_hash = hashSymbolRefSets(flattened.expected_conflicts);
+    const unused_expected_index_hash = hashUsizeSlice(unused_expected_indexes);
     try writer.writeAll("{\n");
     try writeUsizeField(writer, 2, "declared_expected_conflict_count", declared_expected_count, true);
+    try writeU64HexField(writer, 2, "declared_expected_conflict_hash", expected_conflict_hash, true);
+    try writer.writeAll("  \"declared_expected_conflicts\": ");
+    try writeSymbolRefSets(writer, flattened.expected_conflicts);
+    try writer.writeAll(",\n");
     try writeUsizeField(writer, 2, "unused_expected_conflict_count", unused_expected_indexes.len, true);
+    try writeU64HexField(writer, 2, "unused_expected_conflict_index_hash", unused_expected_index_hash, true);
     try writer.writeAll("  \"unused_expected_conflict_indexes\": [");
     for (unused_expected_indexes, 0..) |index_value, index| {
         if (index != 0) try writer.writeAll(", ");
         try writer.print("{d}", .{index_value});
     }
     try writer.writeAll("],\n");
+    try writeConflictComparisonKeysJson(writer, expected_conflict_hash, unused_expected_index_hash, 2);
+    try writer.writeAll(",\n");
     try writeUsizeField(writer, 2, "chosen_count", chosen.len, true);
     try writer.writeAll("  \"chosen_actions\": {\n");
     try writeUsizeField(writer, 4, "shift", chosen_counts.shift, true);
@@ -1361,6 +1370,52 @@ fn writeConflictSummaryJson(
     if (unresolved.len != 0) try writer.writeAll("  ");
     try writer.writeAll("]\n");
     try writer.writeAll("}\n");
+}
+
+fn writeConflictComparisonKeysJson(
+    writer: anytype,
+    expected_conflict_hash: u64,
+    unused_expected_index_hash: u64,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("\"comparison_keys\": {\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"note\": ");
+    try writeJsonString(writer, "local expected-conflict identity keys are stable; upstream generator output currently exposes acceptance/rejection but not a bounded raw expected-conflict artifact");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"keys\": [\n");
+    try writeConflictComparisonKey(writer, indent + 4, "declared_expected_conflicts", expected_conflict_hash, true);
+    try writeConflictComparisonKey(writer, indent + 4, "unused_expected_conflict_indexes", unused_expected_index_hash, false);
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("]\n");
+    try writeIndent(writer, indent);
+    try writer.writeAll("}");
+}
+
+fn writeConflictComparisonKey(
+    writer: anytype,
+    indent: usize,
+    name: []const u8,
+    hash: u64,
+    trailing_comma: bool,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"name\": ");
+    try writeJsonString(writer, name);
+    try writer.writeAll(", \"local_hash\": \"");
+    try writer.print("0x{x:0>16}", .{hash});
+    try writer.writeByte('"');
+    try writer.writeAll(", \"upstream_hash\": null, \"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(" }");
+    if (trailing_comma) try writer.writeByte(',');
+    try writer.writeByte('\n');
 }
 
 fn writeReduceParentRuleNames(
@@ -3041,6 +3096,12 @@ fn hashSymbolRefSets(sets: []const []const syntax_ir.SymbolRef) u64 {
     return hasher.final();
 }
 
+fn hashUsizeSlice(values: []const usize) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (values) |value| hashUsize(&hasher, value);
+    return hasher.final();
+}
+
 fn hashSyntaxPrecedenceOrderings(orderings: []const []const syntax_ir.PrecedenceEntry) u64 {
     var hasher = std.hash.Wyhash.init(0);
     for (orderings) |ordering| {
@@ -4396,9 +4457,78 @@ test "generateLocalConflictSummaryJsonAlloc distinguishes expected shift reduce 
     defer std.testing.allocator.free(json);
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"declared_expected_conflict_count\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"declared_expected_conflict_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"declared_expected_conflicts\": [[{ \"kind\": \"non_terminal\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unused_expected_conflict_count\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unused_expected_conflict_index_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"comparison_keys\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"declared_expected_conflicts\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"unused_expected_conflict_indexes\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce_expected\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 0") != null);
+}
+
+test "generateLocalConflictSummaryJsonAlloc records multi expected conflict identity" {
+    const json = try generateLocalConflictSummaryJsonAlloc(
+        std.testing.allocator,
+        "compat_targets/parse_table_multi_expected_conflict/grammar.json",
+        .{},
+    );
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"declared_expected_conflict_count\": 2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"declared_expected_conflicts\": [[{ \"kind\": \"non_terminal\", \"index\": 1 }], [{ \"kind\": \"non_terminal\", \"index\": 2 }]]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unused_expected_conflict_count\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce_expected\": 2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"comparison_keys\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"upstream_hash\": null") != null);
+}
+
+test "generateLocalConflictSummaryJsonAlloc records missing expected conflict surface" {
+    const json = try generateLocalConflictSummaryJsonAlloc(
+        std.testing.allocator,
+        "compat_targets/parse_table_missing_expected_conflict/grammar.json",
+        .{},
+    );
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"declared_expected_conflict_count\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce_expected\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"reason\": \"shift_reduce\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"reduce_parent_rules\": [\"term\"]") != null);
+}
+
+test "generateLocalConflictSummaryJsonAlloc records unused expected conflict identity" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const contents =
+        \\{
+        \\  "name": "unused_expected_conflict_summary",
+        \\  "expected_conflicts": [["source_file", "expr"]],
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "expr" },
+        \\    "expr": { "type": "STRING", "value": "x" }
+        \\  }
+        \\}
+    ;
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalConflictSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unused_expected_conflict_count\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unused_expected_conflict_index_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unused_expected_conflict_indexes\": [0]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"unused_expected_conflict_indexes\"") != null);
 }
 
 test "generateLocalConflictSummaryJsonAlloc records unexpected shift reduce conflicts" {

@@ -165,13 +165,23 @@ Gate:
 Goal: move from local conflict summaries to direct multi-conflict parity
 evidence.
 
-- [ ] Add or identify a grammar with multiple expected conflicts that upstream
+- [x] Add or identify a grammar with multiple expected conflicts that upstream
   accepts.
-- [ ] Emit local conflict-summary keys for expected-conflict set identity, not
+- [x] Emit local conflict-summary keys for expected-conflict set identity, not
   only counts.
-- [ ] Compare unused expected-conflict indexes against upstream behavior.
-- [ ] Add a negative fixture where one expected conflict is missing and both
+- [x] Compare unused expected-conflict indexes against upstream behavior.
+- [x] Add a negative fixture where one expected conflict is missing and both
   generators reject with the same useful parent-rule surface.
+
+Batch 6 note: `parse_table_multi_expected_conflict` declares two real
+conflicts using the upstream `conflicts` spelling; `compare-upstream` confirms
+the upstream generator accepts it. `parse_table_missing_expected_conflict`
+declares only the `expr` conflict, and upstream rejects the remaining `term`
+conflict while the local conflict summary reports the same parent-rule surface.
+Local `conflict-summary.json` now emits expected-conflict set hashes,
+declared-set details, unused-index hashes, and upstream-shaped comparison keys;
+the direct upstream raw expected-conflict artifact remains unavailable, so the
+comparison-key status is explicitly `upstream_oracle_missing`.
 
 Gate:
 
