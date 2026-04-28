@@ -10,6 +10,7 @@ pub const Command = union(enum) {
     help,
     generate: GenerateOptions,
     compare_upstream: CompareUpstreamOptions,
+    compat_report: CompatReportOptions,
 };
 
 pub const GenerateOptions = struct {
@@ -38,6 +39,12 @@ pub const CompareUpstreamOptions = struct {
     minimize_states: bool = false,
 };
 
+pub const CompatReportOptions = struct {
+    grammar_path: []const u8,
+    js_runtime: ?[]const u8 = null,
+    minimize_states: bool = false,
+};
+
 pub const ParseError = error{
     InvalidArguments,
 };
@@ -60,9 +67,49 @@ pub fn parseArgs(allocator: std.mem.Allocator, argv: []const []const u8) ParseEr
     if (std.mem.eql(u8, cmd, "compare-upstream")) {
         return Cli{ .command = .{ .compare_upstream = try parseCompareUpstreamArgs(argv[2..]) } };
     }
+    if (std.mem.eql(u8, cmd, "compat-report")) {
+        return Cli{ .command = .{ .compat_report = try parseCompatReportArgs(argv[2..]) } };
+    }
 
     last_error_message = "unknown command";
     return error.InvalidArguments;
+}
+
+fn parseCompatReportArgs(args: []const []const u8) ParseError!CompatReportOptions {
+    var opts = CompatReportOptions{
+        .grammar_path = "",
+    };
+
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
+
+        if (std.mem.eql(u8, arg, "--js-runtime")) {
+            i += 1;
+            if (i >= args.len) {
+                last_error_message = "missing value for --js-runtime";
+                return error.InvalidArguments;
+            }
+            opts.js_runtime = args[i];
+        } else if (std.mem.eql(u8, arg, "--minimize")) {
+            opts.minimize_states = true;
+        } else if (std.mem.startsWith(u8, arg, "-")) {
+            last_error_message = "unknown compat-report flag";
+            return error.InvalidArguments;
+        } else if (opts.grammar_path.len == 0) {
+            opts.grammar_path = arg;
+        } else {
+            last_error_message = "compat-report accepts only one grammar path";
+            return error.InvalidArguments;
+        }
+    }
+
+    if (opts.grammar_path.len == 0) {
+        last_error_message = "missing grammar path";
+        return error.InvalidArguments;
+    }
+
+    return opts;
 }
 
 fn parseCompareUpstreamArgs(args: []const []const u8) ParseError!CompareUpstreamOptions {
@@ -212,6 +259,7 @@ pub fn helpText() []const u8 {
     \\  gen-z-sitter help
     \\  gen-z-sitter generate [options] <grammar-path>
     \\  gen-z-sitter compare-upstream [options] <grammar-path>
+    \\  gen-z-sitter compat-report [options] <grammar-path>
     \\
     \\Common examples:
     \\  gen-z-sitter generate grammar.json
@@ -221,6 +269,7 @@ pub fn helpText() []const u8 {
     \\  gen-z-sitter generate --json-summary --minimize grammar.json
     \\  gen-z-sitter generate --output out --emit-parser-c --glr-loop grammar.json
     \\  gen-z-sitter compare-upstream --output .zig-cache/compat grammar.json
+    \\  gen-z-sitter compat-report grammar.json
     \\
     \\Generate options:
     \\  --output <dir>                 Write generated artifacts into <dir>.
@@ -243,6 +292,10 @@ pub fn helpText() []const u8 {
     \\  --js-runtime <runtime>         Runtime command used for grammar.js loading, default: node.
     \\  --report-states-for-rule <rule> Limit local parse-states.txt to states referencing <rule>.
     \\  --minimize                     Enable parse-table minimization in the local summary.
+    \\
+    \\Compat-report options:
+    \\  --js-runtime <runtime>         Runtime command used for grammar.js loading, default: node.
+    \\  --minimize                     Enable parse-table minimization in the local report.
     \\
     \\Current limits:
     \\  emitted grammar.json and compatibility reports are exercised through tests and build/debug targets rather than as stable CLI outputs.
@@ -320,6 +373,21 @@ test "parse compare-upstream command with selected parse-state rule" {
     });
     try std.testing.expect(cli.command == .compare_upstream);
     try std.testing.expectEqualStrings("expr", cli.command.compare_upstream.report_states_for_rule.?);
+}
+
+test "parse compat-report command with options" {
+    const cli = try parseArgs(std.testing.allocator, &.{
+        "gen-z-sitter",
+        "compat-report",
+        "--js-runtime",
+        "node",
+        "--minimize",
+        "grammar.json",
+    });
+    try std.testing.expect(cli.command == .compat_report);
+    try std.testing.expectEqualStrings("grammar.json", cli.command.compat_report.grammar_path);
+    try std.testing.expectEqualStrings("node", cli.command.compat_report.js_runtime.?);
+    try std.testing.expect(cli.command.compat_report.minimize_states);
 }
 
 test "reject missing grammar path" {

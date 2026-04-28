@@ -631,12 +631,19 @@ Gate:
 
 Goal: make compatibility claims precise and useful.
 
-- [ ] Add a `gen-z-sitter compat-report` or equivalent command that prints the
+- [x] Add a `gen-z-sitter compat-report` or equivalent command that prints the
   current support boundary for a grammar.
-- [ ] Expose whether a generated parser is scanner-free, scanner-linked,
+- [x] Expose whether a generated parser is scanner-free, scanner-linked,
   temporary-GLR, runtime-compatible, corpus-compared, or diagnostic-only.
 - [ ] Add generated parser metadata strings for known compatibility limits.
 - [ ] Document how users can reproduce the upstream comparison for their grammar.
+
+Batch 24 note: `gen-z-sitter compat-report` now prints local support status for
+one grammar, including scanner-free/scanner-linked status, external token count,
+serialized table sizes, runtime-limit fit, serialization readiness, runtime
+compatibility, diagnostic-only status, temporary GLR availability, corpus
+comparison status, and a recommended next step. The report is intentionally
+local-only; upstream/corpus parity still comes from `compare-upstream`.
 
 Gate:
 

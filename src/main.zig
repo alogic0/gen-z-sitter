@@ -1,5 +1,6 @@
 const std = @import("std");
 const cli_args = @import("cli/args.zig");
+const command_compat_report = @import("cli/command_compat_report.zig");
 const command_compare_upstream = @import("cli/command_compare_upstream.zig");
 const command_generate = @import("cli/command_generate.zig");
 const grammar_loader = @import("grammar/loader.zig");
@@ -47,6 +48,20 @@ pub fn main(init: std.process.Init) !void {
         },
         .compare_upstream => |opts| {
             command_compare_upstream.runCompareUpstream(allocator, io, opts) catch |err| switch (err) {
+                error.InvalidArguments => {
+                    std.process.exit(2);
+                },
+                else => {
+                    try diag.printStderr(io, diag.Diagnostic{
+                        .kind = .internal,
+                        .message = @errorName(err),
+                    });
+                    std.process.exit(1);
+                },
+            };
+        },
+        .compat_report => |opts| {
+            command_compat_report.runCompatReport(allocator, io, opts) catch |err| switch (err) {
                 error.InvalidArguments => {
                     std.process.exit(2);
                 },
