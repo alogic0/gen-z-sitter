@@ -402,6 +402,11 @@ by action kind plus max candidate width. Resolved precedence and associativity
 fixtures are therefore visible in compare-upstream artifacts instead of only in
 resolved-action-table golden text.
 
+Batch 58 note: `conflict-summary.json` now records chosen candidate shapes:
+shift/reduce, reduce/reduce, single-action, and other. This keeps static
+precedence, associativity, and reduce/reduce fixture coverage visible in the
+comparison artifact without depending on parser-state text dumps.
+
 ### 3.3 Token Conflicts and Lexical Precedence
 
 - [ ] Reproduce upstream token conflict analysis for overlapping literals,

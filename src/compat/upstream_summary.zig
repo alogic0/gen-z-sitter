@@ -1103,6 +1103,12 @@ fn writeConflictSummaryJson(
     try writeUsizeField(writer, 4, "accept", chosen_counts.accept, true);
     try writeUsizeField(writer, 4, "max_candidate_count", chosen_counts.max_candidate_count, false);
     try writer.writeAll("  },\n");
+    try writer.writeAll("  \"chosen_candidate_shapes\": {\n");
+    try writeUsizeField(writer, 4, "shift_reduce", chosen_counts.shift_reduce, true);
+    try writeUsizeField(writer, 4, "reduce_reduce", chosen_counts.reduce_reduce, true);
+    try writeUsizeField(writer, 4, "single_action", chosen_counts.single_action, true);
+    try writeUsizeField(writer, 4, "other", chosen_counts.other, false);
+    try writer.writeAll("  },\n");
     try writeUsizeField(writer, 2, "unresolved_count", unresolved.len, true);
     try writer.writeAll("  \"unresolved_reasons\": {\n");
     try writeUsizeField(writer, 4, "multiple_candidates", counts.multiple_candidates, true);
@@ -1120,12 +1126,22 @@ const ChosenDecisionCounts = struct {
     reduce: usize = 0,
     accept: usize = 0,
     max_candidate_count: usize = 0,
+    shift_reduce: usize = 0,
+    reduce_reduce: usize = 0,
+    single_action: usize = 0,
+    other: usize = 0,
 };
 
 fn chosenDecisionCounts(chosen: []const @import("../parse_table/resolution.zig").ChosenDecisionRef) ChosenDecisionCounts {
     var counts = ChosenDecisionCounts{};
     for (chosen) |decision| {
         counts.max_candidate_count = @max(counts.max_candidate_count, decision.candidate_actions.len);
+        switch (candidateShape(decision.candidate_actions)) {
+            .shift_reduce => counts.shift_reduce += 1,
+            .reduce_reduce => counts.reduce_reduce += 1,
+            .single_action => counts.single_action += 1,
+            .other => counts.other += 1,
+        }
         switch (decision.action) {
             .shift => counts.shift += 1,
             .reduce => counts.reduce += 1,
@@ -1133,6 +1149,30 @@ fn chosenDecisionCounts(chosen: []const @import("../parse_table/resolution.zig")
         }
     }
     return counts;
+}
+
+const CandidateShape = enum {
+    shift_reduce,
+    reduce_reduce,
+    single_action,
+    other,
+};
+
+fn candidateShape(actions: []const @import("../parse_table/actions.zig").ParseAction) CandidateShape {
+    if (actions.len <= 1) return .single_action;
+
+    var shift_count: usize = 0;
+    var reduce_count: usize = 0;
+    var accept_count: usize = 0;
+    for (actions) |action| switch (action) {
+        .shift => shift_count += 1,
+        .reduce => reduce_count += 1,
+        .accept => accept_count += 1,
+    };
+
+    if (accept_count == 0 and shift_count == 1 and reduce_count >= 1) return .shift_reduce;
+    if (accept_count == 0 and shift_count == 0 and reduce_count >= 2) return .reduce_reduce;
+    return .other;
 }
 
 const ConflictReasonCounts = struct {
@@ -2701,6 +2741,7 @@ test "generateLocalConflictSummaryJsonAlloc writes unresolved reason counts" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"declared_expected_conflict_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unused_expected_conflict_indexes\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_actions\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_candidate_shapes\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_reasons\"") != null);
 }
 
@@ -2721,6 +2762,7 @@ test "generateLocalConflictSummaryJsonAlloc writes resolved precedence decisions
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"reduce\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"max_candidate_count\": 2") != null);
 }
 
