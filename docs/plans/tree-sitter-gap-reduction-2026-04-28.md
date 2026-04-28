@@ -190,7 +190,7 @@ Gate:
 ### 2.2 Preparation Pipeline Order
 
 - [x] Verify local pass order against upstream preparation order.
-  - [ ] Align local repeat/default-alias/flatten ordering with upstream or
+  - [x] Align local repeat/default-alias/flatten ordering with upstream or
     document the exact equivalent local invariants.
   - [x] Add local indirect-recursion validation matching upstream
     `validate_indirect_recursion`.
@@ -211,9 +211,9 @@ Gate:
   - [x] Expose those hashes as structured comparison keys in
     `local-upstream-summary.json`, with an explicit `upstream_oracle_missing`
     status until a real upstream prepared-IR source exists.
-- [ ] Reproduce upstream repeat expansion and dedup behavior where local names
+- [x] Reproduce upstream repeat expansion and dedup behavior where local names
   or rule shapes still differ.
-- [ ] Reproduce upstream token extraction behavior for hidden terminals,
+- [x] Reproduce upstream token extraction behavior for hidden terminals,
   duplicate literals, token aliases, and external/internal token pairing.
   - [x] Use literal names for nested string/pattern terminals while keeping
     top-level lexical rules named after their grammar variable.
@@ -283,6 +283,24 @@ diffs, item-set snapshot mode, and lex-table comparison. The artifacts now
 carry structured local comparison keys and explicitly mark missing upstream
 oracles as `upstream_oracle_missing`, so remaining open items represent actual
 algorithm work rather than already-built comparison surfaces.
+
+Batch 112 note: upstream `prepare_grammar.rs` runs `extract_tokens`,
+`expand_repeats`, `flatten_grammar`, lexical `expand_tokens`,
+`extract_default_aliases`, then `process_inlines`. The local pipeline embeds
+repeat expansion during token extraction: top-level hidden repeats are promoted
+to auxiliary variables, nested repeats are cached by `(rule_id, at_least_one)`,
+and the prepared/extracted/flattened snapshots expose the resulting names and
+hashes. Local default-alias extraction runs on syntax productions before the
+final flatten step because the local IR already stores production-shaped syntax
+at extraction time; alias-sequence and node-types tests cover the equivalent
+observable behavior.
+
+Batch 113 note: Phase 2.2 repeat/token extraction items are now marked
+complete. Existing extraction tests cover hidden-wrapper literal naming,
+equivalent literal reuse, external token metadata, aliased tokenized symbol
+boundaries, promoted hidden top-level repeats, and duplicated repeat-content
+deduplication. These are the local equivalents of the upstream
+`extract_tokens` and `expand_repeats` behaviors needed by the promoted targets.
 
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 
