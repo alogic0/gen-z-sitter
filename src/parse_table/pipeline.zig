@@ -1875,6 +1875,29 @@ test "serializeTableFromPrepared carries recursive external close reduce lookahe
     try std.testing.expect(external_state[1]);
 }
 
+test "attachKeywordLexTableAlloc exposes unmapped real reserved-word strings" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var loaded = try grammar_loader.loadGrammarFile(
+        arena.allocator(),
+        "compat_targets/tree_sitter_javascript/grammar.json",
+    );
+    defer loaded.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+    try std.testing.expect(prepared.word_token != null);
+    try std.testing.expect(prepared.reserved_word_sets.len > 0);
+
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const serialized = try serialize.attachKeywordLexTableAlloc(arena.allocator(), .{
+        .states = &.{},
+        .blocked = false,
+    }, prepared, extracted.lexical);
+
+    try std.testing.expect(serialized.keyword_lex_table == null);
+}
+
 test "serializeTableFromPrepared carries promoted default aliases into alias sequences" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

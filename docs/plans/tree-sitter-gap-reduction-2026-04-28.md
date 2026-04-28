@@ -522,6 +522,10 @@ behavior instead of only lexer-model unit tests.
 - [ ] Reproduce upstream keyword lexer behavior for real word-token grammars.
   - [x] Include serialized keyword-lexer table counts and hashes in lex table
     comparison artifacts.
+  - [x] Add bounded real-grammar coverage for the current unmapped
+    reserved-string gap.
+  - [ ] Map raw reserved-word strings to runtime keyword symbols so JavaScript
+    and Python produce non-empty keyword lexer tables.
 - [x] Protect external-token valid-symbol behavior with stateful scanner tests.
 
 Gate:
@@ -549,6 +553,14 @@ Batch 71 note: `lex-table-summary.json` table entries now include an `accepts`
 array with accept state IDs and accepted symbols. This makes accept-token shape
 inspectable directly in comparison artifacts instead of requiring users to infer
 it from the aggregate accept-symbol hash.
+
+Batch 75 note: keyword lexer serialization now has a bounded real-grammar gap
+test: the JavaScript grammar snapshot is loaded and prepared, its word-token
+and reserved sets are verified, and the current serializer is expected to leave
+`keyword_lex_table` null because raw reserved strings are not yet mapped to
+runtime keyword symbols. The next algorithm step is to reproduce upstream's
+reserved-string symbol mapping instead of only handling reserved members that
+already correspond to lexical variables.
 
 ### 4.3 Emitted Lexer C Parity
 
