@@ -57,18 +57,18 @@ const deferred_grammars = [_]GrammarBoundary{
     },
     .{
         .id = "tree_sitter_python_json",
-        .status = "deferred",
-        .proof = "load/prepare plus bounded parser-boundary classification; indentation scanner promotion remains separate",
+        .status = "deferred_runtime_proof",
+        .proof = "bounded coarse serialize-only parser proof plus parser.c compile-smoke; indentation scanner runtime proof remains separate",
     },
     .{
         .id = "tree_sitter_typescript_json",
-        .status = "deferred",
-        .proof = "load/prepare plus bounded parser-boundary classification; large parser-table proof remains heavy",
+        .status = "deferred_runtime_proof",
+        .proof = "bounded coarse serialize-only parser proof plus parser.c compile-smoke; JavaScript-family scanner runtime proof remains separate",
     },
     .{
         .id = "tree_sitter_rust_json",
-        .status = "deferred",
-        .proof = "load/prepare plus bounded parser-boundary classification; large lexer/parser proof remains heavy",
+        .status = "deferred_runtime_proof",
+        .proof = "bounded coarse serialize-only parser proof plus parser.c compile-smoke; string/comment scanner runtime proof remains separate",
     },
     .{
         .id = "parse_table_conflict_json",
@@ -81,7 +81,7 @@ const runtime_surface_gaps = [_][]const u8{
     "generated GLR recovery is bounded and visible, but not full tree-sitter runtime recovery parity",
     "generated result/tree output is exposed through the temporary ts_generated_parse_result API",
     "external scanner proofs are focused runtime-link samples, not broad corpus-level runtime equivalence",
-    "large deferred grammars remain behind bounded parser-boundary classification and profiling",
+    "large JavaScript-family and scanner-heavy grammars still defer full parser-table parity and real scanner runtime equivalence",
 };
 
 const bounded_release_gates = [_][]const u8{

@@ -37,7 +37,7 @@
   "recommended_next_milestone": "second_wave_parser_only_repo_coverage",
   "recommendation_rationale": [
     "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-    "one deferred parser-only fixture is an intentional upstream-rejected ambiguity, while JavaScript, Python, TypeScript, and Rust are real external parser-only candidates held at load/prepare because broader parser-table proofs remain outside the bounded routine budget",
-    "the next promoted milestone should narrow or promote the onboarded JavaScript, Python, TypeScript, and Rust snapshots before adding another large parser-only grammar to the stable first wave"
+    "one deferred parser-only fixture is an intentional upstream-rejected ambiguity, while JavaScript is the remaining real large parser-only snapshot held at prepare-only because broader parser-table proofs remain outside the bounded routine budget",
+    "Python, TypeScript, and Rust now have bounded coarse serialize-only parser proofs, so the next promoted milestone should either narrow JavaScript's scanner/parser boundary or move one promoted large grammar toward a real scanner runtime proof"
   ]
 }

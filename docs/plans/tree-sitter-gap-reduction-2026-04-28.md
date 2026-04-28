@@ -619,6 +619,12 @@ TypeScript, and Rust have bounded routine coarse serialize-only parser proofs.
 The artifact still tracks full parser-table parity and external-scanner
 runtime-link proof as deferred for all four.
 
+Batch 36 note: coverage-decision and release-boundary artifacts now use the
+same promoted-boundary language. JavaScript is the remaining prepare-only large
+parser-wave target; Python, TypeScript, and Rust are described as deferred for
+full parser-table/runtime proof after passing bounded coarse serialize-only
+parser proof and compile-smoke.
+
 ## Phase 7 — Performance and Capacity
 
 Goal: keep correctness work practical for large grammars.
