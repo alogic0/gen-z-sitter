@@ -1037,6 +1037,15 @@ fn writeItemSetEntryJson(
     try writer.print("{d}", .{entry.item.production_id});
     try writer.writeAll(", \"step_index\": ");
     try writer.print("{d}", .{entry.item.step_index});
+    if (entry.item.production_id < result.productions.len) {
+        const production = result.productions[entry.item.production_id];
+        try writer.writeAll(", \"production_lhs\": ");
+        try writer.print("{d}", .{production.lhs});
+        try writer.writeAll(", \"production_step_count\": ");
+        try writer.print("{d}", .{production.steps.len});
+        try writer.writeAll(", \"at_end\": ");
+        try writeBoolJson(writer, entry.item.step_index >= production.steps.len);
+    }
     try writer.writeAll(", \"origin\": ");
     try writeJsonString(writer, itemOrigin(result, entry));
     try writer.writeAll(", \"following_reserved_word_set_id\": ");
@@ -3049,6 +3058,9 @@ test "generateLocalItemSetSnapshotJsonAlloc writes selected item-set entries" {
     defer std.testing.allocator.free(json);
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"selected_rule\": \"source_file\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"production_lhs\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"production_step_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"at_end\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"origin\": \"kernel\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"origin\": \"closure\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"lookaheads\"") != null);
