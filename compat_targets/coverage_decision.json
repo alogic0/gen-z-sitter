@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "first_wave_target_count": 9,
-  "first_wave_passed_count": 9,
+  "first_wave_target_count": 10,
+  "first_wave_passed_count": 10,
   "first_wave_non_passing_count": 0,
   "parser_only_boundary_proven": true,
   "deferred_parser_wave_singleton": false,
@@ -13,11 +13,11 @@
   },
   "standalone_parser_probe_pass_count": 0,
   "proven_boundary": [
-    "9 intended first-wave parser-only targets are currently in the run set",
-    "9 intended first-wave targets currently pass within the staged parser-only boundary",
+    "10 intended first-wave parser-only targets are currently in the run set",
+    "10 intended first-wave targets currently pass within the staged parser-only boundary",
     "7 intended scanner-wave targets currently pass within the staged scanner boundary",
     "0 shortlist target currently carries a passing standalone coarse serialize-only probe outside the routine shortlist boundary",
-    "3 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
+    "4 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
   ],
   "deferred_parser_only_targets": [
     {
@@ -31,12 +31,6 @@
       "display_name": "tree-sitter-javascript (JSON snapshot)",
       "grammar_path": "compat_targets/tree_sitter_javascript/grammar.json",
       "notes": "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, currently kept at load/prepare level because full lookahead-sensitive serialization exceeds the bounded compatibility budget"
-    },
-    {
-      "id": "tree_sitter_python_json",
-      "display_name": "tree-sitter-python (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_python/grammar.json",
-      "notes": "real Python grammar snapshot from the local tree-sitter-python repo, initially kept at load/prepare level before testing parser-table serialization and external-scanner runtime-link promotion"
     },
     {
       "id": "tree_sitter_typescript_json",

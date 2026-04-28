@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "deferred_parser_wave_target_count": 3,
+  "deferred_parser_wave_target_count": 2,
   "singleton_parser_wave": false,
   "entries": [
     {
@@ -26,30 +26,6 @@
       "measured_standalone_serialized_state_count": 1299,
       "decision": "keep_standalone_probe",
       "rationale": "the next named proof step for tree_sitter_javascript_json is serialize_only; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave target is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet"
-    },
-    {
-      "id": "tree_sitter_python_json",
-      "display_name": "tree-sitter-python (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_python/grammar.json",
-      "family": "python",
-      "current_parser_boundary_check_mode": "prepare_only",
-      "proposed_parser_boundary_check_mode": "serialize_only",
-      "evaluation_surface": "standalone_probe",
-      "routine_refresh_safe": false,
-      "routine_boundary_hypothesis": "no_safe_routine_step_yet",
-      "routine_refresh_candidate_mode": null,
-      "routine_refresh_blocker": "no routine-safe parser boundary step is promoted yet for tree_sitter_python_json; the measured standalone coarse serialize-only probe reaches 1038 serialized states but remains blocked, while external-scanner runtime-link proof remains a later promotion step",
-      "singleton_parser_wave": false,
-      "current_proven_steps": [
-        "load",
-        "prepare"
-      ],
-      "deferred_from_step": "serialize",
-      "standalone_probe_status": "implemented_passing",
-      "standalone_probe_detail": "standalone coarse serialize-only probe is implemented and reaches 1038 serialized states for tree_sitter_python_json, but records blocked=true, so routine parser-table and external-scanner proofs remain deferred",
-      "measured_standalone_serialized_state_count": 1038,
-      "decision": "keep_standalone_probe",
-      "rationale": "the next named proof step for tree_sitter_python_json is serialize_only; it remains scoped to standalone_probe because the routine compatibility refresh should stay fast and stable while this deferred parser-wave target is evaluated more narrowly, and no routine-safe next step beyond the current boundary is promoted yet"
     },
     {
       "id": "tree_sitter_typescript_json",

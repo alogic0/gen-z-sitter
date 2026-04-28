@@ -1255,7 +1255,7 @@ fn writeExternalScannerTables(
         const symbol = emittedSymbolForRef(symbols, symbol_ref) orelse return error.OutOfMemory;
         try writer.writeAll("  ts_external_token_");
         try writeCIdentifierFragment(writer, symbol.label);
-        try writer.print(" = {d},\n", .{local_index});
+        try writer.print("_{d} = {d},\n", .{ local_index, local_index });
     }
     try writer.writeAll("};\n\n");
 
@@ -3083,9 +3083,9 @@ test "emitParserCAlloc emits external scanner symbols and declarations" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define EXTERNAL_TOKEN_COUNT 3\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "enum ts_external_scanner_symbol_identifiers {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_OPEN = 0,\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_CLOSE = 1,\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_ERROR_SENTINEL = 2,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_OPEN_0 = 0,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_CLOSE_1 = 1,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_ERROR_SENTINEL_2 = 2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_external_scanner_symbol_map[EXTERNAL_TOKEN_COUNT] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const bool ts_external_scanner_states[][EXTERNAL_TOKEN_COUNT] = {\n"));
@@ -3098,6 +3098,39 @@ test "emitParserCAlloc emits external scanner symbols and declarations" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .symbol_map = ts_external_scanner_symbol_map,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .create = tree_sitter_external_grammar_external_scanner_create,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    .deserialize = tree_sitter_external_grammar_external_scanner_deserialize,\n"));
+}
+
+test "emitParserCAlloc keeps external scanner enum identifiers unique after sanitizing labels" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_name = "external grammar",
+        .symbols = &[_]serialize.SerializedSymbolInfo{
+            .{ .ref = .{ .external = 0 }, .name = "", .named = false, .visible = false, .supertype = false, .public_symbol = 0 },
+            .{ .ref = .{ .external = 1 }, .name = "", .named = false, .visible = false, .supertype = false, .public_symbol = 1 },
+            .{ .ref = .{ .external = 2 }, .name = "$", .named = false, .visible = false, .supertype = false, .public_symbol = 2 },
+        },
+        .external_scanner = .{
+            .symbols = &[_]syntax_grammar.SymbolRef{
+                .{ .external = 0 },
+                .{ .external = 1 },
+                .{ .external = 2 },
+            },
+            .states = &[_][]const bool{
+                &.{ true, true, true },
+            },
+        },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token___0 = 0,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token___1 = 1,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token___2 = 2,\n"));
 }
 
 test "emitParserCAlloc emits opt-in GLR external scanner callback path" {

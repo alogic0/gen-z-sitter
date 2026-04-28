@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "total_external_repo_targets": 11,
-  "passed_external_repo_targets": 8,
-  "standalone_parser_proof_targets": 3,
+  "passed_external_repo_targets": 9,
+  "standalone_parser_proof_targets": 4,
   "family_coverage": [
     {
       "family": "ziggy",
@@ -56,7 +56,7 @@
       "family": "python",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 0
+      "passed_count": 1
     },
     {
       "family": "typescript",
@@ -75,7 +75,7 @@
     {
       "boundary_kind": "parser_only",
       "target_count": 9,
-      "passed_count": 6
+      "passed_count": 7
     },
     {
       "boundary_kind": "scanner_external_scanner",
@@ -226,13 +226,13 @@
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
       "proof_scope": "none",
-      "standalone_parser_proof_scope": "none",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
       "upstream_repository": "tree-sitter-python",
       "upstream_revision": "26855eabccb19c6abf499fbc5b8dc7cc9ab8bc64",
       "upstream_grammar_path": "src/grammar.json",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "routine_serialize_proof_boundary",
-      "notes": "real Python grammar snapshot from the local tree-sitter-python repo, initially kept at load/prepare level before testing parser-table serialization and external-scanner runtime-link promotion"
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real Python grammar snapshot from the local tree-sitter-python repo, now promoted to the bounded coarse serialize-only parser proof while full parser-table and external-scanner runtime-link proofs remain deferred"
     },
     {
       "id": "tree_sitter_typescript_json",

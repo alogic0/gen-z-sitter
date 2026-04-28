@@ -595,6 +595,14 @@ artifacts record it as passing the current boundary with 2660 serialized states
 and a blocked diagnostic table, while full lookahead-sensitive parser-table
 parity remains deferred.
 
+Batch 33 note: `tree_sitter_python_json` is promoted from prepare-only to the
+bounded coarse serialize-only parser proof after generated external scanner enum
+identifiers were made unique when labels sanitize to the same C fragment. The
+refreshed compatibility artifacts record it as passing the current parser-only
+boundary with 1034 serialized states and a blocked diagnostic table. Full
+parser-table parity and the indentation-sensitive external-scanner runtime-link
+proof remain deferred.
+
 ## Phase 7 — Performance and Capacity
 
 Goal: keep correctness work practical for large grammars.

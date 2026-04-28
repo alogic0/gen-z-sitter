@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "target_count": 3,
+  "target_count": 2,
   "entries": [
     {
       "id": "tree_sitter_javascript_json",
@@ -34,42 +34,6 @@
         "inline_rule_count": 14,
         "supertype_count": 5,
         "reserved_set_count": 2,
-        "has_word_token": true,
-        "word_token": "identifier"
-      }
-    },
-    {
-      "id": "tree_sitter_python_json",
-      "display_name": "tree-sitter-python (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_python/grammar.json",
-      "family": "python",
-      "parser_boundary_check_mode": "prepare_only",
-      "next_parser_boundary_check_mode": "serialize_only",
-      "candidate_status": "deferred_parser_wave",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "routine_serialize_proof_boundary",
-      "current_proven_steps": [
-        "load",
-        "prepare"
-      ],
-      "deferred_from_step": "serialize",
-      "not_run_steps": [
-        "emit_parser_tables",
-        "emit_parser_c",
-        "scanner_boundary_check",
-        "compat_check",
-        "compile_smoke"
-      ],
-      "detail": "routine lookahead-sensitive serialize proof is still deferred for tree_sitter_python_json: the shortlist stays at prepare_only, while the only passing next proof remains the standalone coarse serialize-only probe",
-      "grammar_shape": {
-        "rule_count": 150,
-        "precedence_count": 0,
-        "conflict_count": 9,
-        "external_count": 12,
-        "extra_count": 3,
-        "inline_rule_count": 6,
-        "supertype_count": 7,
-        "reserved_set_count": 1,
         "has_word_token": true,
         "word_token": "identifier"
       }
