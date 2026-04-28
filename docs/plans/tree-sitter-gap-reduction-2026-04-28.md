@@ -360,8 +360,8 @@ cores, lookaheads, transitions, and conflicts.
   - shift/reduce resolved by associativity,
   - reduce/reduce resolved by precedence,
   - dynamic precedence preserved as unresolved runtime choice,
-  - expected conflict allowed,
-  - unexpected conflict rejected.
+  - [x] expected conflict allowed,
+  - [x] unexpected conflict rejected.
 - [ ] Ensure error messages identify the same useful parent rules that upstream
   reports.
 
@@ -375,6 +375,12 @@ Batch 18 note: local comparison artifacts now include
 conflict indexes, total unresolved decisions, and unresolved reason counts.
 This gives conflict-resolution work a stable local baseline before adding
 upstream-shaped conflict comparison fixtures.
+
+Batch 19 note: compare-upstream now writes local artifacts before the upstream
+runtime/corpus gate. Intentionally rejected conflict fixtures still produce
+local `conflict-summary.json`; the expected shift/reduce fixture records
+`shift_reduce_expected: 1`, while the unexpected fixture records
+`shift_reduce: 1`.
 
 ### 3.3 Token Conflicts and Lexical Precedence
 

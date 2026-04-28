@@ -1720,3 +1720,31 @@ test "generateLocalConflictSummaryJsonAlloc writes unresolved reason counts" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unused_expected_conflict_indexes\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_reasons\"") != null);
 }
+
+test "generateLocalConflictSummaryJsonAlloc distinguishes expected shift reduce conflicts" {
+    const json = try generateLocalConflictSummaryJsonAlloc(
+        std.testing.allocator,
+        "compat_targets/parse_table_expected_conflict/grammar.json",
+        .{},
+    );
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"declared_expected_conflict_count\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unused_expected_conflict_count\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce_expected\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 0") != null);
+}
+
+test "generateLocalConflictSummaryJsonAlloc records unexpected shift reduce conflicts" {
+    const json = try generateLocalConflictSummaryJsonAlloc(
+        std.testing.allocator,
+        "compat_targets/parse_table_conflict/grammar.json",
+        .{},
+    );
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"declared_expected_conflict_count\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_count\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce_expected\": 0") != null);
+}

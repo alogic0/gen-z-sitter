@@ -259,6 +259,8 @@ fn runCorpusComparisonAlloc(
     snapshot: ReferenceStatus,
     local_artifacts: *LocalArtifacts,
 ) !CorpusComparison {
+    try writeLocalArtifactsAlloc(allocator, opts, output_root, local_artifacts);
+
     if (snapshot.parser_c_path == null) {
         return .{
             .status = try allocator.dupe(u8, "skipped"),
@@ -272,6 +274,72 @@ fn runCorpusComparisonAlloc(
         };
     }
 
+    const local_parser_path = local_artifacts.parser_c_path.?;
+
+    const driver_path = try std.fs.path.join(allocator, &.{ output_root, "corpus_driver.c" });
+    defer allocator.free(driver_path);
+    const driver_source = try corpusDriverSourceAlloc(allocator, grammar_name);
+    defer allocator.free(driver_source);
+    try fs_support.writeFile(driver_path, driver_source);
+
+    const local_exe = try std.fs.path.join(allocator, &.{ output_root, "local-parser-runner" });
+    defer allocator.free(local_exe);
+    const upstream_exe = try std.fs.path.join(allocator, &.{ output_root, "upstream-parser-runner" });
+    defer allocator.free(upstream_exe);
+    try compileParserRunner(allocator, local_parser_path, output_root, driver_path, local_exe);
+    try compileParserRunner(allocator, snapshot.parser_c_path.?, snapshot.output_dir.?, driver_path, upstream_exe);
+
+    const samples = try loadCorpusSamplesAlloc(allocator, opts.grammar_path, grammar_name);
+    defer {
+        for (samples) |sample| {
+            allocator.free(sample.name);
+            allocator.free(sample.input);
+        }
+        allocator.free(samples);
+    }
+
+    const results = try allocator.alloc(CorpusSampleResult, samples.len);
+    var result_count: usize = 0;
+    errdefer {
+        for (results[0..result_count]) |result| result.deinit(allocator);
+        allocator.free(results);
+    }
+    var all_match = true;
+    var any_failed = false;
+    for (samples, 0..) |sample, index| {
+        const local_result = runParserRunnerAlloc(allocator, local_exe, sample.input) catch null;
+        const upstream_result = runParserRunnerAlloc(allocator, upstream_exe, sample.input) catch null;
+        any_failed = any_failed or local_result == null or upstream_result == null;
+        const matches = if (local_result != null and upstream_result != null)
+            local_result.?.has_error == upstream_result.?.has_error and
+                local_result.?.consumed_bytes == upstream_result.?.consumed_bytes and
+                std.mem.eql(u8, local_result.?.tree, upstream_result.?.tree)
+        else
+            false;
+        all_match = all_match and matches;
+        results[index] = .{
+            .name = try allocator.dupe(u8, sample.name),
+            .input = try allocator.dupe(u8, sample.input),
+            .local = local_result,
+            .upstream = upstream_result,
+            .matches = matches,
+        };
+        result_count += 1;
+    }
+
+    return .{
+        .status = try allocator.dupe(u8, if (all_match) "matched" else if (any_failed) "runner_failed" else "different"),
+        .note = try allocator.dupe(u8, "compared local and upstream generated parsers on bounded samples"),
+        .samples = results,
+    };
+}
+
+fn writeLocalArtifactsAlloc(
+    allocator: std.mem.Allocator,
+    opts: args.CompareUpstreamOptions,
+    output_root: []const u8,
+    local_artifacts: *LocalArtifacts,
+) !void {
     const local_dir = try std.fs.path.join(allocator, &.{ output_root, "local" });
     errdefer allocator.free(local_dir);
     std.Io.Dir.cwd().deleteTree(runtime_io.get(), local_dir) catch {};
@@ -342,63 +410,6 @@ fn runCorpusComparisonAlloc(
     local_artifacts.parser_c_path = local_parser_path;
     local_artifacts.node_types_path = local_node_types_path;
     local_artifacts.prepared_ir_path = local_prepared_ir_path;
-
-    const driver_path = try std.fs.path.join(allocator, &.{ output_root, "corpus_driver.c" });
-    defer allocator.free(driver_path);
-    const driver_source = try corpusDriverSourceAlloc(allocator, grammar_name);
-    defer allocator.free(driver_source);
-    try fs_support.writeFile(driver_path, driver_source);
-
-    const local_exe = try std.fs.path.join(allocator, &.{ output_root, "local-parser-runner" });
-    defer allocator.free(local_exe);
-    const upstream_exe = try std.fs.path.join(allocator, &.{ output_root, "upstream-parser-runner" });
-    defer allocator.free(upstream_exe);
-    try compileParserRunner(allocator, local_parser_path, output_root, driver_path, local_exe);
-    try compileParserRunner(allocator, snapshot.parser_c_path.?, snapshot.output_dir.?, driver_path, upstream_exe);
-
-    const samples = try loadCorpusSamplesAlloc(allocator, opts.grammar_path, grammar_name);
-    defer {
-        for (samples) |sample| {
-            allocator.free(sample.name);
-            allocator.free(sample.input);
-        }
-        allocator.free(samples);
-    }
-
-    const results = try allocator.alloc(CorpusSampleResult, samples.len);
-    var result_count: usize = 0;
-    errdefer {
-        for (results[0..result_count]) |result| result.deinit(allocator);
-        allocator.free(results);
-    }
-    var all_match = true;
-    var any_failed = false;
-    for (samples, 0..) |sample, index| {
-        const local_result = runParserRunnerAlloc(allocator, local_exe, sample.input) catch null;
-        const upstream_result = runParserRunnerAlloc(allocator, upstream_exe, sample.input) catch null;
-        any_failed = any_failed or local_result == null or upstream_result == null;
-        const matches = if (local_result != null and upstream_result != null)
-            local_result.?.has_error == upstream_result.?.has_error and
-                local_result.?.consumed_bytes == upstream_result.?.consumed_bytes and
-                std.mem.eql(u8, local_result.?.tree, upstream_result.?.tree)
-        else
-            false;
-        all_match = all_match and matches;
-        results[index] = .{
-            .name = try allocator.dupe(u8, sample.name),
-            .input = try allocator.dupe(u8, sample.input),
-            .local = local_result,
-            .upstream = upstream_result,
-            .matches = matches,
-        };
-        result_count += 1;
-    }
-
-    return .{
-        .status = try allocator.dupe(u8, if (all_match) "matched" else if (any_failed) "runner_failed" else "different"),
-        .note = try allocator.dupe(u8, "compared local and upstream generated parsers on bounded samples"),
-        .samples = results,
-    };
 }
 
 const CorpusSample = struct {
@@ -741,6 +752,7 @@ test "runCompareUpstream writes local summary report" {
     try std.testing.expect(std.mem.indexOf(u8, report, "\"parse_states_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"parse_states_summary_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"conflict_summary_path\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report, "local/conflict-summary.json") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"prepared_ir_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"upstream\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"available\": false") != null);
