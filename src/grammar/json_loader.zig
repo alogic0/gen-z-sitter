@@ -14,8 +14,12 @@ pub const LoadError = error{
     InvalidRuleShape,
     InvalidReservedWordSet,
     InvalidPrecedenceValue,
+    UnsupportedRuleType,
     OutOfMemory,
 };
+
+threadlocal var last_error_note_buffer: [512]u8 = undefined;
+threadlocal var last_error_note: ?[]const u8 = null;
 
 pub const LoadedJsonGrammar = struct {
     arena: std.heap.ArenaAllocator,
@@ -49,6 +53,13 @@ pub fn loadGrammarJson(gpa: std.mem.Allocator, path: []const u8) LoadError!Loade
     return loadGrammarJsonFromSliceWithArena(arena, contents);
 }
 
+pub fn errorNote(err: LoadError) ?[]const u8 {
+    return switch (err) {
+        error.UnsupportedRuleType => last_error_note,
+        else => null,
+    };
+}
+
 pub fn loadGrammarJsonFromSlice(gpa: std.mem.Allocator, contents: []const u8) LoadError!LoadedJsonGrammar {
     var arena = std.heap.ArenaAllocator.init(gpa);
     errdefer arena.deinit();
@@ -59,6 +70,7 @@ fn loadGrammarJsonFromSliceWithArena(arena: std.heap.ArenaAllocator, contents: [
     var owned_arena = arena;
     errdefer owned_arena.deinit();
     const allocator = owned_arena.allocator();
+    last_error_note = null;
 
     var parsed = std.json.parseFromSlice(std.json.Value, allocator, contents, .{}) catch {
         return error.JsonParseFailure;
@@ -94,19 +106,20 @@ pub fn parseTopLevel(allocator: std.mem.Allocator, value: std.json.Value) LoadEr
 
     const name_value = object.get("name") orelse return error.MissingName;
     const rules_value = object.get("rules") orelse return error.MissingRules;
+    const grammar_name = try expectString(name_value);
 
     return .{
-        .name = try expectString(name_value),
+        .name = grammar_name,
         .version = parseVersion(object.get("version")),
-        .rules = try parseRuleEntries(allocator, rules_value),
-        .precedences = try parsePrecedences(allocator, object.get("precedences")),
+        .rules = try parseRuleEntries(allocator, grammar_name, rules_value),
+        .precedences = try parsePrecedences(allocator, grammar_name, object.get("precedences")),
         .expected_conflicts = try parseExpectedConflicts(allocator, object),
-        .externals = try parseRuleArray(allocator, object.get("externals")),
-        .extras = try parseRuleArray(allocator, object.get("extras")),
+        .externals = try parseRuleArray(allocator, grammar_name, "externals", object.get("externals")),
+        .extras = try parseRuleArray(allocator, grammar_name, "extras", object.get("extras")),
         .inline_rules = try parseStringArray(allocator, object.get("inline")),
         .supertypes = try parseStringArray(allocator, object.get("supertypes")),
         .word = if (object.get("word")) |word| try expectString(word) else null,
-        .reserved = try parseReservedSets(allocator, object.get("reserved")),
+        .reserved = try parseReservedSets(allocator, grammar_name, object.get("reserved")),
     };
 }
 
@@ -127,7 +140,11 @@ fn parseVersion(value: ?std.json.Value) [3]u8 {
     return parsed;
 }
 
-fn parseRuleEntries(allocator: std.mem.Allocator, value: std.json.Value) LoadError![]const raw.RawRuleEntry {
+fn parseRuleEntries(
+    allocator: std.mem.Allocator,
+    grammar_name: []const u8,
+    value: std.json.Value,
+) LoadError![]const raw.RawRuleEntry {
     const object = switch (value) {
         .object => |obj| obj,
         else => return error.MissingRules,
@@ -138,29 +155,39 @@ fn parseRuleEntries(allocator: std.mem.Allocator, value: std.json.Value) LoadErr
 
     var it = object.iterator();
     while (it.next()) |entry| {
+        const rule_path = try std.fmt.allocPrint(allocator, "rules.{s}", .{entry.key_ptr.*});
         try entries.append(.{
             .name = entry.key_ptr.*,
-            .rule = try parseRuleAlloc(allocator, entry.value_ptr.*),
+            .rule = try parseRuleAllocAtPath(allocator, grammar_name, rule_path, entry.value_ptr.*),
         });
     }
 
     return try entries.toOwnedSlice();
 }
 
-fn parsePrecedences(allocator: std.mem.Allocator, value: ?std.json.Value) LoadError![]const raw.PrecedenceList {
+fn parsePrecedences(
+    allocator: std.mem.Allocator,
+    grammar_name: []const u8,
+    value: ?std.json.Value,
+) LoadError![]const raw.PrecedenceList {
     const precedence_value = value orelse return &.{};
     const top = try expectArray(precedence_value);
 
     var result = std.array_list.Managed(raw.PrecedenceList).init(allocator);
     defer result.deinit();
 
-    for (top.items) |member| {
+    for (top.items, 0..) |member, ordering_index| {
         const list = try expectArray(member);
         var parsed_list = std.array_list.Managed(*const raw.RawRule).init(allocator);
         defer parsed_list.deinit();
 
-        for (list.items) |item| {
-            try parsed_list.append(try parseRuleAlloc(allocator, item));
+        for (list.items, 0..) |item, entry_index| {
+            const rule_path = try std.fmt.allocPrint(
+                allocator,
+                "precedences[{d}][{d}]",
+                .{ ordering_index, entry_index },
+            );
+            try parsed_list.append(try parseRuleAllocAtPath(allocator, grammar_name, rule_path, item));
         }
 
         try result.append(try parsed_list.toOwnedSlice());
@@ -202,15 +229,21 @@ fn parseExpectedConflicts(
     return try result.toOwnedSlice();
 }
 
-fn parseRuleArray(allocator: std.mem.Allocator, value: ?std.json.Value) LoadError![]const *const raw.RawRule {
+fn parseRuleArray(
+    allocator: std.mem.Allocator,
+    grammar_name: []const u8,
+    label: []const u8,
+    value: ?std.json.Value,
+) LoadError![]const *const raw.RawRule {
     const array_value = value orelse return &.{};
     const arr = try expectArray(array_value);
 
     var result = std.array_list.Managed(*const raw.RawRule).init(allocator);
     defer result.deinit();
 
-    for (arr.items) |item| {
-        try result.append(try parseRuleAlloc(allocator, item));
+    for (arr.items, 0..) |item, index| {
+        const rule_path = try std.fmt.allocPrint(allocator, "{s}[{d}]", .{ label, index });
+        try result.append(try parseRuleAllocAtPath(allocator, grammar_name, rule_path, item));
     }
 
     return try result.toOwnedSlice();
@@ -233,7 +266,11 @@ fn parseStringArrayRequired(allocator: std.mem.Allocator, value: std.json.Value)
     return try result.toOwnedSlice();
 }
 
-fn parseReservedSets(allocator: std.mem.Allocator, value: ?std.json.Value) LoadError![]const raw.RawReservedSet {
+fn parseReservedSets(
+    allocator: std.mem.Allocator,
+    grammar_name: []const u8,
+    value: ?std.json.Value,
+) LoadError![]const raw.RawReservedSet {
     const reserved_value = value orelse return &.{};
     const object = switch (reserved_value) {
         .object => |obj| obj,
@@ -253,8 +290,13 @@ fn parseReservedSets(allocator: std.mem.Allocator, value: ?std.json.Value) LoadE
         var members = std.array_list.Managed(*const raw.RawRule).init(allocator);
         defer members.deinit();
 
-        for (arr.items) |item| {
-            try members.append(try parseRuleAlloc(allocator, item));
+        for (arr.items, 0..) |item, index| {
+            const rule_path = try std.fmt.allocPrint(
+                allocator,
+                "reserved.{s}[{d}]",
+                .{ entry.key_ptr.*, index },
+            );
+            try members.append(try parseRuleAllocAtPath(allocator, grammar_name, rule_path, item));
         }
 
         try result.append(.{
@@ -267,12 +309,30 @@ fn parseReservedSets(allocator: std.mem.Allocator, value: ?std.json.Value) LoadE
 }
 
 fn parseRuleAlloc(allocator: std.mem.Allocator, value: std.json.Value) LoadError!*const raw.RawRule {
+    return parseRuleAllocAtPath(allocator, "<unknown>", "<rule>", value);
+}
+
+fn parseRuleAllocAtPath(
+    allocator: std.mem.Allocator,
+    grammar_name: []const u8,
+    rule_path: []const u8,
+    value: std.json.Value,
+) LoadError!*const raw.RawRule {
     const rule = try allocator.create(raw.RawRule);
-    rule.* = try parseRule(allocator, value);
+    rule.* = try parseRuleAtPath(allocator, grammar_name, rule_path, value);
     return rule;
 }
 
 fn parseRule(allocator: std.mem.Allocator, value: std.json.Value) LoadError!raw.RawRule {
+    return parseRuleAtPath(allocator, "<unknown>", "<rule>", value);
+}
+
+fn parseRuleAtPath(
+    allocator: std.mem.Allocator,
+    grammar_name: []const u8,
+    rule_path: []const u8,
+    value: std.json.Value,
+) LoadError!raw.RawRule {
     const object = switch (value) {
         .object => |obj| obj,
         else => return error.InvalidRuleShape,
@@ -282,8 +342,9 @@ fn parseRule(allocator: std.mem.Allocator, value: std.json.Value) LoadError!raw.
     const rule_type = try expectString(type_value);
 
     if (std.mem.eql(u8, rule_type, "ALIAS")) {
+        const content_path = try childRulePath(allocator, rule_path, ".content");
         return .{ .alias = .{
-            .content = try parseRuleAlloc(allocator, object.get("content") orelse return error.InvalidRuleShape),
+            .content = try parseRuleAllocAtPath(allocator, grammar_name, content_path, object.get("content") orelse return error.InvalidRuleShape),
             .named = try expectBool(object.get("named") orelse return error.InvalidRuleShape),
             .value = try expectString(object.get("value") orelse return error.InvalidRuleShape),
         } };
@@ -304,73 +365,102 @@ fn parseRule(allocator: std.mem.Allocator, value: std.json.Value) LoadError!raw.
         return .{ .symbol = try expectString(object.get("name") orelse return error.InvalidRuleShape) };
     }
     if (std.mem.eql(u8, rule_type, "CHOICE")) {
-        return .{ .choice = try parseMembers(allocator, object.get("members") orelse return error.InvalidRuleShape) };
+        return .{ .choice = try parseMembers(allocator, grammar_name, rule_path, object.get("members") orelse return error.InvalidRuleShape) };
     }
     if (std.mem.eql(u8, rule_type, "FIELD")) {
+        const content_path = try childRulePath(allocator, rule_path, ".content");
         return .{ .field = .{
             .name = try expectString(object.get("name") orelse return error.InvalidRuleShape),
-            .content = try parseRuleAlloc(allocator, object.get("content") orelse return error.InvalidRuleShape),
+            .content = try parseRuleAllocAtPath(allocator, grammar_name, content_path, object.get("content") orelse return error.InvalidRuleShape),
         } };
     }
     if (std.mem.eql(u8, rule_type, "SEQ")) {
-        return .{ .seq = try parseMembers(allocator, object.get("members") orelse return error.InvalidRuleShape) };
+        return .{ .seq = try parseMembers(allocator, grammar_name, rule_path, object.get("members") orelse return error.InvalidRuleShape) };
     }
     if (std.mem.eql(u8, rule_type, "REPEAT")) {
-        return .{ .repeat = try parseRuleAlloc(allocator, object.get("content") orelse return error.InvalidRuleShape) };
+        const content_path = try childRulePath(allocator, rule_path, ".content");
+        return .{ .repeat = try parseRuleAllocAtPath(allocator, grammar_name, content_path, object.get("content") orelse return error.InvalidRuleShape) };
     }
     if (std.mem.eql(u8, rule_type, "REPEAT1")) {
-        return .{ .repeat1 = try parseRuleAlloc(allocator, object.get("content") orelse return error.InvalidRuleShape) };
+        const content_path = try childRulePath(allocator, rule_path, ".content");
+        return .{ .repeat1 = try parseRuleAllocAtPath(allocator, grammar_name, content_path, object.get("content") orelse return error.InvalidRuleShape) };
     }
     if (std.mem.eql(u8, rule_type, "PREC_DYNAMIC")) {
+        const content_path = try childRulePath(allocator, rule_path, ".content");
         return .{ .prec_dynamic = .{
             .value = try expectI32(object.get("value") orelse return error.InvalidRuleShape),
-            .content = try parseRuleAlloc(allocator, object.get("content") orelse return error.InvalidRuleShape),
+            .content = try parseRuleAllocAtPath(allocator, grammar_name, content_path, object.get("content") orelse return error.InvalidRuleShape),
         } };
     }
     if (std.mem.eql(u8, rule_type, "PREC_LEFT")) {
+        const content_path = try childRulePath(allocator, rule_path, ".content");
         return .{ .prec_left = .{
             .value = try parsePrecedenceValue(object.get("value") orelse return error.InvalidRuleShape),
-            .content = try parseRuleAlloc(allocator, object.get("content") orelse return error.InvalidRuleShape),
+            .content = try parseRuleAllocAtPath(allocator, grammar_name, content_path, object.get("content") orelse return error.InvalidRuleShape),
         } };
     }
     if (std.mem.eql(u8, rule_type, "PREC_RIGHT")) {
+        const content_path = try childRulePath(allocator, rule_path, ".content");
         return .{ .prec_right = .{
             .value = try parsePrecedenceValue(object.get("value") orelse return error.InvalidRuleShape),
-            .content = try parseRuleAlloc(allocator, object.get("content") orelse return error.InvalidRuleShape),
+            .content = try parseRuleAllocAtPath(allocator, grammar_name, content_path, object.get("content") orelse return error.InvalidRuleShape),
         } };
     }
     if (std.mem.eql(u8, rule_type, "PREC")) {
+        const content_path = try childRulePath(allocator, rule_path, ".content");
         return .{ .prec = .{
             .value = try parsePrecedenceValue(object.get("value") orelse return error.InvalidRuleShape),
-            .content = try parseRuleAlloc(allocator, object.get("content") orelse return error.InvalidRuleShape),
+            .content = try parseRuleAllocAtPath(allocator, grammar_name, content_path, object.get("content") orelse return error.InvalidRuleShape),
         } };
     }
     if (std.mem.eql(u8, rule_type, "TOKEN")) {
-        return .{ .token = try parseRuleAlloc(allocator, object.get("content") orelse return error.InvalidRuleShape) };
+        const content_path = try childRulePath(allocator, rule_path, ".content");
+        return .{ .token = try parseRuleAllocAtPath(allocator, grammar_name, content_path, object.get("content") orelse return error.InvalidRuleShape) };
     }
     if (std.mem.eql(u8, rule_type, "IMMEDIATE_TOKEN")) {
-        return .{ .immediate_token = try parseRuleAlloc(allocator, object.get("content") orelse return error.InvalidRuleShape) };
+        const content_path = try childRulePath(allocator, rule_path, ".content");
+        return .{ .immediate_token = try parseRuleAllocAtPath(allocator, grammar_name, content_path, object.get("content") orelse return error.InvalidRuleShape) };
     }
     if (std.mem.eql(u8, rule_type, "RESERVED")) {
+        const content_path = try childRulePath(allocator, rule_path, ".content");
         return .{ .reserved = .{
             .context_name = try expectString(object.get("context_name") orelse return error.InvalidRuleShape),
-            .content = try parseRuleAlloc(allocator, object.get("content") orelse return error.InvalidRuleShape),
+            .content = try parseRuleAllocAtPath(allocator, grammar_name, content_path, object.get("content") orelse return error.InvalidRuleShape),
         } };
     }
 
-    return error.InvalidRuleShape;
+    setUnsupportedRuleTypeNote(grammar_name, rule_path, rule_type);
+    return error.UnsupportedRuleType;
 }
 
-fn parseMembers(allocator: std.mem.Allocator, value: std.json.Value) LoadError![]const *const raw.RawRule {
+fn parseMembers(
+    allocator: std.mem.Allocator,
+    grammar_name: []const u8,
+    rule_path: []const u8,
+    value: std.json.Value,
+) LoadError![]const *const raw.RawRule {
     const arr = try expectArray(value);
     var result = std.array_list.Managed(*const raw.RawRule).init(allocator);
     defer result.deinit();
 
-    for (arr.items) |item| {
-        try result.append(try parseRuleAlloc(allocator, item));
+    for (arr.items, 0..) |item, index| {
+        const member_path = try std.fmt.allocPrint(allocator, "{s}.members[{d}]", .{ rule_path, index });
+        try result.append(try parseRuleAllocAtPath(allocator, grammar_name, member_path, item));
     }
 
     return try result.toOwnedSlice();
+}
+
+fn childRulePath(allocator: std.mem.Allocator, rule_path: []const u8, suffix: []const u8) LoadError![]const u8 {
+    return try std.fmt.allocPrint(allocator, "{s}{s}", .{ rule_path, suffix });
+}
+
+fn setUnsupportedRuleTypeNote(grammar_name: []const u8, rule_path: []const u8, rule_type: []const u8) void {
+    last_error_note = std.fmt.bufPrint(
+        &last_error_note_buffer,
+        "grammar `{s}` rule path `{s}` uses unsupported DSL rule type `{s}`",
+        .{ grammar_name, rule_path, rule_type },
+    ) catch "unsupported DSL rule type";
 }
 
 fn parsePrecedenceValue(value: std.json.Value) LoadError!raw.RawPrecedenceValue {
@@ -514,6 +604,28 @@ test "loadGrammarJsonFromSlice defaults missing and malformed semantic versions"
     defer malformed.deinit();
 
     try std.testing.expectEqual([3]u8{ 0, 0, 0 }, malformed.grammar.version);
+}
+
+test "loadGrammarJsonFromSlice reports unsupported rule type path" {
+    const contents =
+        \\{
+        \\  "name": "unsupported_demo",
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        { "type": "UNSUPPORTED_NODE" }
+        \\      ]
+        \\    }
+        \\  }
+        \\}
+    ;
+
+    try std.testing.expectError(error.UnsupportedRuleType, loadGrammarJsonFromSlice(std.testing.allocator, contents));
+    const note = errorNote(error.UnsupportedRuleType) orelse return error.TestExpectedEqual;
+    try std.testing.expect(std.mem.indexOf(u8, note, "unsupported_demo") != null);
+    try std.testing.expect(std.mem.indexOf(u8, note, "rules.source_file.members[0]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, note, "UNSUPPORTED_NODE") != null);
 }
 
 test "loadGrammarJsonFromSlice accepts expected_conflicts spelling" {

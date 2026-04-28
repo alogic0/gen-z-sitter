@@ -76,6 +76,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
                 try diag.printStderr(io, .{
                     .kind = .internal,
                     .message = grammar_loader.errorMessage(err),
+                    .note = grammar_loader.errorNote(err),
                     .path = opts.grammar_path,
                 });
                 return err;
@@ -84,6 +85,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
                 try diag.printStderr(io, .{
                     .kind = if (err == error.IoFailure or err == error.ProcessFailure) .io else .usage,
                     .message = grammar_loader.errorMessage(err),
+                    .note = grammar_loader.errorNote(err),
                     .path = opts.grammar_path,
                 });
                 return error.InvalidArguments;

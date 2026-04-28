@@ -54,12 +54,20 @@ pub fn errorMessage(err: LoaderError) []const u8 {
         error.InvalidRuleShape => "grammar.json contains an invalid rule shape",
         error.InvalidReservedWordSet => "reserved word sets must be arrays",
         error.InvalidPrecedenceValue => "invalid precedence value",
+        error.UnsupportedRuleType => "grammar.json contains an unsupported DSL rule type",
         error.ProcessFailure => "failed to execute node for grammar.js loading",
         error.OutOfMemory => "out of memory while loading grammar.json",
         error.EmptyName => "grammar name must not be empty",
         error.EmptyRules => "grammar must contain at least one rule",
         error.InvalidExtra => "rules in the `extras` array must not contain empty strings",
         error.UnexpectedPrecedenceEntry => "invalid rule in precedences array; only strings and symbols are allowed",
+    };
+}
+
+pub fn errorNote(err: LoaderError) ?[]const u8 {
+    return switch (err) {
+        error.UnsupportedRuleType => json_loader.errorNote(error.UnsupportedRuleType),
+        else => null,
     };
 }
 

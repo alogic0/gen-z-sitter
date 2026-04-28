@@ -155,7 +155,7 @@ Goal: remove hidden differences before table construction starts.
   `inline`, `supertypes`, `word`, and `extras`.
 - [ ] Add grammar-loader differential fixtures that serialize both upstream and
   local raw grammar structure.
-- [ ] Make unsupported DSL constructs fail explicitly with target name and rule
+- [x] Make unsupported DSL constructs fail explicitly with target name and rule
   path.
 
 Batch 3 note: `docs/plans/dsl-coverage-2026-04-28.md` records the current DSL
@@ -165,6 +165,12 @@ JSON-shaped grammar object. Upstream `tree-sitter generate --no-parser` did not
 produce a normalized `grammar.json` for the JSON snapshot, so raw-grammar
 differential fixtures need a different oracle than the standard upstream output
 directory.
+
+Batch 9 note: unknown JSON DSL rule types now fail as `UnsupportedRuleType`
+with a note containing the grammar name, rule path, and unsupported raw type.
+The generate command prints this note through the standard diagnostic path, so
+new real-grammar gaps identify the exact unsupported construct instead of
+collapsing into a generic invalid shape error.
 
 Gate:
 
