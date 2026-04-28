@@ -275,17 +275,17 @@ prepared-IR artifact.
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 
 - [x] Compare local `node-types.json` with upstream for promoted targets.
-- [ ] Fix field `multiple` and `required` classification mismatches.
+- [x] Fix field `multiple` and `required` classification mismatches.
   - [x] Match JSON `children` and field required/multiple quantities against
     upstream, including blank alternatives and self-recursive repeat helpers.
   - [x] Match Ziggy empty `fields: {}` emission and node-type ordering for
     named syntax leaves that lower through lexical/repeat-token paths.
   - [x] Apply field metadata to every lowered child of a wrapped sequence or
     choice, matching Ziggy Schema field `multiple` and type aggregation.
-- [ ] Fix alias visibility/namedness mismatches.
+- [x] Fix alias visibility/namedness mismatches.
   - [x] Materialize anonymous per-step aliases as top-level node-types entries,
     matching Ziggy Schema `_tag_name`.
-- [ ] Fix supertype and subtype ordering mismatches.
+- [x] Fix supertype and subtype ordering mismatches.
   - [x] Treat hidden supertypes as visible named child/field entries in
     node-types computation.
 - [x] Add a golden-refresh command that only updates local goldens after the
@@ -334,6 +334,12 @@ node-types fixture goldens against current generated output. Write mode requires
 `-Dnode-type-golden-evidence=<local-upstream-summary.json>`, and rejects
 upstream comparison reports with regression classifications or different
 node-types evidence.
+
+Batch 99 note: Phase 2.3 parent items are now marked complete after rerunning
+`compare-upstream` for JSON, Ziggy, and Ziggy Schema. All three reports still
+show matching normalized `node_types_hash` values and
+`node_types_diff.status = matched`, so the remaining plan work can move back
+to lex/parse/runtime parity instead of node-types cleanup.
 
 ## Phase 3 — Parse Table Algorithm Parity
 
