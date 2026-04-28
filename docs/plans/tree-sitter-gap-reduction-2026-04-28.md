@@ -496,6 +496,8 @@ Goal: close the scanner-free lexical gap enough for larger real grammars.
   Tree-sitter grammar tokens, and immediate-token boundaries.
   - [x] Mark unsupported regex-surface features per pattern in comparison
     artifacts.
+  - [x] Explicitly flag anchors, `(?...)` group prefixes, backreferences, and
+    lazy quantifiers in regex-surface artifacts.
 - [ ] Add grammar-level tests where regex support affects accepted input, not
   just regex unit tests.
   - [x] Cover scanner-free accepted input for character classes, escapes, and
@@ -523,6 +525,11 @@ token test for character classes, `\d` escapes, and bounded repeats. The test
 asserts that valid input is accepted without recovery and that a malformed
 short token makes less progress, so regex support is covered through parser
 behavior instead of only lexer-model unit tests.
+
+Batch 79 note: regex-surface artifacts now classify additional unsupported
+constructs explicitly: anchors, `(?...)` group prefixes, numeric
+backreferences, and lazy quantifiers. These show up in per-pattern
+`unsupported_features` and aggregate feature counts before lexer construction.
 
 ### 4.2 Lex Table Construction
 
