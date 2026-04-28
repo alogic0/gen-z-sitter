@@ -679,6 +679,12 @@ alive across multiple external-token scans. The indentation layout stack remains
 separate because a tiny artificial parser needs a faithful newline/indent token
 boundary to avoid overstating parity.
 
+Batch 44 note: JavaScript scanner runtime coverage now includes `jsx_text` in
+addition to `_ternary_qmark`. The focused runtime-link fixture scans `hello`
+through the upstream `jsx_text` path, and the JavaScript single-token fixture was
+generalized so additional shallow external-token paths can reuse the same
+generated parser shape.
+
 ## Phase 7 — Performance and Capacity
 
 Goal: keep correctness work practical for large grammars.

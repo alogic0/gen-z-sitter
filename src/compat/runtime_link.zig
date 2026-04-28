@@ -24,6 +24,7 @@ const bash_bare_dollar_external_id = 15;
 const javascript_scanner_path = "../tree-sitter-grammars/tree-sitter-javascript/src/scanner.c";
 const javascript_scanner_include_dir = "../tree-sitter-grammars/tree-sitter-javascript/src";
 const javascript_ternary_qmark_external_id = 2;
+const javascript_jsx_text_external_id = 7;
 const typescript_scanner_path = "../tree-sitter-grammars/tree-sitter-typescript/typescript/src/scanner.c";
 const typescript_scanner_include_dir = "../tree-sitter-grammars/tree-sitter-typescript/typescript/src";
 const typescript_ternary_qmark_external_id = 2;
@@ -603,6 +604,29 @@ pub fn linkAndRunJavascriptTernaryParserWithRealExternalScanner(allocator: std.m
         .scanner_c = scanner_c,
         .scanner_include_dirs = &.{javascript_scanner_include_dir},
         .input = "?",
+        .expected_root_type = "program",
+    });
+}
+
+pub fn linkAndRunJavascriptJsxTextParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(javascript_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitJavascriptJsxTextParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        javascript_scanner_path,
+        arena.allocator(),
+        .limited(512 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{javascript_scanner_include_dir},
+        .input = "hello",
         .expected_root_type = "program",
     });
 }
@@ -1347,6 +1371,13 @@ fn emitJavascriptTernaryParserC(allocator: std.mem.Allocator) RuntimeLinkError![
     });
 }
 
+fn emitJavascriptJsxTextParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitJavascriptSingleExternalParserCWithOptions(allocator, .{
+        .offset_start_state = true,
+        .glr_loop = false,
+    }, javascript_jsx_text_external_id);
+}
+
 fn emitJavascriptTernaryGlrParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
     return try emitJavascriptTernaryParserCWithOptions(allocator, .{
         .offset_start_state = false,
@@ -1400,6 +1431,14 @@ fn emitJavascriptTernaryParserCWithOptions(
     allocator: std.mem.Allocator,
     options: TinyParserOptions,
 ) RuntimeLinkError![]const u8 {
+    return try emitJavascriptSingleExternalParserCWithOptions(allocator, options, javascript_ternary_qmark_external_id);
+}
+
+fn emitJavascriptSingleExternalParserCWithOptions(
+    allocator: std.mem.Allocator,
+    options: TinyParserOptions,
+    active_external_id: usize,
+) RuntimeLinkError![]const u8 {
     const external_names = [_][]const u8{
         "_automatic_semicolon",
         "_template_chars",
@@ -1417,8 +1456,8 @@ fn emitJavascriptTernaryParserCWithOptions(
         symbols[index + 1] = .{
             .ref = .{ .external = @intCast(index) },
             .name = name,
-            .named = index == javascript_ternary_qmark_external_id,
-            .visible = index == javascript_ternary_qmark_external_id,
+            .named = index == active_external_id,
+            .visible = index == active_external_id,
             .supertype = false,
             .public_symbol = @intCast(index + 1),
         };
@@ -1436,7 +1475,7 @@ fn emitJavascriptTernaryParserCWithOptions(
         .{ .lhs = 0, .child_count = 1, .dynamic_precedence = 0 },
     });
     const start_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .external = javascript_ternary_qmark_external_id }, .action = .{ .shift = 2 } },
+        .{ .symbol = .{ .external = @intCast(active_external_id) }, .action = .{ .shift = 2 } },
     });
     const start_gotos = try allocator.dupe(serialize.SerializedGotoEntry, &.{
         .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
@@ -1454,7 +1493,7 @@ fn emitJavascriptTernaryParserCWithOptions(
         .{ .id = 3, .lex_state_id = 0, .actions = accept_actions, .gotos = &.{}, .unresolved = &.{} },
     });
     const glr_start_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .external = javascript_ternary_qmark_external_id }, .action = .{ .shift = 1 } },
+        .{ .symbol = .{ .external = @intCast(active_external_id) }, .action = .{ .shift = 1 } },
     });
     const glr_start_gotos = try allocator.dupe(serialize.SerializedGotoEntry, &.{
         .{ .symbol = .{ .non_terminal = 0 }, .state = 2 },
@@ -1495,7 +1534,7 @@ fn emitJavascriptTernaryParserCWithOptions(
     const external_state_1 = try allocator.alloc(bool, external_names.len);
     @memset(external_state_0, false);
     @memset(external_state_1, false);
-    external_state_1[javascript_ternary_qmark_external_id] = true;
+    external_state_1[active_external_id] = true;
     const external_states = try allocator.dupe([]const bool, &.{
         external_state_0,
         external_state_1,
@@ -3669,6 +3708,10 @@ test "linkAndRunBashGeneratedGlrParserWithRealExternalScanner calls generated GL
 
 test "linkAndRunJavascriptTernaryParserWithRealExternalScanner links generated JavaScript parser with upstream scanner" {
     try linkAndRunJavascriptTernaryParserWithRealExternalScanner(std.testing.allocator);
+}
+
+test "linkAndRunJavascriptJsxTextParserWithRealExternalScanner links generated JavaScript JSX text parser with upstream scanner" {
+    try linkAndRunJavascriptJsxTextParserWithRealExternalScanner(std.testing.allocator);
 }
 
 test "linkAndRunJavascriptTernaryGeneratedGlrParserWithRealExternalScanner calls generated GLR JavaScript scanner path" {
