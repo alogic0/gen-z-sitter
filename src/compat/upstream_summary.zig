@@ -2107,6 +2107,24 @@ fn writePreparedIrSnapshotJson(
     if (prepared.symbols.len != 0) try writer.writeAll("  ");
     try writer.writeAll("],\n");
 
+    try writer.writeAll("  \"prepared_word_token\": ");
+    try writeOptionalSymbolId(writer, prepared.word_token);
+    try writer.writeAll(",\n");
+
+    try writer.writeAll("  \"prepared_reserved_word_sets\": [");
+    if (prepared.reserved_word_sets.len != 0) try writer.writeByte('\n');
+    for (prepared.reserved_word_sets, 0..) |reserved_set, index| {
+        try writer.writeAll("    { \"context\": ");
+        try writeJsonString(writer, reserved_set.context_name);
+        try writer.writeAll(", \"members\": ");
+        try writeRuleIdArray(writer, reserved_set.members);
+        try writer.writeAll(" }");
+        if (index + 1 != prepared.reserved_word_sets.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (prepared.reserved_word_sets.len != 0) try writer.writeAll("  ");
+    try writer.writeAll("],\n");
+
     try writer.writeAll("  \"extracted_lexical_variables\": [");
     if (extracted.lexical.variables.len != 0) try writer.writeByte('\n');
     for (extracted.lexical.variables, 0..) |variable, index| {
@@ -2188,6 +2206,20 @@ fn writeRuleIdArray(writer: anytype, values: []const @import("../ir/rules.zig").
         try writer.print("{d}", .{value});
     }
     try writer.writeByte(']');
+}
+
+fn writeOptionalSymbolId(writer: anytype, maybe_symbol: ?@import("../ir/symbols.zig").SymbolId) !void {
+    if (maybe_symbol) |symbol| {
+        try writeSymbolId(writer, symbol);
+    } else {
+        try writer.writeAll("null");
+    }
+}
+
+fn writeSymbolId(writer: anytype, symbol: @import("../ir/symbols.zig").SymbolId) !void {
+    try writer.writeAll("{ \"kind\": ");
+    try writeJsonString(writer, @tagName(symbol.kind));
+    try writer.print(", \"index\": {d} }}", .{symbol.index});
 }
 
 fn writeOptionalSymbolRef(writer: anytype, maybe_symbol: ?syntax_ir.SymbolRef) !void {
@@ -2721,6 +2753,8 @@ test "generateLocalPreparedIrSnapshotJsonAlloc writes diffable sections" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"prepared_variables\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"local_stage_order\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"prepared_symbols\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"prepared_word_token\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"prepared_reserved_word_sets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_lexical_variables\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_expected_conflicts\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_variables_to_inline\"") != null);

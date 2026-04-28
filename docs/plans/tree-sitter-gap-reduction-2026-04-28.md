@@ -204,6 +204,8 @@ Gate:
   - [x] Write a detailed local `prepared-ir.json` artifact with prepared
     variables, symbols, extracted lexical variables, and flattened syntax
     variable counts.
+  - [x] Include prepared word-token and reserved-word set details in
+    `prepared-ir.json`.
 - [ ] Reproduce upstream repeat expansion and dedup behavior where local names
   or rule shapes still differ.
 - [ ] Reproduce upstream token extraction behavior for hidden terminals,
@@ -250,6 +252,11 @@ tokens, extra symbols, expected conflicts, precedence orderings,
 variables-to-inline, supertypes, and the word token. These are local
 equivalent artifacts for upstream lexical expansion/inlining surfaces until a
 direct upstream prepared-IR dump exists.
+
+Batch 77 note: `prepared-ir.json` now records the prepared word token before
+extraction and each prepared reserved-word set with its context and lowered
+member rule IDs. This makes raw reserved-string keyword gaps visible at the
+preparation artifact layer before lex-table serialization.
 
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 
