@@ -23,7 +23,7 @@ const TransitionContext = struct {
     symbol: syntax_ir.SymbolRef,
 };
 
-const ConstructProfile = struct {
+pub const ConstructProfile = struct {
     states_processed: usize = 0,
     successor_groups: usize = 0,
     successor_seed_items: usize = 0,
@@ -1367,6 +1367,7 @@ pub const BuildOptions = struct {
     non_terminal_extra_symbols: []const syntax_ir.SymbolRef = &.{},
     minimize_states: bool = false,
     strict_expected_conflicts: bool = false,
+    construct_profile: ?*ConstructProfile = null,
 };
 
 fn shouldUseCoarseTransition(options: BuildOptions, source_state_id: state.StateId, symbol: syntax_ir.SymbolRef) bool {
@@ -1608,17 +1609,24 @@ pub fn buildStatesWithOptions(
 ) BuildError!BuildResult {
     const progress_log = shouldLogBuildProgress();
     const profile_log = shouldProfileBuild();
+    const profile_capture = options.construct_profile != null;
+    const profile_enabled = profile_log or profile_capture;
     const build_profile_timer = profileTimer(profile_log);
-    if (profile_log) {
+    if (profile_enabled) {
         item.resetSymbolSetProfile();
         item.setSymbolSetProfileEnabled(true);
         resetConstructProfile();
         construct_profile_enabled = true;
     }
-    defer if (profile_log) {
-        logProfileDone("build_states_total", build_profile_timer);
-        logSymbolSetProfile();
-        logConstructProfile();
+    defer if (profile_enabled) {
+        if (profile_log) {
+            logProfileDone("build_states_total", build_profile_timer);
+            logSymbolSetProfile();
+            logConstructProfile();
+        }
+        if (options.construct_profile) |profile| {
+            profile.* = construct_profile;
+        }
         item.setSymbolSetProfileEnabled(false);
         construct_profile_enabled = false;
     };

@@ -697,15 +697,23 @@ Goal: keep correctness work practical for large grammars.
 
 ### 7.1 Parse Construction Costs
 
-- [ ] Keep per-stage construction profiling enabled for real grammar targets.
+- [x] Keep per-stage construction profiling enabled for real grammar targets.
 - [ ] Finish SymbolSet bitset compression if allocation churn remains visible.
 - [ ] Compact closure and item-set keys if cache misses dominate.
-- [ ] Add state-interning metrics to promotion artifacts.
+- [x] Add state-interning metrics to promotion artifacts.
 
 Gate:
 
 - Large real grammar profiling identifies the current bottleneck before any
   structural optimization lands.
+
+Batch 48 note: compatibility emission snapshots now carry a structured
+`parse_construct_profile` captured directly from parse-table construction. The
+profile records state-interning calls/reuse, closure cache hit/miss counters,
+successor seed cache counters, item-set hash/equality work, transition action
+timings, and state/item totals for promoted parser targets. Refreshed shortlist
+artifacts now keep these construction counters next to parser size and compile
+metrics.
 
 ### 7.2 Runtime Table Capacity
 

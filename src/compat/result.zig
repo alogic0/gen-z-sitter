@@ -54,6 +54,33 @@ pub const StepResult = struct {
     }
 };
 
+pub const ParseConstructProfileSnapshot = struct {
+    states_processed: usize = 0,
+    successor_groups: usize = 0,
+    successor_seed_items: usize = 0,
+    state_intern_calls: usize = 0,
+    state_intern_reused: usize = 0,
+    state_intern_new: usize = 0,
+    state_items_stored: usize = 0,
+    closure_cache_hits: usize = 0,
+    closure_cache_misses: usize = 0,
+    closure_runs: usize = 0,
+    closure_items_returned: usize = 0,
+    closure_expansion_cache_hits: usize = 0,
+    closure_expansion_cache_misses: usize = 0,
+    successor_seed_cache_hits: usize = 0,
+    successor_seed_cache_misses: usize = 0,
+    item_set_hash_calls: usize = 0,
+    item_set_hash_entries: usize = 0,
+    item_set_eql_calls: usize = 0,
+    item_set_eql_entries: usize = 0,
+    collect_transitions_ns: u64 = 0,
+    extra_transitions_ns: u64 = 0,
+    reserved_word_ns: u64 = 0,
+    build_actions_ns: u64 = 0,
+    detect_conflicts_ns: u64 = 0,
+};
+
 pub const EmissionSnapshot = struct {
     blocked: bool,
     serialized_state_count: usize,
@@ -69,6 +96,7 @@ pub const EmissionSnapshot = struct {
     emit_parser_c_ms: ?f64 = null,
     compile_smoke_ms: ?f64 = null,
     compile_smoke_max_rss_bytes: ?usize = null,
+    parse_construct_profile: ?ParseConstructProfileSnapshot = null,
 };
 
 pub const BlockedSymbolKind = enum {

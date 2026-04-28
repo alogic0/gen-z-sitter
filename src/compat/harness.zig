@@ -215,6 +215,37 @@ fn elapsedMs(start_ts: std.Io.Timestamp) f64 {
     return @as(f64, @floatFromInt(elapsed.nanoseconds)) / @as(f64, std.time.ns_per_ms);
 }
 
+fn parseConstructProfileSnapshot(
+    profile: parse_table_build.ConstructProfile,
+) result_model.ParseConstructProfileSnapshot {
+    return .{
+        .states_processed = profile.states_processed,
+        .successor_groups = profile.successor_groups,
+        .successor_seed_items = profile.successor_seed_items,
+        .state_intern_calls = profile.state_intern_calls,
+        .state_intern_reused = profile.state_intern_reused,
+        .state_intern_new = profile.state_intern_new,
+        .state_items_stored = profile.state_items_stored,
+        .closure_cache_hits = profile.closure_cache_hits,
+        .closure_cache_misses = profile.closure_cache_misses,
+        .closure_runs = profile.closure_runs,
+        .closure_items_returned = profile.closure_items_returned,
+        .closure_expansion_cache_hits = profile.closure_expansion_cache_hits,
+        .closure_expansion_cache_misses = profile.closure_expansion_cache_misses,
+        .successor_seed_cache_hits = profile.successor_seed_cache_hits,
+        .successor_seed_cache_misses = profile.successor_seed_cache_misses,
+        .item_set_hash_calls = profile.item_set_hash_calls,
+        .item_set_hash_entries = profile.item_set_hash_entries,
+        .item_set_eql_calls = profile.item_set_eql_calls,
+        .item_set_eql_entries = profile.item_set_eql_entries,
+        .collect_transitions_ns = profile.collect_transitions_ns,
+        .extra_transitions_ns = profile.extra_transitions_ns,
+        .reserved_word_ns = profile.reserved_word_ns,
+        .build_actions_ns = profile.build_actions_ns,
+        .detect_conflicts_ns = profile.detect_conflicts_ns,
+    };
+}
+
 fn functionSpanBytes(source: []const u8, start_marker: []const u8, end_marker: []const u8) usize {
     const start = std.mem.indexOf(u8, source, start_marker) orelse return 0;
     const end = std.mem.indexOfPos(u8, source, start + start_marker.len, end_marker) orelse return source.len - start;
@@ -448,11 +479,15 @@ pub fn runTarget(
         std.debug.print("[compat/harness] stage serialize {s}\n", .{target.id});
         const serialize_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
         if (detail_progress) logDetailStart(target.id, "routine_coarse_serialize_only");
+        var parse_construct_profile = parse_table_build.ConstructProfile{};
         const serialized = parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
             arena.allocator(),
             prepared,
             .diagnostic,
-            .{ .closure_lookahead_mode = .none },
+            .{
+                .closure_lookahead_mode = .none,
+                .construct_profile = &parse_construct_profile,
+            },
         ) catch |err| {
             return failRun(
                 &run,
@@ -566,6 +601,7 @@ pub fn runTarget(
                     .emit_parser_c_ms = if (options.profile_timings) parser_c_ms else null,
                     .compile_smoke_ms = if (options.profile_timings) compile_smoke_ms else null,
                     .compile_smoke_max_rss_bytes = success.max_rss_bytes,
+                    .parse_construct_profile = parseConstructProfileSnapshot(parse_construct_profile),
                 };
                 if (shouldStopAfter(options, .compile_smoke)) return run;
             },
@@ -1049,7 +1085,13 @@ pub fn runTarget(
         parse_table_pipeline.setScopedProgressEnabled(false);
     };
 
-    const serialized = parse_table_pipeline.serializeTableFromPrepared(arena.allocator(), prepared, .diagnostic) catch |err| {
+    var parse_construct_profile = parse_table_build.ConstructProfile{};
+    const serialized = parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+        arena.allocator(),
+        prepared,
+        .diagnostic,
+        .{ .construct_profile = &parse_construct_profile },
+    ) catch |err| {
         return failRun(
             &run,
             .serialize,
@@ -1105,6 +1147,7 @@ pub fn runTarget(
             "static const TSLexerMode ts_lex_modes",
         ),
         .emit_parser_c_ms = if (options.profile_timings) parser_c_ms else null,
+        .parse_construct_profile = parseConstructProfileSnapshot(parse_construct_profile),
     };
     if (emission_stats.blocked) {
         const extracted = extract_tokens.extractTokens(arena.allocator(), prepared) catch |err| {
