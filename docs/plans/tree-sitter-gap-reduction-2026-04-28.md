@@ -492,9 +492,9 @@ regex blockers exact token names and pattern strings before changing lexer
 behavior.
 
 Batch 61 note: `regex-surface.json` now adds per-pattern support status and
-unsupported feature names. Bounded repeats, groups, alternation, and anchors
-are classified as unsupported surfaces so real grammar blockers identify the
-exact token and regex construct.
+unsupported feature names. The current classifier marks anchors as unsupported
+while treating bounded repeats, ordinary/non-capturing groups, and alternation
+as supported by the local regex parser.
 
 ### 4.2 Lex Table Construction
 

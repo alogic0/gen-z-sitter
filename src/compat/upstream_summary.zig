@@ -1623,27 +1623,12 @@ fn regexFeatureSummary(value: []const u8) RegexFeatureSummary {
 }
 
 fn regexFeaturesUnsupported(features: RegexFeatureSummary) bool {
-    return features.has_bounded_repeat or
-        features.has_group or
-        features.has_alternation or
-        features.has_anchor;
+    return features.has_anchor;
 }
 
 fn writeRegexUnsupportedFeaturesJson(writer: anytype, features: RegexFeatureSummary) !void {
     try writer.writeByte('[');
     var wrote = false;
-    if (features.has_bounded_repeat) {
-        try writeMaybeComma(writer, &wrote);
-        try writeJsonString(writer, "bounded_repeat");
-    }
-    if (features.has_group) {
-        try writeMaybeComma(writer, &wrote);
-        try writeJsonString(writer, "group");
-    }
-    if (features.has_alternation) {
-        try writeMaybeComma(writer, &wrote);
-        try writeJsonString(writer, "alternation");
-    }
     if (features.has_anchor) {
         try writeMaybeComma(writer, &wrote);
         try writeJsonString(writer, "anchor");
@@ -2961,9 +2946,9 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries
     try std.testing.expect(std.mem.indexOf(u8, json, "\"pattern_count\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unicode_property\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"bounded_repeat\": 1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_pattern\": 1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"unsupported\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_features\": [\"bounded_repeat\", \"group\", \"alternation\"]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_pattern\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"supported_subset\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_features\": []") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"flags\": \"i\"") != null);
 }
 
