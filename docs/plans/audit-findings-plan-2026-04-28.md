@@ -77,16 +77,24 @@ Gate:
 Goal: make invalid-input behavior closer to upstream before promoting more
 complex scanner grammars.
 
-- [ ] Audit upstream recovery strategies 2 and 3 against current emitted parser
+- [x] Audit upstream recovery strategies 2 and 3 against current emitted parser
   and behavioral harness code.
-- [ ] Add focused behavioral fixtures where upstream skip-and-relex succeeds
+- [x] Add focused behavioral fixtures where upstream skip-and-relex succeeds
   but current local parsing rejects or produces a weaker error tree.
-- [ ] Implement skip-and-relex recovery in the behavioral harness.
-- [ ] Implement skip-and-relex recovery in emitted generated parsers.
-- [ ] Add focused behavioral fixtures for extend-error-span recovery.
-- [ ] Implement extend-error-span accounting in behavioral and emitted parser
+- [x] Implement skip-and-relex recovery in the behavioral harness.
+- [x] Implement skip-and-relex recovery in emitted generated parsers.
+- [x] Add focused behavioral fixtures for extend-error-span recovery.
+- [x] Implement extend-error-span accounting in behavioral and emitted parser
   paths.
-- [ ] Compare JSON/Ziggy invalid tree strings after each recovery change.
+- [x] Compare JSON/Ziggy invalid tree strings after each recovery change.
+
+Batch 5 note: `docs/audits/recovery-strategy-audit-260428.md` maps upstream
+`parser.c` recovery behavior to the local temporary runtime. Behavioral tests
+now cover recognized-token skip-and-relex and consecutive unrecognized-byte
+span accounting. The emitted parser already exposes the matching recovery
+counters and cost fields; exact upstream ERROR-node construction remains
+outside this temporary tree-string API. The bounded JSON, Ziggy, and Zig
+invalid runtime-link samples still pass after the recovery audit batch.
 
 Gate:
 

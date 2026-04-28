@@ -3800,6 +3800,45 @@ test "error recovery skips an unrecognised byte and accepts the rest" {
     }
 }
 
+test "error recovery skips an unwanted known token when no stack recovery exists" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), seq_ab_grammar_json);
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const flattened = try flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax);
+    const result = try build.buildStates(arena.allocator(), flattened);
+
+    var version = try ParseVersion.initFirst(arena.allocator());
+    defer version.deinit(arena.allocator());
+
+    try std.testing.expect(recoverFromMissingAction(result, &version, .{
+        .symbol = .{ .terminal = 999 },
+        .len = 3,
+    }, 3));
+    try std.testing.expectEqual(@as(usize, 3), version.cursor);
+    try std.testing.expectEqual(@as(u32, 1), version.error_count);
+    try std.testing.expectEqual(@as(u32, 3), version.error_cost);
+    try std.testing.expectEqual(@as(u32, 1), version.recovery.skipped_tokens);
+    try std.testing.expectEqual(@as(u32, 0), version.recovery.skipped_bytes);
+}
+
+test "error recovery extends consecutive unrecognized-byte span accounting" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), ambiguous_expr_grammar_json);
+
+    const result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1!!");
+    switch (result) {
+        .accepted => |a| {
+            try std.testing.expectEqual(@as(usize, 3), a.consumed_bytes);
+            try std.testing.expectEqual(@as(u32, 2), a.recovery.skipped_bytes);
+            try std.testing.expectEqual(@as(u32, 0), a.recovery.skipped_tokens);
+            try std.testing.expectEqual(@as(u32, 2), a.error_cost);
+        },
+        .rejected => return error.UnexpectedReject,
+    }
+}
+
 test "error recovery accepts valid input without recording errors" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
