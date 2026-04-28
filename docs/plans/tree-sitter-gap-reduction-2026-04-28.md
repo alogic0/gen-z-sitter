@@ -817,7 +817,7 @@ Use this order unless profiling shows a clear reason to change it:
 - [x] Bash: real external scanner proof with shell-specific samples.
 - [x] Haskell: layout-sensitive external scanner proof.
 - [x] Rust: scanner/regex-heavy target before JavaScript.
-- [ ] Python: indentation-sensitive target after scanner state improves.
+- [x] Python: indentation-sensitive target after scanner state improves.
 - [x] JavaScript: large conflict/regex/keyword target.
 - [x] TypeScript: bounded parser-only proof before JavaScript scanner-runtime
   work.
@@ -927,6 +927,12 @@ against `"hi"`, proving the generated parser keeps the upstream delimiter stack
 alive across multiple external-token scans. The indentation layout stack remains
 separate because a tiny artificial parser needs a faithful newline/indent token
 boundary to avoid overstating parity.
+
+Batch 90 note: Python scanner runtime coverage now includes a focused
+indent/dedent stack proof. The tiny generated parser expects `_indent`, an
+internal `x` token, and `_dedent` for `"\n  x\n"`, linking against upstream
+`scanner.c` without vendoring it and proving the generated parser preserves
+the upstream indentation stack across external scanner calls.
 
 Batch 44 note: JavaScript scanner runtime coverage now includes `jsx_text` in
 addition to `_ternary_qmark`. The focused runtime-link fixture scans `hello`
