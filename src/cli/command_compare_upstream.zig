@@ -125,6 +125,7 @@ const LocalArtifacts = struct {
     raw_grammar_path: ?[]const u8 = null,
     parse_states_path: ?[]const u8 = null,
     parse_states_summary_path: ?[]const u8 = null,
+    item_set_snapshot_path: ?[]const u8 = null,
     conflict_summary_path: ?[]const u8 = null,
     token_conflicts_path: ?[]const u8 = null,
     minimization_summary_path: ?[]const u8 = null,
@@ -139,6 +140,7 @@ const LocalArtifacts = struct {
         if (self.raw_grammar_path) |value| allocator.free(value);
         if (self.parse_states_path) |value| allocator.free(value);
         if (self.parse_states_summary_path) |value| allocator.free(value);
+        if (self.item_set_snapshot_path) |value| allocator.free(value);
         if (self.conflict_summary_path) |value| allocator.free(value);
         if (self.token_conflicts_path) |value| allocator.free(value);
         if (self.minimization_summary_path) |value| allocator.free(value);
@@ -358,6 +360,8 @@ fn writeLocalArtifactsAlloc(
     errdefer allocator.free(local_parse_states_path);
     const local_parse_states_summary_path = try std.fs.path.join(allocator, &.{ local_dir, "parse-states-summary.json" });
     errdefer allocator.free(local_parse_states_summary_path);
+    const local_item_set_snapshot_path = try std.fs.path.join(allocator, &.{ local_dir, "item-set-snapshot.json" });
+    errdefer allocator.free(local_item_set_snapshot_path);
     const local_conflict_summary_path = try std.fs.path.join(allocator, &.{ local_dir, "conflict-summary.json" });
     errdefer allocator.free(local_conflict_summary_path);
     const local_token_conflicts_path = try std.fs.path.join(allocator, &.{ local_dir, "token-conflicts.json" });
@@ -399,6 +403,13 @@ fn writeLocalArtifactsAlloc(
     });
     defer allocator.free(local_parse_state_summary);
     try fs_support.writeFile(local_parse_states_summary_path, local_parse_state_summary);
+    const local_item_set_snapshot = try upstream_summary.generateLocalItemSetSnapshotJsonAlloc(allocator, opts.grammar_path, .{
+        .js_runtime = opts.js_runtime orelse "node",
+        .report_states_for_rule = opts.report_states_for_rule,
+        .minimize_states = opts.minimize_states,
+    });
+    defer allocator.free(local_item_set_snapshot);
+    try fs_support.writeFile(local_item_set_snapshot_path, local_item_set_snapshot);
     const local_conflict_summary = try upstream_summary.generateLocalConflictSummaryJsonAlloc(allocator, opts.grammar_path, .{
         .js_runtime = opts.js_runtime orelse "node",
         .minimize_states = opts.minimize_states,
@@ -446,6 +457,7 @@ fn writeLocalArtifactsAlloc(
     local_artifacts.raw_grammar_path = local_raw_grammar_path;
     local_artifacts.parse_states_path = local_parse_states_path;
     local_artifacts.parse_states_summary_path = local_parse_states_summary_path;
+    local_artifacts.item_set_snapshot_path = local_item_set_snapshot_path;
     local_artifacts.conflict_summary_path = local_conflict_summary_path;
     local_artifacts.token_conflicts_path = local_token_conflicts_path;
     local_artifacts.minimization_summary_path = local_minimization_summary_path;
@@ -636,6 +648,9 @@ fn renderReportAlloc(
     try writer.writeAll("    \"parse_states_summary_path\": ");
     try writeOptionalJsonString(writer, local_artifacts.parse_states_summary_path);
     try writer.writeAll(",\n");
+    try writer.writeAll("    \"item_set_snapshot_path\": ");
+    try writeOptionalJsonString(writer, local_artifacts.item_set_snapshot_path);
+    try writer.writeAll(",\n");
     try writer.writeAll("    \"conflict_summary_path\": ");
     try writeOptionalJsonString(writer, local_artifacts.conflict_summary_path);
     try writer.writeAll(",\n");
@@ -807,6 +822,8 @@ test "runCompareUpstream writes local summary report" {
     try std.testing.expect(std.mem.indexOf(u8, report, "\"raw_grammar_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"parse_states_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"parse_states_summary_path\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report, "\"item_set_snapshot_path\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report, "local/item-set-snapshot.json") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"conflict_summary_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "local/conflict-summary.json") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"token_conflicts_path\"") != null);

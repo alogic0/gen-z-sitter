@@ -288,6 +288,28 @@ pub fn generateLocalParseStateSummaryJsonAlloc(
     return try out.toOwnedSlice();
 }
 
+pub fn generateLocalItemSetSnapshotJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+    const result = try parse_table_pipeline.buildStatesFromPrepared(arena.allocator(), prepared);
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeItemSetSnapshotJson(&out.writer, result, prepared, options.report_states_for_rule);
+    return try out.toOwnedSlice();
+}
+
 pub fn generateLocalConflictSummaryJsonAlloc(
     allocator: std.mem.Allocator,
     grammar_path: []const u8,
@@ -861,6 +883,159 @@ fn parseStateSummary(result: @import("../parse_table/build.zig").BuildResult) Pa
         .transition_hash = transition_hasher.final(),
         .conflict_hash = conflict_hasher.final(),
     };
+}
+
+fn writeItemSetSnapshotJson(
+    writer: anytype,
+    result: @import("../parse_table/build.zig").BuildResult,
+    prepared: grammar_ir.PreparedGrammar,
+    report_states_for_rule: ?[]const u8,
+) !void {
+    var selected_count: usize = 0;
+    for (result.states) |parse_state| {
+        if (stateMatchesRule(result, prepared, parse_state, report_states_for_rule)) {
+            selected_count += 1;
+        }
+    }
+
+    try writer.writeAll("{\n");
+    try writeIndent(writer, 2);
+    try writer.writeAll("\"selected_rule\": ");
+    if (report_states_for_rule) |rule_name| {
+        try writeJsonString(writer, rule_name);
+    } else {
+        try writer.writeAll("null");
+    }
+    try writer.writeAll(",\n");
+    try writeUsizeField(writer, 2, "state_count", result.states.len, true);
+    try writeUsizeField(writer, 2, "selected_state_count", selected_count, true);
+    try writeIndent(writer, 2);
+    try writer.writeAll("\"states\": [");
+    if (selected_count != 0) try writer.writeByte('\n');
+
+    var emitted: usize = 0;
+    for (result.states) |parse_state| {
+        if (!stateMatchesRule(result, prepared, parse_state, report_states_for_rule)) continue;
+        try writeItemSetStateJson(writer, result, parse_state, 4);
+        emitted += 1;
+        if (emitted != selected_count) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (selected_count != 0) try writeIndent(writer, 2);
+    try writer.writeAll("]\n");
+    try writer.writeAll("}\n");
+}
+
+fn stateMatchesRule(
+    result: @import("../parse_table/build.zig").BuildResult,
+    prepared: grammar_ir.PreparedGrammar,
+    parse_state: @import("../parse_table/state.zig").ParseState,
+    report_states_for_rule: ?[]const u8,
+) bool {
+    const rule_name = report_states_for_rule orelse return true;
+    for (parse_state.items) |entry| {
+        if (entry.item.production_id >= result.productions.len) continue;
+        const production = result.productions[entry.item.production_id];
+        if (production.augmented) continue;
+        if (production.lhs >= prepared.variables.len) continue;
+        if (std.mem.eql(u8, prepared.variables[production.lhs].name, rule_name)) return true;
+    }
+    return false;
+}
+
+fn writeItemSetStateJson(
+    writer: anytype,
+    result: @import("../parse_table/build.zig").BuildResult,
+    parse_state: @import("../parse_table/state.zig").ParseState,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, indent + 2, "id", parse_state.id, true);
+    try writeUsizeField(writer, indent + 2, "core_id", parse_state.core_id, true);
+    try writeUsizeField(writer, indent + 2, "lex_state_id", parse_state.lex_state_id, true);
+    try writeUsizeField(writer, indent + 2, "reserved_word_set_id", parse_state.reserved_word_set_id, true);
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"items\": [");
+    if (parse_state.items.len != 0) try writer.writeByte('\n');
+    for (parse_state.items, 0..) |entry, index| {
+        try writeItemSetEntryJson(writer, result, entry, indent + 4);
+        if (index + 1 != parse_state.items.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (parse_state.items.len != 0) try writeIndent(writer, indent + 2);
+    try writer.writeAll("],\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"transitions\": [");
+    if (parse_state.transitions.len != 0) try writer.writeByte('\n');
+    for (parse_state.transitions, 0..) |transition, index| {
+        try writeIndent(writer, indent + 4);
+        try writer.writeAll("{ \"symbol\": ");
+        try writeSymbolRef(writer, transition.symbol);
+        try writer.print(", \"state\": {d}, \"extra\": ", .{transition.state});
+        try writeBoolJson(writer, transition.extra);
+        try writer.writeAll(" }");
+        if (index + 1 != parse_state.transitions.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (parse_state.transitions.len != 0) try writeIndent(writer, indent + 2);
+    try writer.writeAll("]\n");
+    try writeIndent(writer, indent);
+    try writer.writeByte('}');
+}
+
+fn writeItemSetEntryJson(
+    writer: anytype,
+    result: @import("../parse_table/build.zig").BuildResult,
+    entry: @import("../parse_table/item.zig").ParseItemSetEntry,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"production_id\": ");
+    try writer.print("{d}", .{entry.item.production_id});
+    try writer.writeAll(", \"step_index\": ");
+    try writer.print("{d}", .{entry.item.step_index});
+    try writer.writeAll(", \"origin\": ");
+    try writeJsonString(writer, itemOrigin(result, entry));
+    try writer.writeAll(", \"following_reserved_word_set_id\": ");
+    try writer.print("{d}", .{entry.following_reserved_word_set_id});
+    try writer.writeAll(", \"lookaheads\": ");
+    try writeSymbolSetJson(writer, entry.lookaheads);
+    try writer.writeAll(" }");
+}
+
+fn itemOrigin(
+    result: @import("../parse_table/build.zig").BuildResult,
+    entry: @import("../parse_table/item.zig").ParseItemSetEntry,
+) []const u8 {
+    if (entry.item.production_id < result.productions.len and result.productions[entry.item.production_id].augmented) {
+        return "kernel";
+    }
+    return if (entry.item.step_index == 0) "closure" else "kernel";
+}
+
+fn writeSymbolSetJson(writer: anytype, set: @import("../parse_table/first.zig").SymbolSet) !void {
+    try writer.writeAll("{ \"end\": ");
+    try writeBoolJson(writer, set.includes_end);
+    try writer.writeAll(", \"epsilon\": ");
+    try writeBoolJson(writer, set.includes_epsilon);
+    try writer.writeAll(", \"terminals\": ");
+    try writeSymbolBitsJson(writer, set.terminals);
+    try writer.writeAll(", \"externals\": ");
+    try writeSymbolBitsJson(writer, set.externals);
+    try writer.writeAll(" }");
+}
+
+fn writeSymbolBitsJson(writer: anytype, bits: @import("../parse_table/first.zig").SymbolBits) !void {
+    try writer.writeByte('[');
+    var first = true;
+    for (0..bits.len()) |index| {
+        if (!bits.get(index)) continue;
+        if (!first) try writer.writeAll(", ");
+        first = false;
+        try writer.print("{d}", .{index});
+    }
+    try writer.writeByte(']');
 }
 
 fn hashSymbolSet(hasher: *std.hash.Wyhash, set: @import("../parse_table/first.zig").SymbolSet) void {
@@ -2338,6 +2513,30 @@ test "generateLocalParseStateSummaryJsonAlloc writes item-set summary hashes" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"core_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"lookahead_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_hash\"") != null);
+}
+
+test "generateLocalItemSetSnapshotJsonAlloc writes selected item-set entries" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.parseTableTinyGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalItemSetSnapshotJsonAlloc(std.testing.allocator, path, .{
+        .report_states_for_rule = "source_file",
+    });
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"selected_rule\": \"source_file\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"origin\": \"kernel\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"origin\": \"closure\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"lookaheads\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"following_reserved_word_set_id\"") != null);
 }
 
 test "generateLocalConflictSummaryJsonAlloc writes unresolved reason counts" {

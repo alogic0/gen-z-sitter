@@ -327,6 +327,8 @@ lookahead, conflict, and minimization gaps.
   - [x] Add selected-state filtering for local comparison artifacts.
   - [x] Write compact local item-set summary hashes for cores, lookaheads,
     transitions, and conflicts.
+  - [x] Write upstream-shaped local item-set snapshots with kernel/closure
+    item origins, lookaheads, reserved lookaheads, and transitions.
   - [ ] Add upstream-shaped item-set comparison.
 - [ ] Compare kernel items, closure additions, lookaheads, reserved lookaheads,
   and propagation flags against upstream concepts from `item_set_builder.rs`.
@@ -355,6 +357,12 @@ Batch 17 note: local comparison artifacts now include
 `parse-states-summary.json`, a compact machine-readable item-set summary with
 state, production, item, transition, and conflict counts plus stable hashes for
 cores, lookaheads, transitions, and conflicts.
+
+Batch 54 note: local comparison artifacts now include `item-set-snapshot.json`.
+It records selected states in a structured form with state IDs, core IDs, lexer
+state IDs, reserved word set IDs, kernel-vs-closure item origin, lookahead
+sets, following reserved word set IDs, and transitions. This is still local
+evidence; direct upstream item-set comparison remains open.
 
 ### 3.2 Conflict Resolution and Expected Conflicts
 
