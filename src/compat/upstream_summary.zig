@@ -241,6 +241,24 @@ pub fn generateLocalParserCAlloc(
     });
 }
 
+pub fn generateLocalParseStateDumpAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+    const dump = try parse_table_pipeline.generateStateDumpFromPrepared(arena.allocator(), prepared);
+    return try allocator.dupe(u8, dump);
+}
+
 pub fn parseUpstreamParserCSummaryAlloc(
     allocator: std.mem.Allocator,
     grammar_name: []const u8,
@@ -1409,4 +1427,24 @@ test "generateLocalRawGrammarSnapshotJsonAlloc writes raw grammar structure" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"rules\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"extras\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"precedences\"") != null);
+}
+
+test "generateLocalParseStateDumpAlloc writes item-set states" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validBlankGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const dump = try generateLocalParseStateDumpAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(dump);
+
+    try std.testing.expect(std.mem.indexOf(u8, dump, "state 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, dump, "items:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, dump, "transitions:") != null);
 }

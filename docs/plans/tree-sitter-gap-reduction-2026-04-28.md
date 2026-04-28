@@ -315,6 +315,9 @@ lookahead, conflict, and minimization gaps.
 ### 3.1 Item-Set and Closure Differential Tests
 
 - [ ] Add an item-set snapshot mode for selected states.
+  - [x] Write local `parse-states.txt` item-set dumps into comparison
+    artifacts.
+  - [ ] Add selected-state filtering and upstream-shaped item-set comparison.
 - [ ] Compare kernel items, closure additions, lookaheads, reserved lookaheads,
   and propagation flags against upstream concepts from `item_set_builder.rs`.
 - [ ] Add fixtures for nullable suffixes, nested repeats, expected conflicts,
@@ -326,6 +329,11 @@ Gate:
 
 - The JSON follow-set fixes are protected by upstream-shaped item-set tests,
   not only runtime-link samples.
+
+Batch 15 note: local comparison artifacts now include `parse-states.txt`, using
+the existing deterministic item-set/state dump. This is the local side of the
+Phase 3 item-set snapshot work; selected-state filtering and upstream-shaped
+comparison remain open.
 
 ### 3.2 Conflict Resolution and Expected Conflicts
 
