@@ -78,6 +78,7 @@ pub const SimulationResult = union(enum) {
         consumed_bytes: usize,
         shifted_tokens: usize,
         error_count: u32 = 0,
+        error_cost: u32 = 0,
         dynamic_precedence: i32 = 0,
         recovery: RecoveryStats = .{},
         tree: ?ParseNode = null,
@@ -453,6 +454,8 @@ pub fn sampleExtractedExternalBoundaryOnly(
 // Maximum number of concurrent parse versions in the GLR simulation,
 // matching tree-sitter's TS_MAX_VERSION_COUNT.
 const MAX_PARSE_VERSIONS: usize = 6;
+const MAX_PARSE_VERSION_OVERFLOW: usize = 4;
+const MAX_ERROR_COST_DIFFERENCE: u32 = 3;
 
 // One active parse state in the GLR simulation.
 const ParseVersion = struct {
@@ -463,6 +466,7 @@ const ParseVersion = struct {
     shifted_tokens: usize,
     dynamic_precedence: i32,
     error_count: u32,
+    error_cost: u32,
     recovery: RecoveryStats,
     edit: ?Edit,
     scanner_state_blocked_reuse: bool,
@@ -479,6 +483,7 @@ const ParseVersion = struct {
             .shifted_tokens = 0,
             .dynamic_precedence = 0,
             .error_count = 0,
+            .error_cost = 0,
             .recovery = .{},
             .edit = null,
             .scanner_state_blocked_reuse = false,
@@ -508,6 +513,7 @@ const ParseVersion = struct {
             .shifted_tokens = self.shifted_tokens,
             .dynamic_precedence = self.dynamic_precedence,
             .error_count = self.error_count,
+            .error_cost = self.error_cost,
             .recovery = self.recovery,
             .edit = self.edit,
             .scanner_state_blocked_reuse = self.scanner_state_blocked_reuse,
@@ -537,6 +543,7 @@ fn acceptedResult(version: ParseVersion) SimulationResult {
         .consumed_bytes = version.cursor,
         .shifted_tokens = version.shifted_tokens,
         .error_count = version.error_count,
+        .error_cost = version.error_cost,
         .dynamic_precedence = version.dynamic_precedence,
         .recovery = version.recovery,
         .tree = tree,
@@ -642,11 +649,11 @@ fn killVersion(
 //
 // Stage 1: scan backward through the stack for a predecessor state that has
 // an action on the current lookahead. If found, pop to that depth and
-// increment error_count; the inner loop will re-lex from the same cursor.
+// increment error counters; the inner loop will re-lex from the same cursor.
 //
 // Stage 2: if no recovery state found (or no token to match), skip past the
 // current content — one byte for an unrecognized character, one full token
-// for a recognised-but-unwanted token — and increment error_count.
+// for a recognised-but-unwanted token — and increment error counters.
 //
 // Returns true when recovery made progress and the inner loop should continue;
 // false when the version is at EOF with nothing to skip and must be killed.
@@ -667,6 +674,7 @@ fn recoverFromMissingAction(
                 version.stack.shrinkRetainingCapacity(depth);
                 version.values.shrinkRetainingCapacity(depth - 1);
                 version.error_count += 1;
+                version.error_cost += 1;
                 version.recovery.stack_recoveries += 1;
                 return true;
             }
@@ -674,6 +682,7 @@ fn recoverFromMissingAction(
         // Stage 2: skip the unhandled token.
         version.cursor += m.len;
         version.error_count += 1;
+        version.error_cost += @intCast(m.len);
         version.recovery.skipped_tokens += 1;
         return true;
     }
@@ -681,6 +690,7 @@ fn recoverFromMissingAction(
     if (version.cursor < input_len) {
         version.cursor += 1;
         version.error_count += 1;
+        version.error_cost += 1;
         version.recovery.skipped_bytes += 1;
         return true;
     }
@@ -699,6 +709,8 @@ fn recoverFromMissingAction(
 // Unlike tree-sitter we compare the full stack, not just the top state, because
 // the harness has no DAG stack that can merge divergent histories.
 fn condenseVersions(allocator: std.mem.Allocator, versions: *std.ArrayListUnmanaged(ParseVersion)) void {
+    pruneHighCostVersions(allocator, versions);
+
     var i: usize = 1;
     while (i < versions.items.len) {
         var is_dup = false;
@@ -706,7 +718,11 @@ fn condenseVersions(allocator: std.mem.Allocator, versions: *std.ArrayListUnmana
             if (other.cursor == versions.items[i].cursor and
                 std.mem.eql(u32, other.stack.items, versions.items[i].stack.items))
             {
-                if (other.dynamic_precedence < versions.items[i].dynamic_precedence) {
+                if (versions.items[i].error_cost < other.error_cost) {
+                    other.error_count = versions.items[i].error_count;
+                    other.error_cost = versions.items[i].error_cost;
+                    other.dynamic_precedence = versions.items[i].dynamic_precedence;
+                } else if (versions.items[i].error_cost == other.error_cost and other.dynamic_precedence < versions.items[i].dynamic_precedence) {
                     other.dynamic_precedence = versions.items[i].dynamic_precedence;
                 }
                 killVersion(allocator, versions, i);
@@ -722,7 +738,25 @@ fn condenseVersions(allocator: std.mem.Allocator, versions: *std.ArrayListUnmana
     }
 }
 
-test "condenseVersions merges duplicate stacks and keeps higher dynamic precedence" {
+fn pruneHighCostVersions(allocator: std.mem.Allocator, versions: *std.ArrayListUnmanaged(ParseVersion)) void {
+    if (versions.items.len <= MAX_PARSE_VERSION_OVERFLOW) return;
+
+    var min_cost: u32 = std.math.maxInt(u32);
+    for (versions.items) |version| {
+        min_cost = @min(min_cost, version.error_cost);
+    }
+
+    var index: usize = 0;
+    while (index < versions.items.len) {
+        if (versions.items[index].error_cost > min_cost + MAX_ERROR_COST_DIFFERENCE) {
+            killVersion(allocator, versions, index);
+        } else {
+            index += 1;
+        }
+    }
+}
+
+test "condenseVersions merges duplicate stacks by lower error cost then dynamic precedence" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -737,12 +771,16 @@ test "condenseVersions merges duplicate stacks and keeps higher dynamic preceden
     try low.stack.append(allocator, 7);
     low.cursor = 3;
     low.dynamic_precedence = 1;
+    low.error_count = 1;
+    low.error_cost = 3;
     try versions.append(allocator, low);
 
     var high = try ParseVersion.initFirst(allocator);
     try high.stack.append(allocator, 7);
     high.cursor = 3;
     high.dynamic_precedence = 5;
+    high.error_count = 2;
+    high.error_cost = 2;
     try versions.append(allocator, high);
 
     var distinct = try ParseVersion.initFirst(allocator);
@@ -754,9 +792,72 @@ test "condenseVersions merges duplicate stacks and keeps higher dynamic preceden
     condenseVersions(allocator, &versions);
 
     try std.testing.expectEqual(@as(usize, 2), versions.items.len);
+    try std.testing.expectEqual(@as(u32, 2), versions.items[0].error_count);
+    try std.testing.expectEqual(@as(u32, 2), versions.items[0].error_cost);
     try std.testing.expectEqual(@as(i32, 5), versions.items[0].dynamic_precedence);
     try std.testing.expectEqual(@as(u32, 7), versions.items[0].topState());
     try std.testing.expectEqual(@as(u32, 8), versions.items[1].topState());
+}
+
+test "condenseVersions keeps higher dynamic precedence for equal error cost" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var versions = std.ArrayListUnmanaged(ParseVersion).empty;
+    defer {
+        for (versions.items) |*version| version.deinit(allocator);
+        versions.deinit(allocator);
+    }
+
+    var low = try ParseVersion.initFirst(allocator);
+    try low.stack.append(allocator, 7);
+    low.cursor = 3;
+    low.dynamic_precedence = 1;
+    low.error_count = 1;
+    low.error_cost = 2;
+    try versions.append(allocator, low);
+
+    var high = try ParseVersion.initFirst(allocator);
+    try high.stack.append(allocator, 7);
+    high.cursor = 3;
+    high.dynamic_precedence = 5;
+    high.error_count = 1;
+    high.error_cost = 2;
+    try versions.append(allocator, high);
+
+    condenseVersions(allocator, &versions);
+
+    try std.testing.expectEqual(@as(usize, 1), versions.items.len);
+    try std.testing.expectEqual(@as(u32, 2), versions.items[0].error_cost);
+    try std.testing.expectEqual(@as(i32, 5), versions.items[0].dynamic_precedence);
+}
+
+test "condenseVersions prunes versions beyond error cost threshold after overflow" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var versions = std.ArrayListUnmanaged(ParseVersion).empty;
+    defer {
+        for (versions.items) |*version| version.deinit(allocator);
+        versions.deinit(allocator);
+    }
+
+    for (0..MAX_PARSE_VERSION_OVERFLOW + 1) |index| {
+        var version = try ParseVersion.initFirst(allocator);
+        try version.stack.append(allocator, @intCast(index + 1));
+        version.cursor = index;
+        version.error_cost = if (index == MAX_PARSE_VERSION_OVERFLOW) 8 else 2;
+        try versions.append(allocator, version);
+    }
+
+    condenseVersions(allocator, &versions);
+
+    try std.testing.expectEqual(@as(usize, MAX_PARSE_VERSION_OVERFLOW), versions.items.len);
+    for (versions.items) |version| {
+        try std.testing.expect(version.error_cost <= 2 + MAX_ERROR_COST_DIFFERENCE);
+    }
 }
 
 test "condenseVersions caps active GLR versions" {
@@ -3513,6 +3614,7 @@ fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResu
             try std.testing.expectEqual(left.consumed_bytes, right.consumed_bytes);
             try std.testing.expectEqual(left.shifted_tokens, right.shifted_tokens);
             try std.testing.expectEqual(left.error_count, right.error_count);
+            try std.testing.expectEqual(left.error_cost, right.error_cost);
             try std.testing.expectEqual(left.incremental.has_edit, right.incremental.has_edit);
             try std.testing.expectEqual(left.incremental.changed_start_byte, right.incremental.changed_start_byte);
             try std.testing.expectEqual(left.incremental.old_end_byte, right.incremental.old_end_byte);

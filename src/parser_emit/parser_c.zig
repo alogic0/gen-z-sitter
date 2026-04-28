@@ -552,6 +552,7 @@ fn writeRuntimeAction(
 
 fn writeGlrVersionStorage(writer: anytype, has_external_scanner: bool) !void {
     try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n");
+    try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_VERSION_OVERFLOW 4\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_VALUE_STACK_DEPTH 256\n\n");
     try writer.writeAll("#define GEN_Z_SITTER_MAX_GENERATED_NODES 256\n\n");
@@ -1015,7 +1016,7 @@ fn writeGlrVersionCondenseHelpers(writer: anytype, has_external_scanner: bool) !
     try writer.writeAll("  uint16_t write_index = 0;\n");
     try writer.writeAll("  for (uint16_t read_index = 0; read_index < set->count; read_index++) {\n");
     try writer.writeAll("    if (!set->versions[read_index].active) continue;\n");
-    try writer.writeAll("    if (min_error_cost != UINT32_MAX && set->versions[read_index].error_cost > min_error_cost + GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE) continue;\n");
+    try writer.writeAll("    if (set->count > GEN_Z_SITTER_MAX_PARSE_VERSION_OVERFLOW && min_error_cost != UINT32_MAX && set->versions[read_index].error_cost > min_error_cost + GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE) continue;\n");
     try writer.writeAll("    bool duplicate = false;\n");
     try writer.writeAll("    for (uint16_t existing_index = 0; existing_index < write_index; existing_index++) {\n");
     try writer.writeAll("      if (ts_generated_parse_versions_same_position(&set->versions[existing_index], &set->versions[read_index])) {\n");
@@ -2602,6 +2603,7 @@ test "emitParserCAlloc emits opt-in GLR parser version storage" {
     defer allocator.free(emitted);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_VERSIONS 8\n\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_VERSION_OVERFLOW 4\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_PARSE_STACK_DEPTH 256\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_VALUE_STACK_DEPTH 256\n\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define GEN_Z_SITTER_MAX_GENERATED_NODES 256\n\n"));
@@ -2788,7 +2790,7 @@ test "emitParserCAlloc emits opt-in GLR version condensation helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->nodes[index].child_aliases[child_index] != right->nodes[index].child_aliases[child_index]) return false;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "uint32_t min_error_cost = UINT32_MAX;\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[read_index].error_cost > min_error_cost + GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->count > GEN_Z_SITTER_MAX_PARSE_VERSION_OVERFLOW && min_error_cost != UINT32_MAX && set->versions[read_index].error_cost > min_error_cost + GEN_Z_SITTER_MAX_ERROR_COST_DIFFERENCE"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!set->versions[read_index].active) continue;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[existing_index] = set->versions[read_index];\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set->versions[existing_index].dynamic_precedence = set->versions[read_index].dynamic_precedence;\n"));

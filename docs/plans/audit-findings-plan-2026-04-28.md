@@ -98,14 +98,22 @@ Gate:
 Goal: avoid keeping a different parse version than upstream on invalid or
 ambiguous input.
 
-- [ ] Add `MAX_VERSION_COUNT_OVERFLOW` to the behavioral harness and emitted
+- [x] Add `MAX_VERSION_COUNT_OVERFLOW` to the behavioral harness and emitted
   generated parser constants.
-- [ ] Replace remaining count-only behavioral pruning decisions with error-cost
+- [x] Replace remaining count-only behavioral pruning decisions with error-cost
   decisions.
-- [ ] Add fixtures with equal error counts but different skipped-byte costs.
-- [ ] Add fixtures where dynamic precedence only wins after equal error cost.
+- [x] Add fixtures with equal error counts but different skipped-byte costs.
+- [x] Add fixtures where dynamic precedence only wins after equal error cost.
 - [ ] Record `error_cost`, `error_count`, and dynamic precedence in runtime-link
   proof output where useful.
+
+Batch 2 note: behavioral parse versions now carry `error_cost` alongside
+`error_count`. Missing-action recovery charges stack recovery and byte skips as
+1, and skipped known tokens by byte length. Condensation prunes high-cost
+versions only after the overflow threshold, merges duplicate positions by lower
+error cost first, and uses dynamic precedence only as the equal-cost
+tie-breaker. Generated parser C now emits `GEN_Z_SITTER_MAX_PARSE_VERSION_OVERFLOW`
+and applies the same overflow-gated cost threshold.
 
 Gate:
 
