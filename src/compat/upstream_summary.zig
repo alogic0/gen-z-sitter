@@ -145,6 +145,30 @@ pub fn generateLocalPreparedIrSummaryAlloc(
     return preparedIrSummary(prepared, extracted, flattened);
 }
 
+pub fn generateLocalPreparedIrSnapshotJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const default_aliases = try extract_default_aliases.extractDefaultAliases(arena.allocator(), extracted.syntax, extracted.lexical);
+    const flattened = try flatten_grammar.flattenGrammar(arena.allocator(), default_aliases.syntax);
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writePreparedIrSnapshotJson(&out.writer, prepared, extracted, flattened);
+    return try out.toOwnedSlice();
+}
+
 pub fn generateLocalNodeTypesJsonAlloc(
     allocator: std.mem.Allocator,
     grammar_path: []const u8,
@@ -520,6 +544,84 @@ pub fn writePreparedIrSummaryJson(writer: anytype, summary: PreparedIrSummary, i
     try writeU64HexField(writer, indent + 2, "flattened_syntax_hash", summary.flattened_syntax_hash, false);
     try writeIndent(writer, indent);
     try writer.writeByte('}');
+}
+
+fn writePreparedIrSnapshotJson(
+    writer: anytype,
+    prepared: grammar_ir.PreparedGrammar,
+    extracted: extract_tokens.ExtractedGrammars,
+    flattened: syntax_ir.SyntaxGrammar,
+) !void {
+    try writer.writeAll("{\n");
+    try writer.writeAll("  \"prepared_variables\": [");
+    if (prepared.variables.len != 0) try writer.writeByte('\n');
+    for (prepared.variables, 0..) |variable, index| {
+        try writer.writeAll("    { \"name\": ");
+        try writeJsonString(writer, variable.name);
+        try writer.writeAll(", \"kind\": ");
+        try writeJsonString(writer, @tagName(variable.kind));
+        try writer.print(", \"symbol_kind\": \"{s}\", \"symbol_index\": {d}, \"rule\": {d} }}", .{
+            @tagName(variable.symbol.kind),
+            variable.symbol.index,
+            variable.rule,
+        });
+        if (index + 1 != prepared.variables.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (prepared.variables.len != 0) try writer.writeAll("  ");
+    try writer.writeAll("],\n");
+
+    try writer.writeAll("  \"prepared_symbols\": [");
+    if (prepared.symbols.len != 0) try writer.writeByte('\n');
+    for (prepared.symbols, 0..) |symbol, index| {
+        try writer.writeAll("    { \"name\": ");
+        try writeJsonString(writer, symbol.name);
+        try writer.print(
+            ", \"kind\": \"{s}\", \"index\": {d}, \"named\": {}, \"visible\": {}, \"supertype\": {} }}",
+            .{ @tagName(symbol.id.kind), symbol.id.index, symbol.named, symbol.visible, symbol.supertype },
+        );
+        if (index + 1 != prepared.symbols.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (prepared.symbols.len != 0) try writer.writeAll("  ");
+    try writer.writeAll("],\n");
+
+    try writer.writeAll("  \"extracted_lexical_variables\": [");
+    if (extracted.lexical.variables.len != 0) try writer.writeByte('\n');
+    for (extracted.lexical.variables, 0..) |variable, index| {
+        try writer.writeAll("    { \"name\": ");
+        try writeJsonString(writer, variable.name);
+        try writer.print(
+            ", \"kind\": \"{s}\", \"source_kind\": \"{s}\", \"rule\": {d}, \"implicit_precedence\": {d}, \"start_state\": {d} }}",
+            .{ @tagName(variable.kind), @tagName(variable.source_kind), variable.rule, variable.implicit_precedence, variable.start_state },
+        );
+        if (index + 1 != extracted.lexical.variables.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (extracted.lexical.variables.len != 0) try writer.writeAll("  ");
+    try writer.writeAll("],\n");
+
+    try writer.writeAll("  \"flattened_syntax_variables\": [");
+    if (flattened.variables.len != 0) try writer.writeByte('\n');
+    for (flattened.variables, 0..) |variable, index| {
+        try writer.writeAll("    { \"name\": ");
+        try writeJsonString(writer, variable.name);
+        try writer.print(
+            ", \"kind\": \"{s}\", \"production_count\": {d}, \"step_count\": {d} }}",
+            .{ @tagName(variable.kind), variable.productions.len, countVariableSteps(variable) },
+        );
+        if (index + 1 != flattened.variables.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (flattened.variables.len != 0) try writer.writeAll("  ");
+    try writer.writeAll("]\n");
+    try writer.writeAll("}\n");
+}
+
+fn countVariableSteps(variable: syntax_ir.SyntaxVariable) usize {
+    var count: usize = 0;
+    for (variable.productions) |production| count += production.steps.len;
+    return count;
 }
 
 fn preparedIrSummary(
@@ -907,4 +1009,25 @@ test "generateLocalPreparedIrSummaryAlloc summarizes preparation stages" {
     try std.testing.expect(summary.prepared_variable_hash != 0);
     try std.testing.expect(summary.extracted_syntax_variable_count > 0);
     try std.testing.expect(summary.flattened_syntax_hash != 0);
+}
+
+test "generateLocalPreparedIrSnapshotJsonAlloc writes diffable sections" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validBlankGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalPreparedIrSnapshotJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"prepared_variables\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"prepared_symbols\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_lexical_variables\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"flattened_syntax_variables\"") != null);
 }

@@ -185,6 +185,9 @@ Gate:
   precedence ordering.
   - [x] Add deterministic local prepared/extracted/flattened IR summary
     counts and hashes to the upstream comparison report.
+  - [x] Write a detailed local `prepared-ir.json` artifact with prepared
+    variables, symbols, extracted lexical variables, and flattened syntax
+    variable counts.
 - [ ] Reproduce upstream repeat expansion and dedup behavior where local names
   or rule shapes still differ.
 - [ ] Reproduce upstream token extraction behavior for hidden terminals,
@@ -206,6 +209,12 @@ prepared variable/symbol hashes plus extracted lexical and flattened syntax
 counts/hashes. This is intentionally local-only until an upstream prepared-IR
 oracle is added, but it gives future preparation changes a stable artifact and
 keeps pass-order work separate from parse-table construction.
+
+Batch 10 note: local comparison artifacts now include `prepared-ir.json` beside
+`parser.c` and `node-types.json`. The snapshot records prepared variables and
+symbols, extracted lexical variables including source kind, and flattened
+syntax variable production/step counts, giving future upstream/local prep diffs
+a stable machine-readable local side.
 
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 

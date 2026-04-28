@@ -124,11 +124,13 @@ const LocalArtifacts = struct {
     output_dir: ?[]const u8 = null,
     parser_c_path: ?[]const u8 = null,
     node_types_path: ?[]const u8 = null,
+    prepared_ir_path: ?[]const u8 = null,
 
     fn deinit(self: LocalArtifacts, allocator: std.mem.Allocator) void {
         if (self.output_dir) |value| allocator.free(value);
         if (self.parser_c_path) |value| allocator.free(value);
         if (self.node_types_path) |value| allocator.free(value);
+        if (self.prepared_ir_path) |value| allocator.free(value);
     }
 };
 
@@ -270,6 +272,8 @@ fn runCorpusComparisonAlloc(
     errdefer allocator.free(local_parser_path);
     const local_node_types_path = try std.fs.path.join(allocator, &.{ local_dir, "node-types.json" });
     errdefer allocator.free(local_node_types_path);
+    const local_prepared_ir_path = try std.fs.path.join(allocator, &.{ local_dir, "prepared-ir.json" });
+    errdefer allocator.free(local_prepared_ir_path);
     const local_parser_c = try upstream_summary.generateLocalParserCAlloc(allocator, opts.grammar_path, .{
         .js_runtime = opts.js_runtime orelse "node",
         .minimize_states = opts.minimize_states,
@@ -282,10 +286,17 @@ fn runCorpusComparisonAlloc(
     });
     defer allocator.free(local_node_types_json);
     try fs_support.writeFile(local_node_types_path, local_node_types_json);
+    const local_prepared_ir_json = try upstream_summary.generateLocalPreparedIrSnapshotJsonAlloc(allocator, opts.grammar_path, .{
+        .js_runtime = opts.js_runtime orelse "node",
+        .minimize_states = opts.minimize_states,
+    });
+    defer allocator.free(local_prepared_ir_json);
+    try fs_support.writeFile(local_prepared_ir_path, local_prepared_ir_json);
 
     local_artifacts.output_dir = local_dir;
     local_artifacts.parser_c_path = local_parser_path;
     local_artifacts.node_types_path = local_node_types_path;
+    local_artifacts.prepared_ir_path = local_prepared_ir_path;
 
     const driver_path = try std.fs.path.join(allocator, &.{ output_root, "corpus_driver.c" });
     defer allocator.free(driver_path);
@@ -521,6 +532,9 @@ fn renderReportAlloc(
     try writer.writeAll(",\n");
     try writer.writeAll("    \"node_types_path\": ");
     try writeOptionalJsonString(writer, local_artifacts.node_types_path);
+    try writer.writeAll(",\n");
+    try writer.writeAll("    \"prepared_ir_path\": ");
+    try writeOptionalJsonString(writer, local_artifacts.prepared_ir_path);
     try writer.writeAll("\n");
     try writer.writeAll("  },\n");
     try writer.writeAll("  \"upstream\": {\n");
@@ -666,6 +680,7 @@ test "runCompareUpstream writes local summary report" {
     defer std.testing.allocator.free(report);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"local\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"local_prepared_ir\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report, "\"prepared_ir_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"upstream\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"available\": false") != null);
 }
