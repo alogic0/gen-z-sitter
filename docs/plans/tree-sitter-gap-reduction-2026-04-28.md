@@ -631,6 +631,14 @@ about 4.6 seconds. The refreshed artifacts record it as passing with 1315
 serialized states and a blocked diagnostic table. Automatic-semicolon and
 regex-pattern external-scanner runtime proof remain deferred.
 
+Batch 38 note: JavaScript now has a focused real external-scanner runtime-link
+proof in the bounded compatibility shortlist. The new
+`tree_sitter_javascript_scanner_json` target loads the JavaScript grammar
+snapshot, extracts the 8-token external scanner boundary, links generated parser
+C against the upstream `scanner.c` from `../tree-sitter-grammars`, and exercises
+the `ternary_qmark` scanner path. The scanner source is not copied into this
+repo.
+
 ## Phase 7 — Performance and Capacity
 
 Goal: keep correctness work practical for large grammars.

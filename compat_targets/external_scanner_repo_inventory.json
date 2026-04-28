@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "total_external_scanner_targets": 2,
-  "passed_external_scanner_targets": 2,
+  "total_external_scanner_targets": 3,
+  "passed_external_scanner_targets": 3,
   "proof_scope_coverage": [
     {
       "proof_scope": "full_runtime_link",
-      "target_count": 2,
-      "passed_count": 2
+      "target_count": 3,
+      "passed_count": 3
     }
   ],
   "current_limitations": [
@@ -43,6 +43,20 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real external scanner grammar snapshot from the local tree-sitter-bash repo, with focused regular-parser and generated-GLR runtime-link proofs that compile generated parser C against the upstream scanner.c and exercise the bare-dollar external token ABI"
+    },
+    {
+      "id": "tree_sitter_javascript_scanner_json",
+      "family": "javascript",
+      "display_name": "tree-sitter-javascript scanner (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_javascript/grammar.json",
+      "source_kind": "grammar_json",
+      "proof_scope": "full_runtime_link",
+      "upstream_repository": "tree-sitter-javascript",
+      "upstream_revision": "58404d8cf191d69f2674a8fd507bd5776f46cb11",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real JavaScript external scanner proof that links generated parser C against the upstream scanner.c and exercises the ternary_qmark token path"
     }
   ]
 }

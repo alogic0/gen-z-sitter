@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "total_external_repo_targets": 11,
-  "passed_external_repo_targets": 11,
+  "total_external_repo_targets": 12,
+  "passed_external_repo_targets": 12,
   "standalone_parser_proof_targets": 6,
   "family_coverage": [
     {
@@ -49,8 +49,8 @@
     {
       "family": "javascript",
       "boundary_kind": "parser_only",
-      "target_count": 1,
-      "passed_count": 1
+      "target_count": 2,
+      "passed_count": 2
     },
     {
       "family": "python",
@@ -79,8 +79,8 @@
     },
     {
       "boundary_kind": "scanner_external_scanner",
-      "target_count": 2,
-      "passed_count": 2
+      "target_count": 3,
+      "passed_count": 3
     }
   ],
   "current_limitations": [
@@ -216,6 +216,22 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, promoted to the bounded coarse serialize-only parser proof while full parser-table and scanner runtime proofs remain deferred"
+    },
+    {
+      "id": "tree_sitter_javascript_scanner_json",
+      "family": "javascript",
+      "display_name": "tree-sitter-javascript scanner (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_javascript/grammar.json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "scanner_external_scanner",
+      "proof_scope": "full_runtime_link",
+      "standalone_parser_proof_scope": "none",
+      "upstream_repository": "tree-sitter-javascript",
+      "upstream_revision": "58404d8cf191d69f2674a8fd507bd5776f46cb11",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real JavaScript external scanner proof that links generated parser C against the upstream scanner.c and exercises the ternary_qmark token path"
     },
     {
       "id": "tree_sitter_python_json",

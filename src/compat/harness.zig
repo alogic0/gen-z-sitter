@@ -134,6 +134,9 @@ fn runScannerRuntimeLinkProof(allocator: std.mem.Allocator, target_id: []const u
     if (std.mem.eql(u8, target_id, "tree_sitter_bash_json")) {
         return try runtime_link.linkAndRunBashParserWithRealExternalScanner(allocator);
     }
+    if (std.mem.eql(u8, target_id, "tree_sitter_javascript_scanner_json")) {
+        return try runtime_link.linkAndRunJavascriptTernaryParserWithRealExternalScanner(allocator);
+    }
     return error.UnsupportedRuntimeLinkTarget;
 }
 
@@ -1627,8 +1630,8 @@ test "runStagedTargetsAlloc can be rendered to a deterministic JSON report" {
 test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entries" {
     const runs = try cachedShortlistTargetsForTests();
 
-    try std.testing.expectEqual(@as(usize, 20), runs.len);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[2].final_classification);
+    try std.testing.expectEqual(@as(usize, 21), runs.len);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[2].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[5].final_classification);
@@ -1642,18 +1645,19 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[13].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[14].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[15].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[16].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[17].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[18].final_classification);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[19].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[16].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[17].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[18].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[19].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[20].final_classification);
 }
 
 test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_c, and keeps only staged blocked controls" {
     const runs = try cachedShortlistTargetsForTests();
 
-    try std.testing.expect(runs[2].mismatch_category != .none);
-    try std.testing.expect(runs[2].blocked_boundary != null);
-    try std.testing.expectEqual(result_model.FinalClassification.deferred_for_parser_boundary, runs[2].final_classification);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[2].mismatch_category);
+    try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[2].blocked_boundary);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[2].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[3].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[4].mismatch_category);
     try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[3].blocked_boundary);
@@ -1695,10 +1699,11 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[13].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[14].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[15].mismatch_category);
-    try std.testing.expectEqual(result_model.MismatchCategory.routine_serialize_proof_boundary, runs[16].mismatch_category);
-    try std.testing.expectEqual(result_model.MismatchCategory.routine_serialize_proof_boundary, runs[17].mismatch_category);
-    try std.testing.expectEqual(result_model.MismatchCategory.routine_serialize_proof_boundary, runs[18].mismatch_category);
-    try std.testing.expectEqual(result_model.MismatchCategory.routine_serialize_proof_boundary, runs[19].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[16].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[17].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[18].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[19].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[20].mismatch_category);
 }
 
 test "runShortlistTargetsAlloc promotes tree_sitter_c through compile smoke" {
