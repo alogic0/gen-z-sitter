@@ -267,7 +267,7 @@ direct upstream prepared-IR dump exists.
 - [ ] Fix supertype and subtype ordering mismatches.
   - [x] Treat hidden supertypes as visible named child/field entries in
     node-types computation.
-- [ ] Add a golden-refresh command that only updates local goldens after the
+- [x] Add a golden-refresh command that only updates local goldens after the
   upstream comparison is clean or classified.
 
 Gate:
@@ -306,6 +306,13 @@ The fix materializes anonymous step aliases and applies field metadata across
 all children lowered from a field-wrapped sequence/choice. With JSON, Ziggy,
 and Ziggy Schema matching upstream by node-types hash, the Phase 2.3 gate is
 satisfied for one simple real target and two non-JSON promoted targets.
+
+Batch 53 note: `zig build refresh-node-type-goldens` now checks curated
+node-types fixture goldens against current generated output. Write mode requires
+`-Dnode-type-golden-write=true` and
+`-Dnode-type-golden-evidence=<local-upstream-summary.json>`, and rejects
+upstream comparison reports with regression classifications or different
+node-types evidence.
 
 ## Phase 3 — Parse Table Algorithm Parity
 

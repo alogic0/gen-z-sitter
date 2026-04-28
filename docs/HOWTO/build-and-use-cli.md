@@ -185,6 +185,23 @@ artifacts are the reproducible trail for deciding whether a difference is an
 expected local extension, a known unsupported surface, a suspected algorithm
 gap, or a regression.
 
+## Refresh Local Node-Type Goldens
+
+The curated node-types fixture goldens can be checked without rewriting files:
+
+```bash
+zig build refresh-node-type-goldens
+```
+
+Write mode is intentionally guarded by upstream comparison evidence:
+
+```bash
+zig build refresh-node-type-goldens -Dnode-type-golden-write=true -Dnode-type-golden-evidence=.zig-cache/upstream-compare/local-upstream-summary.json
+```
+
+The write path rejects evidence reports that contain regression classifications
+or different node-types evidence.
+
 ## Generate `node-types.json`
 
 To write `node-types.json`:

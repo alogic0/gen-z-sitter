@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const custom_step_names = [_][]const u8{
+    "refresh-node-type-goldens",
     "run-generate-smoke",
     "run-minimize-report",
     "run-phase5-profile",
@@ -19,6 +20,8 @@ pub fn build(b: *std.Build) void {
     const upstream_compare_output = b.option([]const u8, "upstream-compare-output", "Output directory for run-compare-upstream");
     const upstream_compare_report_states_for_rule = b.option([]const u8, "upstream-compare-report-states-for-rule", "Rule name for filtered parse-states artifact in run-compare-upstream");
     const tree_sitter_dir = b.option([]const u8, "tree-sitter-dir", "Reference tree-sitter checkout for run-compare-upstream");
+    const node_type_golden_evidence = b.option([]const u8, "node-type-golden-evidence", "compare-upstream report used to allow node-types golden refresh");
+    const node_type_golden_write = b.option(bool, "node-type-golden-write", "Rewrite node-types fixture goldens instead of checking them");
 
     const exe = b.addExecutable(.{
         .name = "gen-z-sitter",
@@ -61,6 +64,23 @@ pub fn build(b: *std.Build) void {
     compare_upstream_cmd.addArg(upstream_compare_grammar orelse "compat_targets/tree_sitter_json/grammar.json");
     const compare_upstream_step = b.step("run-compare-upstream", "Write a bounded local/upstream comparison summary for one grammar");
     compare_upstream_step.dependOn(&compare_upstream_cmd.step);
+
+    const refresh_node_type_goldens = b.addExecutable(.{
+        .name = "refresh-node-type-goldens",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("refresh_node_type_goldens.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const refresh_node_type_goldens_cmd = b.addRunArtifact(refresh_node_type_goldens);
+    refresh_node_type_goldens_cmd.addArg(if (node_type_golden_write orelse false) "--write" else "--check");
+    if (node_type_golden_evidence) |path| {
+        refresh_node_type_goldens_cmd.addArg("--evidence");
+        refresh_node_type_goldens_cmd.addArg(path);
+    }
+    const refresh_node_type_goldens_step = b.step("refresh-node-type-goldens", "Check or refresh node-types fixture goldens");
+    refresh_node_type_goldens_step.dependOn(&refresh_node_type_goldens_cmd.step);
 
     const unit_tests = b.addTest(.{
         .root_module = createTestModule(b, "src/fast_test_entry.zig", target, optimize),
@@ -334,12 +354,13 @@ pub fn build(b: *std.Build) void {
 }
 
 test "custom build steps stay documented" {
-    try std.testing.expect(std.mem.eql(u8, custom_step_names[0], "run-generate-smoke"));
-    try std.testing.expect(std.mem.eql(u8, custom_step_names[1], "run-minimize-report"));
-    try std.testing.expect(std.mem.eql(u8, custom_step_names[2], "run-phase5-profile"));
-    try std.testing.expect(std.mem.eql(u8, custom_step_names[3], "run-zig-runtime-link-profile"));
-    try std.testing.expect(std.mem.eql(u8, custom_step_names[4], "test-build-config"));
-    try std.testing.expect(std.mem.eql(u8, custom_step_names[5], "test-release"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[0], "refresh-node-type-goldens"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[1], "run-generate-smoke"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[2], "run-minimize-report"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[3], "run-phase5-profile"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[4], "run-zig-runtime-link-profile"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[5], "test-build-config"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[6], "test-release"));
 }
 
 fn createTestModule(
