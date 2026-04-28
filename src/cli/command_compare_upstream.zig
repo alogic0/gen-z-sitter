@@ -122,12 +122,14 @@ const CorpusComparison = struct {
 
 const LocalArtifacts = struct {
     output_dir: ?[]const u8 = null,
+    raw_grammar_path: ?[]const u8 = null,
     parser_c_path: ?[]const u8 = null,
     node_types_path: ?[]const u8 = null,
     prepared_ir_path: ?[]const u8 = null,
 
     fn deinit(self: LocalArtifacts, allocator: std.mem.Allocator) void {
         if (self.output_dir) |value| allocator.free(value);
+        if (self.raw_grammar_path) |value| allocator.free(value);
         if (self.parser_c_path) |value| allocator.free(value);
         if (self.node_types_path) |value| allocator.free(value);
         if (self.prepared_ir_path) |value| allocator.free(value);
@@ -268,6 +270,8 @@ fn runCorpusComparisonAlloc(
     errdefer allocator.free(local_dir);
     std.Io.Dir.cwd().deleteTree(runtime_io.get(), local_dir) catch {};
     try fs_support.ensureDir(local_dir);
+    const local_raw_grammar_path = try std.fs.path.join(allocator, &.{ local_dir, "raw-grammar.json" });
+    errdefer allocator.free(local_raw_grammar_path);
     const local_parser_path = try std.fs.path.join(allocator, &.{ local_dir, "parser.c" });
     errdefer allocator.free(local_parser_path);
     const local_node_types_path = try std.fs.path.join(allocator, &.{ local_dir, "node-types.json" });
@@ -280,6 +284,12 @@ fn runCorpusComparisonAlloc(
     });
     defer allocator.free(local_parser_c);
     try fs_support.writeFile(local_parser_path, local_parser_c);
+    const local_raw_grammar_json = try upstream_summary.generateLocalRawGrammarSnapshotJsonAlloc(allocator, opts.grammar_path, .{
+        .js_runtime = opts.js_runtime orelse "node",
+        .minimize_states = opts.minimize_states,
+    });
+    defer allocator.free(local_raw_grammar_json);
+    try fs_support.writeFile(local_raw_grammar_path, local_raw_grammar_json);
     const local_node_types_json = try upstream_summary.generateLocalNodeTypesJsonAlloc(allocator, opts.grammar_path, .{
         .js_runtime = opts.js_runtime orelse "node",
         .minimize_states = opts.minimize_states,
@@ -294,6 +304,7 @@ fn runCorpusComparisonAlloc(
     try fs_support.writeFile(local_prepared_ir_path, local_prepared_ir_json);
 
     local_artifacts.output_dir = local_dir;
+    local_artifacts.raw_grammar_path = local_raw_grammar_path;
     local_artifacts.parser_c_path = local_parser_path;
     local_artifacts.node_types_path = local_node_types_path;
     local_artifacts.prepared_ir_path = local_prepared_ir_path;
@@ -527,6 +538,9 @@ fn renderReportAlloc(
     try writer.writeAll("    \"output_dir\": ");
     try writeOptionalJsonString(writer, local_artifacts.output_dir);
     try writer.writeAll(",\n");
+    try writer.writeAll("    \"raw_grammar_path\": ");
+    try writeOptionalJsonString(writer, local_artifacts.raw_grammar_path);
+    try writer.writeAll(",\n");
     try writer.writeAll("    \"parser_c_path\": ");
     try writeOptionalJsonString(writer, local_artifacts.parser_c_path);
     try writer.writeAll(",\n");
@@ -680,6 +694,7 @@ test "runCompareUpstream writes local summary report" {
     defer std.testing.allocator.free(report);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"local\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"local_prepared_ir\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report, "\"raw_grammar_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"prepared_ir_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"upstream\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"available\": false") != null);

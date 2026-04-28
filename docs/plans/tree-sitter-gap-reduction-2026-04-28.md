@@ -155,6 +155,10 @@ Goal: remove hidden differences before table construction starts.
   `inline`, `supertypes`, `word`, and `extras`.
 - [ ] Add grammar-loader differential fixtures that serialize both upstream and
   local raw grammar structure.
+  - [x] Write a normalized local `raw-grammar.json` artifact for comparison
+    runs.
+  - [ ] Add or discover an upstream raw-grammar oracle that is independent of
+    generated `parser.c`.
 - [x] Make unsupported DSL constructs fail explicitly with target name and rule
   path.
 
@@ -171,6 +175,12 @@ with a note containing the grammar name, rule path, and unsupported raw type.
 The generate command prints this note through the standard diagnostic path, so
 new real-grammar gaps identify the exact unsupported construct instead of
 collapsing into a generic invalid shape error.
+
+Batch 14 note: local comparison artifacts now include `raw-grammar.json`, a
+normalized serialization of the loaded raw grammar rules, externals, extras,
+precedences, conflicts, reserved sets, supertypes, inline list, and word token.
+The upstream side remains open because `tree-sitter generate` does not expose a
+raw normalized grammar artifact.
 
 Gate:
 

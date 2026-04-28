@@ -7,6 +7,7 @@ const grammar_ir = @import("../ir/grammar_ir.zig");
 const lexical_ir = @import("../ir/lexical_grammar.zig");
 const node_type_pipeline = @import("../node_types/pipeline.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
+const raw_grammar = @import("../grammar/raw_grammar.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const parser_compat = @import("../parser_emit/compat.zig");
@@ -175,6 +176,22 @@ pub fn generateLocalPreparedIrSnapshotJsonAlloc(
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     try writePreparedIrSnapshotJson(&out.writer, prepared, extracted, flattened);
+    return try out.toOwnedSlice();
+}
+
+pub fn generateLocalRawGrammarSnapshotJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeRawGrammarJson(&out.writer, loaded.json.grammar);
     return try out.toOwnedSlice();
 }
 
@@ -361,6 +378,191 @@ fn externalScannerStateCount(source: []const u8) usize {
     const value_start = start + header.len;
     const end = std.mem.indexOfScalarPos(u8, source, value_start, ']') orelse return 0;
     return std.fmt.parseUnsigned(usize, source[value_start..end], 10) catch 0;
+}
+
+fn writeRawGrammarJson(writer: anytype, grammar: raw_grammar.RawGrammar) anyerror!void {
+    try writer.writeAll("{\n");
+    try writer.writeAll("  \"name\": ");
+    try writeJsonString(writer, grammar.name);
+    try writer.writeAll(",\n");
+    try writer.print("  \"version\": [{d}, {d}, {d}],\n", .{ grammar.version[0], grammar.version[1], grammar.version[2] });
+    try writer.writeAll("  \"rules\": [");
+    if (grammar.rules.len != 0) try writer.writeByte('\n');
+    for (grammar.rules, 0..) |entry, index| {
+        try writer.writeAll("    { \"name\": ");
+        try writeJsonString(writer, entry.name);
+        try writer.writeAll(", \"rule\": ");
+        try writeRawRuleJson(writer, entry.rule);
+        try writer.writeAll(" }");
+        if (index + 1 != grammar.rules.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (grammar.rules.len != 0) try writer.writeAll("  ");
+    try writer.writeAll("],\n");
+    try writer.writeAll("  \"externals\": ");
+    try writeRawRuleArrayJson(writer, grammar.externals);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"extras\": ");
+    try writeRawRuleArrayJson(writer, grammar.extras);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"inline\": ");
+    try writeStringArrayJson(writer, grammar.inline_rules);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"supertypes\": ");
+    try writeStringArrayJson(writer, grammar.supertypes);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"word\": ");
+    if (grammar.word) |word| try writeJsonString(writer, word) else try writer.writeAll("null");
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"conflicts\": ");
+    try writeStringSetsJson(writer, grammar.expected_conflicts);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"precedences\": ");
+    try writeRawPrecedencesJson(writer, grammar.precedences);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"reserved\": ");
+    try writeRawReservedSetsJson(writer, grammar.reserved);
+    try writer.writeByte('\n');
+    try writer.writeAll("}\n");
+}
+
+fn writeRawRuleArrayJson(writer: anytype, rules: []const *const raw_grammar.RawRule) anyerror!void {
+    try writer.writeByte('[');
+    for (rules, 0..) |rule, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writeRawRuleJson(writer, rule);
+    }
+    try writer.writeByte(']');
+}
+
+fn writeRawRuleJson(writer: anytype, rule: *const raw_grammar.RawRule) anyerror!void {
+    try writer.writeAll("{ \"type\": ");
+    try writeJsonString(writer, rule.tagName());
+    switch (rule.*) {
+        .alias => |alias| {
+            try writer.writeAll(", \"content\": ");
+            try writeRawRuleJson(writer, alias.content);
+            try writer.print(", \"named\": {}", .{alias.named});
+            try writer.writeAll(", \"value\": ");
+            try writeJsonString(writer, alias.value);
+        },
+        .blank => {},
+        .string => |value| {
+            try writer.writeAll(", \"value\": ");
+            try writeJsonString(writer, value);
+        },
+        .pattern => |pattern| {
+            try writer.writeAll(", \"value\": ");
+            try writeJsonString(writer, pattern.value);
+            if (pattern.flags) |flags| {
+                try writer.writeAll(", \"flags\": ");
+                try writeJsonString(writer, flags);
+            }
+        },
+        .symbol => |name| {
+            try writer.writeAll(", \"name\": ");
+            try writeJsonString(writer, name);
+        },
+        .choice => |members| {
+            try writer.writeAll(", \"members\": ");
+            try writeRawRuleArrayJson(writer, members);
+        },
+        .field => |field| {
+            try writer.writeAll(", \"name\": ");
+            try writeJsonString(writer, field.name);
+            try writer.writeAll(", \"content\": ");
+            try writeRawRuleJson(writer, field.content);
+        },
+        .seq => |members| {
+            try writer.writeAll(", \"members\": ");
+            try writeRawRuleArrayJson(writer, members);
+        },
+        .repeat => |inner| {
+            try writer.writeAll(", \"content\": ");
+            try writeRawRuleJson(writer, inner);
+        },
+        .repeat1 => |inner| {
+            try writer.writeAll(", \"content\": ");
+            try writeRawRuleJson(writer, inner);
+        },
+        .prec_dynamic => |prec| {
+            try writer.print(", \"value\": {d}", .{prec.value});
+            try writer.writeAll(", \"content\": ");
+            try writeRawRuleJson(writer, prec.content);
+        },
+        .prec_left => |prec| try writeRawPrecJson(writer, prec),
+        .prec_right => |prec| try writeRawPrecJson(writer, prec),
+        .prec => |prec| try writeRawPrecJson(writer, prec),
+        .token => |inner| {
+            try writer.writeAll(", \"content\": ");
+            try writeRawRuleJson(writer, inner);
+        },
+        .immediate_token => |inner| {
+            try writer.writeAll(", \"content\": ");
+            try writeRawRuleJson(writer, inner);
+        },
+        .reserved => |reserved| {
+            try writer.writeAll(", \"context_name\": ");
+            try writeJsonString(writer, reserved.context_name);
+            try writer.writeAll(", \"content\": ");
+            try writeRawRuleJson(writer, reserved.content);
+        },
+    }
+    try writer.writeAll(" }");
+}
+
+fn writeRawPrecJson(writer: anytype, prec: raw_grammar.RawPrec) anyerror!void {
+    try writer.writeAll(", \"value\": ");
+    try writeRawPrecedenceValueJson(writer, prec.value);
+    try writer.writeAll(", \"content\": ");
+    try writeRawRuleJson(writer, prec.content);
+}
+
+fn writeRawPrecedenceValueJson(writer: anytype, value: raw_grammar.RawPrecedenceValue) !void {
+    switch (value) {
+        .integer => |integer| try writer.print("{d}", .{integer}),
+        .name => |name| try writeJsonString(writer, name),
+    }
+}
+
+fn writeStringArrayJson(writer: anytype, values: []const []const u8) !void {
+    try writer.writeByte('[');
+    for (values, 0..) |value, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writeJsonString(writer, value);
+    }
+    try writer.writeByte(']');
+}
+
+fn writeStringSetsJson(writer: anytype, sets: []const []const []const u8) !void {
+    try writer.writeByte('[');
+    for (sets, 0..) |set, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writeStringArrayJson(writer, set);
+    }
+    try writer.writeByte(']');
+}
+
+fn writeRawPrecedencesJson(writer: anytype, precedences: []const raw_grammar.PrecedenceList) !void {
+    try writer.writeByte('[');
+    for (precedences, 0..) |ordering, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writeRawRuleArrayJson(writer, ordering);
+    }
+    try writer.writeByte(']');
+}
+
+fn writeRawReservedSetsJson(writer: anytype, sets: []const raw_grammar.RawReservedSet) !void {
+    try writer.writeByte('[');
+    for (sets, 0..) |set, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writer.writeAll("{ \"context_name\": ");
+        try writeJsonString(writer, set.context_name);
+        try writer.writeAll(", \"members\": ");
+        try writeRawRuleArrayJson(writer, set.members);
+        try writer.writeAll(" }");
+    }
+    try writer.writeByte(']');
 }
 
 fn countProductions(variables: []const syntax_ir.SyntaxVariable) usize {
@@ -1186,4 +1388,25 @@ test "generateLocalPreparedIrSnapshotJsonAlloc writes diffable sections" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_variables_to_inline\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_word_token\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"flattened_syntax_variables\"") != null);
+}
+
+test "generateLocalRawGrammarSnapshotJsonAlloc writes raw grammar structure" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validBlankGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalRawGrammarSnapshotJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"basic\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"rules\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"extras\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"precedences\"") != null);
 }
