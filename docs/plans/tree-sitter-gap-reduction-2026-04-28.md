@@ -520,6 +520,8 @@ before downstream parser emission.
 - [ ] Audit local minimization against upstream `minimize_parse_table.rs`.
 - [ ] Compare removed unit reductions, merged compatible states, unused-state
   removal, and descending-size reorder.
+  - [x] Expose upstream-shaped local minimization comparison keys for table
+    counts, lex modes, primary state IDs, and production metadata.
 - [ ] Preserve correct primary state IDs, lex modes, external lex states, and
   production metadata after minimization.
   - [x] Expose lex-mode, primary-state-id, and production-metadata hashes in
@@ -549,6 +551,12 @@ section with change booleans for state counts, large-state counts,
 parse-action-list length, small parse rows, lex modes, primary state IDs, and
 production metadata. This makes minimization drift machine-readable without
 comparing hashes by hand.
+
+Batch 104 note: `minimization-summary.json` now exposes `comparison_keys` for
+table counts, lex modes, primary state IDs, and production metadata. Each key
+hashes the default/minimized pair and records `upstream_hash = null` with
+`status = upstream_oracle_missing`, giving minimization parity work a stable
+upstream-shaped artifact until a real upstream minimization oracle exists.
 
 ## Phase 4 — Lexer and Regex Parity
 

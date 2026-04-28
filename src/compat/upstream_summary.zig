@@ -1651,8 +1651,76 @@ fn writeMinimizationSummaryJson(
     try writeBoolField(writer, 4, "lex_mode_changed", hashSerializedLexModes(default_serialized.lex_modes) != hashSerializedLexModes(minimized_serialized.lex_modes), true);
     try writeBoolField(writer, 4, "primary_state_id_changed", hashPrimaryStateIds(default_serialized.primary_state_ids) != hashPrimaryStateIds(minimized_serialized.primary_state_ids), true);
     try writeBoolField(writer, 4, "production_metadata_changed", hashSerializedProductions(default_serialized.productions) != hashSerializedProductions(minimized_serialized.productions), false);
-    try writer.writeAll("  }\n");
+    try writer.writeAll("  },\n");
+    try writeMinimizationComparisonKeysJson(writer, default_serialized, minimized_serialized, 2);
     try writer.writeAll("}\n");
+}
+
+fn writeMinimizationComparisonKeysJson(
+    writer: anytype,
+    default_serialized: parse_table_serialize.SerializedTable,
+    minimized_serialized: parse_table_serialize.SerializedTable,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("\"comparison_keys\": {\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"note\": ");
+    try writeJsonString(writer, "local minimization comparison keys are stable; tree-sitter does not expose an equivalent bounded minimization artifact through the parser.c snapshot");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"keys\": [\n");
+    try writeMinimizationComparisonKey(writer, indent + 4, "table_counts", hashMinimizationPair(hashSerializedTableCounts(default_serialized), hashSerializedTableCounts(minimized_serialized)), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "lex_modes", hashMinimizationPair(hashSerializedLexModes(default_serialized.lex_modes), hashSerializedLexModes(minimized_serialized.lex_modes)), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "primary_state_ids", hashMinimizationPair(hashPrimaryStateIds(default_serialized.primary_state_ids), hashPrimaryStateIds(minimized_serialized.primary_state_ids)), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "production_metadata", hashMinimizationPair(hashSerializedProductions(default_serialized.productions), hashSerializedProductions(minimized_serialized.productions)), false);
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("]\n");
+    try writeIndent(writer, indent);
+    try writer.writeAll("}\n");
+}
+
+fn writeMinimizationComparisonKey(
+    writer: anytype,
+    indent: usize,
+    name: []const u8,
+    hash: u64,
+    trailing_comma: bool,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"name\": ");
+    try writeJsonString(writer, name);
+    try writer.writeAll(", \"local_hash\": \"");
+    try writer.print("0x{x:0>16}", .{hash});
+    try writer.writeByte('"');
+    try writer.writeAll(", \"upstream_hash\": null, \"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(" }");
+    if (trailing_comma) try writer.writeByte(',');
+    try writer.writeByte('\n');
+}
+
+fn hashMinimizationPair(default_hash: u64, minimized_hash: u64) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashU64(&hasher, default_hash);
+    hashU64(&hasher, minimized_hash);
+    return hasher.final();
+}
+
+fn hashSerializedTableCounts(serialized: parse_table_serialize.SerializedTable) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, serialized.states.len);
+    hashUsize(&hasher, serialized.large_state_count);
+    hashUsize(&hasher, serialized.small_parse_table.rows.len);
+    hashUsize(&hasher, serialized.parse_action_list.len);
+    hashUsize(&hasher, countSerializedActionEntries(serialized.states));
+    hashUsize(&hasher, countSerializedGotoEntries(serialized.states));
+    hashUsize(&hasher, countSerializedUnresolvedEntries(serialized.states));
+    return hasher.final();
 }
 
 fn writeSerializedTableCountFields(
@@ -3901,6 +3969,10 @@ test "generateLocalMinimizationSummaryJsonAlloc writes default and minimized cou
     try std.testing.expect(std.mem.indexOf(u8, json, "\"diff\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"lex_mode_changed\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"production_metadata_changed\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"comparison_keys\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"table_counts\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"primary_state_ids\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"upstream_oracle_missing\"") != null);
 }
 
 test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries" {
