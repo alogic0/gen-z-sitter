@@ -68,6 +68,7 @@ pub const EmissionSnapshot = struct {
     keyword_lex_function_bytes: usize = 0,
     emit_parser_c_ms: ?f64 = null,
     compile_smoke_ms: ?f64 = null,
+    compile_smoke_max_rss_bytes: ?usize = null,
 };
 
 pub const BlockedSymbolKind = enum {

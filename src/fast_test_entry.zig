@@ -105,5 +105,5 @@ test "generated contract and large character-set lexer compile as C11 with warni
     var result = try compile_smoke.compileParserC(std.testing.allocator, buffer.writer.buffered());
     defer result.deinit(std.testing.allocator);
 
-    try std.testing.expect(result == .success);
+    try std.testing.expect(std.meta.activeTag(result) == .success);
 }

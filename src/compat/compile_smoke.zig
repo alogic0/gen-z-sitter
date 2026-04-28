@@ -4,8 +4,12 @@ const runtime_io = @import("../support/runtime_io.zig");
 
 pub const CompileSmokeError = anyerror;
 
+pub const CompileSmokeSuccess = struct {
+    max_rss_bytes: ?usize = null,
+};
+
 pub const CompileSmokeResult = union(enum) {
-    success,
+    success: CompileSmokeSuccess,
     compiler_error: []u8,
 
     pub fn deinit(self: *CompileSmokeResult, allocator: std.mem.Allocator) void {
@@ -45,15 +49,16 @@ pub fn compileParserC(allocator: std.mem.Allocator, contents: []const u8) Compil
     const object_path = try std.fs.path.join(allocator, &.{ dir_path, "parser.o" });
     defer allocator.free(object_path);
 
-    var child_result = try process_support.runCapture(
+    var child_result = try process_support.runCaptureWithOptions(
         allocator,
         &.{ "zig", "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-c", source_path, "-o", object_path },
+        .{ .request_resource_usage_statistics = true },
     );
     defer child_result.deinit(allocator);
 
     return switch (child_result.term) {
         .exited => |code| if (code == 0)
-            .success
+            .{ .success = .{ .max_rss_bytes = child_result.max_rss_bytes } }
         else
             .{ .compiler_error = try allocator.dupe(u8, child_result.stderr) },
         else => error.UnexpectedCompilerTermination,
@@ -67,5 +72,8 @@ test "compileParserC compiles a minimal C translation unit" {
     );
     defer result.deinit(allocator);
 
-    try std.testing.expect(result == .success);
+    switch (result) {
+        .success => |success| try std.testing.expect(success.max_rss_bytes != null),
+        else => return error.TestUnexpectedCompileSmokeFailure,
+    }
 }

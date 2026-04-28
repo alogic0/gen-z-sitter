@@ -742,9 +742,9 @@ consumer for it.
 
 ### 7.3 C Compile Time
 
-- [ ] Track parser.c size, lex function size, compile time, and MaxRSS for large
+- [x] Track parser.c size, lex function size, compile time, and MaxRSS for large
   generated parsers.
-- [ ] Add bounded compile-smoke profiling for C, Rust, JavaScript, and
+- [x] Add bounded compile-smoke profiling for C, Rust, JavaScript, and
   TypeScript.
 - [ ] Tune emitted C shape only when measurements show compile time is the
   blocker.
@@ -758,9 +758,13 @@ Batch 46 note: compatibility emission snapshots now include structured
 `lex_function_bytes` and `keyword_lex_function_bytes` alongside existing
 `parser_c_bytes`, parser table bytes, and optional compile-smoke timings. The
 debug compatibility runner prints the same fields, and refreshed shortlist
-artifacts include them for promoted large grammars. MaxRSS remains separate
-because the current compile-smoke runner does not yet collect child-process
-resource usage.
+artifacts include them for promoted large grammars.
+
+Batch 47 note: compile-smoke runs now request child-process resource usage from
+Zig's process API, carry `compile_smoke_max_rss_bytes` in emission snapshots, and
+print it from the debug compatibility runner. Refreshed shortlist artifacts now
+record parser size, lexer size, compile time, and compile MaxRSS for promoted C,
+Rust, JavaScript, TypeScript, Python, and Zig grammar targets.
 
 ## Phase 8 — User-Facing Compatibility Contracts
 

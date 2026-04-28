@@ -543,7 +543,7 @@ pub fn runTarget(
         };
         defer compile_result.deinit(allocator);
         switch (compile_result) {
-            .success => {
+            .success => |success| {
                 const compile_smoke_ms = elapsedMs(compile_timer);
                 if (detail_progress) logDetailDone(target.id, "compile_smoke", compile_timer);
                 run.compile_smoke.status = .passed;
@@ -565,6 +565,7 @@ pub fn runTarget(
                     ),
                     .emit_parser_c_ms = if (options.profile_timings) parser_c_ms else null,
                     .compile_smoke_ms = if (options.profile_timings) compile_smoke_ms else null,
+                    .compile_smoke_max_rss_bytes = success.max_rss_bytes,
                 };
                 if (shouldStopAfter(options, .compile_smoke)) return run;
             },
@@ -1205,10 +1206,11 @@ pub fn runTarget(
     defer compile_result.deinit(allocator);
 
     switch (compile_result) {
-        .success => {
+        .success => |success| {
             if (options.profile_timings) {
                 if (run.emission) |*emission| emission.compile_smoke_ms = elapsedMs(compile_timer);
             }
+            if (run.emission) |*emission| emission.compile_smoke_max_rss_bytes = success.max_rss_bytes;
             run.compile_smoke.status = .passed;
             if (shouldStopAfter(options, .compile_smoke)) return run;
         },

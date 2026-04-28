@@ -3280,7 +3280,7 @@ test "emitParserCAlloc emits self-contained C that compiles" {
     var result = try compile_smoke.compileParserC(allocator, emitted);
     defer result.deinit(allocator);
 
-    try std.testing.expect(result == .success);
+    try std.testing.expect(std.meta.activeTag(result) == .success);
 }
 
 test "emitParserCAlloc emits opt-in GLR storage C that compiles" {
@@ -3306,7 +3306,7 @@ test "emitParserCAlloc emits opt-in GLR storage C that compiles" {
     var result = try compile_smoke.compileParserC(allocator, emitted);
     defer result.deinit(allocator);
 
-    try std.testing.expect(result == .success);
+    try std.testing.expect(std.meta.activeTag(result) == .success);
 }
 
 test "collectEmissionStats reports shared empty and canonical non-empty rows" {

@@ -58,6 +58,9 @@ fn printRunSummary(run: result_model.TargetRunResult) void {
         if (emission.compile_smoke_ms) |value| {
             std.debug.print(" compile_smoke_ms={d:.2}", .{value});
         }
+        if (emission.compile_smoke_max_rss_bytes) |value| {
+            std.debug.print(" compile_smoke_max_rss_bytes={d}", .{value});
+        }
         std.debug.print("\n", .{});
     }
 
