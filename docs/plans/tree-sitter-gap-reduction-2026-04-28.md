@@ -428,7 +428,7 @@ evidence; direct upstream item-set comparison remains open.
   `build_parse_table.rs` conflict handling.
 - [x] Write local conflict summary artifacts with declared expected-conflict
   counts, unused expected-conflict indexes, and unresolved reason counts.
-- [ ] Add differential fixtures for:
+- [x] Add differential fixtures for:
   - [x] shift/reduce resolved by static precedence,
   - [x] shift/reduce resolved by associativity,
   - [x] reduce/reduce resolved by precedence,
@@ -484,6 +484,11 @@ Batch 102 note: `conflict-summary.json` now records a
 candidate reduce actions carry dynamic precedence. The focused dynamic
 precedence fixture asserts that the resolved shift/reduce decision remains
 visible in the conflict artifact instead of only in resolved-action dumps.
+
+Batch 103 note: the Phase 3.2 differential-fixture parent item is now marked
+complete. Conflict-summary coverage now includes static-precedence
+shift/reduce, associativity shift/reduce, precedence reduce/reduce, dynamic
+precedence, expected conflicts, and unexpected conflicts.
 
 ### 3.3 Token Conflicts and Lexical Precedence
 
