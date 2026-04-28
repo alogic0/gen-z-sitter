@@ -563,10 +563,14 @@ automation even while the upstream raw token-conflict oracle remains open.
   removal, and descending-size reorder.
   - [x] Expose upstream-shaped local minimization comparison keys for table
     counts, lex modes, primary state IDs, and production metadata.
+  - [x] Expose local minimization comparison keys for state order, state
+    actions, gotos, parse-action-list rows, small parse-table rows, and
+    external scanner states.
 - [ ] Preserve correct primary state IDs, lex modes, external lex states, and
   production metadata after minimization.
   - [x] Expose lex-mode, primary-state-id, and production-metadata hashes in
     the minimization summary.
+  - [x] Expose external-scanner-state hashes in the minimization summary.
 - [x] Add a local minimization summary artifact for selected comparison
   grammars.
 - [x] Add a minimization diff report for large real grammars.
@@ -598,6 +602,13 @@ table counts, lex modes, primary state IDs, and production metadata. Each key
 hashes the default/minimized pair and records `upstream_hash = null` with
 `status = upstream_oracle_missing`, giving minimization parity work a stable
 upstream-shaped artifact until a real upstream minimization oracle exists.
+
+Batch 115 note: `minimization-summary.json` now records removed shift, reduce,
+and accept action counts and expands comparison keys to cover state order,
+state actions, gotos, parse-action-list rows, small parse-table rows, and
+external scanner states. This closes the local visibility part of upstream
+minimization parity work while the raw upstream minimization oracle remains
+open.
 
 ## Phase 4 — Lexer and Regex Parity
 

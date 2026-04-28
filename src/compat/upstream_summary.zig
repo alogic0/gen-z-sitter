@@ -1789,6 +1789,9 @@ fn writeMinimizationSummaryJson(
     try writeUsizeField(writer, 2, "merged_state_count", default_serialized.states.len -| minimized_serialized.states.len, true);
     try writeUsizeField(writer, 2, "removed_action_entry_count", countSerializedActionEntries(default_serialized.states) -| countSerializedActionEntries(minimized_serialized.states), true);
     try writeUsizeField(writer, 2, "removed_goto_entry_count", countSerializedGotoEntries(default_serialized.states) -| countSerializedGotoEntries(minimized_serialized.states), true);
+    try writeUsizeField(writer, 2, "removed_reduce_action_count", countSerializedActionsByKind(default_serialized.states, .reduce) -| countSerializedActionsByKind(minimized_serialized.states, .reduce), true);
+    try writeUsizeField(writer, 2, "removed_shift_action_count", countSerializedActionsByKind(default_serialized.states, .shift) -| countSerializedActionsByKind(minimized_serialized.states, .shift), true);
+    try writeUsizeField(writer, 2, "removed_accept_action_count", countSerializedActionsByKind(default_serialized.states, .accept) -| countSerializedActionsByKind(minimized_serialized.states, .accept), true);
     try writer.writeAll("  \"diff\": {\n");
     try writeBoolField(writer, 4, "state_count_changed", default_serialized.states.len != minimized_serialized.states.len, true);
     try writeBoolField(writer, 4, "large_state_count_changed", default_serialized.large_state_count != minimized_serialized.large_state_count, true);
@@ -1796,7 +1799,8 @@ fn writeMinimizationSummaryJson(
     try writeBoolField(writer, 4, "small_parse_rows_changed", default_serialized.small_parse_table.rows.len != minimized_serialized.small_parse_table.rows.len, true);
     try writeBoolField(writer, 4, "lex_mode_changed", hashSerializedLexModes(default_serialized.lex_modes) != hashSerializedLexModes(minimized_serialized.lex_modes), true);
     try writeBoolField(writer, 4, "primary_state_id_changed", hashPrimaryStateIds(default_serialized.primary_state_ids) != hashPrimaryStateIds(minimized_serialized.primary_state_ids), true);
-    try writeBoolField(writer, 4, "production_metadata_changed", hashSerializedProductions(default_serialized.productions) != hashSerializedProductions(minimized_serialized.productions), false);
+    try writeBoolField(writer, 4, "production_metadata_changed", hashSerializedProductions(default_serialized.productions) != hashSerializedProductions(minimized_serialized.productions), true);
+    try writeBoolField(writer, 4, "external_scanner_states_changed", hashSerializedExternalScannerStates(default_serialized.external_scanner.states) != hashSerializedExternalScannerStates(minimized_serialized.external_scanner.states), false);
     try writer.writeAll("  },\n");
     try writeMinimizationComparisonKeysJson(writer, default_serialized, minimized_serialized, 2);
     try writer.writeAll("}\n");
@@ -1821,9 +1825,15 @@ fn writeMinimizationComparisonKeysJson(
     try writeIndent(writer, indent + 2);
     try writer.writeAll("\"keys\": [\n");
     try writeMinimizationComparisonKey(writer, indent + 4, "table_counts", hashMinimizationPair(hashSerializedTableCounts(default_serialized), hashSerializedTableCounts(minimized_serialized)), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "state_order", hashMinimizationPair(hashSerializedStateOrder(default_serialized.states), hashSerializedStateOrder(minimized_serialized.states)), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "state_actions", hashMinimizationPair(hashSerializedStateActions(default_serialized.states), hashSerializedStateActions(minimized_serialized.states)), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "state_gotos", hashMinimizationPair(hashSerializedStateGotos(default_serialized.states), hashSerializedStateGotos(minimized_serialized.states)), true);
     try writeMinimizationComparisonKey(writer, indent + 4, "lex_modes", hashMinimizationPair(hashSerializedLexModes(default_serialized.lex_modes), hashSerializedLexModes(minimized_serialized.lex_modes)), true);
     try writeMinimizationComparisonKey(writer, indent + 4, "primary_state_ids", hashMinimizationPair(hashPrimaryStateIds(default_serialized.primary_state_ids), hashPrimaryStateIds(minimized_serialized.primary_state_ids)), true);
-    try writeMinimizationComparisonKey(writer, indent + 4, "production_metadata", hashMinimizationPair(hashSerializedProductions(default_serialized.productions), hashSerializedProductions(minimized_serialized.productions)), false);
+    try writeMinimizationComparisonKey(writer, indent + 4, "production_metadata", hashMinimizationPair(hashSerializedProductions(default_serialized.productions), hashSerializedProductions(minimized_serialized.productions)), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "parse_action_list", hashMinimizationPair(hashSerializedParseActionList(default_serialized.parse_action_list), hashSerializedParseActionList(minimized_serialized.parse_action_list)), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "small_parse_table", hashMinimizationPair(hashSerializedSmallParseTable(default_serialized.small_parse_table), hashSerializedSmallParseTable(minimized_serialized.small_parse_table)), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "external_scanner_states", hashMinimizationPair(hashSerializedExternalScannerStates(default_serialized.external_scanner.states), hashSerializedExternalScannerStates(minimized_serialized.external_scanner.states)), false);
     try writeIndent(writer, indent + 2);
     try writer.writeAll("]\n");
     try writeIndent(writer, indent);
@@ -1878,6 +1888,9 @@ fn writeSerializedTableCountFields(
     try writeUsizeField(writer, 4, "small_parse_row_count", serialized.small_parse_table.rows.len, true);
     try writeUsizeField(writer, 4, "parse_action_list_count", serialized.parse_action_list.len, true);
     try writeUsizeField(writer, 4, "action_entry_count", countSerializedActionEntries(serialized.states), true);
+    try writeUsizeField(writer, 4, "shift_action_count", countSerializedActionsByKind(serialized.states, .shift), true);
+    try writeUsizeField(writer, 4, "reduce_action_count", countSerializedActionsByKind(serialized.states, .reduce), true);
+    try writeUsizeField(writer, 4, "accept_action_count", countSerializedActionsByKind(serialized.states, .accept), true);
     try writeUsizeField(writer, 4, "goto_entry_count", countSerializedGotoEntries(serialized.states), true);
     try writeUsizeField(writer, 4, "unresolved_entry_count", countSerializedUnresolvedEntries(serialized.states), true);
     try writeU64HexField(writer, 4, "lex_mode_hash", hashSerializedLexModes(serialized.lex_modes), true);
@@ -1913,6 +1926,129 @@ fn hashSerializedProductions(productions: []const parse_table_serialize.Serializ
     return hasher.final();
 }
 
+fn hashSerializedStateOrder(states: []const parse_table_serialize.SerializedState) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, states.len);
+    for (states) |serialized_state| {
+        hashU32(&hasher, serialized_state.id);
+        hashU32(&hasher, serialized_state.core_id);
+        hashU32(&hasher, serialized_state.lex_state_id);
+    }
+    return hasher.final();
+}
+
+fn hashSerializedStateActions(states: []const parse_table_serialize.SerializedState) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, states.len);
+    for (states) |serialized_state| {
+        hashU32(&hasher, serialized_state.id);
+        hashUsize(&hasher, serialized_state.actions.len);
+        for (serialized_state.actions) |entry| {
+            hashSymbolRef(&hasher, entry.symbol);
+            hashParseAction(&hasher, entry.action);
+            hashUsize(&hasher, entry.candidate_actions.len);
+            for (entry.candidate_actions) |candidate| hashParseAction(&hasher, candidate);
+            hashBool(&hasher, entry.extra);
+            hashBool(&hasher, entry.repetition);
+            hashBool(&hasher, entry.recover);
+        }
+        hashUsize(&hasher, serialized_state.unresolved.len);
+        for (serialized_state.unresolved) |entry| {
+            hashSymbolRef(&hasher, entry.symbol);
+            hashString(&hasher, @tagName(entry.reason));
+            hashUsize(&hasher, entry.candidate_actions.len);
+            for (entry.candidate_actions) |candidate| hashParseAction(&hasher, candidate);
+        }
+    }
+    return hasher.final();
+}
+
+fn hashSerializedStateGotos(states: []const parse_table_serialize.SerializedState) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, states.len);
+    for (states) |serialized_state| {
+        hashU32(&hasher, serialized_state.id);
+        hashUsize(&hasher, serialized_state.gotos.len);
+        for (serialized_state.gotos) |entry| {
+            hashSymbolRef(&hasher, entry.symbol);
+            hashU32(&hasher, entry.state);
+        }
+    }
+    return hasher.final();
+}
+
+fn hashSerializedParseActionList(entries: []const parse_table_serialize.SerializedParseActionListEntry) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, entries.len);
+    for (entries) |entry| {
+        hashU32(&hasher, entry.index);
+        hashBool(&hasher, entry.reusable);
+        hashUsize(&hasher, entry.actions.len);
+        for (entry.actions) |action| hashSerializedParseActionSummary(&hasher, action);
+    }
+    return hasher.final();
+}
+
+fn hashSerializedSmallParseTable(table: parse_table_serialize.SerializedSmallParseTable) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, table.rows.len);
+    for (table.rows) |row| {
+        hashU32(&hasher, row.offset);
+        hashUsize(&hasher, row.groups.len);
+        for (row.groups) |group| {
+            hashString(&hasher, @tagName(group.kind));
+            hashU32(&hasher, group.value);
+            hashUsize(&hasher, group.symbols.len);
+            for (group.symbols) |symbol| hashSymbolRef(&hasher, symbol);
+        }
+    }
+    hashUsize(&hasher, table.map.len);
+    for (table.map) |offset| hashU32(&hasher, offset);
+    return hasher.final();
+}
+
+fn hashSerializedExternalScannerStates(states: []const []const bool) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, states.len);
+    for (states) |state_flags| {
+        hashUsize(&hasher, state_flags.len);
+        for (state_flags) |enabled| hashBool(&hasher, enabled);
+    }
+    return hasher.final();
+}
+
+fn hashParseAction(hasher: *std.hash.Wyhash, action: @import("../parse_table/actions.zig").ParseAction) void {
+    switch (action) {
+        .shift => |state_id| {
+            hashTag(hasher, "shift");
+            hashU32(hasher, state_id);
+        },
+        .reduce => |production_id| {
+            hashTag(hasher, "reduce");
+            hashU32(hasher, production_id);
+        },
+        .accept => {
+            hashTag(hasher, "accept");
+        },
+    }
+}
+
+fn hashSerializedParseActionSummary(
+    hasher: *std.hash.Wyhash,
+    action: parse_table_serialize.SerializedParseAction,
+) void {
+    hashString(hasher, @tagName(action.kind));
+    hashU32(hasher, action.state);
+    hashBool(hasher, action.extra);
+    hashBool(hasher, action.repetition);
+    hashU32(hasher, @intCast(action.child_count));
+    hashSymbolRef(hasher, action.symbol);
+    var dynamic_buffer: [@sizeOf(i16)]u8 = undefined;
+    std.mem.writeInt(i16, &dynamic_buffer, action.dynamic_precedence, .little);
+    hasher.update(&dynamic_buffer);
+    hashU32(hasher, action.production_id);
+}
+
 fn countSerializedActionEntries(states: []const parse_table_serialize.SerializedState) usize {
     var count: usize = 0;
     for (states) |serialized_state| count += serialized_state.actions.len;
@@ -1928,6 +2064,19 @@ fn countSerializedGotoEntries(states: []const parse_table_serialize.SerializedSt
 fn countSerializedUnresolvedEntries(states: []const parse_table_serialize.SerializedState) usize {
     var count: usize = 0;
     for (states) |serialized_state| count += serialized_state.unresolved.len;
+    return count;
+}
+
+fn countSerializedActionsByKind(
+    states: []const parse_table_serialize.SerializedState,
+    kind: @import("../parse_table/actions.zig").ActionKind,
+) usize {
+    var count: usize = 0;
+    for (states) |serialized_state| {
+        for (serialized_state.actions) |entry| {
+            if (std.meta.activeTag(entry.action) == kind) count += 1;
+        }
+    }
     return count;
 }
 
@@ -4330,15 +4479,22 @@ test "generateLocalMinimizationSummaryJsonAlloc writes default and minimized cou
     try std.testing.expect(std.mem.indexOf(u8, json, "\"minimized\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"merged_state_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"removed_action_entry_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"removed_reduce_action_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"lex_mode_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"primary_state_id_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"production_metadata_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"diff\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"lex_mode_changed\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"production_metadata_changed\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"external_scanner_states_changed\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"comparison_keys\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"table_counts\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"state_actions\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"state_gotos\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"primary_state_ids\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"parse_action_list\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"small_parse_table\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"external_scanner_states\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"upstream_oracle_missing\"") != null);
 }
 
