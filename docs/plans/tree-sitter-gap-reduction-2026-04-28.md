@@ -577,7 +577,7 @@ Use this order unless profiling shows a clear reason to change it:
 
 - [x] Every promotion updates `compat_targets/shortlist_report.json`.
 - [ ] Every deferred target records the exact blocker and next proof.
-- [ ] Heavy timings are stored in `docs/plans` or compat artifacts.
+- [x] Heavy timings are stored in `docs/plans` or compat artifacts.
 - [x] No target enters the default bounded suite without clear headroom.
 
 Gate:
@@ -714,6 +714,11 @@ successor seed cache counters, item-set hash/equality work, transition action
 timings, and state/item totals for promoted parser targets. Refreshed shortlist
 artifacts now keep these construction counters next to parser size and compile
 metrics.
+
+Batch 49 note: the compatibility artifact refresh now enables timing capture
+for parser C emission and compile-smoke stages. Checked-in shortlist reports
+therefore keep size, MaxRSS, construction counters, and bounded wall-clock
+timings together for large parser targets.
 
 ### 7.2 Runtime Table Capacity
 

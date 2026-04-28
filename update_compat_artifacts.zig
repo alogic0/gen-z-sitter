@@ -46,7 +46,10 @@ pub fn main(init: std.process.Init) !void {
     defer allocator.free(shortlist);
 
     logStepStart("run_shortlist_targets");
-    const runs = try harness.runShortlistTargetsAlloc(allocator, .{ .progress_log = true });
+    const runs = try harness.runShortlistTargetsAlloc(allocator, .{
+        .progress_log = true,
+        .profile_timings = true,
+    });
     logStepDone("run_shortlist_targets");
     defer result_model.deinitRunResults(allocator, runs);
 
