@@ -430,6 +430,8 @@ Goal: close the scanner-free lexical gap enough for larger real grammars.
 
 - [ ] Audit local regex support against the regex constructs present in staged
   real grammars.
+- [x] Add local regex-surface artifacts that list pattern tokens and classify
+  regex features by token name.
 - [ ] Add explicit support or explicit diagnostics for character classes,
   escapes, Unicode categories, ranges, repetitions, anchors as used by
   Tree-sitter grammar tokens, and immediate-token boundaries.
@@ -440,6 +442,13 @@ Gate:
 
 - C, Zig, Rust, JavaScript, Python, and TypeScript regex-token surfaces are
   classified as supported or blocked with exact token names.
+
+Batch 22 note: local comparison artifacts now include `regex-surface.json`,
+listing lexical variables that contain regex patterns and classifying each
+pattern for flags, character classes, escapes, Unicode properties, bounded
+repeats, groups, alternation, anchors, and dot usage. This gives real-grammar
+regex blockers exact token names and pattern strings before changing lexer
+behavior.
 
 ### 4.2 Lex Table Construction
 

@@ -4,6 +4,7 @@ const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const grammar_ir = @import("../ir/grammar_ir.zig");
+const ir_rules = @import("../ir/rules.zig");
 const lexical_ir = @import("../ir/lexical_grammar.zig");
 const lexer_model = @import("../lexer/model.zig");
 const node_type_pipeline = @import("../node_types/pipeline.zig");
@@ -382,6 +383,29 @@ pub fn generateLocalMinimizationSummaryJsonAlloc(
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     try writeMinimizationSummaryJson(&out.writer, default_serialized, minimized_serialized);
+    return try out.toOwnedSlice();
+}
+
+pub fn generateLocalRegexSurfaceSummaryJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena_allocator, &loaded.json.grammar);
+    const extracted = try extract_tokens.extractTokens(arena_allocator, prepared);
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeRegexSurfaceSummaryJson(&out.writer, arena_allocator, prepared.rules, extracted.lexical);
     return try out.toOwnedSlice();
 }
 
@@ -1060,6 +1084,227 @@ fn countSerializedUnresolvedEntries(states: []const parse_table_serialize.Serial
     var count: usize = 0;
     for (states) |serialized_state| count += serialized_state.unresolved.len;
     return count;
+}
+
+const RegexPatternRef = struct {
+    rule_id: ir_rules.RuleId,
+    value: []const u8,
+    flags: ?[]const u8,
+};
+
+const RegexSurfaceCounts = struct {
+    pattern_variable_count: usize = 0,
+    pattern_count: usize = 0,
+    flagged_pattern_count: usize = 0,
+    class_count: usize = 0,
+    escape_count: usize = 0,
+    unicode_property_count: usize = 0,
+    bounded_repeat_count: usize = 0,
+    group_count: usize = 0,
+    alternation_count: usize = 0,
+    anchor_count: usize = 0,
+    dot_count: usize = 0,
+};
+
+fn writeRegexSurfaceSummaryJson(
+    writer: anytype,
+    allocator: std.mem.Allocator,
+    all_rules: []const ir_rules.Rule,
+    lexical: lexical_ir.LexicalGrammar,
+) !void {
+    var variable_patterns = try allocator.alloc([]const RegexPatternRef, lexical.variables.len);
+    var counts = RegexSurfaceCounts{};
+    for (lexical.variables, 0..) |variable, index| {
+        variable_patterns[index] = try collectPatternRefsForRuleAlloc(allocator, all_rules, variable.rule);
+        if (variable_patterns[index].len != 0) counts.pattern_variable_count += 1;
+        for (variable_patterns[index]) |pattern| {
+            counts.pattern_count += 1;
+            if (pattern.flags != null) counts.flagged_pattern_count += 1;
+            const features = regexFeatureSummary(pattern.value);
+            if (features.has_class) counts.class_count += 1;
+            if (features.has_escape) counts.escape_count += 1;
+            if (features.has_unicode_property) counts.unicode_property_count += 1;
+            if (features.has_bounded_repeat) counts.bounded_repeat_count += 1;
+            if (features.has_group) counts.group_count += 1;
+            if (features.has_alternation) counts.alternation_count += 1;
+            if (features.has_anchor) counts.anchor_count += 1;
+            if (features.has_dot) counts.dot_count += 1;
+        }
+    }
+
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, 2, "lexical_variable_count", lexical.variables.len, true);
+    try writeUsizeField(writer, 2, "pattern_variable_count", counts.pattern_variable_count, true);
+    try writeUsizeField(writer, 2, "pattern_count", counts.pattern_count, true);
+    try writer.writeAll("  \"feature_counts\": {\n");
+    try writeUsizeField(writer, 4, "flagged", counts.flagged_pattern_count, true);
+    try writeUsizeField(writer, 4, "class", counts.class_count, true);
+    try writeUsizeField(writer, 4, "escape", counts.escape_count, true);
+    try writeUsizeField(writer, 4, "unicode_property", counts.unicode_property_count, true);
+    try writeUsizeField(writer, 4, "bounded_repeat", counts.bounded_repeat_count, true);
+    try writeUsizeField(writer, 4, "group", counts.group_count, true);
+    try writeUsizeField(writer, 4, "alternation", counts.alternation_count, true);
+    try writeUsizeField(writer, 4, "anchor", counts.anchor_count, true);
+    try writeUsizeField(writer, 4, "dot", counts.dot_count, false);
+    try writer.writeAll("  },\n");
+    try writer.writeAll("  \"variables\": [\n");
+    var wrote_variable = false;
+    for (lexical.variables, 0..) |variable, index| {
+        if (variable_patterns[index].len == 0) continue;
+        if (wrote_variable) try writer.writeAll(",\n");
+        wrote_variable = true;
+        try writeRegexVariableSurfaceJson(writer, variable, variable_patterns[index]);
+    }
+    if (wrote_variable) try writer.writeByte('\n');
+    try writer.writeAll("  ]\n");
+    try writer.writeAll("}\n");
+}
+
+fn writeRegexVariableSurfaceJson(
+    writer: anytype,
+    variable: lexical_ir.LexicalVariable,
+    patterns: []const RegexPatternRef,
+) !void {
+    try writer.writeAll("    { \"name\": ");
+    try writeJsonString(writer, variable.name);
+    try writer.writeAll(", \"kind\": ");
+    try writeJsonString(writer, lexicalVariableKindName(variable.kind));
+    try writer.writeAll(", \"pattern_count\": ");
+    try writer.print("{d}", .{patterns.len});
+    try writer.writeAll(", \"patterns\": [");
+    for (patterns, 0..) |pattern, index| {
+        if (index != 0) try writer.writeAll(", ");
+        const features = regexFeatureSummary(pattern.value);
+        try writer.writeAll("{ \"rule_id\": ");
+        try writer.print("{d}", .{pattern.rule_id});
+        try writer.writeAll(", \"value\": ");
+        try writeJsonString(writer, pattern.value);
+        try writer.writeAll(", \"flags\": ");
+        if (pattern.flags) |flags|
+            try writeJsonString(writer, flags)
+        else
+            try writer.writeAll("null");
+        try writer.writeAll(", \"features\": ");
+        try writeRegexFeaturesJson(writer, features);
+        try writer.writeAll(" }");
+    }
+    try writer.writeAll("] }");
+}
+
+fn collectPatternRefsForRuleAlloc(
+    allocator: std.mem.Allocator,
+    all_rules: []const ir_rules.Rule,
+    root_rule: ir_rules.RuleId,
+) ![]const RegexPatternRef {
+    var refs = std.array_list.Managed(RegexPatternRef).init(allocator);
+    const visited = try allocator.alloc(bool, all_rules.len);
+    @memset(visited, false);
+    try collectPatternRefsForRule(allocator, all_rules, root_rule, visited, &refs);
+    return try refs.toOwnedSlice();
+}
+
+fn collectPatternRefsForRule(
+    allocator: std.mem.Allocator,
+    all_rules: []const ir_rules.Rule,
+    rule_id: ir_rules.RuleId,
+    visited: []bool,
+    refs: *std.array_list.Managed(RegexPatternRef),
+) !void {
+    if (rule_id >= all_rules.len) return;
+    if (visited[rule_id]) return;
+    visited[rule_id] = true;
+
+    switch (all_rules[rule_id]) {
+        .pattern => |pattern| try refs.append(.{
+            .rule_id = rule_id,
+            .value = pattern.value,
+            .flags = pattern.flags,
+        }),
+        .choice, .seq => |children| {
+            for (children) |child| try collectPatternRefsForRule(allocator, all_rules, child, visited, refs);
+        },
+        .repeat, .repeat1 => |child| try collectPatternRefsForRule(allocator, all_rules, child, visited, refs),
+        .metadata => |metadata| try collectPatternRefsForRule(allocator, all_rules, metadata.inner, visited, refs),
+        .blank, .symbol, .string => {},
+    }
+}
+
+const RegexFeatureSummary = struct {
+    has_class: bool = false,
+    has_escape: bool = false,
+    has_unicode_property: bool = false,
+    has_bounded_repeat: bool = false,
+    has_group: bool = false,
+    has_alternation: bool = false,
+    has_anchor: bool = false,
+    has_dot: bool = false,
+};
+
+fn regexFeatureSummary(value: []const u8) RegexFeatureSummary {
+    var result = RegexFeatureSummary{};
+    var escaped = false;
+    var in_class = false;
+    for (value) |ch| {
+        if (escaped) {
+            result.has_escape = true;
+            if (ch == 'p' or ch == 'P') result.has_unicode_property = true;
+            escaped = false;
+            continue;
+        }
+        switch (ch) {
+            '\\' => escaped = true,
+            '[' => {
+                result.has_class = true;
+                in_class = true;
+            },
+            ']' => in_class = false,
+            '{' => result.has_bounded_repeat = true,
+            '(' => {
+                if (!in_class) result.has_group = true;
+            },
+            '|' => {
+                if (!in_class) result.has_alternation = true;
+            },
+            '^', '$' => {
+                if (!in_class) result.has_anchor = true;
+            },
+            '.' => {
+                if (!in_class) result.has_dot = true;
+            },
+            else => {},
+        }
+    }
+    if (escaped) result.has_escape = true;
+    return result;
+}
+
+fn writeRegexFeaturesJson(writer: anytype, features: RegexFeatureSummary) !void {
+    try writer.writeAll("{ \"class\": ");
+    try writeBoolJson(writer, features.has_class);
+    try writer.writeAll(", \"escape\": ");
+    try writeBoolJson(writer, features.has_escape);
+    try writer.writeAll(", \"unicode_property\": ");
+    try writeBoolJson(writer, features.has_unicode_property);
+    try writer.writeAll(", \"bounded_repeat\": ");
+    try writeBoolJson(writer, features.has_bounded_repeat);
+    try writer.writeAll(", \"group\": ");
+    try writeBoolJson(writer, features.has_group);
+    try writer.writeAll(", \"alternation\": ");
+    try writeBoolJson(writer, features.has_alternation);
+    try writer.writeAll(", \"anchor\": ");
+    try writeBoolJson(writer, features.has_anchor);
+    try writer.writeAll(", \"dot\": ");
+    try writeBoolJson(writer, features.has_dot);
+    try writer.writeAll(" }");
+}
+
+fn lexicalVariableKindName(kind: lexical_ir.VariableKind) []const u8 {
+    return switch (kind) {
+        .named => "named",
+        .hidden => "hidden",
+        .anonymous => "anonymous",
+        .auxiliary => "auxiliary",
+    };
 }
 
 fn countProductions(variables: []const syntax_ir.SyntaxVariable) usize {
@@ -2076,4 +2321,39 @@ test "generateLocalMinimizationSummaryJsonAlloc writes default and minimized cou
     try std.testing.expect(std.mem.indexOf(u8, json, "\"minimized\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"merged_state_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"removed_action_entry_count\"") != null);
+}
+
+test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const contents =
+        \\{
+        \\  "name": "regex_surface",
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "identifier" },
+        \\    "identifier": {
+        \\      "type": "PATTERN",
+        \\      "value": "(\\p{XID_Start}|_)[\\p{XID_Continue}_]{0,3}",
+        \\      "flags": "i"
+        \\    }
+        \\  }
+        \\}
+    ;
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalRegexSurfaceSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"pattern_count\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unicode_property\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"bounded_repeat\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"flags\": \"i\"") != null);
 }
