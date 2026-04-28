@@ -531,9 +531,11 @@ precedence, expected conflicts, and unexpected conflicts.
   regex tokens, externals, keywords, and immediate tokens.
 - [x] Add local summaries for coincident token groups and lexical conflict
   pairs.
-- [ ] Use those summaries in parse-state minimization and lex-mode assignment.
+- [x] Use those summaries in parse-state minimization and lex-mode assignment.
   - [x] Keep parse-state minimization from merging states with different
     assigned lex modes.
+  - [x] Merge parse states into shared lex states only when their terminal
+    sets have no directional token-conflict flags.
 
 Gate:
 
@@ -555,6 +557,14 @@ status counts, lexical variable identity, starting ranges, grammar-derived
 following-token sets, following ranges, the directional status matrix, and
 concrete conflict-pair identity. These keys make token-conflict drift visible in
 automation even while the upstream raw token-conflict oracle remains open.
+
+Batch 116 note: lex-state assignment now consumes the local token-conflict
+matrix for prepared-grammar builds. Exact terminal-set reuse remains available,
+and non-conflicting terminal sets may now share one lex state; any directional
+conflict, prefix, continuation, separator, same-string, different-string, or
+starting-overlap flag keeps them separate. This conservatively reproduces the
+upstream token-set merge boundary without requiring coincident-token merging
+yet.
 
 ### 3.4 Minimize Parse Table Parity
 
@@ -709,7 +719,7 @@ character classes, escapes, and bounded repeats.
 
 ### 4.2 Lex Table Construction
 
-- [ ] Audit local NFA/DFA construction against upstream `nfa.rs` and
+- [x] Audit local NFA/DFA construction against upstream `nfa.rs` and
   `build_lex_table.rs`.
 - [x] Add local lex-table summaries for lex-state counts, accept states,
   transitions, skip transitions, ranges, and large range-set indicators.
@@ -802,6 +812,13 @@ keyword lexer and zero unmapped reserved words, and Python `compat-report`
 shows `has_keyword_lex_table = true` with zero unmapped reserved words. Full
 JavaScript `compat-report` remains blocked by the separate parse-action-list
 capacity boundary, not by keyword lexer construction.
+
+Batch 117 note: upstream `build_lex_table.rs` was audited against the local
+lexer table path. The remaining structural difference found in the audit was
+parse-state token-set merging; Batch 116 added the conservative non-conflicting
+merge path. Existing local artifacts already cover EOF validity, completion
+choice, transitions, skip/separator transitions, lex-state minimization,
+sorting, keyword lexing, and large character-set decisions.
 
 ### 4.3 Emitted Lexer C Parity
 

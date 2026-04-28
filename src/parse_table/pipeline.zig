@@ -16,6 +16,7 @@ const state = @import("state.zig");
 const extract_default_aliases = @import("../grammar/prepare/extract_default_aliases.zig");
 const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
 const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
+const lexer_model = @import("../lexer/model.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
 const fixtures = @import("../tests/fixtures.zig");
 const grammar_loader = @import("../grammar/loader.zig");
@@ -126,6 +127,7 @@ fn logProfileDone(step: []const u8, timer: ?std.Io.Timestamp) void {
 pub const PipelineError =
     extract_tokens.ExtractTokensError ||
     flatten_grammar.FlattenGrammarError ||
+    lexer_model.ExpandError ||
     build.BuildError ||
     serialize.SerializeError ||
     lexer_serialize.SerializeError ||
@@ -213,6 +215,22 @@ pub fn buildStatesFromPreparedWithOptions(
     var effective_build_options = build_options;
     effective_build_options.reserved_word_context_names = try reservedWordContextNamesAlloc(allocator, prepared.reserved_word_sets);
     effective_build_options.non_terminal_extra_symbols = try nonTerminalExtraSymbolsAlloc(allocator, flattened.extra_symbols);
+    var owned_lex_conflicts: ?build.LexStateTerminalConflictMap = null;
+    defer if (owned_lex_conflicts) |conflicts| allocator.free(conflicts.conflicts);
+    if (effective_build_options.lex_state_terminal_conflicts == null) {
+        owned_lex_conflicts = lexStateTerminalConflictMapAlloc(
+            allocator,
+            prepared.rules,
+            flattened,
+            extracted.lexical,
+        ) catch |err| switch (err) {
+            error.UnsupportedRule, error.UnsupportedPattern => null,
+            else => return err,
+        };
+        if (owned_lex_conflicts) |conflicts| {
+            effective_build_options.lex_state_terminal_conflicts = conflicts;
+        }
+    }
     defer allocator.free(effective_build_options.non_terminal_extra_symbols);
     defer allocator.free(effective_build_options.reserved_word_context_names);
     const result = try build.buildStatesWithOptions(allocator, flattened, effective_build_options);
@@ -268,6 +286,55 @@ fn nonTerminalExtraSymbolsAlloc(
         if (symbol == .non_terminal) try symbols.append(symbol);
     }
     return try symbols.toOwnedSlice();
+}
+
+fn lexStateTerminalConflictMapAlloc(
+    allocator: std.mem.Allocator,
+    all_rules: []const ir_rules.Rule,
+    syntax: @import("../ir/syntax_grammar.zig").SyntaxGrammar,
+    lexical: @import("../ir/lexical_grammar.zig").LexicalGrammar,
+) (lexer_model.ExpandError || std.mem.Allocator.Error || first.FirstError)!build.LexStateTerminalConflictMap {
+    var expanded = try lexer_model.expandExtractedLexicalGrammar(allocator, all_rules, lexical);
+    defer expanded.deinit(allocator);
+
+    const following_tokens = try lexer_model.computeFollowingTokensAlloc(
+        allocator,
+        syntax,
+        expanded.variables.len,
+    );
+    defer lexer_model.deinitTokenIndexSets(allocator, following_tokens);
+
+    var conflict_map = try lexer_model.buildTokenConflictMapWithFollowingTokensAlloc(
+        allocator,
+        expanded,
+        following_tokens,
+    );
+    defer conflict_map.deinit(allocator);
+
+    const terminal_count = expanded.variables.len;
+    const conflicts = try allocator.alloc(bool, terminal_count * terminal_count);
+    errdefer allocator.free(conflicts);
+    @memset(conflicts, false);
+
+    for (0..terminal_count) |left| {
+        for (0..terminal_count) |right| {
+            if (left == right) continue;
+            const status = conflict_map.status(left, right);
+            conflicts[left * terminal_count + right] =
+                status.matches_prefix or
+                status.does_match_continuation or
+                status.does_match_valid_continuation or
+                status.does_match_separators or
+                status.matches_same_string or
+                status.matches_different_string or
+                status.starting_overlap;
+        }
+    }
+
+    return .{
+        .terminal_count = terminal_count,
+        .conflicts = conflicts,
+    };
 }
 
 pub fn generateStateActionDumpFromPrepared(

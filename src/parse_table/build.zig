@@ -1397,6 +1397,16 @@ pub const CoarseTransitionSpec = struct {
     symbol: syntax_ir.SymbolRef,
 };
 
+pub const LexStateTerminalConflictMap = struct {
+    terminal_count: usize,
+    conflicts: []const bool,
+
+    pub fn conflictsWith(self: LexStateTerminalConflictMap, left: usize, right: usize) bool {
+        if (left >= self.terminal_count or right >= self.terminal_count) return true;
+        return self.conflicts[left * self.terminal_count + right];
+    }
+};
+
 pub const BuildOptions = struct {
     closure_lookahead_mode: ClosureLookaheadMode = .full,
     coarse_follow_lookaheads: bool = false,
@@ -1405,6 +1415,7 @@ pub const BuildOptions = struct {
     coarse_transitions: []const CoarseTransitionSpec = &.{},
     reserved_word_context_names: []const []const u8 = &.{},
     non_terminal_extra_symbols: []const syntax_ir.SymbolRef = &.{},
+    lex_state_terminal_conflicts: ?LexStateTerminalConflictMap = null,
     minimize_states: bool = false,
     strict_expected_conflicts: bool = false,
     construct_profile: ?*ConstructProfile = null,
@@ -1579,6 +1590,7 @@ fn assignLexStateIdsAlloc(
     allocator: std.mem.Allocator,
     parse_states: []const state.ParseState,
     resolved_actions: resolution.ResolvedActionTable,
+    terminal_conflicts: ?LexStateTerminalConflictMap,
 ) std.mem.Allocator.Error!AssignedLexStates {
     if (parse_states.len == 0) {
         return .{
@@ -1591,15 +1603,13 @@ fn assignLexStateIdsAlloc(
     const terminal_count = terminalCountForResolvedActions(resolved_actions);
     const assigned_states = try allocator.dupe(state.ParseState, parse_states);
     errdefer allocator.free(assigned_states);
-    var terminal_sets = std.array_list.Managed([]const bool).init(allocator);
+    var terminal_sets = std.array_list.Managed([]bool).init(allocator);
     errdefer {
         for (terminal_sets.items) |terminal_set| allocator.free(terminal_set);
         terminal_sets.deinit();
     }
     var lex_state_ids = LexStateIdByTerminalSet.init(allocator);
-    defer {
-        lex_state_ids.deinit();
-    }
+    defer lex_state_ids.deinit();
 
     var next_id: state.LexStateId = 0;
     for (assigned_states) |*parse_state| {
@@ -1612,6 +1622,19 @@ fn assignLexStateIdsAlloc(
                 .terminal => |index| terminal_set[index] = true,
                 .end, .non_terminal, .external => {},
             }
+        }
+
+        if (terminal_conflicts) |terminal_conflict_map| {
+            if (assignMergedLexStateId(terminal_sets.items, terminal_set, terminal_conflict_map)) |existing_id| {
+                allocator.free(terminal_set);
+                parse_state.lex_state_id = existing_id;
+                continue;
+            }
+
+            try terminal_sets.append(terminal_set);
+            parse_state.lex_state_id = next_id;
+            next_id += 1;
+            continue;
         }
 
         const gop = try lex_state_ids.getOrPut(terminal_set);
@@ -1633,6 +1656,44 @@ fn assignLexStateIdsAlloc(
         .count = next_id,
         .terminal_sets = try terminal_sets.toOwnedSlice(),
     };
+}
+
+fn assignMergedLexStateId(
+    terminal_sets: []const []bool,
+    candidate: []const bool,
+    terminal_conflict_map: LexStateTerminalConflictMap,
+) ?state.LexStateId {
+    for (terminal_sets, 0..) |terminal_set, index| {
+        if (!terminalSetsCanMerge(terminal_set, candidate, terminal_conflict_map)) continue;
+        mergeTerminalSet(terminal_set, candidate);
+        return @intCast(index);
+    }
+    return null;
+}
+
+fn terminalSetsCanMerge(
+    existing: []const bool,
+    candidate: []const bool,
+    terminal_conflict_map: LexStateTerminalConflictMap,
+) bool {
+    for (existing, 0..) |existing_present, existing_index| {
+        if (!existing_present or candidate[existing_index]) continue;
+        for (candidate, 0..) |candidate_present, candidate_index| {
+            if (!candidate_present or existing[candidate_index]) continue;
+            if (terminal_conflict_map.conflictsWith(existing_index, candidate_index) or
+                terminal_conflict_map.conflictsWith(candidate_index, existing_index))
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+fn mergeTerminalSet(existing: []bool, candidate: []const bool) void {
+    for (candidate, 0..) |present, index| {
+        if (present) existing[index] = true;
+    }
 }
 
 pub fn buildStates(
@@ -1747,7 +1808,12 @@ pub fn buildStatesWithOptions(
         );
     }
     stage_profile_timer = profileTimer(profile_log);
-    const lex_states = try assignLexStateIdsAlloc(allocator, constructed.states, resolved_actions);
+    const lex_states = try assignLexStateIdsAlloc(
+        allocator,
+        constructed.states,
+        resolved_actions,
+        options.lex_state_terminal_conflicts,
+    );
     logProfileDone("assign_lex_state_ids", stage_profile_timer);
 
     if (options.minimize_states) {
@@ -4459,7 +4525,7 @@ test "assignLexStateIdsAlloc reuses ids for equivalent terminal sets determinist
         },
     };
 
-    const assigned = try assignLexStateIdsAlloc(allocator, parse_states[0..], resolved_actions);
+    const assigned = try assignLexStateIdsAlloc(allocator, parse_states[0..], resolved_actions, null);
     defer allocator.free(assigned.states);
     defer {
         for (assigned.terminal_sets) |terminal_set| allocator.free(terminal_set);
@@ -4473,6 +4539,73 @@ test "assignLexStateIdsAlloc reuses ids for equivalent terminal sets determinist
     try std.testing.expectEqual(@as(usize, 2), assigned.terminal_sets.len);
     try std.testing.expectEqualSlices(bool, &.{ true, true }, assigned.terminal_sets[0]);
     try std.testing.expectEqualSlices(bool, &.{ true, false }, assigned.terminal_sets[1]);
+}
+
+test "assignLexStateIdsAlloc merges non-conflicting terminal sets" {
+    const allocator = std.testing.allocator;
+
+    const parse_states = [_]state.ParseState{
+        .{ .id = 0, .items = &.{}, .transitions = &.{} },
+        .{ .id = 1, .items = &.{}, .transitions = &.{} },
+        .{ .id = 2, .items = &.{}, .transitions = &.{} },
+    };
+    const resolved_actions = resolution.ResolvedActionTable{
+        .states = &[_]resolution.ResolvedStateActions{
+            .{
+                .state_id = 0,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &[_]actions.ParseAction{.{ .shift = 1 }},
+                        .decision = .{ .chosen = .{ .shift = 1 } },
+                    },
+                },
+            },
+            .{
+                .state_id = 1,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 1 },
+                        .candidate_actions = &[_]actions.ParseAction{.{ .shift = 2 }},
+                        .decision = .{ .chosen = .{ .shift = 2 } },
+                    },
+                },
+            },
+            .{
+                .state_id = 2,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 2 },
+                        .candidate_actions = &[_]actions.ParseAction{.{ .shift = 3 }},
+                        .decision = .{ .chosen = .{ .shift = 3 } },
+                    },
+                },
+            },
+        },
+    };
+    var conflict_bits = [_]bool{
+        false, true,  false,
+        true,  false, false,
+        false, false, false,
+    };
+    const terminal_conflict_map = LexStateTerminalConflictMap{
+        .terminal_count = 3,
+        .conflicts = conflict_bits[0..],
+    };
+
+    const assigned = try assignLexStateIdsAlloc(allocator, parse_states[0..], resolved_actions, terminal_conflict_map);
+    defer allocator.free(assigned.states);
+    defer {
+        for (assigned.terminal_sets) |terminal_set| allocator.free(terminal_set);
+        allocator.free(assigned.terminal_sets);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), assigned.count);
+    try std.testing.expectEqual(@as(state.LexStateId, 0), assigned.states[0].lex_state_id);
+    try std.testing.expectEqual(@as(state.LexStateId, 1), assigned.states[1].lex_state_id);
+    try std.testing.expectEqual(@as(state.LexStateId, 0), assigned.states[2].lex_state_id);
+    try std.testing.expectEqualSlices(bool, &.{ true, false, true }, assigned.terminal_sets[0]);
+    try std.testing.expectEqualSlices(bool, &.{ false, true, false }, assigned.terminal_sets[1]);
 }
 
 test "BuildResult exposes unused expected conflict indexes" {
