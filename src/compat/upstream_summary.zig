@@ -1441,6 +1441,7 @@ const RegexSurfaceCounts = struct {
     alternation_count: usize = 0,
     anchor_count: usize = 0,
     dot_count: usize = 0,
+    unsupported_pattern_count: usize = 0,
 };
 
 fn writeRegexSurfaceSummaryJson(
@@ -1466,6 +1467,7 @@ fn writeRegexSurfaceSummaryJson(
             if (features.has_alternation) counts.alternation_count += 1;
             if (features.has_anchor) counts.anchor_count += 1;
             if (features.has_dot) counts.dot_count += 1;
+            if (regexFeaturesUnsupported(features)) counts.unsupported_pattern_count += 1;
         }
     }
 
@@ -1482,7 +1484,8 @@ fn writeRegexSurfaceSummaryJson(
     try writeUsizeField(writer, 4, "group", counts.group_count, true);
     try writeUsizeField(writer, 4, "alternation", counts.alternation_count, true);
     try writeUsizeField(writer, 4, "anchor", counts.anchor_count, true);
-    try writeUsizeField(writer, 4, "dot", counts.dot_count, false);
+    try writeUsizeField(writer, 4, "dot", counts.dot_count, true);
+    try writeUsizeField(writer, 4, "unsupported_pattern", counts.unsupported_pattern_count, false);
     try writer.writeAll("  },\n");
     try writer.writeAll("  \"variables\": [\n");
     var wrote_variable = false;
@@ -1521,6 +1524,10 @@ fn writeRegexVariableSurfaceJson(
             try writeJsonString(writer, flags)
         else
             try writer.writeAll("null");
+        try writer.writeAll(", \"status\": ");
+        try writeJsonString(writer, if (regexFeaturesUnsupported(features)) "unsupported" else "supported_subset");
+        try writer.writeAll(", \"unsupported_features\": ");
+        try writeRegexUnsupportedFeaturesJson(writer, features);
         try writer.writeAll(", \"features\": ");
         try writeRegexFeaturesJson(writer, features);
         try writer.writeAll(" }");
@@ -1613,6 +1620,40 @@ fn regexFeatureSummary(value: []const u8) RegexFeatureSummary {
     }
     if (escaped) result.has_escape = true;
     return result;
+}
+
+fn regexFeaturesUnsupported(features: RegexFeatureSummary) bool {
+    return features.has_bounded_repeat or
+        features.has_group or
+        features.has_alternation or
+        features.has_anchor;
+}
+
+fn writeRegexUnsupportedFeaturesJson(writer: anytype, features: RegexFeatureSummary) !void {
+    try writer.writeByte('[');
+    var wrote = false;
+    if (features.has_bounded_repeat) {
+        try writeMaybeComma(writer, &wrote);
+        try writeJsonString(writer, "bounded_repeat");
+    }
+    if (features.has_group) {
+        try writeMaybeComma(writer, &wrote);
+        try writeJsonString(writer, "group");
+    }
+    if (features.has_alternation) {
+        try writeMaybeComma(writer, &wrote);
+        try writeJsonString(writer, "alternation");
+    }
+    if (features.has_anchor) {
+        try writeMaybeComma(writer, &wrote);
+        try writeJsonString(writer, "anchor");
+    }
+    try writer.writeByte(']');
+}
+
+fn writeMaybeComma(writer: anytype, wrote: *bool) !void {
+    if (wrote.*) try writer.writeAll(", ");
+    wrote.* = true;
 }
 
 fn writeRegexFeaturesJson(writer: anytype, features: RegexFeatureSummary) !void {
@@ -2920,6 +2961,9 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries
     try std.testing.expect(std.mem.indexOf(u8, json, "\"pattern_count\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unicode_property\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"bounded_repeat\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_pattern\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"unsupported\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_features\": [\"bounded_repeat\", \"group\", \"alternation\"]") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"flags\": \"i\"") != null);
 }
 

@@ -474,6 +474,8 @@ Goal: close the scanner-free lexical gap enough for larger real grammars.
 - [ ] Add explicit support or explicit diagnostics for character classes,
   escapes, Unicode categories, ranges, repetitions, anchors as used by
   Tree-sitter grammar tokens, and immediate-token boundaries.
+  - [x] Mark unsupported regex-surface features per pattern in comparison
+    artifacts.
 - [ ] Add grammar-level tests where regex support affects accepted input, not
   just regex unit tests.
 
@@ -488,6 +490,11 @@ pattern for flags, character classes, escapes, Unicode properties, bounded
 repeats, groups, alternation, anchors, and dot usage. This gives real-grammar
 regex blockers exact token names and pattern strings before changing lexer
 behavior.
+
+Batch 61 note: `regex-surface.json` now adds per-pattern support status and
+unsupported feature names. Bounded repeats, groups, alternation, and anchors
+are classified as unsupported surfaces so real grammar blockers identify the
+exact token and regex construct.
 
 ### 4.2 Lex Table Construction
 
