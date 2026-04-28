@@ -462,17 +462,23 @@ Gate:
 
 Goal: make the project useful as a command-line generator.
 
-- [ ] Clarify the project executable name in README, help text, and examples.
-- [ ] Add command examples for:
+- [x] Clarify the project executable name in README, help text, and examples.
+- [x] Add command examples for:
   - generating `parser.c`,
   - writing summary JSON,
   - using `--minimize`,
   - enabling GLR emitted loop experiments,
   - running bounded compatibility checks.
-- [ ] Add a “known limits” section covering external scanners, generated tree
+- [x] Add a “known limits” section covering external scanners, generated tree
   output, and heavy grammars.
-- [ ] Add a generated-output golden update workflow that is explicit and
+- [x] Add a generated-output golden update workflow that is explicit and
   bounded.
+
+Phase 7 note: the CLI now documents `gen-z-sitter` consistently and exposes
+opt-in `parser.c` output with `--emit-parser-c`. Experimental generated GLR
+parser output is enabled with `--glr-loop`. README examples cover summary JSON,
+`--minimize`, bounded compatibility checks, known limits, and artifact update
+commands.
 
 Gate:
 

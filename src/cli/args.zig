@@ -16,6 +16,8 @@ pub const GenerateOptions = struct {
     output_dir: ?[]const u8 = null,
     abi_version: u32 = 15,
     no_parser: bool = false,
+    emit_parser_c: bool = false,
+    glr_loop: bool = false,
     json_summary: bool = false,
     debug_prepared: bool = false,
     debug_node_types: bool = false,
@@ -64,6 +66,10 @@ fn parseGenerateArgs(args: []const []const u8) ParseError!GenerateOptions {
             return error.InvalidArguments;
         } else if (std.mem.eql(u8, arg, "--no-parser")) {
             opts.no_parser = true;
+        } else if (std.mem.eql(u8, arg, "--emit-parser-c")) {
+            opts.emit_parser_c = true;
+        } else if (std.mem.eql(u8, arg, "--glr-loop")) {
+            opts.glr_loop = true;
         } else if (std.mem.eql(u8, arg, "--json-summary")) {
             opts.json_summary = true;
         } else if (std.mem.eql(u8, arg, "--debug-prepared")) {
@@ -129,23 +135,37 @@ fn parseGenerateArgs(args: []const []const u8) ParseError!GenerateOptions {
 pub fn helpText() []const u8 {
     return
     \\gen-z-sitter
+    \\Zig implementation of the tree-sitter generator pipeline.
     \\
     \\Usage:
     \\  gen-z-sitter help
     \\  gen-z-sitter generate [options] <grammar-path>
     \\
+    \\Common examples:
+    \\  gen-z-sitter generate grammar.json
+    \\  gen-z-sitter generate --output out grammar.json
+    \\  gen-z-sitter generate --output out --emit-parser-c grammar.json
+    \\  gen-z-sitter generate --json-summary grammar.json
+    \\  gen-z-sitter generate --json-summary --minimize grammar.json
+    \\  gen-z-sitter generate --output out --emit-parser-c --glr-loop grammar.json
+    \\
     \\Generate options:
-    \\  --output <dir>
-    \\  --abi <version>
-    \\  --no-parser
-    \\  --json-summary
-    \\  --debug-prepared
-    \\  --debug-node-types
-    \\  --report-states-for-rule <rule>
-    \\  --js-runtime <runtime>
-    \\  --no-optimize-merge-states
-    \\  --minimize
-    \\  --strict-expected-conflicts
+    \\  --output <dir>                 Write generated artifacts into <dir>.
+    \\  --abi <version>                Select the target ABI version placeholder.
+    \\  --no-parser                    Skip parser.c output when generating artifacts.
+    \\  --emit-parser-c                Write parser.c into --output <dir>.
+    \\  --glr-loop                     Enable the experimental generated GLR loop in parser.c.
+    \\  --json-summary                 Print parser-emission and optimization statistics as JSON.
+    \\  --debug-prepared               Print prepared grammar IR.
+    \\  --debug-node-types             Print node-types.json.
+    \\  --report-states-for-rule <rule> Reserved parser-table diagnostic flag.
+    \\  --js-runtime <runtime>         Runtime command used for grammar.js loading.
+    \\  --no-optimize-merge-states     Disable emitted duplicate-state compaction in summary paths.
+    \\  --minimize                     Enable parse-table minimization for summary paths.
+    \\  --strict-expected-conflicts    Fail when declared conflicts are unused.
+    \\
+    \\Current limits:
+    \\  emitted grammar.json and compatibility reports are exercised through tests and build/debug targets rather than as stable CLI outputs.
     \\
     ;
 }
@@ -178,6 +198,14 @@ test "parse generate command with strict expected conflicts flag" {
     const cli = try parseArgs(std.testing.allocator, &.{ "gen-z-sitter", "generate", "--strict-expected-conflicts", "grammar.json" });
     try std.testing.expect(cli.command == .generate);
     try std.testing.expect(cli.command.generate.strict_expected_conflicts);
+}
+
+test "parse generate command with parser C and GLR flags" {
+    const cli = try parseArgs(std.testing.allocator, &.{ "gen-z-sitter", "generate", "--output", "out", "--emit-parser-c", "--glr-loop", "grammar.json" });
+    try std.testing.expect(cli.command == .generate);
+    try std.testing.expectEqualStrings("out", cli.command.generate.output_dir.?);
+    try std.testing.expect(cli.command.generate.emit_parser_c);
+    try std.testing.expect(cli.command.generate.glr_loop);
 }
 
 test "parse generate command with minimize flag" {

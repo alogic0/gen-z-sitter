@@ -23,8 +23,8 @@ What is implemented in the current code:
 What this means in practice:
 
 - the repository builds and tests as a Zig project
-- the CLI can load grammars, expose debug views, write `node-types.json`, and report parser-emission summary stats
-- the top-level `generate` path is currently most concrete for validation, debug dumps, `node-types.json`, and `--json-summary`
+- the CLI can load grammars, expose debug views, write `node-types.json`, write opt-in `parser.c`, and report parser-emission summary stats
+- the top-level `generate` path is currently most concrete for validation, debug dumps, `node-types.json`, opt-in `parser.c`, and `--json-summary`
 - the parser-emission and compatibility layers are exercised mainly through lower-level tests, compile-smoke checks, structural compatibility checks, and the behavioral harness
 - the repo now also carries a versioned parser-only shortlist and a checked-in shortlist boundary artifact under `compat_targets/`
 - the repo now also carries a checked-in full shortlist run report under `compat_targets/`
@@ -35,7 +35,6 @@ What this means in practice:
 
 What is still not a first-class top-level CLI product surface:
 
-- emitted `parser.c`
 - emitted `grammar.json`
 - compatibility reports and real-repo compatibility runs
 - full runtime/ABI parity claims against upstream Tree-sitter
@@ -68,7 +67,10 @@ zig build run -- generate path/to/grammar.json
 zig build run -- generate --debug-prepared path/to/grammar.json
 zig build run -- generate --debug-node-types path/to/grammar.json
 zig build run -- generate --output out path/to/grammar.json
+zig build run -- generate --output out --emit-parser-c path/to/grammar.json
 zig build run -- generate --json-summary path/to/grammar.json
+zig build run -- generate --json-summary --minimize path/to/grammar.json
+zig build run -- generate --output out --emit-parser-c --glr-loop path/to/grammar.json
 ```
 
 Bounded test commands:
@@ -92,7 +94,10 @@ Expected current behavior:
 - `generate --debug-prepared` prints the prepared grammar IR
 - `generate --debug-node-types` prints generated `node-types.json`
 - `generate --output <dir>` writes `node-types.json` into the target directory
+- `generate --output <dir> --emit-parser-c` also writes `parser.c`
+- `generate --output <dir> --emit-parser-c --glr-loop` writes parser C with the experimental generated GLR loop enabled
 - `generate --json-summary` prints emitted-surface and optimization statistics for the current parser-emission pipeline
+- `generate --json-summary --minimize` includes minimized parse-table counts in the summary path
 - `zig build run-minimize-report` prints a deterministic JSON report for the bounded parse-table minimization probe
 
 ## CLI
@@ -111,6 +116,8 @@ Supported generate options:
 - `--output <dir>`
 - `--abi <version>`
 - `--no-parser`
+- `--emit-parser-c`
+- `--glr-loop`
 - `--json-summary`
 - `--debug-prepared`
 - `--debug-node-types`
@@ -120,7 +127,7 @@ Supported generate options:
 - `--minimize`
 - `--strict-expected-conflicts`
 
-Not every flag currently maps to a fully surfaced end-user feature. The most directly exercised user-facing paths today are grammar loading, preparation, debug dumps, `node-types.json` output, and `--json-summary`. Some options exist to preserve the eventual generator contract or to drive lower-level emitter and compatibility paths that are more heavily exercised in tests than in the top-level CLI.
+Not every flag currently maps to a fully surfaced end-user feature. The most directly exercised user-facing paths today are grammar loading, preparation, debug dumps, `node-types.json`, opt-in `parser.c`, and `--json-summary`. Some options exist to preserve the eventual generator contract or to drive lower-level emitter and compatibility paths that are more heavily exercised in tests than in the top-level CLI.
 
 Current staged compatibility boundary:
 
@@ -139,9 +146,31 @@ Current staged compatibility boundary:
 - The current parser-only boundary includes staged fixtures plus promoted real C and Zig JSON coverage. `parse_table_conflict_json` remains an intentional frozen control fixture for an ambiguity that requires precedence/conflict annotations.
 - The current scanner boundary includes staged scanner fixtures and focused real external scanner runtime-link proofs for `tree_sitter_haskell_json` and `tree_sitter_bash_json`. These are link-and-run proofs against scanner.c, not corpus-level runtime parity.
 - Routine compatibility artifacts are refreshed by `zig run update_compat_artifacts.zig`. Heavier parser-boundary probing is kept separate in `zig run update_parser_boundary_probe.zig`.
-- The top-level `generate` command does not yet expose emitted `parser.c`, emitted `grammar.json`, or compatibility reports as first-class outputs.
+- The top-level `generate` command now exposes opt-in emitted `parser.c`, but emitted `grammar.json` and compatibility reports are not first-class outputs yet.
 
 The current heavy compatibility path is bounded and separated from the fast default tests. It is useful before broader compatibility changes, but it is not required for every small local edit.
+
+## Known Limits
+
+- `parser.c` output is available with `--emit-parser-c`, but the project still does not claim full upstream `tree-sitter generate` parity.
+- External scanner grammars have focused runtime-link proofs for promoted targets, not broad corpus-level runtime equivalence.
+- The generated GLR loop is experimental and opt-in with `--glr-loop`.
+- Generated tree output exists for focused generated-runtime proofs, but the CLI does not yet expose a stable public tree API.
+- Large real grammars stay behind bounded compatibility and profiling commands. Do not run broad compatibility probes without explicit timeouts.
+- Emitted `grammar.json` and compatibility reports are still produced through internal artifacts and update scripts, not a stable `generate` output.
+
+## Artifact Updates
+
+Use bounded commands when refreshing generated or compatibility artifacts:
+
+```bash
+zig build test
+zig build test-pipeline
+zig run update_compat_artifacts.zig
+zig run update_parser_boundary_probe.zig
+```
+
+`update_compat_artifacts.zig` refreshes the routine checked-in compatibility surfaces. `update_parser_boundary_probe.zig` is the heavier parser-boundary probe and should be run separately when parser-boundary evidence changes.
 
 ## Repository Layout
 

@@ -42,6 +42,20 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
     if (opts.grammar_path.len == 0) {
         return error.InvalidArguments;
     }
+    if (opts.emit_parser_c and opts.no_parser) {
+        try diag.printStderr(io, .{
+            .kind = .usage,
+            .message = "--emit-parser-c cannot be combined with --no-parser",
+        });
+        return error.InvalidArguments;
+    }
+    if (opts.emit_parser_c and opts.output_dir == null) {
+        try diag.printStderr(io, .{
+            .kind = .usage,
+            .message = "--emit-parser-c requires --output <dir>",
+        });
+        return error.InvalidArguments;
+    }
 
     var loaded = grammar_loader.loadGrammarFile(allocator, opts.grammar_path) catch |err| {
         switch (err) {
@@ -132,11 +146,30 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
         defer allocator.free(output_path);
         try fs_support.writeFile(output_path, json);
 
+        if (opts.emit_parser_c) {
+            const build_options = parse_table_build.BuildOptions{
+                .minimize_states = opts.minimize_states,
+                .strict_expected_conflicts = opts.strict_expected_conflicts,
+            };
+            const parser_c = try emitParserCFromPreparedAlloc(
+                pipeline_arena.allocator(),
+                prepared,
+                build_options,
+                .{
+                    .compact_duplicate_states = opts.optimize_merge_states,
+                    .glr_loop = opts.glr_loop,
+                },
+            );
+            const parser_path = try std.fs.path.join(allocator, &.{ output_dir, "parser.c" });
+            defer allocator.free(parser_path);
+            try fs_support.writeFile(parser_path, parser_c);
+        }
+
         if (!opts.json_summary) {
             try diag.printStdout(io, .{
                 .kind = .info,
-                .message = "wrote node-types.json",
-                .path = output_path,
+                .message = if (opts.emit_parser_c) "wrote generated artifacts" else "wrote node-types.json",
+                .path = output_dir,
             });
         }
     }
@@ -198,6 +231,21 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
         .kind = .info,
         .message = symbol_count,
     });
+}
+
+fn emitParserCFromPreparedAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    build_options: parse_table_build.BuildOptions,
+    options: emit_optimize.Options,
+) ![]const u8 {
+    const serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+        allocator,
+        prepared,
+        .diagnostic,
+        build_options,
+    );
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, options);
 }
 
 fn generateJsonSummaryAlloc(
@@ -830,6 +878,69 @@ test "runGenerate writes node-types.json when output directory is provided" {
     defer std.testing.allocator.free(written);
 
     try std.testing.expectEqualStrings(fixtures.validResolvedNodeTypesJson().contents, written);
+}
+
+test "runGenerate writes parser.c when requested" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validResolvedGrammarJson().contents,
+    });
+    try tmp.dir.createDirPath(std.testing.io, "out");
+
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(grammar_path);
+    const output_dir = try tmp.dir.realPathFileAlloc(std.testing.io, "out", std.testing.allocator);
+    defer std.testing.allocator.free(output_dir);
+
+    try runGenerate(std.testing.allocator, std.testing.io, .{
+        .grammar_path = grammar_path,
+        .output_dir = output_dir,
+        .emit_parser_c = true,
+    });
+
+    const parser_path = try std.fs.path.join(std.testing.allocator, &.{ output_dir, "parser.c" });
+    defer std.testing.allocator.free(parser_path);
+
+    const written = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, parser_path, std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(written);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, written, 1, "static const TSLanguage ts_language = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, written, 1, "const TSLanguage *tree_sitter_basic(void) {\n"));
+}
+
+test "runGenerate writes experimental GLR parser.c when requested" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validResolvedGrammarJson().contents,
+    });
+    try tmp.dir.createDirPath(std.testing.io, "out");
+
+    const grammar_path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(grammar_path);
+    const output_dir = try tmp.dir.realPathFileAlloc(std.testing.io, "out", std.testing.allocator);
+    defer std.testing.allocator.free(output_dir);
+
+    try runGenerate(std.testing.allocator, std.testing.io, .{
+        .grammar_path = grammar_path,
+        .output_dir = output_dir,
+        .emit_parser_c = true,
+        .glr_loop = true,
+    });
+
+    const parser_path = try std.fs.path.join(std.testing.allocator, &.{ output_dir, "parser.c" });
+    defer std.testing.allocator.free(parser_path);
+
+    const written = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, parser_path, std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(written);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, written, 1, "#define GEN_Z_SITTER_ENABLE_GLR_LOOP 1\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, written, 1, "bool ts_generated_parse("));
 }
 
 test "runGenerate writes field and children node-types.json when output directory is provided" {
