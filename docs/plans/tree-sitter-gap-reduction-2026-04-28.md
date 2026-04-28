@@ -196,7 +196,7 @@ Gate:
     `validate_indirect_recursion`.
   - [x] Add explicit lexical token expansion/inlining artifacts or equivalent
     summaries for the local pipeline.
-- [ ] Add a prepared-IR diff for variables, hidden rules, inlined rules,
+- [x] Add a prepared-IR diff for variables, hidden rules, inlined rules,
   auxiliary rules, lexical variables, external tokens, conflicts, and
   precedence ordering.
   - [x] Add deterministic local prepared/extracted/flattened IR summary
@@ -278,6 +278,12 @@ hash. This makes `token.immediate` drift visible before lex-table/runtime
 behavior, and the focused nested-metadata fixture covers the extracted metadata
 surface.
 
+Batch 111 note: stale parent checklist items were closed for prepared-IR
+diffs, item-set snapshot mode, and lex-table comparison. The artifacts now
+carry structured local comparison keys and explicitly mark missing upstream
+oracles as `upstream_oracle_missing`, so remaining open items represent actual
+algorithm work rather than already-built comparison surfaces.
+
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 
 - [x] Compare local `node-types.json` with upstream for promoted targets.
@@ -354,7 +360,7 @@ lookahead, conflict, and minimization gaps.
 
 ### 3.1 Item-Set and Closure Differential Tests
 
-- [ ] Add an item-set snapshot mode for selected states.
+- [x] Add an item-set snapshot mode for selected states.
   - [x] Write local `parse-states.txt` item-set dumps into comparison
     artifacts.
   - [x] Add selected-state filtering for local comparison artifacts.
@@ -672,7 +678,7 @@ character classes, escapes, and bounded repeats.
   `build_lex_table.rs`.
 - [x] Add local lex-table summaries for lex-state counts, accept states,
   transitions, skip transitions, ranges, and large range-set indicators.
-- [ ] Compare lex-state counts, accept token priorities, advance actions,
+- [x] Compare lex-state counts, accept token priorities, advance actions,
   skip actions, and large character set decisions.
   - [x] Expose per-table accept states and accepted symbols in lex summaries.
   - [x] Expose independent EOF-target, skip-action, and large-range decision
