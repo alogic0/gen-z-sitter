@@ -179,7 +179,13 @@ Gate:
 
 ### 2.2 Preparation Pipeline Order
 
-- [ ] Verify local pass order against upstream preparation order.
+- [x] Verify local pass order against upstream preparation order.
+  - [ ] Align local repeat/default-alias/flatten ordering with upstream or
+    document the exact equivalent local invariants.
+  - [ ] Add local indirect-recursion validation matching upstream
+    `validate_indirect_recursion`.
+  - [ ] Add explicit lexical token expansion/inlining artifacts or equivalent
+    summaries for the local pipeline.
 - [ ] Add a prepared-IR diff for variables, hidden rules, inlined rules,
   auxiliary rules, lexical variables, external tokens, conflicts, and
   precedence ordering.
@@ -215,6 +221,14 @@ Batch 10 note: local comparison artifacts now include `prepared-ir.json` beside
 symbols, extracted lexical variables including source kind, and flattened
 syntax variable production/step counts, giving future upstream/local prep diffs
 a stable machine-readable local side.
+
+Batch 11 note: upstream preparation order was checked in
+`../tree-sitter/crates/generate/src/prepare_grammar.rs`. Upstream runs
+validate precedences, validate indirect recursion, intern symbols, extract
+tokens, expand repeats, flatten syntax, expand lexical tokens, extract default
+aliases, and process inlines. The local snapshot now records its stage order;
+remaining mismatches are tracked explicitly instead of being hidden inside the
+generic pass-order checkbox.
 
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 

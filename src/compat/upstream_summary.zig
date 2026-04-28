@@ -59,6 +59,7 @@ pub const SummaryDiff = struct {
 };
 
 pub const PreparedIrSummary = struct {
+    stage_order_hash: u64,
     variable_count: usize,
     rule_count: usize,
     symbol_count: usize,
@@ -81,6 +82,14 @@ pub const PreparedIrSummary = struct {
     flattened_syntax_production_count: usize,
     flattened_syntax_step_count: usize,
     flattened_syntax_hash: u64,
+};
+
+const local_preparation_stage_order = [_][]const u8{
+    "load_raw_grammar",
+    "parse_raw_grammar_validate_and_intern",
+    "extract_tokens_and_expand_repeats",
+    "extract_default_aliases",
+    "flatten_grammar",
 };
 
 pub fn generateLocalSummaryAlloc(
@@ -520,6 +529,7 @@ pub fn renderSummaryJsonAlloc(allocator: std.mem.Allocator, summary: Summary) ![
 pub fn writePreparedIrSummaryJson(writer: anytype, summary: PreparedIrSummary, indent: usize) !void {
     try writeIndent(writer, indent);
     try writer.writeAll("{\n");
+    try writeU64HexField(writer, indent + 2, "stage_order_hash", summary.stage_order_hash, true);
     try writeUsizeField(writer, indent + 2, "variable_count", summary.variable_count, true);
     try writeUsizeField(writer, indent + 2, "rule_count", summary.rule_count, true);
     try writeUsizeField(writer, indent + 2, "symbol_count", summary.symbol_count, true);
@@ -553,6 +563,12 @@ fn writePreparedIrSnapshotJson(
     flattened: syntax_ir.SyntaxGrammar,
 ) !void {
     try writer.writeAll("{\n");
+    try writer.writeAll("  \"local_stage_order\": [");
+    for (local_preparation_stage_order, 0..) |stage, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writeJsonString(writer, stage);
+    }
+    try writer.writeAll("],\n");
     try writer.writeAll("  \"prepared_variables\": [");
     if (prepared.variables.len != 0) try writer.writeByte('\n');
     for (prepared.variables, 0..) |variable, index| {
@@ -630,6 +646,7 @@ fn preparedIrSummary(
     flattened: syntax_ir.SyntaxGrammar,
 ) PreparedIrSummary {
     return .{
+        .stage_order_hash = hashStageOrder(&local_preparation_stage_order),
         .variable_count = prepared.variables.len,
         .rule_count = prepared.rules.len,
         .symbol_count = prepared.symbols.len,
@@ -653,6 +670,12 @@ fn preparedIrSummary(
         .flattened_syntax_step_count = countSteps(flattened.variables),
         .flattened_syntax_hash = hashSyntaxGrammar(flattened),
     };
+}
+
+fn hashStageOrder(stages: []const []const u8) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (stages) |stage| hashString(&hasher, stage);
+    return hasher.final();
 }
 
 pub fn writeSummaryJson(writer: anytype, summary: Summary, indent: usize) !void {
@@ -1006,6 +1029,7 @@ test "generateLocalPreparedIrSummaryAlloc summarizes preparation stages" {
 
     try std.testing.expect(summary.variable_count > 0);
     try std.testing.expect(summary.rule_count > 0);
+    try std.testing.expect(summary.stage_order_hash != 0);
     try std.testing.expect(summary.prepared_variable_hash != 0);
     try std.testing.expect(summary.extracted_syntax_variable_count > 0);
     try std.testing.expect(summary.flattened_syntax_hash != 0);
@@ -1027,6 +1051,7 @@ test "generateLocalPreparedIrSnapshotJsonAlloc writes diffable sections" {
     defer std.testing.allocator.free(json);
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"prepared_variables\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"local_stage_order\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"prepared_symbols\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_lexical_variables\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"flattened_syntax_variables\"") != null);
