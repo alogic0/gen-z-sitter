@@ -355,7 +355,7 @@ lookahead, conflict, and minimization gaps.
   - [x] Add selected-state item-set comparison counts and hashes for kernel
     items, closure items, completed items, lookaheads, reserved lookaheads, and
     transitions.
-  - [ ] Add upstream-shaped item-set comparison.
+  - [x] Add upstream-shaped item-set comparison.
 - [ ] Compare kernel items, closure additions, lookaheads, reserved lookaheads,
   and propagation flags against upstream concepts from `item_set_builder.rs`.
 - [ ] Add fixtures for nullable suffixes, nested repeats, expected conflicts,
@@ -380,6 +380,12 @@ selected states. It records counts and hashes for kernel items, closure items,
 completed items, lookaheads, reserved lookaheads, and transitions so future
 upstream/local state comparison can use stable keys instead of scanning the
 verbose entry list first.
+
+Batch 98 note: item-set snapshots now expose `comparison_keys` for kernel
+items, closure items, completed items, lookaheads, reserved lookaheads, and
+transitions. Each key records the local hash, `upstream_hash = null`, and
+`status = upstream_oracle_missing`, making the artifact upstream-shaped without
+pretending that the bounded parser.c snapshot exposes Tree-sitter item sets.
 
 Batch 94 note: Haskell scanner build tuning now comes from
 `compat_targets/tree_sitter_haskell_json/build_config.json` instead of

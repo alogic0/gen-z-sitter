@@ -1019,9 +1019,55 @@ fn writeItemSetComparisonJson(
     try writeU64HexField(writer, indent + 2, "completed_item_hash", summary.completed_item_hash, true);
     try writeU64HexField(writer, indent + 2, "lookahead_hash", summary.lookahead_hash, true);
     try writeU64HexField(writer, indent + 2, "reserved_lookahead_hash", summary.reserved_lookahead_hash, true);
-    try writeU64HexField(writer, indent + 2, "transition_hash", summary.transition_hash, false);
+    try writeU64HexField(writer, indent + 2, "transition_hash", summary.transition_hash, true);
+    try writeItemSetComparisonKeysJson(writer, summary, indent + 2);
     try writeIndent(writer, indent);
     try writer.writeByte('}');
+}
+
+fn writeItemSetComparisonKeysJson(writer: anytype, summary: ItemSetComparisonSummary, indent: usize) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("\"comparison_keys\": {\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"note\": ");
+    try writeJsonString(writer, "local item-set comparison keys are stable; tree-sitter does not expose an equivalent bounded item-set artifact through the parser.c snapshot");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"keys\": [\n");
+    try writeItemSetComparisonKey(writer, indent + 4, "kernel_items", summary.kernel_hash, true);
+    try writeItemSetComparisonKey(writer, indent + 4, "closure_items", summary.closure_hash, true);
+    try writeItemSetComparisonKey(writer, indent + 4, "completed_items", summary.completed_item_hash, true);
+    try writeItemSetComparisonKey(writer, indent + 4, "lookaheads", summary.lookahead_hash, true);
+    try writeItemSetComparisonKey(writer, indent + 4, "reserved_lookaheads", summary.reserved_lookahead_hash, true);
+    try writeItemSetComparisonKey(writer, indent + 4, "transitions", summary.transition_hash, false);
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("]\n");
+    try writeIndent(writer, indent);
+    try writer.writeAll("}\n");
+}
+
+fn writeItemSetComparisonKey(
+    writer: anytype,
+    indent: usize,
+    name: []const u8,
+    hash: u64,
+    trailing_comma: bool,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"name\": ");
+    try writeJsonString(writer, name);
+    try writer.writeAll(", \"local_hash\": \"");
+    try writer.print("0x{x:0>16}", .{hash});
+    try writer.writeByte('"');
+    try writer.writeAll(", \"upstream_hash\": null, \"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(" }");
+    if (trailing_comma) try writer.writeByte(',');
+    try writer.writeByte('\n');
 }
 
 fn itemSetComparisonSummary(
@@ -3564,6 +3610,10 @@ test "generateLocalItemSetSnapshotJsonAlloc writes selected item-set entries" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"closure_item_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"completed_item_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"reserved_lookahead_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"comparison_keys\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"kernel_items\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"upstream_hash\": null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"upstream_oracle_missing\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"production_lhs\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"production_step_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"at_end\"") != null);
