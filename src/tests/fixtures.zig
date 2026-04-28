@@ -1046,6 +1046,8 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\#define END_STATE() return result
         \\
         \\#define GEN_Z_SITTER_RESULT_API_STATUS "temporary generated result API: ts_generated_parse_result and ts_generated_result_tree_string are available when parser.c is emitted with --glr-loop"
+        \\#define GEN_Z_SITTER_TREE_API_STATUS "temporary project tree API: generated parse results are not a Tree-sitter-compatible tree ABI"
+        \\#define GEN_Z_SITTER_TREE_API_COMPATIBLE 0
         \\#define GEN_Z_SITTER_ERROR_RECOVERY_STATUS "bounded generated GLR recovery is enabled; it is not yet a full tree-sitter runtime recovery implementation"
         \\#define GEN_Z_SITTER_SUPPORT_BOUNDARY_STATUS "local generator evidence only; use gen-z-sitter compat-report and compare-upstream for grammar-specific compatibility"
         \\#define GEN_Z_SITTER_CORPUS_STATUS "corpus comparison is not embedded in parser.c; use compare-upstream to reproduce upstream and runtime evidence"
@@ -1053,6 +1055,14 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\
         \\const char *ts_generated_result_api_status(void) {
         \\  return GEN_Z_SITTER_RESULT_API_STATUS;
+        \\}
+        \\
+        \\const char *ts_generated_tree_api_status(void) {
+        \\  return GEN_Z_SITTER_TREE_API_STATUS;
+        \\}
+        \\
+        \\bool ts_generated_tree_api_is_tree_sitter_compatible(void) {
+        \\  return GEN_Z_SITTER_TREE_API_COMPATIBLE != 0;
         \\}
         \\
         \\const char *ts_generated_error_recovery_status(void) {
@@ -1469,6 +1479,8 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\#define END_STATE() return result
         \\
         \\#define GEN_Z_SITTER_RESULT_API_STATUS "temporary generated result API: ts_generated_parse_result and ts_generated_result_tree_string are available when parser.c is emitted with --glr-loop"
+        \\#define GEN_Z_SITTER_TREE_API_STATUS "temporary project tree API: generated parse results are not a Tree-sitter-compatible tree ABI"
+        \\#define GEN_Z_SITTER_TREE_API_COMPATIBLE 0
         \\#define GEN_Z_SITTER_ERROR_RECOVERY_STATUS "bounded generated GLR recovery is enabled; it is not yet a full tree-sitter runtime recovery implementation"
         \\#define GEN_Z_SITTER_SUPPORT_BOUNDARY_STATUS "local generator evidence only; use gen-z-sitter compat-report and compare-upstream for grammar-specific compatibility"
         \\#define GEN_Z_SITTER_CORPUS_STATUS "corpus comparison is not embedded in parser.c; use compare-upstream to reproduce upstream and runtime evidence"
@@ -1476,6 +1488,14 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\
         \\const char *ts_generated_result_api_status(void) {
         \\  return GEN_Z_SITTER_RESULT_API_STATUS;
+        \\}
+        \\
+        \\const char *ts_generated_tree_api_status(void) {
+        \\  return GEN_Z_SITTER_TREE_API_STATUS;
+        \\}
+        \\
+        \\bool ts_generated_tree_api_is_tree_sitter_compatible(void) {
+        \\  return GEN_Z_SITTER_TREE_API_COMPATIBLE != 0;
         \\}
         \\
         \\const char *ts_generated_error_recovery_status(void) {

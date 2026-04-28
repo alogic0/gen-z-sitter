@@ -100,6 +100,8 @@ pub fn linkAndRunGeneratedStatusAccessors(allocator: std.mem.Allocator) RuntimeL
         .expected_consumed_bytes = 1,
         .extra_driver_declarations =
         \\const char *ts_generated_result_api_status(void);
+        \\const char *ts_generated_tree_api_status(void);
+        \\bool ts_generated_tree_api_is_tree_sitter_compatible(void);
         \\const char *ts_generated_error_recovery_status(void);
         \\const char *ts_generated_support_boundary_status(void);
         \\const char *ts_generated_corpus_status(void);
@@ -108,15 +110,19 @@ pub fn linkAndRunGeneratedStatusAccessors(allocator: std.mem.Allocator) RuntimeL
         ,
         .after_parser_delete_check =
         \\  const char *result_status = ts_generated_result_api_status();
+        \\  const char *tree_status = ts_generated_tree_api_status();
+        \\  bool tree_api_compatible = ts_generated_tree_api_is_tree_sitter_compatible();
         \\  const char *recovery_status = ts_generated_error_recovery_status();
         \\  const char *support_status = ts_generated_support_boundary_status();
         \\  const char *corpus_status = ts_generated_corpus_status();
         \\  const char *scanner_status = ts_generated_external_scanner_status();
         \\  if (!result_status || !strstr(result_status, "temporary generated result API")) return 70;
-        \\  if (!recovery_status || !strstr(recovery_status, "bounded generated GLR recovery")) return 71;
-        \\  if (!support_status || !strstr(support_status, "local generator evidence only")) return 72;
-        \\  if (!corpus_status || !strstr(corpus_status, "corpus comparison is not embedded")) return 73;
-        \\  if (!scanner_status || !strstr(scanner_status, "scanner-free generated parser")) return 74;
+        \\  if (!tree_status || !strstr(tree_status, "temporary project tree API")) return 71;
+        \\  if (tree_api_compatible) return 72;
+        \\  if (!recovery_status || !strstr(recovery_status, "bounded generated GLR recovery")) return 73;
+        \\  if (!support_status || !strstr(support_status, "local generator evidence only")) return 74;
+        \\  if (!corpus_status || !strstr(corpus_status, "corpus comparison is not embedded")) return 75;
+        \\  if (!scanner_status || !strstr(scanner_status, "scanner-free generated parser")) return 76;
         \\
         ,
     });

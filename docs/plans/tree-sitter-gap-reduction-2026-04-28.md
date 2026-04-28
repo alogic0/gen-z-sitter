@@ -626,12 +626,18 @@ Gate:
 
 ### 5.4 Public Tree API Direction
 
-- [ ] Decide whether to continue with the temporary generated result/tree-string
+- [x] Decide whether to continue with the temporary generated result/tree-string
   API or introduce a Tree-sitter-compatible tree ABI subset.
 - [ ] If a compatible subset is chosen, reproduce only the required structs and
   ownership behavior in generated/self-contained code.
-- [ ] Keep the temporary API documented until the compatible API has runtime
+- [x] Keep the temporary API documented until the compatible API has runtime
   proofs.
+
+Batch 66 note: generated parser C now exposes `ts_generated_tree_api_status`
+and `ts_generated_tree_api_is_tree_sitter_compatible`. The current decision is
+to keep the temporary project result/tree-string API and report that it is not a
+Tree-sitter-compatible tree ABI until a smaller compatible subset has its own
+runtime proofs.
 
 Gate:
 

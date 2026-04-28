@@ -18,6 +18,10 @@ pub const large_lexer_optimization_state_threshold: usize = 300;
 pub const generated_result_api_status =
     "temporary generated result API: ts_generated_parse_result and ts_generated_result_tree_string are available when parser.c is emitted with --glr-loop";
 
+/// User-visible status for generated tree/result ownership.
+pub const generated_tree_api_status =
+    "temporary project tree API: generated parse results are not a Tree-sitter-compatible tree ABI";
+
 /// User-visible status for emitted generated-parser recovery.
 pub const generated_error_recovery_status =
     "bounded generated GLR recovery is enabled; it is not yet a full tree-sitter runtime recovery implementation";
@@ -221,6 +225,10 @@ pub fn writeReleaseReadinessStatusAccessors(writer: anytype, scanner_linked: boo
     try writer.writeAll("#define GEN_Z_SITTER_RESULT_API_STATUS \"");
     try writer.writeAll(generated_result_api_status);
     try writer.writeAll("\"\n");
+    try writer.writeAll("#define GEN_Z_SITTER_TREE_API_STATUS \"");
+    try writer.writeAll(generated_tree_api_status);
+    try writer.writeAll("\"\n");
+    try writer.writeAll("#define GEN_Z_SITTER_TREE_API_COMPATIBLE 0\n");
     try writer.writeAll("#define GEN_Z_SITTER_ERROR_RECOVERY_STATUS \"");
     try writer.writeAll(generated_error_recovery_status);
     try writer.writeAll("\"\n");
@@ -235,6 +243,12 @@ pub fn writeReleaseReadinessStatusAccessors(writer: anytype, scanner_linked: boo
     try writer.writeAll("\"\n\n");
     try writer.writeAll("const char *ts_generated_result_api_status(void) {\n");
     try writer.writeAll("  return GEN_Z_SITTER_RESULT_API_STATUS;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("const char *ts_generated_tree_api_status(void) {\n");
+    try writer.writeAll("  return GEN_Z_SITTER_TREE_API_STATUS;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("bool ts_generated_tree_api_is_tree_sitter_compatible(void) {\n");
+    try writer.writeAll("  return GEN_Z_SITTER_TREE_API_COMPATIBLE != 0;\n");
     try writer.writeAll("}\n\n");
     try writer.writeAll("const char *ts_generated_error_recovery_status(void) {\n");
     try writer.writeAll("  return GEN_Z_SITTER_ERROR_RECOVERY_STATUS;\n");
@@ -332,11 +346,16 @@ test "writeReleaseReadinessStatusAccessors emits visible generated-parser status
     const emitted = buffer.writer.buffered();
 
     try std.testing.expect(std.mem.indexOf(u8, emitted, "GEN_Z_SITTER_RESULT_API_STATUS") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "GEN_Z_SITTER_TREE_API_STATUS") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "#define GEN_Z_SITTER_TREE_API_COMPATIBLE 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_result_api_status") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_tree_api_status") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_tree_api_is_tree_sitter_compatible") != null);
     try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_error_recovery_status") != null);
     try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_support_boundary_status") != null);
     try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_corpus_status") != null);
     try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_external_scanner_status") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, generated_tree_api_status) != null);
     try std.testing.expect(std.mem.indexOf(u8, emitted, generated_error_recovery_status) != null);
     try std.testing.expect(std.mem.indexOf(u8, emitted, generated_scanner_free_status) != null);
 }

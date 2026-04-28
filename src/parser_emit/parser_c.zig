@@ -2858,11 +2858,14 @@ test "emitParserCAlloc emits release-readiness status accessors" {
     defer allocator.free(emitted);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_result_api_status(void) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_tree_api_status(void) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool ts_generated_tree_api_is_tree_sitter_compatible(void) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_error_recovery_status(void) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_support_boundary_status(void) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_corpus_status(void) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_external_scanner_status(void) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_result_api_status));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_tree_api_status));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_error_recovery_status));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_support_boundary_status));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_corpus_status));

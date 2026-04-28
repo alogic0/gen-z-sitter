@@ -109,6 +109,8 @@ fn validateRuntimeParserSurface(contents: []const u8) CompatibilityCheckError!vo
     try requireSubstring(contents, "static bool ts_lex(TSLexer *lexer, TSStateId state)", error.MissingLexFunction);
     try requireSubstring(contents, "  .abi_version = LANGUAGE_VERSION,\n", error.MissingLanguageAbiInitializer);
     try requireSubstring(contents, "const TSLanguage *tree_sitter_generated(void)", error.MissingLanguageEntryPoint);
+    try requireSubstring(contents, "const char *ts_generated_tree_api_status(void)", error.MissingCompatibilityAccessor);
+    try requireSubstring(contents, "bool ts_generated_tree_api_is_tree_sitter_compatible(void)", error.MissingCompatibilityAccessor);
 }
 
 fn requireSubstring(contents: []const u8, needle: []const u8, err: CompatibilityCheckError) CompatibilityCheckError!void {
@@ -191,6 +193,8 @@ test "validateParserCCompatibilitySurface accepts runtime ABI parser surface" {
         \\  const TSParseActionEntry *parse_actions;
         \\};
         \\static bool ts_lex(TSLexer *lexer, TSStateId state) { return false; }
+        \\const char *ts_generated_tree_api_status(void) { return ""; }
+        \\bool ts_generated_tree_api_is_tree_sitter_compatible(void) { return false; }
         \\static const TSLanguage ts_language = {
         \\  .abi_version = LANGUAGE_VERSION,
         \\};
