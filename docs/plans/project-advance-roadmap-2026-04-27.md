@@ -542,7 +542,7 @@ Implementation batches:
      status accessors from compiled generated C.
    - [x] Add a compact release artifact summarizing promoted grammars, deferred
      grammars, and known runtime-surface gaps.
-   - [ ] Add a no-vendored-tree-sitter-files check that ignores `.zig-cache/`
+   - [x] Add a no-vendored-tree-sitter-files check that ignores `.zig-cache/`
      but scans committed source and compatibility fixture paths.
 
 Phase 8 note: release-readiness is still a staged project claim, not full
