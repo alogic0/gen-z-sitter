@@ -664,6 +664,13 @@ parser C against the upstream `typescript/src/scanner.c` from
 path through the upstream shared scanner header. This does not yet claim
 regex-pattern or JSX text scanner-path coverage.
 
+Batch 42 note: Rust scanner runtime coverage now includes a stateful raw-string
+path in addition to the shallow `float_literal` proof. The focused runtime-link
+fixture scans `_raw_string_literal_start`, `raw_string_literal_content`, and
+`_raw_string_literal_end` against `r#"hi"#`, proving the generated parser keeps
+the upstream scanner payload state alive across multiple external-token scans.
+Block-comment scanner-state coverage remains separate.
+
 ## Phase 7 — Performance and Capacity
 
 Goal: keep correctness work practical for large grammars.

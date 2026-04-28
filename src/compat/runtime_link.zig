@@ -724,6 +724,29 @@ pub fn linkAndRunRustFloatLiteralParserWithRealExternalScanner(allocator: std.me
     });
 }
 
+pub fn linkAndRunRustRawStringParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(rust_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitRustRawStringParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        rust_scanner_path,
+        arena.allocator(),
+        .limited(512 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{rust_scanner_include_dir},
+        .input = "r#\"hi\"#",
+        .expected_root_type = "source_file",
+    });
+}
+
 pub fn linkAndRunHaskellParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
     try ensureFileAvailableOrSkip(haskell_scanner_path);
@@ -1336,6 +1359,13 @@ fn emitRustFloatLiteralParserC(allocator: std.mem.Allocator) RuntimeLinkError![]
     });
 }
 
+fn emitRustRawStringParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitRustRawStringParserCWithOptions(allocator, .{
+        .offset_start_state = true,
+        .glr_loop = false,
+    });
+}
+
 fn emitJavascriptTernaryParserCWithOptions(
     allocator: std.mem.Allocator,
     options: TinyParserOptions,
@@ -1795,6 +1825,137 @@ fn emitRustFloatLiteralParserCWithOptions(
     const external_states = try allocator.dupe([]const bool, &.{
         external_state_0,
         external_state_1,
+    });
+
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_name = "rust",
+        .symbols = symbols,
+        .large_state_count = states.len,
+        .productions = productions,
+        .lex_modes = lex_modes,
+        .lex_tables = lex_tables,
+        .external_scanner = .{
+            .symbols = external_symbols,
+            .states = external_states,
+        },
+        .primary_state_ids = primary_state_ids,
+        .states = states,
+    };
+
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = options.glr_loop,
+    });
+}
+
+fn emitRustRawStringParserCWithOptions(
+    allocator: std.mem.Allocator,
+    options: TinyParserOptions,
+) RuntimeLinkError![]const u8 {
+    const raw_string_start_external_id = 2;
+    const raw_string_content_external_id = 3;
+    const raw_string_end_external_id = 4;
+    const external_names = [_][]const u8{
+        "string_content",
+        "string_close",
+        "_raw_string_literal_start",
+        "raw_string_literal_content",
+        "_raw_string_literal_end",
+        "float_literal",
+        "_outer_block_doc_comment_marker",
+        "_inner_block_doc_comment_marker",
+        "_block_comment_content",
+        "_line_doc_content",
+        "_error_sentinel",
+    };
+
+    var symbols = try allocator.alloc(serialize.SerializedSymbolInfo, external_names.len + 2);
+    symbols[0] = .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 };
+    for (external_names, 0..) |name, index| {
+        symbols[index + 1] = .{
+            .ref = .{ .external = @intCast(index) },
+            .name = name,
+            .named = index == raw_string_content_external_id,
+            .visible = index == raw_string_content_external_id,
+            .supertype = false,
+            .public_symbol = @intCast(index + 1),
+        };
+    }
+    symbols[symbols.len - 1] = .{
+        .ref = .{ .non_terminal = 0 },
+        .name = "source_file",
+        .named = true,
+        .visible = true,
+        .supertype = false,
+        .public_symbol = @intCast(symbols.len - 1),
+    };
+
+    const productions = try allocator.dupe(serialize.SerializedProductionInfo, &.{
+        .{ .lhs = 0, .child_count = 3, .dynamic_precedence = 0 },
+    });
+    const start_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = raw_string_start_external_id }, .action = .{ .shift = 2 } },
+    });
+    const content_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = raw_string_content_external_id }, .action = .{ .shift = 3 } },
+    });
+    const end_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = raw_string_end_external_id }, .action = .{ .shift = 4 } },
+    });
+    const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+    });
+    const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
+    });
+    const start_gotos = try allocator.dupe(serialize.SerializedGotoEntry, &.{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 5 },
+    });
+    const states = try allocator.dupe(serialize.SerializedState, &.{
+        .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = start_actions, .gotos = start_gotos, .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = content_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 3, .lex_state_id = 0, .actions = end_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 4, .lex_state_id = 0, .actions = reduce_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 5, .lex_state_id = 0, .actions = accept_actions, .gotos = &.{}, .unresolved = &.{} },
+    });
+    const lex_states = try allocator.dupe(lexer_serialize.SerializedLexState, &.{
+        .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
+    });
+    const lex_tables = try allocator.dupe(lexer_serialize.SerializedLexTable, &.{
+        .{ .start_state_id = 0, .states = lex_states },
+    });
+    const lex_modes = try allocator.dupe(lexer_serialize.SerializedLexMode, &.{
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 2 },
+        .{ .lex_state = 0, .external_lex_state = 3 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+    });
+    const primary_state_ids = try allocator.dupe(u32, &.{ 0, 1, 2, 3, 4, 5 });
+
+    const external_symbols = try allocator.alloc(syntax_grammar.SymbolRef, external_names.len);
+    for (external_symbols, 0..) |*symbol, index| {
+        symbol.* = .{ .external = @intCast(index) };
+    }
+    const external_state_0 = try allocator.alloc(bool, external_names.len);
+    const external_state_1 = try allocator.alloc(bool, external_names.len);
+    const external_state_2 = try allocator.alloc(bool, external_names.len);
+    const external_state_3 = try allocator.alloc(bool, external_names.len);
+    @memset(external_state_0, false);
+    @memset(external_state_1, false);
+    @memset(external_state_2, false);
+    @memset(external_state_3, false);
+    external_state_1[raw_string_start_external_id] = true;
+    external_state_2[raw_string_content_external_id] = true;
+    external_state_3[raw_string_end_external_id] = true;
+    const external_states = try allocator.dupe([]const bool, &.{
+        external_state_0,
+        external_state_1,
+        external_state_2,
+        external_state_3,
     });
 
     const serialized = serialize.SerializedTable{
@@ -3360,6 +3521,10 @@ test "linkAndRunPythonNewlineParserWithRealExternalScanner links generated Pytho
 
 test "linkAndRunRustFloatLiteralParserWithRealExternalScanner links generated Rust parser with upstream scanner" {
     try linkAndRunRustFloatLiteralParserWithRealExternalScanner(std.testing.allocator);
+}
+
+test "linkAndRunRustRawStringParserWithRealExternalScanner links generated Rust raw-string parser with upstream scanner" {
+    try linkAndRunRustRawStringParserWithRealExternalScanner(std.testing.allocator);
 }
 
 test "linkAndRunHaskellParserWithRealExternalScanner links generated Haskell parser with upstream scanner" {
