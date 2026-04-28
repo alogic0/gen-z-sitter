@@ -221,15 +221,28 @@ Gate:
 Goal: increase real grammar reach after recovery, pruning, incremental guards,
 and proof config are stronger.
 
-- [ ] Re-run bounded boundary probes for JavaScript, Python, TypeScript, and
+- [x] Re-run bounded boundary probes for JavaScript, Python, TypeScript, and
   Rust after Phases 2-6.
-- [ ] Promote one target at a time from prepare-only to parser.c emission.
-- [ ] Promote compile-smoke targets to accepted runtime-link samples only after
+- [x] Confirm current JavaScript, Python, TypeScript, and Rust parser-only
+  targets already reach bounded parser.c emission/compile-smoke; no
+  prepare-only complex scanner target remains in the current shortlist.
+- [x] Promote compile-smoke targets to accepted runtime-link samples only after
   a focused scanner proof exists.
 - [ ] Add invalid runtime-link samples only after recovery parity is stable for
   that target family.
 - [ ] Keep thresholded/coarse modes diagnostic unless a target config documents
   why they are part of the promoted proof.
+
+Batch 8 note: runtime proof configs now support `additional_proof_ids`, letting
+one scanner target run multiple focused runtime-link proofs without adding more
+target-name dispatch. JavaScript now covers ternary, JSX text, and generated
+GLR ternary paths; Python covers newline, string, and indent/dedent paths;
+TypeScript covers ternary and JSX text; Rust covers float literal and raw
+string; Bash and Haskell also keep generated-GLR scanner proofs in config. The
+bounded target runs stayed under the accepted cost envelope in focused
+`run-compat-target` checks. Python generated-GLR newline remains deliberately
+outside the promoted config because the current direct-generated proof still
+returns a zero-consumed path under the compat target runner.
 
 Gate:
 

@@ -294,7 +294,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 62517248,
+        "compile_smoke_max_rss_bytes": 62652416,
         "parse_construct_profile": {
           "states_processed": 4,
           "successor_groups": 3,
@@ -320,11 +320,11 @@
           "symbol_set_free_count": 17,
           "symbol_set_alloc_bytes": 216,
           "symbol_set_free_bytes": 136,
-          "collect_transitions_ns": 40921,
-          "extra_transitions_ns": 581,
-          "reserved_word_ns": 2575,
-          "build_actions_ns": 9268,
-          "detect_conflicts_ns": 1732
+          "collect_transitions_ns": 38707,
+          "extra_transitions_ns": 592,
+          "reserved_word_ns": 561,
+          "build_actions_ns": 9128,
+          "detect_conflicts_ns": 1412
         },
         "lex": {
           "table_count": 1,
@@ -412,7 +412,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 64372736,
+        "compile_smoke_max_rss_bytes": 64495616,
         "parse_construct_profile": {
           "states_processed": 51,
           "successor_groups": 70,
@@ -438,11 +438,11 @@
           "symbol_set_free_count": 159,
           "symbol_set_alloc_bytes": 2848,
           "symbol_set_free_bytes": 1272,
-          "collect_transitions_ns": 582150,
-          "extra_transitions_ns": 5296,
-          "reserved_word_ns": 4501,
-          "build_actions_ns": 53783,
-          "detect_conflicts_ns": 10238
+          "collect_transitions_ns": 545645,
+          "extra_transitions_ns": 5361,
+          "reserved_word_ns": 4265,
+          "build_actions_ns": 51641,
+          "detect_conflicts_ns": 9676
         },
         "lex": {
           "table_count": 3,
@@ -530,7 +530,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 63713280,
+        "compile_smoke_max_rss_bytes": 63766528,
         "parse_construct_profile": {
           "states_processed": 17,
           "successor_groups": 22,
@@ -556,11 +556,11 @@
           "symbol_set_free_count": 135,
           "symbol_set_alloc_bytes": 1464,
           "symbol_set_free_bytes": 1080,
-          "collect_transitions_ns": 300886,
-          "extra_transitions_ns": 2705,
-          "reserved_word_ns": 2237,
-          "build_actions_ns": 34045,
-          "detect_conflicts_ns": 11161
+          "collect_transitions_ns": 332970,
+          "extra_transitions_ns": 2976,
+          "reserved_word_ns": 2495,
+          "build_actions_ns": 35138,
+          "detect_conflicts_ns": 11103
         },
         "lex": {
           "table_count": 1,
@@ -692,7 +692,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 77463552,
+        "compile_smoke_max_rss_bytes": 77529088,
         "parse_construct_profile": {
           "states_processed": 540,
           "successor_groups": 1764,
@@ -718,11 +718,11 @@
           "symbol_set_free_count": 2937,
           "symbol_set_alloc_bytes": 71696,
           "symbol_set_free_bytes": 23496,
-          "collect_transitions_ns": 15312188,
-          "extra_transitions_ns": 54590,
-          "reserved_word_ns": 45860,
-          "build_actions_ns": 907949,
-          "detect_conflicts_ns": 167906
+          "collect_transitions_ns": 15159118,
+          "extra_transitions_ns": 55862,
+          "reserved_word_ns": 47537,
+          "build_actions_ns": 877016,
+          "detect_conflicts_ns": 155916
         },
         "lex": {
           "table_count": 14,
@@ -810,7 +810,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 75829248,
+        "compile_smoke_max_rss_bytes": 75931648,
         "parse_construct_profile": {
           "states_processed": 193,
           "successor_groups": 491,
@@ -836,11 +836,11 @@
           "symbol_set_free_count": 1037,
           "symbol_set_alloc_bytes": 21384,
           "symbol_set_free_bytes": 8296,
-          "collect_transitions_ns": 4494660,
-          "extra_transitions_ns": 19950,
-          "reserved_word_ns": 49959,
-          "build_actions_ns": 314933,
-          "detect_conflicts_ns": 109978
+          "collect_transitions_ns": 4173901,
+          "extra_transitions_ns": 20834,
+          "reserved_word_ns": 44689,
+          "build_actions_ns": 322120,
+          "detect_conflicts_ns": 94173
         },
         "lex": {
           "table_count": 11,
@@ -928,7 +928,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 526848000,
+        "compile_smoke_max_rss_bytes": 526970880,
         "parse_construct_profile": {
           "states_processed": 1558,
           "successor_groups": 20774,
@@ -954,11 +954,11 @@
           "symbol_set_free_count": 59319,
           "symbol_set_alloc_bytes": 2664528,
           "symbol_set_free_bytes": 1423656,
-          "collect_transitions_ns": 157303975,
-          "extra_transitions_ns": 152731,
-          "reserved_word_ns": 1091094,
-          "build_actions_ns": 5916013,
-          "detect_conflicts_ns": 311721
+          "collect_transitions_ns": 169535072,
+          "extra_transitions_ns": 163720,
+          "reserved_word_ns": 1236594,
+          "build_actions_ns": 6677069,
+          "detect_conflicts_ns": 320289
         },
         "lex": {
           "table_count": 40,
@@ -1046,7 +1046,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 434348032,
+        "compile_smoke_max_rss_bytes": 434417664,
         "parse_construct_profile": {
           "states_processed": 1569,
           "successor_groups": 69078,
@@ -1072,11 +1072,11 @@
           "symbol_set_free_count": 201997,
           "symbol_set_alloc_bytes": 11423952,
           "symbol_set_free_bytes": 4847928,
-          "collect_transitions_ns": 650767152,
-          "extra_transitions_ns": 168870,
-          "reserved_word_ns": 4295833,
-          "build_actions_ns": 20576737,
-          "detect_conflicts_ns": 398948
+          "collect_transitions_ns": 663400948,
+          "extra_transitions_ns": 173251,
+          "reserved_word_ns": 4497222,
+          "build_actions_ns": 22515889,
+          "detect_conflicts_ns": 395378
         },
         "lex": {
           "table_count": 26,
@@ -1190,11 +1190,11 @@
           "symbol_set_free_count": 516,
           "symbol_set_alloc_bytes": 8712,
           "symbol_set_free_bytes": 4128,
-          "collect_transitions_ns": 1529539,
-          "extra_transitions_ns": 10352,
-          "reserved_word_ns": 8388,
-          "build_actions_ns": 164978,
-          "detect_conflicts_ns": 43354
+          "collect_transitions_ns": 1549887,
+          "extra_transitions_ns": 10079,
+          "reserved_word_ns": 8828,
+          "build_actions_ns": 174682,
+          "detect_conflicts_ns": 40570
         },
         "lex": {
           "table_count": 6,
@@ -1258,7 +1258,7 @@
       },
       "scanner_boundary_check": {
         "status": "passed",
-        "detail": "runtime proof config=compat_targets/tree_sitter_haskell_json/runtime_proof_config.json proof_id=haskell_real_external_scanner proof_level=full_runtime_link sample_files=2 blocked_surfaces=0"
+        "detail": "runtime proof config=compat_targets/tree_sitter_haskell_json/runtime_proof_config.json proof_id=haskell_real_external_scanner proof_level=full_runtime_link extra_proofs=1 sample_files=2 blocked_surfaces=0"
       },
       "compat_check": {
         "status": "not_run",
@@ -1316,7 +1316,7 @@
       },
       "scanner_boundary_check": {
         "status": "passed",
-        "detail": "runtime proof config=compat_targets/tree_sitter_bash_json/runtime_proof_config.json proof_id=bash_real_external_scanner proof_level=full_runtime_link sample_files=2 blocked_surfaces=0"
+        "detail": "runtime proof config=compat_targets/tree_sitter_bash_json/runtime_proof_config.json proof_id=bash_real_external_scanner proof_level=full_runtime_link extra_proofs=1 sample_files=2 blocked_surfaces=0"
       },
       "compat_check": {
         "status": "not_run",
@@ -1398,7 +1398,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 63692800,
+        "compile_smoke_max_rss_bytes": 63606784,
         "parse_construct_profile": {
           "states_processed": 6,
           "successor_groups": 7,
@@ -1424,11 +1424,11 @@
           "symbol_set_free_count": 33,
           "symbol_set_alloc_bytes": 416,
           "symbol_set_free_bytes": 264,
-          "collect_transitions_ns": 67513,
-          "extra_transitions_ns": 1024,
-          "reserved_word_ns": 732,
-          "build_actions_ns": 12234,
-          "detect_conflicts_ns": 5981
+          "collect_transitions_ns": 65799,
+          "extra_transitions_ns": 733,
+          "reserved_word_ns": 870,
+          "build_actions_ns": 11542,
+          "detect_conflicts_ns": 5442
         },
         "lex": {
           "table_count": 2,
@@ -1521,7 +1521,7 @@
       },
       "scanner_boundary_check": {
         "status": "passed",
-        "detail": "runtime proof config=compat_targets/bracket_lang_json/runtime_proof_config.json proof_id=bracket_lang_staged_scanner proof_level=full_runtime_link sample_files=1 blocked_surfaces=0"
+        "detail": "runtime proof config=compat_targets/bracket_lang_json/runtime_proof_config.json proof_id=bracket_lang_staged_scanner proof_level=full_runtime_link extra_proofs=0 sample_files=1 blocked_surfaces=0"
       },
       "compat_check": {
         "status": "not_run",
@@ -1835,7 +1835,7 @@
         "keyword_lex_function_bytes": 438055,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 354246656,
+        "compile_smoke_max_rss_bytes": 354357248,
         "parse_construct_profile": {
           "states_processed": 1315,
           "successor_groups": 26858,
@@ -1861,11 +1861,11 @@
           "symbol_set_free_count": 66242,
           "symbol_set_alloc_bytes": 5011168,
           "symbol_set_free_bytes": 2119744,
-          "collect_transitions_ns": 258327049,
-          "extra_transitions_ns": 133743,
-          "reserved_word_ns": 1521369,
-          "build_actions_ns": 5994480,
-          "detect_conflicts_ns": 273108
+          "collect_transitions_ns": 268817275,
+          "extra_transitions_ns": 147198,
+          "reserved_word_ns": 1694538,
+          "build_actions_ns": 6860208,
+          "detect_conflicts_ns": 286906
         },
         "lex": {
           "table_count": 43,
@@ -1929,7 +1929,7 @@
       },
       "scanner_boundary_check": {
         "status": "passed",
-        "detail": "runtime proof config=compat_targets/tree_sitter_javascript_scanner_json/runtime_proof_config.json proof_id=javascript_ternary_real_external_scanner proof_level=full_runtime_link sample_files=1 blocked_surfaces=2"
+        "detail": "runtime proof config=compat_targets/tree_sitter_javascript_scanner_json/runtime_proof_config.json proof_id=javascript_ternary_real_external_scanner proof_level=full_runtime_link extra_proofs=2 sample_files=2 blocked_surfaces=2"
       },
       "compat_check": {
         "status": "not_run",
@@ -2011,7 +2011,7 @@
         "keyword_lex_function_bytes": 276971,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 299495424,
+        "compile_smoke_max_rss_bytes": 299552768,
         "parse_construct_profile": {
           "states_processed": 1034,
           "successor_groups": 17860,
@@ -2037,11 +2037,11 @@
           "symbol_set_free_count": 57193,
           "symbol_set_alloc_bytes": 2585040,
           "symbol_set_free_bytes": 1372632,
-          "collect_transitions_ns": 153617996,
-          "extra_transitions_ns": 106942,
-          "reserved_word_ns": 928735,
-          "build_actions_ns": 3478060,
-          "detect_conflicts_ns": 208628
+          "collect_transitions_ns": 158424363,
+          "extra_transitions_ns": 118127,
+          "reserved_word_ns": 1054346,
+          "build_actions_ns": 3911123,
+          "detect_conflicts_ns": 223755
         },
         "lex": {
           "table_count": 34,
@@ -2105,7 +2105,7 @@
       },
       "scanner_boundary_check": {
         "status": "passed",
-        "detail": "runtime proof config=compat_targets/tree_sitter_python_scanner_json/runtime_proof_config.json proof_id=python_newline_real_external_scanner proof_level=full_runtime_link sample_files=1 blocked_surfaces=1"
+        "detail": "runtime proof config=compat_targets/tree_sitter_python_scanner_json/runtime_proof_config.json proof_id=python_newline_real_external_scanner proof_level=full_runtime_link extra_proofs=2 sample_files=3 blocked_surfaces=0"
       },
       "compat_check": {
         "status": "not_run",
@@ -2187,7 +2187,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 717275136,
+        "compile_smoke_max_rss_bytes": 716873728,
         "parse_construct_profile": {
           "states_processed": 5388,
           "successor_groups": 65588,
@@ -2213,11 +2213,11 @@
           "symbol_set_free_count": 142937,
           "symbol_set_alloc_bytes": 14458752,
           "symbol_set_free_bytes": 4573984,
-          "collect_transitions_ns": 807522379,
-          "extra_transitions_ns": 543290,
-          "reserved_word_ns": 6164138,
-          "build_actions_ns": 18342196,
-          "detect_conflicts_ns": 1077071
+          "collect_transitions_ns": 817577747,
+          "extra_transitions_ns": 559937,
+          "reserved_word_ns": 6213324,
+          "build_actions_ns": 20324206,
+          "detect_conflicts_ns": 1076534
         },
         "lex": {
           "table_count": 59,
@@ -2281,7 +2281,7 @@
       },
       "scanner_boundary_check": {
         "status": "passed",
-        "detail": "runtime proof config=compat_targets/tree_sitter_typescript_scanner_json/runtime_proof_config.json proof_id=typescript_ternary_real_external_scanner proof_level=full_runtime_link sample_files=1 blocked_surfaces=1"
+        "detail": "runtime proof config=compat_targets/tree_sitter_typescript_scanner_json/runtime_proof_config.json proof_id=typescript_ternary_real_external_scanner proof_level=full_runtime_link extra_proofs=1 sample_files=2 blocked_surfaces=0"
       },
       "compat_check": {
         "status": "not_run",
@@ -2363,7 +2363,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 616255488,
+        "compile_smoke_max_rss_bytes": 616529920,
         "parse_construct_profile": {
           "states_processed": 2660,
           "successor_groups": 40937,
@@ -2389,11 +2389,11 @@
           "symbol_set_free_count": 156559,
           "symbol_set_alloc_bytes": 8286560,
           "symbol_set_free_bytes": 5009888,
-          "collect_transitions_ns": 408334314,
-          "extra_transitions_ns": 8447468,
-          "reserved_word_ns": 2918988,
-          "build_actions_ns": 13778127,
-          "detect_conflicts_ns": 572415
+          "collect_transitions_ns": 433397430,
+          "extra_transitions_ns": 8993688,
+          "reserved_word_ns": 3255429,
+          "build_actions_ns": 15592054,
+          "detect_conflicts_ns": 572010
         },
         "lex": {
           "table_count": 55,
@@ -2457,7 +2457,7 @@
       },
       "scanner_boundary_check": {
         "status": "passed",
-        "detail": "runtime proof config=compat_targets/tree_sitter_rust_scanner_json/runtime_proof_config.json proof_id=rust_float_literal_real_external_scanner proof_level=full_runtime_link sample_files=1 blocked_surfaces=1"
+        "detail": "runtime proof config=compat_targets/tree_sitter_rust_scanner_json/runtime_proof_config.json proof_id=rust_float_literal_real_external_scanner proof_level=full_runtime_link extra_proofs=1 sample_files=2 blocked_surfaces=0"
       },
       "compat_check": {
         "status": "not_run",

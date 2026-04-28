@@ -1,15 +1,19 @@
 {
   "proof_level": "full_runtime_link",
   "proof_id": "python_newline_real_external_scanner",
+  "additional_proof_ids": [
+    "python_string_real_external_scanner",
+    "python_indent_dedent_real_external_scanner"
+  ],
   "external_scanner_source": "../tree-sitter-grammars/tree-sitter-python/src/scanner.c",
   "external_scanner_include_dir": "../tree-sitter-grammars/tree-sitter-python/src",
   "sample_files": [
-    "compat_targets/tree_sitter_python_scanner/newline.py"
+    "compat_targets/tree_sitter_python_scanner/newline.py",
+    "compat_targets/tree_sitter_python_scanner/string.py",
+    "compat_targets/tree_sitter_python_scanner/indent_dedent.py"
   ],
   "compile": {
     "links_external_scanner": true
   },
-  "known_blocked_surfaces": [
-    "indent_stack_layout"
-  ]
+  "known_blocked_surfaces": []
 }

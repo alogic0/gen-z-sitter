@@ -131,11 +131,12 @@ fn runScannerRuntimeLinkProofAlloc(allocator: std.mem.Allocator, target_id: []co
     try executeRuntimeProofConfig(allocator, config);
     return try std.fmt.allocPrint(
         allocator,
-        "runtime proof config={s} proof_id={s} proof_level={s} sample_files={d} blocked_surfaces={d}",
+        "runtime proof config={s} proof_id={s} proof_level={s} extra_proofs={d} sample_files={d} blocked_surfaces={d}",
         .{
             config.config_path orelse "<none>",
             @tagName(config.proof_id),
             @tagName(config.proof_level),
+            config.additional_proof_ids.len,
             config.sample_file_count,
             config.known_blocked_surface_count,
         },
@@ -143,14 +144,30 @@ fn runScannerRuntimeLinkProofAlloc(allocator: std.mem.Allocator, target_id: []co
 }
 
 fn executeRuntimeProofConfig(allocator: std.mem.Allocator, config: RuntimeProofConfig) !void {
-    switch (config.proof_id) {
+    try executeRuntimeProofId(allocator, config.proof_id);
+    for (config.additional_proof_ids) |proof_id| {
+        try executeRuntimeProofId(allocator, proof_id);
+    }
+}
+
+fn executeRuntimeProofId(allocator: std.mem.Allocator, proof_id: RuntimeProofId) !void {
+    switch (proof_id) {
         .bracket_lang_staged_scanner => return try runtime_link.linkAndRunBracketLangParser(allocator),
         .haskell_real_external_scanner => return try runtime_link.linkAndRunHaskellParserWithRealExternalScanner(allocator),
+        .haskell_generated_glr_real_external_scanner => return try runtime_link.linkAndRunHaskellGeneratedGlrParserWithRealExternalScanner(allocator),
         .bash_real_external_scanner => return try runtime_link.linkAndRunBashParserWithRealExternalScanner(allocator),
+        .bash_generated_glr_real_external_scanner => return try runtime_link.linkAndRunBashGeneratedGlrParserWithRealExternalScanner(allocator),
         .javascript_ternary_real_external_scanner => return try runtime_link.linkAndRunJavascriptTernaryParserWithRealExternalScanner(allocator),
+        .javascript_jsx_text_real_external_scanner => return try runtime_link.linkAndRunJavascriptJsxTextParserWithRealExternalScanner(allocator),
+        .javascript_ternary_generated_glr_real_external_scanner => return try runtime_link.linkAndRunJavascriptTernaryGeneratedGlrParserWithRealExternalScanner(allocator),
         .typescript_ternary_real_external_scanner => return try runtime_link.linkAndRunTypescriptTernaryParserWithRealExternalScanner(allocator),
+        .typescript_jsx_text_real_external_scanner => return try runtime_link.linkAndRunTypescriptJsxTextParserWithRealExternalScanner(allocator),
         .python_newline_real_external_scanner => return try runtime_link.linkAndRunPythonNewlineParserWithRealExternalScanner(allocator),
+        .python_newline_generated_glr_real_external_scanner => return try runtime_link.linkAndRunPythonNewlineGeneratedGlrParserWithRealExternalScanner(allocator),
+        .python_string_real_external_scanner => return try runtime_link.linkAndRunPythonStringParserWithRealExternalScanner(allocator),
+        .python_indent_dedent_real_external_scanner => return try runtime_link.linkAndRunPythonIndentDedentParserWithRealExternalScanner(allocator),
         .rust_float_literal_real_external_scanner => return try runtime_link.linkAndRunRustFloatLiteralParserWithRealExternalScanner(allocator),
+        .rust_raw_string_real_external_scanner => return try runtime_link.linkAndRunRustRawStringParserWithRealExternalScanner(allocator),
     }
 }
 
@@ -329,6 +346,7 @@ test "parseRuntimeProofConfig records generic proof metadata" {
         \\{
         \\  "proof_level": "full_runtime_link",
         \\  "proof_id": "bash_real_external_scanner",
+        \\  "additional_proof_ids": ["bash_generated_glr_real_external_scanner"],
         \\  "external_scanner_source": "../tree-sitter-grammars/tree-sitter-bash/src/scanner.c",
         \\  "sample_files": ["compat_targets/tree_sitter_bash/valid.txt"],
         \\  "known_blocked_surfaces": []
@@ -338,6 +356,8 @@ test "parseRuntimeProofConfig records generic proof metadata" {
 
     try std.testing.expectEqual(RuntimeProofLevel.full_runtime_link, config.proof_level);
     try std.testing.expectEqual(RuntimeProofId.bash_real_external_scanner, config.proof_id);
+    try std.testing.expectEqual(@as(usize, 1), config.additional_proof_ids.len);
+    try std.testing.expectEqual(RuntimeProofId.bash_generated_glr_real_external_scanner, config.additional_proof_ids[0]);
     try std.testing.expectEqual(@as(usize, 1), config.sample_file_count);
     try std.testing.expectEqual(@as(usize, 0), config.known_blocked_surface_count);
     try std.testing.expectEqualStrings("../tree-sitter-grammars/tree-sitter-bash/src/scanner.c", config.external_scanner_source.?);
@@ -415,17 +435,27 @@ const RuntimeProofLevel = enum {
 const RuntimeProofId = enum {
     bracket_lang_staged_scanner,
     haskell_real_external_scanner,
+    haskell_generated_glr_real_external_scanner,
     bash_real_external_scanner,
+    bash_generated_glr_real_external_scanner,
     javascript_ternary_real_external_scanner,
+    javascript_jsx_text_real_external_scanner,
+    javascript_ternary_generated_glr_real_external_scanner,
     typescript_ternary_real_external_scanner,
+    typescript_jsx_text_real_external_scanner,
     python_newline_real_external_scanner,
+    python_newline_generated_glr_real_external_scanner,
+    python_string_real_external_scanner,
+    python_indent_dedent_real_external_scanner,
     rust_float_literal_real_external_scanner,
+    rust_raw_string_real_external_scanner,
 };
 
 const RuntimeProofConfig = struct {
     config_path: ?[]const u8 = null,
     proof_level: RuntimeProofLevel = .full_runtime_link,
     proof_id: RuntimeProofId,
+    additional_proof_ids: []const RuntimeProofId = &.{},
     external_scanner_source: ?[]const u8 = null,
     external_scanner_include_dir: ?[]const u8 = null,
     sample_file_count: usize = 0,
@@ -433,6 +463,7 @@ const RuntimeProofConfig = struct {
 
     fn deinit(self: *RuntimeProofConfig, allocator: std.mem.Allocator) void {
         if (self.config_path) |value| allocator.free(value);
+        allocator.free(self.additional_proof_ids);
         if (self.external_scanner_source) |value| allocator.free(value);
         if (self.external_scanner_include_dir) |value| allocator.free(value);
         self.* = undefined;
@@ -495,11 +526,34 @@ fn parseRuntimeProofConfig(allocator: std.mem.Allocator, contents: []const u8) !
     return .{
         .proof_level = proof_level,
         .proof_id = proof_id,
+        .additional_proof_ids = try parseAdditionalRuntimeProofIdsAlloc(allocator, root),
         .external_scanner_source = try optionalStringFieldAlloc(allocator, root, "external_scanner_source"),
         .external_scanner_include_dir = try optionalStringFieldAlloc(allocator, root, "external_scanner_include_dir"),
         .sample_file_count = optionalArrayFieldLen(root, "sample_files"),
         .known_blocked_surface_count = optionalArrayFieldLen(root, "known_blocked_surfaces"),
     };
+}
+
+fn parseAdditionalRuntimeProofIdsAlloc(
+    allocator: std.mem.Allocator,
+    root: std.json.ObjectMap,
+) ![]const RuntimeProofId {
+    const value = root.get("additional_proof_ids") orelse return &.{};
+    const array = switch (value) {
+        .array => |items| items,
+        else => return error.InvalidRuntimeProofConfig,
+    };
+
+    const proof_ids = try allocator.alloc(RuntimeProofId, array.items.len);
+    errdefer allocator.free(proof_ids);
+    for (array.items, 0..) |item, index| {
+        const text = switch (item) {
+            .string => |string_value| string_value,
+            else => return error.InvalidRuntimeProofConfig,
+        };
+        proof_ids[index] = try parseRuntimeProofId(text);
+    }
+    return proof_ids;
 }
 
 fn parseRuntimeProofLevel(value: []const u8) !RuntimeProofLevel {
