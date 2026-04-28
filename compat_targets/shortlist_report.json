@@ -2,27 +2,27 @@
   "schema_version": 1,
   "aggregate": {
     "total_targets": 20,
-    "first_wave_targets": 10,
-    "first_wave_passed": 10,
+    "first_wave_targets": 11,
+    "first_wave_passed": 11,
     "scanner_wave_targets": 7,
     "scanner_wave_passed": 7,
-    "deferred_parser_targets": 2,
-    "standalone_parser_proof_targets": 5,
+    "deferred_parser_targets": 1,
+    "standalone_parser_proof_targets": 6,
     "deferred_control_targets": 1,
     "deferred_scanner_targets": 0,
-    "passed_within_current_boundary": 17,
+    "passed_within_current_boundary": 18,
     "frozen_control_fixture": 1,
-    "deferred_for_parser_boundary": 2,
+    "deferred_for_parser_boundary": 1,
     "deferred_for_scanner_boundary": 0,
     "failed_due_to_parser_only_gap": 0,
     "out_of_scope_for_scanner_boundary": 0,
     "infrastructure_failure": 0,
-    "blocked_targets": 4,
+    "blocked_targets": 5,
     "blocked_control_targets": 1,
     "mismatch_categories": {
       "grammar_input_load_mismatch": 0,
       "preparation_lowering_mismatch": 0,
-      "routine_serialize_proof_boundary": 2,
+      "routine_serialize_proof_boundary": 1,
       "routine_emitted_surface_proof_boundary": 0,
       "scanner_external_scanner_boundary_gap": 0,
       "parse_table_construction_gap": 0,
@@ -183,10 +183,10 @@
       "family": "typescript",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 0,
+      "passed_count": 1,
       "control_count": 0,
-      "deferred_count": 1,
-      "blocked_count": 0
+      "deferred_count": 0,
+      "blocked_count": 1
     },
     {
       "family": "rust",
@@ -1443,22 +1443,22 @@
       "family": "typescript",
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
-      "parser_boundary_check_mode": "prepare_only",
+      "parser_boundary_check_mode": "serialize_only",
       "real_external_scanner_proof_scope": "none",
-      "standalone_parser_proof_scope": "none",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
       "provenance": {
         "origin_kind": "external_repo_snapshot",
         "upstream_repository": "tree-sitter-typescript",
         "upstream_revision": "75b3874edb2dc714fb1fd77a32013d0f8699989f",
         "upstream_grammar_path": "typescript/src/grammar.json"
       },
-      "candidate_status": "deferred_parser_wave",
+      "candidate_status": "intended_first_wave",
       "expected_blocked": false,
-      "notes": "real TypeScript grammar snapshot from the local tree-sitter-typescript repo, initially kept at load/prepare level to exercise large alias and generic-type grammar surfaces without promoting a heavy parser-table proof",
-      "success_criteria": "load and prepare the snapshotted upstream grammar.json while keeping parser-table and runtime-link proofs deferred until bounded measurements are available",
-      "first_failed_stage": "serialize",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "routine_serialize_proof_boundary",
+      "notes": "real TypeScript grammar snapshot from the local tree-sitter-typescript repo, now promoted to the bounded coarse serialize-only parser proof while full parser-table and runtime-link proofs remain deferred",
+      "success_criteria": "load, prepare, and complete the bounded coarse serialize-only parser step while keeping full parser-table and runtime-link proofs deferred until bounded measurements are available",
+      "first_failed_stage": null,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
       "load": {
         "status": "passed",
         "detail": null
@@ -1468,15 +1468,15 @@
         "detail": null
       },
       "serialize": {
-        "status": "failed",
-        "detail": "routine lookahead-sensitive serialize proof is deferred for tree_sitter_typescript_json: the current stable shortlist only proves load and prepare here, while the only passing next proof is the standalone coarse serialize-only probe"
+        "status": "passed",
+        "detail": null
       },
       "emit_parser_tables": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "emit_parser_c": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "scanner_boundary_check": {
@@ -1484,14 +1484,26 @@
         "detail": null
       },
       "compat_check": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
       "compile_smoke": {
-        "status": "not_run",
+        "status": "passed",
         "detail": null
       },
-      "emission": null,
+      "emission": {
+        "blocked": true,
+        "serialized_state_count": 5388,
+        "emitted_state_count": 0,
+        "merged_state_count": 0,
+        "action_entry_count": 0,
+        "goto_entry_count": 0,
+        "unresolved_entry_count": 0,
+        "parser_tables_bytes": 1802406,
+        "parser_c_bytes": 10452477,
+        "emit_parser_c_ms": null,
+        "compile_smoke_ms": null
+      },
       "blocked_boundary": null
     },
     {

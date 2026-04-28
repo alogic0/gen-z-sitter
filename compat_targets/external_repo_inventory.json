@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "total_external_repo_targets": 11,
-  "passed_external_repo_targets": 9,
-  "standalone_parser_proof_targets": 4,
+  "passed_external_repo_targets": 10,
+  "standalone_parser_proof_targets": 5,
   "family_coverage": [
     {
       "family": "ziggy",
@@ -62,7 +62,7 @@
       "family": "typescript",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 0
+      "passed_count": 1
     },
     {
       "family": "rust",
@@ -75,7 +75,7 @@
     {
       "boundary_kind": "parser_only",
       "target_count": 9,
-      "passed_count": 7
+      "passed_count": 8
     },
     {
       "boundary_kind": "scanner_external_scanner",
@@ -242,13 +242,13 @@
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
       "proof_scope": "none",
-      "standalone_parser_proof_scope": "none",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
       "upstream_repository": "tree-sitter-typescript",
       "upstream_revision": "75b3874edb2dc714fb1fd77a32013d0f8699989f",
       "upstream_grammar_path": "typescript/src/grammar.json",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "routine_serialize_proof_boundary",
-      "notes": "real TypeScript grammar snapshot from the local tree-sitter-typescript repo, initially kept at load/prepare level to exercise large alias and generic-type grammar surfaces without promoting a heavy parser-table proof"
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real TypeScript grammar snapshot from the local tree-sitter-typescript repo, now promoted to the bounded coarse serialize-only parser proof while full parser-table and runtime-link proofs remain deferred"
     },
     {
       "id": "tree_sitter_rust_json",

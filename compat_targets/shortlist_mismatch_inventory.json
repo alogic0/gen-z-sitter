@@ -15,15 +15,6 @@
       "first_failed_stage": "serialize",
       "detail": "routine lookahead-sensitive serialize proof is deferred for tree_sitter_javascript_json: the current stable shortlist only proves load and prepare here, while the only passing next proof is the standalone coarse serialize-only probe",
       "notes": "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, currently kept at load/prepare level because full lookahead-sensitive serialization exceeds the bounded compatibility budget"
-    },
-    {
-      "id": "tree_sitter_typescript_json",
-      "display_name": "tree-sitter-typescript (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_typescript/grammar.json",
-      "candidate_status": "deferred_parser_wave",
-      "first_failed_stage": "serialize",
-      "detail": "routine lookahead-sensitive serialize proof is deferred for tree_sitter_typescript_json: the current stable shortlist only proves load and prepare here, while the only passing next proof is the standalone coarse serialize-only probe",
-      "notes": "real TypeScript grammar snapshot from the local tree-sitter-typescript repo, initially kept at load/prepare level to exercise large alias and generic-type grammar surfaces without promoting a heavy parser-table proof"
     }
   ],
   "deferred_control_targets": [

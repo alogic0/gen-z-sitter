@@ -570,7 +570,8 @@ Use this order unless profiling shows a clear reason to change it:
 - [x] Rust: scanner/regex-heavy target before JavaScript.
 - [ ] Python: indentation-sensitive target after scanner state improves.
 - [ ] JavaScript: large conflict/regex/keyword target.
-- [ ] TypeScript: defer until JavaScript surfaces are stable.
+- [x] TypeScript: bounded parser-only proof before JavaScript scanner-runtime
+  work.
 
 ### 6.3 Promotion Artifact Discipline
 
@@ -602,6 +603,14 @@ refreshed compatibility artifacts record it as passing the current parser-only
 boundary with 1034 serialized states and a blocked diagnostic table. Full
 parser-table parity and the indentation-sensitive external-scanner runtime-link
 proof remain deferred.
+
+Batch 34 note: `tree_sitter_typescript_json` is promoted from prepare-only to
+the bounded coarse serialize-only parser proof after direct timing showed the
+serialize step finishing in about 3.3 seconds and the full current boundary,
+including parser C emission and compile-smoke, finishing in about 16.4 seconds.
+The refreshed compatibility artifacts record it as passing with 5388 serialized
+states and a blocked diagnostic table. JavaScript-family scanner-runtime
+coverage remains separate and still blocks full runtime proof.
 
 ## Phase 7 — Performance and Capacity
 
