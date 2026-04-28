@@ -182,7 +182,7 @@ Gate:
 - [x] Verify local pass order against upstream preparation order.
   - [ ] Align local repeat/default-alias/flatten ordering with upstream or
     document the exact equivalent local invariants.
-  - [ ] Add local indirect-recursion validation matching upstream
+  - [x] Add local indirect-recursion validation matching upstream
     `validate_indirect_recursion`.
   - [ ] Add explicit lexical token expansion/inlining artifacts or equivalent
     summaries for the local pipeline.
@@ -229,6 +229,11 @@ tokens, expand repeats, flatten syntax, expand lexical tokens, extract default
 aliases, and process inlines. The local snapshot now records its stage order;
 remaining mismatches are tracked explicitly instead of being hidden inside the
 generic pass-order checkbox.
+
+Batch 12 note: local raw-grammar lowering now rejects indirect recursion
+through chains of single-symbol productions, matching upstream's
+`validate_indirect_recursion` guard. The diagnostic records the recursive rule
+chain so ambiguous real-grammar failures are visible before symbol lowering.
 
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 

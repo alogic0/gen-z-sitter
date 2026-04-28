@@ -14,6 +14,7 @@ pub const SemanticDiagnosticKind = enum {
     undefined_word_token,
     undeclared_precedence,
     conflicting_precedence_ordering,
+    indirect_recursion,
     out_of_memory,
 };
 
@@ -37,6 +38,7 @@ pub const ParseGrammarError = error{
     UndefinedWordToken,
     UndeclaredPrecedence,
     ConflictingPrecedenceOrdering,
+    IndirectRecursion,
     OutOfMemory,
 };
 
@@ -89,6 +91,10 @@ fn defaultDiagnostic(err: ParseGrammarError) SemanticDiagnostic {
             .kind = .conflicting_precedence_ordering,
             .summary = "conflicting precedence orderings",
         },
+        error.IndirectRecursion => .{
+            .kind = .indirect_recursion,
+            .summary = "indirect recursion",
+        },
         error.OutOfMemory => .{
             .kind = .out_of_memory,
             .summary = "out of memory while lowering grammar",
@@ -121,6 +127,7 @@ const Builder = struct {
         }
 
         try self.validatePrecedences();
+        try self.validateIndirectRecursion();
 
         var symbols = try self.buildSymbols();
         var variables = try self.buildVariables();
@@ -222,6 +229,55 @@ const Builder = struct {
             .reserved => |reserved| try self.validateRulePrecedences(rule_name, reserved.content, declared),
             .blank, .string, .pattern, .symbol => {},
         }
+    }
+
+    fn validateIndirectRecursion(self: *Builder) ParseGrammarError!void {
+        for (self.grammar.rules) |entry| {
+            var visited = std.StringHashMap(void).init(self.allocator);
+            defer visited.deinit();
+
+            var path = std.array_list.Managed([]const u8).init(self.allocator);
+            defer path.deinit();
+
+            try self.validateIndirectRecursionFrom(entry.name, entry.name, &visited, &path);
+        }
+    }
+
+    fn validateIndirectRecursionFrom(
+        self: *Builder,
+        start_name: []const u8,
+        current_name: []const u8,
+        visited: *std.StringHashMap(void),
+        path: *std.array_list.Managed([]const u8),
+    ) ParseGrammarError!void {
+        if (pathIndex(path.items, current_name)) |index| {
+            return self.failIndirectRecursion(path.items[index..], current_name);
+        }
+        if (visited.contains(current_name)) return;
+
+        try visited.put(current_name, {});
+        try path.append(current_name);
+        defer _ = path.pop();
+
+        const entry = self.findRuleEntry(current_name) orelse return;
+        var next_symbols = std.array_list.Managed([]const u8).init(self.allocator);
+        defer next_symbols.deinit();
+        try collectSingleSymbolProductions(&next_symbols, entry.rule);
+
+        for (next_symbols.items) |next_name| {
+            if (std.mem.eql(u8, next_name, start_name)) {
+                return self.failIndirectRecursion(path.items, next_name);
+            }
+            if (std.mem.eql(u8, next_name, current_name)) continue;
+            try self.validateIndirectRecursionFrom(start_name, next_name, visited, path);
+        }
+    }
+
+    fn findRuleEntry(self: *const Builder, name: []const u8) ?raw.RawRuleEntry {
+        for (self.grammar.rules) |entry| {
+            if (std.mem.eql(u8, entry.name, name)) return entry;
+        }
+        return null;
     }
 
     fn buildSymbols(self: *Builder) ParseGrammarError![]ir_symbols.SymbolInfo {
@@ -594,6 +650,29 @@ const Builder = struct {
         return error.ConflictingPrecedenceOrdering;
     }
 
+    fn failIndirectRecursion(self: *Builder, path: []const []const u8, final_name: []const u8) ParseGrammarError {
+        self.setDiagnostic(.{
+            .kind = .indirect_recursion,
+            .summary = "indirect recursion",
+            .note = self.indirectRecursionNote(path, final_name),
+            .rule_name = if (path.len == 0) final_name else path[0],
+        });
+        return error.IndirectRecursion;
+    }
+
+    fn indirectRecursionNote(self: *Builder, path: []const []const u8, final_name: []const u8) []const u8 {
+        var out: std.Io.Writer.Allocating = .init(self.allocator);
+        errdefer out.deinit();
+        out.writer.writeAll("Grammar contains an indirectly recursive rule: ") catch return "Grammar contains an indirectly recursive rule";
+        for (path, 0..) |name, index| {
+            if (index != 0) out.writer.writeAll(" -> ") catch return "Grammar contains an indirectly recursive rule";
+            out.writer.writeAll(name) catch return "Grammar contains an indirectly recursive rule";
+        }
+        if (path.len != 0) out.writer.writeAll(" -> ") catch return "Grammar contains an indirectly recursive rule";
+        out.writer.writeAll(final_name) catch return "Grammar contains an indirectly recursive rule";
+        return out.toOwnedSlice() catch "Grammar contains an indirectly recursive rule";
+    }
+
     fn allocNote(self: *Builder, comptime fmt: []const u8, args: anytype, fallback_note: []const u8) []const u8 {
         return std.fmt.allocPrint(self.allocator, fmt, args) catch fallback_note;
     }
@@ -627,6 +706,37 @@ fn variableKindForName(name: []const u8) ir.VariableKind {
 
 fn isHidden(name: []const u8) bool {
     return name.len > 0 and name[0] == '_';
+}
+
+fn pathIndex(path: []const []const u8, name: []const u8) ?usize {
+    for (path, 0..) |entry, index| {
+        if (std.mem.eql(u8, entry, name)) return index;
+    }
+    return null;
+}
+
+fn collectSingleSymbolProductions(result: *std.array_list.Managed([]const u8), rule: *const raw.RawRule) ParseGrammarError!void {
+    switch (rule.*) {
+        .symbol => |name| try appendUniqueString(result, name),
+        .choice => |members| for (members) |member| try collectSingleSymbolProductions(result, member),
+        .alias => |alias| try collectSingleSymbolProductions(result, alias.content),
+        .field => |field| try collectSingleSymbolProductions(result, field.content),
+        .prec_dynamic => |prec| try collectSingleSymbolProductions(result, prec.content),
+        .prec_left => |prec| try collectSingleSymbolProductions(result, prec.content),
+        .prec_right => |prec| try collectSingleSymbolProductions(result, prec.content),
+        .prec => |prec| try collectSingleSymbolProductions(result, prec.content),
+        .token => |inner| try collectSingleSymbolProductions(result, inner),
+        .immediate_token => |inner| try collectSingleSymbolProductions(result, inner),
+        .reserved => |reserved| try collectSingleSymbolProductions(result, reserved.content),
+        .blank, .string, .pattern, .seq, .repeat, .repeat1 => {},
+    }
+}
+
+fn appendUniqueString(list: *std.array_list.Managed([]const u8), value: []const u8) ParseGrammarError!void {
+    for (list.items) |existing| {
+        if (std.mem.eql(u8, existing, value)) return;
+    }
+    try list.append(value);
 }
 
 fn lowerPrecedenceValue(value: raw.RawPrecedenceValue) ir_rules.PrecedenceValue {
@@ -800,6 +910,34 @@ test "parseRawGrammar rejects hidden start rule" {
 
     const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
     try std.testing.expectError(error.HiddenStartRule, parseRawGrammar(parse_arena.allocator(), &raw_grammar));
+}
+
+test "parseRawGrammar rejects indirect recursion through single-symbol productions" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+
+    const contents =
+        \\{
+        \\  "name": "indirect",
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "middle" },
+        \\    "middle": { "type": "CHOICE", "members": [
+        \\      { "type": "SYMBOL", "name": "source_file" },
+        \\      { "type": "STRING", "value": "ok" }
+        \\    ] }
+        \\  }
+        \\}
+    ;
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), contents, .{});
+    defer parsed.deinit();
+
+    const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
+    try std.testing.expectError(error.IndirectRecursion, parseRawGrammar(parse_arena.allocator(), &raw_grammar));
+    const diagnostic = errorDiagnostic(error.IndirectRecursion);
+    try std.testing.expectEqualStrings("indirect recursion", diagnostic.summary);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic.note.?, "source_file -> middle -> source_file") != null);
 }
 
 test "parseRawGrammar rejects undeclared named precedence values" {
