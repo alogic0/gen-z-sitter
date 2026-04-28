@@ -63,6 +63,7 @@ pub const IncrementalStats = struct {
     reused_nodes: usize = 0,
     reused_bytes: usize = 0,
     fresh_shifted_tokens: usize = 0,
+    scanner_state_blocked_reuse: bool = false,
 };
 
 pub const RecoveryStats = struct {
@@ -464,6 +465,7 @@ const ParseVersion = struct {
     error_count: u32,
     recovery: RecoveryStats,
     edit: ?Edit,
+    scanner_state_blocked_reuse: bool,
 
     fn initFirst(allocator: std.mem.Allocator) !ParseVersion {
         var s = std.ArrayListUnmanaged(u32).empty;
@@ -479,6 +481,7 @@ const ParseVersion = struct {
             .error_count = 0,
             .recovery = .{},
             .edit = null,
+            .scanner_state_blocked_reuse = false,
         };
     }
 
@@ -507,6 +510,7 @@ const ParseVersion = struct {
             .error_count = self.error_count,
             .recovery = self.recovery,
             .edit = self.edit,
+            .scanner_state_blocked_reuse = self.scanner_state_blocked_reuse,
         };
     }
 
@@ -544,6 +548,7 @@ fn acceptedResult(version: ParseVersion) SimulationResult {
             .reused_nodes = reuse.reused_nodes,
             .reused_bytes = reuse.reused_bytes,
             .fresh_shifted_tokens = version.shifted_tokens,
+            .scanner_state_blocked_reuse = version.scanner_state_blocked_reuse,
         },
     } };
 }
@@ -793,7 +798,10 @@ fn tryReuseOldSubtree(
     const edit = incremental.edit orelse return false;
     const cursor: u32 = @intCast(version.cursor);
     const top_state = version.topState();
-    if (!stateAllowsIncrementalReuse(top_state, incremental.external_lex_states)) return false;
+    if (!stateAllowsIncrementalReuse(top_state, incremental.external_lex_states)) {
+        version.scanner_state_blocked_reuse = true;
+        return false;
+    }
     const node = findReusableNodeAt(old_tree, cursor, top_state, edit) orelse return false;
     if (node.production_id == terminal_node_production_id) return false;
     if (node.end_byte <= node.start_byte) return false;
@@ -3201,6 +3209,7 @@ test "simulatePreparedScannerFreeIncremental reuses prefix nodes after append ed
     try std.testing.expect(incremental_result.accepted.incremental.reused_nodes > 0);
     try std.testing.expect(incremental_result.accepted.incremental.reused_bytes > 0);
     try std.testing.expect(incremental_result.accepted.incremental.fresh_shifted_tokens < fresh_result.accepted.shifted_tokens);
+    try std.testing.expect(!incremental_result.accepted.incremental.scanner_state_blocked_reuse);
 }
 
 test "simulatePreparedScannerFreeIncremental supports start middle and end edits" {
@@ -3262,6 +3271,7 @@ test "simulatePreparedIncrementalWithExternalLexStates blocks unsafe prefix reus
     try std.testing.expectEqual(fresh_result.accepted.shifted_tokens, incremental_result.accepted.shifted_tokens);
     try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), fresh_tree, incremental_tree));
     try std.testing.expectEqual(@as(usize, 0), countReusedNodes(incremental_tree));
+    try std.testing.expect(incremental_result.accepted.incremental.scanner_state_blocked_reuse);
 }
 
 test "tryReuseOldSubtree restores sampled external scanner state" {
@@ -3353,6 +3363,7 @@ test "bracket_lang incremental fixture does not reuse unsafe external states" {
     try std.testing.expectEqual(fresh_result.accepted.shifted_tokens, incremental_result.accepted.shifted_tokens);
     try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), fresh_tree, incremental_tree));
     try std.testing.expectEqual(@as(usize, 0), countReusedNodes(incremental_tree));
+    try std.testing.expect(incremental_result.accepted.incremental.scanner_state_blocked_reuse);
 }
 
 fn expectScannerFreeIncrementalEdit(
@@ -3381,6 +3392,7 @@ fn expectScannerFreeIncrementalEdit(
     try std.testing.expectEqual(edit.start_byte, incremental_result.accepted.incremental.changed_start_byte);
     try std.testing.expectEqual(edit.old_end_byte, incremental_result.accepted.incremental.old_end_byte);
     try std.testing.expectEqual(edit.new_end_byte, incremental_result.accepted.incremental.new_end_byte);
+    try std.testing.expect(!incremental_result.accepted.incremental.scanner_state_blocked_reuse);
     if (expect_prefix_reuse) {
         try std.testing.expect(incremental_result.accepted.incremental.reused_nodes > 0);
         try std.testing.expect(incremental_result.accepted.incremental.reused_bytes > 0);
@@ -3403,6 +3415,7 @@ fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResu
             try std.testing.expectEqual(left.incremental.changed_start_byte, right.incremental.changed_start_byte);
             try std.testing.expectEqual(left.incremental.old_end_byte, right.incremental.old_end_byte);
             try std.testing.expectEqual(left.incremental.new_end_byte, right.incremental.new_end_byte);
+            try std.testing.expectEqual(left.incremental.scanner_state_blocked_reuse, right.incremental.scanner_state_blocked_reuse);
             try std.testing.expectEqual(left.recovery.attempts, right.recovery.attempts);
             try std.testing.expectEqual(left.recovery.stack_recoveries, right.recovery.stack_recoveries);
             try std.testing.expectEqual(left.recovery.skipped_tokens, right.recovery.skipped_tokens);

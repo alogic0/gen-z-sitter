@@ -872,6 +872,8 @@ recovery event counts.
 - [ ] Compare changed ranges, reused bytes, and final tree strings for edit
   samples.
   - [x] Expose edit-range metadata in local incremental results.
+  - [x] Expose scanner-state-blocked reuse decisions in local incremental
+    results.
 - [ ] Add scanner-aware incremental samples for Bash or Haskell after external
   scanner state snapshots are stable.
 
@@ -880,6 +882,12 @@ changed start byte, old end byte, and new end byte. Scanner-free incremental
 tests assert those offsets alongside reused nodes, reused bytes, shifted-token
 counts, and final tree equivalence, giving future upstream comparison work a
 stable local changed-range surface.
+
+Batch 106 note: behavioral incremental results now expose
+`scanner_state_blocked_reuse`. Scanner-free edit samples assert the flag stays
+false when prefix reuse is allowed, while external-lex-state samples assert it
+becomes true when reuse is intentionally blocked because scanner-owned state
+would be required.
 
 Gate:
 
