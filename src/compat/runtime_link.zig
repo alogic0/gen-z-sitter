@@ -346,6 +346,7 @@ pub fn linkAndRunTreeSitterJsonParserInvalidSample(allocator: std.mem.Allocator)
         .parser_c = parser_c,
         .input = "x",
         .expected_has_error = true,
+        .expected_tree_string = "(document (ERROR (UNEXPECTED 'x')))",
     });
 }
 
@@ -382,6 +383,7 @@ pub fn linkAndRunTreeSitterZiggyParserInvalidSample(allocator: std.mem.Allocator
         .input = "@",
         .expected_root_type = "document",
         .expected_has_error = true,
+        .expected_tree_string = "(document (ERROR (UNEXPECTED '@')))",
     });
 }
 

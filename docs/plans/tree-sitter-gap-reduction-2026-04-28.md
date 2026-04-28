@@ -619,7 +619,7 @@ the higher dynamic precedence, and over-cap version sets are trimmed to
     and skipped bytes in accepted simulation results.
   - [x] Expose generated parser recovery attempts, stack recoveries, skipped
     tokens, and skipped bytes in `TSGeneratedParseResult`.
-- [ ] Compare invalid sample tree strings for promoted grammars where upstream
+- [x] Compare invalid sample tree strings for promoted grammars where upstream
   produces a stable error tree.
 
 Gate:
@@ -636,6 +636,11 @@ Batch 73 note: emitted GLR parser results now carry the same recovery counters
 as the behavioral harness. Generated recovery records each no-action retry,
 stack recovery, token deletion, and byte deletion; recognized skipped tokens
 advance by the full lexed token length instead of a single byte.
+
+Batch 74 note: invalid runtime-link samples now assert stable error tree
+strings for JSON and Ziggy. JSON locks the upstream-observed
+`(document (ERROR (UNEXPECTED 'x')))` tree, and Ziggy provides the required
+non-JSON promoted grammar proof with `(document (ERROR (UNEXPECTED '@')))`.
 
 ### 5.3 Incremental Parsing and Reuse
 
