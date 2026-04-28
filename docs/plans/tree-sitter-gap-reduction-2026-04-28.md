@@ -505,6 +505,8 @@ as supported by the local regex parser.
 - [ ] Compare lex-state counts, accept token priorities, advance actions,
   skip actions, and large character set decisions.
 - [ ] Reproduce upstream keyword lexer behavior for real word-token grammars.
+  - [x] Include serialized keyword-lexer table counts and hashes in lex table
+    comparison artifacts.
 - [x] Protect external-token valid-symbol behavior with stateful scanner tests.
 
 Gate:
@@ -522,6 +524,11 @@ Batch 57 note: `lex-table-summary.json` now includes aggregate and per-table
 hashes for accept symbols, transition targets, and serialized ranges. This
 makes accept-token and advance-shape changes visible without depending on exact
 generated C text.
+
+Batch 62 note: `lex-table-summary.json` now includes the serialized keyword
+lexer table when a grammar has word/reserved-word metadata. The keyword section
+uses the same state, transition, range, accept-symbol, target, and range hashes
+as ordinary lex tables.
 
 ### 4.3 Emitted Lexer C Parity
 

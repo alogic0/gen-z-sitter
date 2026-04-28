@@ -1703,6 +1703,13 @@ fn writeLexTableSummaryJson(
     try writeU64HexField(writer, 2, "accept_symbol_hash", counts.accept_symbol_hash, true);
     try writeU64HexField(writer, 2, "transition_target_hash", counts.transition_target_hash, true);
     try writeU64HexField(writer, 2, "range_hash", counts.range_hash, true);
+    try writer.writeAll("  \"keyword_table\": ");
+    if (serialized.keyword_lex_table) |keyword_table| {
+        try writeLexTableCountsObject(writer, countLexTable(keyword_table));
+    } else {
+        try writer.writeAll("null");
+    }
+    try writer.writeAll(",\n");
     try writer.writeAll("  \"tables\": [\n");
     for (serialized.lex_tables, 0..) |table, index| {
         const table_counts = countLexTable(table);
@@ -1739,6 +1746,32 @@ fn writeLexTableSummaryJson(
     }
     try writer.writeAll("  ]\n");
     try writer.writeAll("}\n");
+}
+
+fn writeLexTableCountsObject(writer: anytype, counts: LexTableCounts) !void {
+    try writer.writeAll("{ \"state_count\": ");
+    try writer.print("{d}", .{counts.state_count});
+    try writer.writeAll(", \"transition_count\": ");
+    try writer.print("{d}", .{counts.transition_count});
+    try writer.writeAll(", \"range_count\": ");
+    try writer.print("{d}", .{counts.range_count});
+    try writer.writeAll(", \"accept_state_count\": ");
+    try writer.print("{d}", .{counts.accept_state_count});
+    try writer.writeAll(", \"eof_target_count\": ");
+    try writer.print("{d}", .{counts.eof_target_count});
+    try writer.writeAll(", \"skip_transition_count\": ");
+    try writer.print("{d}", .{counts.skip_transition_count});
+    try writer.writeAll(", \"large_range_transition_count\": ");
+    try writer.print("{d}", .{counts.large_range_transition_count});
+    try writer.writeAll(", \"max_transition_range_count\": ");
+    try writer.print("{d}", .{counts.max_transition_range_count});
+    try writer.writeAll(", \"accept_symbol_hash\": ");
+    try writeJsonHexU64(writer, counts.accept_symbol_hash);
+    try writer.writeAll(", \"transition_target_hash\": ");
+    try writeJsonHexU64(writer, counts.transition_target_hash);
+    try writer.writeAll(", \"range_hash\": ");
+    try writeJsonHexU64(writer, counts.range_hash);
+    try writer.writeAll(" }");
 }
 
 fn countLexTables(tables: []const @import("../lexer/serialize.zig").SerializedLexTable) LexTableCounts {
@@ -2974,4 +3007,36 @@ test "generateLocalLexTableSummaryJsonAlloc writes lexer table counts" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"accept_symbol_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_target_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"range_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_table\": null") != null);
+}
+
+test "writeLexTableSummaryJson writes keyword table counts" {
+    const lexer_serialize = @import("../lexer/serialize.zig");
+    const ranges = [_]lexer_serialize.SerializedCharacterRange{.{ .start = 'f', .end_inclusive = 'f' }};
+    const transitions = [_]lexer_serialize.SerializedLexTransition{.{
+        .ranges = ranges[0..],
+        .next_state_id = 0,
+        .skip = false,
+    }};
+    const states = [_]lexer_serialize.SerializedLexState{.{
+        .accept_symbol = .{ .terminal = 1 },
+        .transitions = transitions[0..],
+    }};
+    const serialized = parse_table_serialize.SerializedTable{
+        .states = &.{},
+        .blocked = false,
+        .keyword_lex_table = .{
+            .start_state_id = 0,
+            .states = states[0..],
+        },
+    };
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    try writeLexTableSummaryJson(&out.writer, serialized);
+    const json = out.written();
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_table\": {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"accept_symbol_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_target_hash\"") != null);
 }
