@@ -193,7 +193,7 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
                 .minimize_states = opts.minimize_states,
                 .strict_expected_conflicts = opts.strict_expected_conflicts,
             };
-            const parser_c = try emitParserCFromPreparedAlloc(
+            const parser_c = emitParserCFromPreparedAlloc(
                 pipeline_arena.allocator(),
                 prepared,
                 build_options,
@@ -201,7 +201,26 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
                     .compact_duplicate_states = opts.optimize_merge_states,
                     .glr_loop = opts.glr_loop,
                 },
-            );
+            ) catch |err| switch (err) {
+                error.ParseActionListTooLarge,
+                error.RuntimeFieldCountTooLarge,
+                error.RuntimeLargeStateCountTooLarge,
+                error.RuntimeLexStateCountTooLarge,
+                error.RuntimeParseActionListTooLarge,
+                error.RuntimeProductionCountTooLarge,
+                error.RuntimeStateCountTooLarge,
+                error.RuntimeSymbolCountTooLarge,
+                => {
+                    try diag.printStderr(io, .{
+                        .kind = .usage,
+                        .message = "grammar exceeds generated parser runtime table capacity",
+                        .note = runtimeLimitErrorNote(err),
+                        .path = opts.grammar_path,
+                    });
+                    return error.InvalidArguments;
+                },
+                else => return err,
+            };
             const parser_path = try std.fs.path.join(allocator, &.{ output_dir, "parser.c" });
             defer allocator.free(parser_path);
             try fs_support.writeFile(parser_path, parser_c);
@@ -288,6 +307,21 @@ fn emitParserCFromPreparedAlloc(
         build_options,
     );
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, options);
+}
+
+fn runtimeLimitErrorNote(err: anyerror) []const u8 {
+    return switch (err) {
+        error.ParseActionListTooLarge,
+        error.RuntimeParseActionListTooLarge,
+        => "parse action list does not fit the current uint16_t runtime table format",
+        error.RuntimeFieldCountTooLarge => "field count does not fit the current uint16_t runtime table format",
+        error.RuntimeLargeStateCountTooLarge => "large state count does not fit the current uint16_t runtime table format",
+        error.RuntimeLexStateCountTooLarge => "lexer state count does not fit the current uint16_t runtime table format",
+        error.RuntimeProductionCountTooLarge => "production count does not fit the current uint16_t runtime table format",
+        error.RuntimeStateCountTooLarge => "parse state count does not fit the current uint16_t runtime table format",
+        error.RuntimeSymbolCountTooLarge => "symbol count does not fit the current uint16_t runtime table format",
+        else => "generated parser table exceeds the current runtime table format",
+    };
 }
 
 fn generateJsonSummaryAlloc(
@@ -1005,6 +1039,17 @@ test "runGenerate writes parser.c when requested" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, written, 1, "static const TSLanguage ts_language = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, written, 1, "const TSLanguage *tree_sitter_basic(void) {\n"));
+}
+
+test "runtimeLimitErrorNote explains parser C capacity errors" {
+    try std.testing.expectEqualStrings(
+        "parse state count does not fit the current uint16_t runtime table format",
+        runtimeLimitErrorNote(error.RuntimeStateCountTooLarge),
+    );
+    try std.testing.expectEqualStrings(
+        "parse action list does not fit the current uint16_t runtime table format",
+        runtimeLimitErrorNote(error.RuntimeParseActionListTooLarge),
+    );
 }
 
 test "runGenerate writes experimental GLR parser.c when requested" {

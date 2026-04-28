@@ -602,7 +602,7 @@ Gate:
 
 ### 7.2 Runtime Table Capacity
 
-- [ ] Keep runtime-compatible `uint16_t` table limits for normal output.
+- [x] Keep runtime-compatible `uint16_t` table limits for normal output.
 - [x] Move diagnostic-only unresolved action data out of runtime action-list
   capacity paths where possible.
 - [x] Add explicit errors for targets that exceed runtime-compatible limits.
@@ -622,6 +622,10 @@ Batch 28 note: normal parser C emission now builds its runtime parse-action
 list from reusable parse-table actions only. Unresolved diagnostic candidate
 actions stay out of the runtime action-list capacity path unless the
 experimental GLR loop is enabled and needs those candidates for forking.
+
+Batch 29 note: `generate --emit-parser-c` now reports runtime table capacity
+overflows as user-facing grammar/runtime-limit diagnostics instead of falling
+through to a generic internal error.
 
 ### 7.3 C Compile Time
 
