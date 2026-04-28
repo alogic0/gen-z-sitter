@@ -130,15 +130,22 @@ Gate:
 Goal: match upstream subtree reuse rejection before expanding scanner-aware
 incremental coverage.
 
-- [ ] Extend the local parse-node model with enough metadata to represent
+- [x] Extend the local parse-node model with enough metadata to represent
   changed, fragile, and error subtrees.
-- [ ] Add `first_leaf_symbol` tracking or a conservative equivalent in reusable
+- [x] Add `first_leaf_symbol` tracking or a conservative equivalent in reusable
   nodes.
-- [ ] Reject reuse when the first leaf does not match the current lookahead.
-- [ ] Reject reuse for changed, fragile, and error subtrees.
-- [ ] Add scanner-free tests for each guard.
-- [ ] Add a scanner-aware Bash or Haskell sample after the guard logic is
+- [x] Reject reuse when the first leaf does not match the current lookahead.
+- [x] Reject reuse for changed, fragile, and error subtrees.
+- [x] Add scanner-free tests for each guard.
+- [x] Add a scanner-aware Bash or Haskell sample after the guard logic is
   stable.
+
+Batch 4 note: `ParseNode` now carries first-leaf, changed, fragile, and error
+metadata for incremental reuse decisions. Reuse is rejected when the current
+lookahead does not match the old subtree's first leaf or when any reused
+subtree is changed, fragile, or an error subtree. Scanner-free guard tests cover
+each rejection reason, and the existing sampled Haskell-layout incremental
+fixture keeps the scanner-aware reuse boundary covered after the guard change.
 
 Gate:
 

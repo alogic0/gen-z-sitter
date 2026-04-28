@@ -43,8 +43,17 @@ pub const ParseNode = struct {
     entry_state: u32,
     children: []const ParseNode = &.{},
     external_layout_indents_after: []const usize = &.{},
+    first_leaf_symbol: ?syntax_ir.SymbolRef = null,
+    has_changes: bool = false,
+    is_fragile: bool = false,
     is_error: bool = false,
     reused: bool = false,
+
+    fn firstLeafSymbol(self: ParseNode) ?syntax_ir.SymbolRef {
+        if (self.first_leaf_symbol) |symbol| return symbol;
+        if (self.children.len == 0) return null;
+        return self.children[0].firstLeafSymbol();
+    }
 };
 
 pub const Edit = struct {
@@ -565,6 +574,7 @@ fn versionShift(
     version: *ParseVersion,
     entry_state: u32,
     target: u32,
+    symbol: syntax_ir.SymbolRef,
     token_len: usize,
     external_effect: SampledExternalEffect,
 ) std.mem.Allocator.Error!void {
@@ -580,6 +590,7 @@ fn versionShift(
         .end_byte = @intCast(end_byte),
         .entry_state = entry_state,
         .external_layout_indents_after = external_layout_indents_after,
+        .first_leaf_symbol = symbol,
     });
     version.cursor = end_byte;
     version.shifted_tokens += 1;
@@ -616,6 +627,7 @@ fn versionReduce(
         .entry_state = entry_state,
         .children = children,
         .external_layout_indents_after = external_layout_indents_after,
+        .first_leaf_symbol = if (children.len == 0) null else children[0].firstLeafSymbol(),
     });
     version.dynamic_precedence += production.dynamic_precedence;
     return null;
@@ -890,6 +902,7 @@ fn tryReuseOldSubtree(
     result: build.BuildResult,
     version: *ParseVersion,
     incremental: IncrementalContext,
+    lookahead_symbol: ?syntax_ir.SymbolRef,
 ) std.mem.Allocator.Error!bool {
     // Current incremental reuse is only safe when the old subtree can be
     // entered without restoring scanner-owned state. Scanner-aware parsing must
@@ -904,6 +917,7 @@ fn tryReuseOldSubtree(
         return false;
     }
     const node = findReusableNodeAt(old_tree, cursor, top_state, edit) orelse return false;
+    if (!nodeAllowsIncrementalReuse(node, lookahead_symbol)) return false;
     if (node.production_id == terminal_node_production_id) return false;
     if (node.end_byte <= node.start_byte) return false;
     if (node.production_id >= result.productions.len) return false;
@@ -916,6 +930,74 @@ fn tryReuseOldSubtree(
     version.cursor = node.end_byte;
     try version.external_state.replaceLayoutIndents(node.external_layout_indents_after);
     return true;
+}
+
+fn nodeAllowsIncrementalReuse(node: ParseNode, lookahead_symbol: ?syntax_ir.SymbolRef) bool {
+    if (subtreeBlocksIncrementalReuse(node)) return false;
+    const first_leaf_symbol = node.firstLeafSymbol() orelse return false;
+    const current_symbol = lookahead_symbol orelse return false;
+    return std.meta.eql(first_leaf_symbol, current_symbol);
+}
+
+fn subtreeBlocksIncrementalReuse(node: ParseNode) bool {
+    if (node.has_changes or node.is_fragile or node.is_error) return true;
+    for (node.children) |child| {
+        if (subtreeBlocksIncrementalReuse(child)) return true;
+    }
+    return false;
+}
+
+test "nodeAllowsIncrementalReuse enforces first-leaf and unsafe subtree guards" {
+    const symbol: syntax_ir.SymbolRef = .{ .terminal = 1 };
+    const other_symbol: syntax_ir.SymbolRef = .{ .terminal = 2 };
+    const reusable = ParseNode{
+        .production_id = 10,
+        .start_byte = 0,
+        .end_byte = 1,
+        .entry_state = 0,
+        .first_leaf_symbol = symbol,
+    };
+    const changed = ParseNode{
+        .production_id = 10,
+        .start_byte = 0,
+        .end_byte = 1,
+        .entry_state = 0,
+        .first_leaf_symbol = symbol,
+        .has_changes = true,
+    };
+    const fragile = ParseNode{
+        .production_id = 10,
+        .start_byte = 0,
+        .end_byte = 1,
+        .entry_state = 0,
+        .first_leaf_symbol = symbol,
+        .is_fragile = true,
+    };
+    const error_node = ParseNode{
+        .production_id = 10,
+        .start_byte = 0,
+        .end_byte = 1,
+        .entry_state = 0,
+        .first_leaf_symbol = symbol,
+        .is_error = true,
+    };
+    const changed_child = [_]ParseNode{changed};
+    const parent_with_changed_child = ParseNode{
+        .production_id = 11,
+        .start_byte = 0,
+        .end_byte = 1,
+        .entry_state = 0,
+        .children = changed_child[0..],
+        .first_leaf_symbol = symbol,
+    };
+
+    try std.testing.expect(nodeAllowsIncrementalReuse(reusable, symbol));
+    try std.testing.expect(!nodeAllowsIncrementalReuse(reusable, other_symbol));
+    try std.testing.expect(!nodeAllowsIncrementalReuse(reusable, null));
+    try std.testing.expect(!nodeAllowsIncrementalReuse(changed, symbol));
+    try std.testing.expect(!nodeAllowsIncrementalReuse(fragile, symbol));
+    try std.testing.expect(!nodeAllowsIncrementalReuse(error_node, symbol));
+    try std.testing.expect(!nodeAllowsIncrementalReuse(parent_with_changed_child, symbol));
 }
 
 fn stateAllowsIncrementalReuse(state_id: u32, external_lex_states: []const u16) bool {
@@ -952,6 +1034,9 @@ fn cloneReusedSubtreeAlloc(allocator: std.mem.Allocator, node: ParseNode) std.me
         .entry_state = node.entry_state,
         .children = children,
         .external_layout_indents_after = external_layout_indents_after,
+        .first_leaf_symbol = node.first_leaf_symbol,
+        .has_changes = node.has_changes,
+        .is_fragile = node.is_fragile,
         .is_error = node.is_error,
         .reused = true,
     };
@@ -1024,10 +1109,6 @@ fn simulateBuiltScannerFreeWithIncremental(
 
                 const state_id = versions.items[vi].topState();
 
-                if (try tryReuseOldSubtree(allocator, result, &versions.items[vi], incremental)) {
-                    continue :inner;
-                }
-
                 // ---- End of input ----
                 if (versions.items[vi].cursor >= input.len) {
                     if (external_boundary) |boundary| {
@@ -1040,7 +1121,7 @@ fn simulateBuiltScannerFreeWithIncremental(
                             switch (decision) {
                                 .chosen => |action| switch (action) {
                                     .shift => |target| {
-                                        try versionShift(allocator, &versions.items[vi], state_id, target, matched.len, matched.external_effect);
+                                        try versionShift(allocator, &versions.items[vi], state_id, target, matched.symbol, matched.len, matched.external_effect);
                                         vi += 1;
                                         break :inner;
                                     },
@@ -1115,6 +1196,10 @@ fn simulateBuiltScannerFreeWithIncremental(
                 else
                     try selectMatchingTerminal(result, state_id, prepared_lex_tables, input[versions.items[vi].cursor..]);
 
+                if (try tryReuseOldSubtree(allocator, result, &versions.items[vi], incremental, if (matched_opt) |matched| matched.symbol else null)) {
+                    continue :inner;
+                }
+
                 if (matched_opt == null) {
                     if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
                         .accept => return acceptedResult(versions.items[vi]),
@@ -1168,7 +1253,7 @@ fn simulateBuiltScannerFreeWithIncremental(
                 switch (decision.?) {
                     .chosen => |action| switch (action) {
                         .shift => |target| {
-                            try versionShift(allocator, &versions.items[vi], state_id, target, matched.len, matched.external_effect);
+                            try versionShift(allocator, &versions.items[vi], state_id, target, matched.symbol, matched.len, matched.external_effect);
                             vi += 1;
                             break :inner;
                         },
@@ -1200,7 +1285,7 @@ fn simulateBuiltScannerFreeWithIncremental(
                             var fork = try versions.items[vi].clone(allocator);
                             switch (extra) {
                                 .shift => |target| {
-                                    versionShift(allocator, &fork, state_id, target, matched.len, matched.external_effect) catch {
+                                    versionShift(allocator, &fork, state_id, target, matched.symbol, matched.len, matched.external_effect) catch {
                                         fork.deinit(allocator);
                                         return error.OutOfMemory;
                                     };
@@ -1228,7 +1313,7 @@ fn simulateBuiltScannerFreeWithIncremental(
                         // Apply candidates[0] to the current version.
                         switch (candidates[0]) {
                             .shift => |target| {
-                                try versionShift(allocator, &versions.items[vi], state_id, target, matched.len, matched.external_effect);
+                                try versionShift(allocator, &versions.items[vi], state_id, target, matched.symbol, matched.len, matched.external_effect);
                                 vi += 1;
                                 break :inner;
                             },
@@ -3148,6 +3233,10 @@ fn cloneParseNodeWithReuseMarkersAlloc(
         .end_byte = fresh.end_byte,
         .entry_state = fresh.entry_state,
         .children = children,
+        .external_layout_indents_after = fresh.external_layout_indents_after,
+        .first_leaf_symbol = fresh.first_leaf_symbol,
+        .has_changes = fresh.has_changes,
+        .is_fragile = fresh.is_fragile,
         .is_error = fresh.is_error,
         .reused = findReusableOldNode(old, fresh, edit) != null,
     };
@@ -3169,7 +3258,9 @@ fn nodeCanReuse(old: ParseNode, fresh: ParseNode, edit: Edit) bool {
     if (old.start_byte != fresh.start_byte) return false;
     if (old.end_byte != fresh.end_byte) return false;
     if (old.entry_state != fresh.entry_state) return false;
+    if (old.has_changes or old.is_fragile or old.is_error) return false;
     if (old.is_error != fresh.is_error) return false;
+    if (!std.meta.eql(old.firstLeafSymbol(), fresh.firstLeafSymbol())) return false;
     if (!std.mem.eql(usize, old.external_layout_indents_after, fresh.external_layout_indents_after)) return false;
     return true;
 }
@@ -3398,7 +3489,7 @@ test "tryReuseOldSubtree restores sampled external scanner state" {
             .old_end_byte = 5,
             .new_end_byte = 7,
         },
-    });
+    }, old_tree.firstLeafSymbol());
 
     try std.testing.expect(reused);
     try std.testing.expectEqual(@as(usize, 5), version.cursor);
