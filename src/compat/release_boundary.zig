@@ -52,8 +52,8 @@ const promoted_grammars = [_]GrammarBoundary{
 const deferred_grammars = [_]GrammarBoundary{
     .{
         .id = "tree_sitter_javascript_json",
-        .status = "deferred",
-        .proof = "load/prepare plus bounded parser-boundary classification; broader parser-table proof remains outside the routine budget",
+        .status = "deferred_runtime_proof",
+        .proof = "bounded coarse serialize-only parser proof plus parser.c compile-smoke; automatic semicolon and regex scanner runtime proof remains separate",
     },
     .{
         .id = "tree_sitter_python_json",
@@ -81,7 +81,7 @@ const runtime_surface_gaps = [_][]const u8{
     "generated GLR recovery is bounded and visible, but not full tree-sitter runtime recovery parity",
     "generated result/tree output is exposed through the temporary ts_generated_parse_result API",
     "external scanner proofs are focused runtime-link samples, not broad corpus-level runtime equivalence",
-    "large JavaScript-family and scanner-heavy grammars still defer full parser-table parity and real scanner runtime equivalence",
+    "large JavaScript-family and scanner-heavy grammars have bounded parser proofs but still defer full parser-table parity and real scanner runtime equivalence",
 };
 
 const bounded_release_gates = [_][]const u8{

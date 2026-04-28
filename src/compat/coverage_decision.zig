@@ -67,8 +67,8 @@ pub fn buildCoverageDecisionAlloc(
     const recommendation_rationale = if (deferred_parser_targets.len != 0)
         try duplicateStringSliceAlloc(allocator, &.{
             "the promoted first-wave parser-only shortlist currently passes within the staged boundary",
-            "one deferred parser-only fixture is an intentional upstream-rejected ambiguity, while JavaScript is the remaining real large parser-only snapshot held at prepare-only because broader parser-table proofs remain outside the bounded routine budget",
-            "Python, TypeScript, and Rust now have bounded coarse serialize-only parser proofs, so the next promoted milestone should either narrow JavaScript's scanner/parser boundary or move one promoted large grammar toward a real scanner runtime proof",
+            "one deferred parser-only fixture is an intentional upstream-rejected ambiguity, while JavaScript, Python, TypeScript, and Rust now have bounded coarse serialize-only parser proofs",
+            "the next promoted milestone should move one promoted large grammar toward a real scanner runtime proof without claiming full parser-table parity yet",
         })
     else if (deferred_scanner_targets.len == 0)
         try duplicateStringSliceAlloc(allocator, &.{

@@ -115,17 +115,17 @@ const entries = [_]DeferredRealGrammarEntry{
     .{
         .id = "tree_sitter_javascript_json",
         .family = .javascript,
-        .current_parser_boundary_check_mode = .prepare_only,
+        .current_parser_boundary_check_mode = .serialize_only,
         .standalone_probe_status = "passed_coarse_serialize_only",
-        .serialized_state_count = 1299,
+        .serialized_state_count = 1315,
         .serialized_blocked = true,
         .blocked_surface = "external_scanner_symbols_only",
         .external_scanner_symbol_count = javascript_tokens.len,
         .external_tokens = javascript_tokens[0..],
-        .bounded_coarse_proof = "completed by parser_boundary_probe.json; blocked=true because scanner callback semantics remain target-specific",
+        .bounded_coarse_proof = "promoted to the bounded routine coarse serialize-only parser proof; blocked=true because scanner callback semantics remain target-specific",
         .scanner_runtime_plan = javascript_samples[0..],
-        .routine_boundary_decision = "keep prepare_only until a minimal scanner runtime proof covers automatic semicolon or regex_pattern",
-        .next_action = "build a minimal JavaScript scanner runtime proof before any routine serialize_only promotion",
+        .routine_boundary_decision = "keep full parser-table parity and runtime-link proof deferred until a minimal scanner runtime proof covers automatic semicolon or regex_pattern",
+        .next_action = "build a minimal JavaScript scanner runtime proof for automatic_semicolon or regex_pattern",
     },
     .{
         .id = "tree_sitter_python_json",
@@ -179,7 +179,7 @@ pub fn buildDeferredRealGrammarClassification() DeferredRealGrammarClassificatio
         .schema_version = 1,
         .source_probe = "compat_targets/parser_boundary_probe.json",
         .target_count = entries.len,
-        .gate = "JavaScript remains prepare-only while Python, TypeScript, and Rust have bounded routine coarse serialize-only parser proofs; all four still defer full parser-table parity and external-scanner runtime proof",
+        .gate = "JavaScript, Python, TypeScript, and Rust all have bounded routine coarse serialize-only parser proofs; all four still defer full parser-table parity and external-scanner runtime proof",
         .entries = entries[0..],
     };
 }

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "total_external_repo_targets": 11,
-  "passed_external_repo_targets": 10,
-  "standalone_parser_proof_targets": 5,
+  "passed_external_repo_targets": 11,
+  "standalone_parser_proof_targets": 6,
   "family_coverage": [
     {
       "family": "ziggy",
@@ -50,7 +50,7 @@
       "family": "javascript",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 0
+      "passed_count": 1
     },
     {
       "family": "python",
@@ -75,7 +75,7 @@
     {
       "boundary_kind": "parser_only",
       "target_count": 9,
-      "passed_count": 8
+      "passed_count": 9
     },
     {
       "boundary_kind": "scanner_external_scanner",
@@ -84,11 +84,10 @@
     }
   ],
   "current_limitations": [
-    "the checked-in real external evidence now includes a larger parser-only snapshot that is still held at an explicit deferred parser boundary",
-    "tree-sitter-c currently proves load, prepare, routine coarse serialize-only, parser-table emission, and C-table emission in the shortlist and also has a matching standalone coarse serialize-only parser proof, but the stable shortlist still does not claim broader emitted parser.c or compiled parser surfaces for a grammar of that size",
-    "real external scanner evidence and the promoted Ziggy parser-only snapshots remain passing while this larger parser-only target stays explicitly deferred"
+    "the checked-in real external evidence now includes at least one passing external scanner-family snapshot",
+    "the next step is to widen real external scanner-family coverage without collapsing parser-only and scanner evidence into a single flat claim"
   ],
-  "recommended_next_step": "narrow_or_promote_onboarded_external_parser_targets",
+  "recommended_next_step": "broader_compatibility_polish",
   "targets": [
     {
       "id": "tree_sitter_ziggy_json",
@@ -210,13 +209,13 @@
       "source_kind": "grammar_json",
       "boundary_kind": "parser_only",
       "proof_scope": "none",
-      "standalone_parser_proof_scope": "none",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
       "upstream_repository": "tree-sitter-javascript",
       "upstream_revision": "58404d8cf191d69f2674a8fd507bd5776f46cb11",
       "upstream_grammar_path": "src/grammar.json",
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "routine_serialize_proof_boundary",
-      "notes": "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, currently kept at load/prepare level because full lookahead-sensitive serialization exceeds the bounded compatibility budget"
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, promoted to the bounded coarse serialize-only parser proof while full parser-table and scanner runtime proofs remain deferred"
     },
     {
       "id": "tree_sitter_python_json",

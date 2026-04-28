@@ -2,19 +2,19 @@
   "schema_version": 1,
   "boundary": {
     "total_shortlist_targets": 20,
-    "first_wave_targets": 11,
-    "first_wave_passed": 11,
+    "first_wave_targets": 12,
+    "first_wave_passed": 12,
     "first_wave_non_passing": 0,
     "scanner_wave_targets": 7,
     "scanner_wave_passed": 7,
     "scanner_wave_non_passing": 0,
-    "deferred_parser_targets": 1,
-    "standalone_parser_proof_targets": 6,
+    "deferred_parser_targets": 0,
+    "standalone_parser_proof_targets": 7,
     "deferred_control_targets": 1,
     "frozen_control_fixtures": 1,
     "deferred_scanner_targets": 0,
     "excluded_targets": 0,
-    "blocked_targets": 5,
+    "blocked_targets": 6,
     "blocked_control_targets": 1
   },
   "family_coverage": [
@@ -148,10 +148,10 @@
       "family": "javascript",
       "boundary_kind": "parser_only",
       "target_count": 1,
-      "passed_count": 0,
+      "passed_count": 1,
       "control_count": 0,
-      "deferred_count": 1,
-      "blocked_count": 0
+      "deferred_count": 0,
+      "blocked_count": 1
     },
     {
       "family": "python",
@@ -309,6 +309,22 @@
       "first_failed_stage": null,
       "detail": null,
       "notes": "small real scanner-free parser-only snapshot from the local tree-sitter-json repo, added as the next fast end-to-end real-world regression target"
+    },
+    {
+      "id": "tree_sitter_javascript_json",
+      "display_name": "tree-sitter-javascript (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_javascript/grammar.json",
+      "family": "javascript",
+      "boundary_kind": "parser_only",
+      "standalone_parser_proof_scope": "coarse_serialize_only",
+      "candidate_status": "intended_first_wave",
+      "expected_blocked": false,
+      "emission_blocked": true,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "first_failed_stage": null,
+      "detail": null,
+      "notes": "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, promoted to the bounded coarse serialize-only parser proof while full parser-table and scanner runtime proofs remain deferred"
     },
     {
       "id": "tree_sitter_python_json",
@@ -473,24 +489,7 @@
       "notes": "staged external-scanner JS target mirroring mixed_semantics, promoted in the second scanner wave when the node loader preserves the same first-boundary behavior"
     }
   ],
-  "deferred_parser_targets": [
-    {
-      "id": "tree_sitter_javascript_json",
-      "display_name": "tree-sitter-javascript (JSON snapshot)",
-      "grammar_path": "compat_targets/tree_sitter_javascript/grammar.json",
-      "family": "javascript",
-      "boundary_kind": "parser_only",
-      "standalone_parser_proof_scope": "none",
-      "candidate_status": "deferred_parser_wave",
-      "expected_blocked": false,
-      "emission_blocked": false,
-      "final_classification": "deferred_for_parser_boundary",
-      "mismatch_category": "routine_serialize_proof_boundary",
-      "first_failed_stage": "serialize",
-      "detail": "routine lookahead-sensitive serialize proof is deferred for tree_sitter_javascript_json: the current stable shortlist only proves load and prepare here, while the only passing next proof is the standalone coarse serialize-only probe",
-      "notes": "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, currently kept at load/prepare level because full lookahead-sensitive serialization exceeds the bounded compatibility budget"
-    }
-  ],
+  "deferred_parser_targets": [],
   "deferred_control_targets": [
     {
       "id": "parse_table_conflict_json",

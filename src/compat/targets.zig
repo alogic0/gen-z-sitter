@@ -371,17 +371,18 @@ pub const shortlist_targets = [_]Target{
         .family = .javascript,
         .source_kind = .grammar_json,
         .boundary_kind = .parser_only,
-        .parser_boundary_check_mode = .prepare_only,
+        .parser_boundary_check_mode = .serialize_only,
+        .standalone_parser_proof_scope = .coarse_serialize_only,
         .provenance = .{
             .origin_kind = .external_repo_snapshot,
             .upstream_repository = "tree-sitter-javascript",
             .upstream_revision = "58404d8cf191d69f2674a8fd507bd5776f46cb11",
             .upstream_grammar_path = "src/grammar.json",
         },
-        .candidate_status = .deferred_parser_wave,
+        .candidate_status = .intended_first_wave,
         .expected_blocked = false,
-        .notes = "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, currently kept at load/prepare level because full lookahead-sensitive serialization exceeds the bounded compatibility budget",
-        .success_criteria = "load and prepare the snapshotted upstream grammar.json while documenting that parser-table serialization scale must improve before compile-smoke promotion",
+        .notes = "real JavaScript grammar snapshot from the local tree-sitter-javascript repo, promoted to the bounded coarse serialize-only parser proof while full parser-table and scanner runtime proofs remain deferred",
+        .success_criteria = "load, prepare, and complete the bounded coarse serialize-only parser step while keeping full parser-table and scanner runtime proofs deferred until bounded measurements are available",
     },
     .{
         .id = "tree_sitter_python_json",
@@ -509,10 +510,11 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[14].scanner_valid_input_path != null);
     try std.testing.expect(shortlist[15].source_kind == .grammar_js);
     try std.testing.expect(shortlist[15].family == .mixed_semantics);
-    try std.testing.expect(shortlist[16].candidate_status == .deferred_parser_wave);
+    try std.testing.expect(shortlist[16].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[16].family == .javascript);
     try std.testing.expect(shortlist[16].provenance.origin_kind == .external_repo_snapshot);
-    try std.testing.expect(shortlist[16].parser_boundary_check_mode == .prepare_only);
+    try std.testing.expect(shortlist[16].parser_boundary_check_mode == .serialize_only);
+    try std.testing.expect(shortlist[16].standalone_parser_proof_scope == .coarse_serialize_only);
     try std.testing.expect(shortlist[17].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[17].family == .python);
     try std.testing.expect(shortlist[17].provenance.origin_kind == .external_repo_snapshot);
