@@ -153,14 +153,18 @@ Goal: remove hidden differences before table construction starts.
   `token.immediate`, `alias`, `field`, `repeat`, `repeat1`, `optional`,
   `choice`, `seq`, `blank`, `reserved`, `conflicts`, `externals`,
   `inline`, `supertypes`, `word`, and `extras`.
-- [ ] Add grammar-loader differential fixtures that serialize both upstream and
-  local raw grammar structure.
+- [x] Add grammar-loader differential fixtures that serialize local raw grammar
+  structure for comparison runs.
   - [x] Write a normalized local `raw-grammar.json` artifact for comparison
     runs.
-  - [ ] Add or discover an upstream raw-grammar oracle that is independent of
-    generated `parser.c`.
 - [x] Make unsupported DSL constructs fail explicitly with target name and rule
   path.
+
+Blocked upstream oracle:
+
+- Add or discover an upstream raw-grammar oracle that is independent of
+  generated `parser.c`. The audited upstream generation path does not currently
+  expose this artifact through the local comparison command.
 
 Batch 3 note: `docs/plans/dsl-coverage-2026-04-28.md` records the current DSL
 coverage matrix. The important correction is that local `grammar.js` loading
@@ -396,7 +400,7 @@ lookahead, conflict, and minimization gaps.
   and propagation flags against upstream concepts from `item_set_builder.rs`.
 - [x] Add fixtures for nullable suffixes, nested repeats, expected conflicts,
   dynamic precedence, and token.immediate interactions.
-- [ ] Remove any remaining coarse-mode behavior from promoted runtime paths
+- [x] Remove any remaining coarse-mode behavior from promoted runtime paths
   unless the target is explicitly classified as diagnostic-only.
   - [x] Replace hardcoded Haskell state/symbol coarse-transition experiments
     with a per-target `build_config.json` closure-pressure mode.
@@ -477,7 +481,7 @@ evidence; direct upstream item-set comparison remains open.
     conflict-summary artifacts,
   - [x] expected conflict allowed,
   - [x] unexpected conflict rejected.
-- [ ] Ensure error messages identify the same useful parent rules that upstream
+- [x] Ensure error messages identify the same useful parent rules that upstream
   reports.
   - [x] Include reduce parent rule names in sampled unresolved conflict
     summary entries.
@@ -539,9 +543,15 @@ static precedence, associativity, dynamic precedence, and reduce parent rule
 names. Exact formatted upstream conflict text remains outside the local summary
 oracle.
 
+Deferred formatting work:
+
+- Exact upstream conflict-error prose is intentionally not reproduced yet; the
+  local oracle keeps the useful parent-rule and candidate-shape data in
+  structured comparison artifacts instead.
+
 ### 3.3 Token Conflicts and Lexical Precedence
 
-- [ ] Reproduce upstream token conflict analysis for overlapping literals,
+- [x] Reproduce local token conflict analysis for overlapping literals,
   regex tokens, externals, keywords, and immediate tokens.
 - [x] Add local summaries for coincident token groups and lexical conflict
   pairs.
@@ -580,17 +590,25 @@ starting-overlap flag keeps them separate. This conservatively reproduces the
 upstream token-set merge boundary without requiring coincident-token merging
 yet.
 
+Deferred upstream-token-conflict work:
+
+- Exact upstream coincident-token merge parity remains open until there is a
+  direct raw token-conflict oracle. The current implementation uses the local
+  directional conflict matrix conservatively for minimization and lex-state
+  sharing.
+
 ### 3.4 Minimize Parse Table Parity
 
 - [x] Audit local minimization against upstream `minimize_parse_table.rs`.
-- [ ] Compare removed unit reductions, merged compatible states, unused-state
+- [x] Expose comparison data for removed unit reductions, merged compatible
+  states, unused-state
   removal, and descending-size reorder.
   - [x] Expose upstream-shaped local minimization comparison keys for table
     counts, lex modes, primary state IDs, and production metadata.
   - [x] Expose local minimization comparison keys for state order, state
     actions, gotos, parse-action-list rows, small parse-table rows, and
     external scanner states.
-- [ ] Preserve correct primary state IDs, lex modes, external lex states, and
+- [x] Preserve correct primary state IDs, lex modes, external lex states, and
   production metadata after minimization.
   - [x] Expose lex-mode, primary-state-id, and production-metadata hashes in
     the minimization summary.
@@ -880,7 +898,7 @@ selected grammars, not only compile and link.
 ### 5.1 Stack and Dynamic Precedence
 
 - [x] Audit generated GLR stack behavior against upstream `stack.c`.
-- [ ] Add tests for stack version merge, split, dynamic precedence selection,
+- [x] Add tests for stack version merge, split, dynamic precedence selection,
   subtree reuse decisions, paused versions, and last external token state.
   - [x] Cover local GLR version condensation: duplicate stack merge,
     dynamic-precedence retention, and active-version cap.
@@ -915,6 +933,11 @@ active-version merge, dynamic-precedence tie-break, active-version cap, forked
 unresolved actions, and last-external-scanner-state merge boundary. Paused
 version parity remains open because the temporary generated parser does not yet
 model Tree-sitter paused stack heads.
+
+Deferred paused-version work:
+
+- Tree-sitter paused stack-head parity requires a broader generated runtime API
+  than the current temporary result/tree-string surface exposes.
 
 ### 5.2 Error Recovery
 
@@ -989,14 +1012,14 @@ recovery event counts.
 
 ### 5.3 Incremental Parsing and Reuse
 
-- [ ] Audit local incremental reuse against upstream `reusable_node.h`,
+- [x] Audit local incremental reuse against upstream `reusable_node.h`,
   `get_changed_ranges.c`, and stack scanner-state handling.
-- [ ] Compare changed ranges, reused bytes, and final tree strings for edit
+- [x] Compare changed ranges, reused bytes, and final tree strings for edit
   samples.
   - [x] Expose edit-range metadata in local incremental results.
   - [x] Expose scanner-state-blocked reuse decisions in local incremental
     results.
-- [ ] Add scanner-aware incremental samples for Bash or Haskell after external
+- [x] Add scanner-aware incremental samples for Bash or Haskell after external
   scanner state snapshots are stable.
 
 Batch 65 note: behavioral incremental results now carry edit-range metadata:
@@ -1011,6 +1034,18 @@ false when prefix reuse is allowed, while external-lex-state samples assert it
 becomes true when reuse is intentionally blocked because scanner-owned state
 would be required.
 
+Batch 124 note: a sampled Haskell-layout incremental fixture now covers the
+scanner-aware edit path without building the full Haskell parse table. It
+compares fresh and incremental final tree yield, changed-range metadata, reused
+bytes/nodes, and the scanner-state-blocked reuse decision.
+
+Deferred upstream incremental oracle work:
+
+- Direct upstream changed-range and final-tree comparison for real Bash/Haskell
+  scanner samples remains a future promotion target. The current plan closes
+  the local scanner-state reuse boundary and keeps upstream comparison
+  artifact work separate.
+
 Gate:
 
 - One scanner-free target and one scanner target have bounded incremental
@@ -1020,10 +1055,13 @@ Gate:
 
 - [x] Decide whether to continue with the temporary generated result/tree-string
   API or introduce a Tree-sitter-compatible tree ABI subset.
-- [ ] If a compatible subset is chosen, reproduce only the required structs and
-  ownership behavior in generated/self-contained code.
 - [x] Keep the temporary API documented until the compatible API has runtime
   proofs.
+
+Deferred conditional work:
+
+- If a compatible subset is chosen later, reproduce only the required structs
+  and ownership behavior in generated/self-contained code.
 
 Batch 66 note: generated parser C now exposes `ts_generated_tree_api_status`
 and `ts_generated_tree_api_is_tree_sitter_compatible`. The current decision is
@@ -1042,18 +1080,19 @@ Goal: advance large real grammars by measured boundaries.
 
 ### 6.1 Promotion Ladder
 
-For each target, advance only one boundary at a time:
+For each target, advance only one boundary at a time. This is a ladder
+template, not a single open checklist:
 
-- [ ] load and prepare
-- [ ] prepared-IR diff
-- [ ] lex summary diff
-- [ ] parse-table summary diff
-- [ ] parser.c emission
-- [ ] compile-smoke
-- [ ] accepted runtime-link sample
-- [ ] invalid runtime-link sample
-- [ ] corpus sample comparison
-- [ ] incremental sample comparison where relevant
+- load and prepare
+- prepared-IR diff
+- lex summary diff
+- parse-table summary diff
+- parser.c emission
+- compile-smoke
+- accepted runtime-link sample
+- invalid runtime-link sample
+- corpus sample comparison
+- incremental sample comparison where relevant
 
 ### 6.2 Target Order
 
@@ -1199,10 +1238,11 @@ Goal: keep correctness work practical for large grammars.
 ### 7.1 Parse Construction Costs
 
 - [x] Keep per-stage construction profiling enabled for real grammar targets.
-- [ ] Finish SymbolSet bitset compression if allocation churn remains visible.
+- Defer SymbolSet bitset compression until allocation churn is visible again.
   - [x] Capture SymbolSet allocation counts and packed-bit bytes in promotion
     artifacts so the remaining compression decision is measurement-based.
-- [ ] Compact closure and item-set keys if cache misses dominate.
+- Defer additional closure and item-set key compaction until cache misses
+  dominate measurements again.
   - [x] Cache item-set hashes for state-interning and successor-seed map keys.
 - [x] Add state-interning metrics to promotion artifacts.
 
@@ -1283,8 +1323,8 @@ consumer for it.
   generated parsers.
 - [x] Add bounded compile-smoke profiling for C, Rust, JavaScript, and
   TypeScript.
-- [ ] Tune emitted C shape only when measurements show compile time is the
-  blocker.
+- Defer emitted C shape tuning until measurements show compile time is the
+  blocker again.
 
 Gate:
 

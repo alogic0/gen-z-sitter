@@ -3366,6 +3366,108 @@ test "bracket_lang incremental fixture does not reuse unsafe external states" {
     try std.testing.expect(incremental_result.accepted.incremental.scanner_state_blocked_reuse);
 }
 
+test "sampled Haskell layout incremental fixture blocks scanner-state reuse" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(),
+        \\{
+        \\  "name": "sampled_haskell_layout_incremental",
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        { "type": "STRING", "value": "do" },
+        \\        { "type": "SYMBOL", "name": "_statements" }
+        \\      ]
+        \\    },
+        \\    "_statements": {
+        \\      "type": "SEQ",
+        \\      "members": [
+        \\        { "type": "SYMBOL", "name": "_cmd_layout_start_do" },
+        \\        { "type": "FIELD", "name": "statement", "content": { "type": "SYMBOL", "name": "statement" } },
+        \\        {
+        \\          "type": "REPEAT",
+        \\          "content": {
+        \\            "type": "SEQ",
+        \\            "members": [
+        \\              { "type": "SYMBOL", "name": "_cond_layout_semicolon" },
+        \\              { "type": "FIELD", "name": "statement", "content": { "type": "SYMBOL", "name": "statement" } }
+        \\            ]
+        \\          }
+        \\        },
+        \\        { "type": "SYMBOL", "name": "_cond_layout_end" }
+        \\      ]
+        \\    },
+        \\    "statement": {
+        \\      "type": "TOKEN",
+        \\      "content": { "type": "PATTERN", "value": "[a-z]+" }
+        \\    }
+        \\  },
+        \\  "externals": [
+        \\    { "type": "SYMBOL", "name": "_cmd_layout_start_do" },
+        \\    { "type": "SYMBOL", "name": "_cond_layout_semicolon" },
+        \\    { "type": "SYMBOL", "name": "_cond_layout_end" }
+        \\  ]
+        \\}
+    );
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const flattened = try flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax);
+    const result = try build.buildStates(arena.allocator(), flattened);
+    const external_boundary = try scanner_serialize.serializeExternalScannerBoundary(arena.allocator(), extracted.syntax);
+
+    const old_result = try simulateBuiltScannerFreeWithIncremental(
+        arena.allocator(),
+        result,
+        prepared,
+        flattened,
+        extracted.lexical,
+        "do\n  a",
+        .none(),
+        external_boundary,
+    );
+    const fresh_result = try simulateBuiltScannerFreeWithIncremental(
+        arena.allocator(),
+        result,
+        prepared,
+        flattened,
+        extracted.lexical,
+        "do\n  a\n  b",
+        .none(),
+        external_boundary,
+    );
+
+    const external_lex_states = try arena.allocator().alloc(u16, result.states.len);
+    @memset(external_lex_states, 1);
+
+    const incremental_result = try simulateBuiltScannerFreeWithIncremental(
+        arena.allocator(),
+        result,
+        prepared,
+        flattened,
+        extracted.lexical,
+        "do\n  a\n  b",
+        .{
+            .old_tree = old_result.accepted.tree,
+            .edit = .{
+                .start_byte = 6,
+                .old_end_byte = 6,
+                .new_end_byte = 10,
+            },
+            .external_lex_states = external_lex_states,
+        },
+        external_boundary,
+    );
+
+    const fresh_tree = fresh_result.accepted.tree orelse return error.TestUnexpectedResult;
+    const incremental_tree = incremental_result.accepted.tree orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(fresh_result.accepted.consumed_bytes, incremental_result.accepted.consumed_bytes);
+    try std.testing.expectEqual(fresh_result.accepted.shifted_tokens, incremental_result.accepted.shifted_tokens);
+    try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), fresh_tree, incremental_tree));
+    try std.testing.expectEqual(@as(usize, 0), countReusedNodes(incremental_tree));
+    try std.testing.expect(incremental_result.accepted.incremental.scanner_state_blocked_reuse);
+}
+
 fn expectScannerFreeIncrementalEdit(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
