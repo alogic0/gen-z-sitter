@@ -24,21 +24,70 @@ From the repository root:
 zig build
 ```
 
-Run the CLI through Zig:
+Zig uses two relevant output locations:
 
-```bash
-zig build run -- help
-```
+- `.zig-cache/` stores build intermediates and compiled artifacts used by build
+  steps.
+- `zig-out/` is the install prefix used by the default `install` step.
 
-Build artifacts are placed under `zig-out/`. After `zig build`, the executable
-is available at:
+This project registers the CLI with `b.installArtifact(exe)`. In Zig 0.16, the
+default `zig build` step is `install`, so `zig build` compiles the executable
+and copies it into:
 
 ```bash
 ./zig-out/bin/gen-z-sitter
 ```
 
-You can also install or copy that executable using normal Zig build workflows
-for your environment.
+Run the installed binary directly when you want the same workflow a user or
+script would use after installation:
+
+```bash
+./zig-out/bin/gen-z-sitter help
+./zig-out/bin/gen-z-sitter generate path/to/grammar.json
+```
+
+Run the CLI through Zig when you are developing the project and want Zig to
+compile and execute the current build artifact in one command:
+
+```bash
+zig build run -- help
+zig build run -- generate path/to/grammar.json
+```
+
+`zig build run` uses `b.addRunArtifact(exe)`, so it runs the freshly built
+artifact from Zig's cache, not the installed file under `zig-out/bin/`.
+Practically, both commands run the same program for the same build options, but
+they exercise different paths:
+
+- Use `zig build run -- ...` while iterating on source changes.
+- Use `./zig-out/bin/gen-z-sitter ...` to test or use the installed binary.
+
+## Install Somewhere Else
+
+Use `--prefix` to install into another directory:
+
+```bash
+zig build --prefix /tmp/gen-z-sitter-install
+/tmp/gen-z-sitter-install/bin/gen-z-sitter help
+```
+
+Or choose only the executable directory:
+
+```bash
+zig build --prefix-exe-dir /tmp/bin
+/tmp/bin/gen-z-sitter help
+```
+
+The generated CLI binary is self-contained for this project. It does not need
+supplemental project data files next to it. Runtime notes:
+
+- `grammar.js` loading still needs the JavaScript runtime you select with
+  `--js-runtime`, usually `node`, available on `PATH`.
+- Commands that compile or link generated C still need the local C/compiler and
+  compatibility inputs used by those workflows.
+- Normal grammar loading, `node-types.json` generation, parser-state reports,
+  JSON summaries, and `parser.c` emission do not require extra installed data
+  files from this repository.
 
 ## Run the Bounded Release Checks
 
