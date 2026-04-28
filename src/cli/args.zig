@@ -158,7 +158,7 @@ pub fn helpText() []const u8 {
     \\  --json-summary                 Print parser-emission and optimization statistics as JSON.
     \\  --debug-prepared               Print prepared grammar IR.
     \\  --debug-node-types             Print node-types.json.
-    \\  --report-states-for-rule <rule> Reserved parser-table diagnostic flag.
+    \\  --report-states-for-rule <rule> Print parser states whose items reference <rule>.
     \\  --js-runtime <runtime>         Runtime command used for grammar.js loading, default: node.
     \\  --no-optimize-merge-states     Disable emitted duplicate-state compaction in summary paths.
     \\  --minimize                     Enable parse-table minimization for summary paths.

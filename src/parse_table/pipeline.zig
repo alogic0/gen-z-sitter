@@ -134,7 +134,7 @@ pub const PipelineError =
     debug_dump.DebugDumpError ||
     std.json.ParseError(std.json.Scanner) ||
     std.mem.Allocator.Error ||
-    error{UnusedExpectedConflict};
+    error{ UnknownRule, UnusedExpectedConflict };
 
 pub const ExpectedConflictReport = struct {
     unused_expected_conflict_indexes: []const usize,
@@ -276,6 +276,64 @@ pub fn generateStateActionDumpFromPrepared(
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
     return try debug_dump.dumpStatesWithActionsAlloc(allocator, result.states, result.actions);
+}
+
+pub fn generateStateActionDumpForRuleFromPrepared(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    rule_name: []const u8,
+) PipelineError![]const u8 {
+    const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    const default_aliases = try extract_default_aliases.extractDefaultAliases(allocator, extracted.syntax, extracted.lexical);
+    const flattened = try flatten_grammar.flattenGrammar(allocator, default_aliases.syntax);
+    const result = try build.buildStates(allocator, flattened);
+
+    const matching_variables = try allocator.alloc(bool, flattened.variables.len);
+    defer allocator.free(matching_variables);
+    @memset(matching_variables, false);
+
+    var found_rule = false;
+    for (flattened.variables, 0..) |variable, index| {
+        if (std.mem.eql(u8, variable.name, rule_name)) {
+            matching_variables[index] = true;
+            found_rule = true;
+        }
+    }
+    if (!found_rule) return error.UnknownRule;
+
+    var selected = std.array_list.Managed(state.ParseState).init(allocator);
+    defer selected.deinit();
+    for (result.states) |parse_state| {
+        if (stateReferencesAnyVariable(parse_state, result.productions, matching_variables)) {
+            try selected.append(parse_state);
+        }
+    }
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try out.writer.print("rule {s}\n", .{rule_name});
+    if (selected.items.len == 0) {
+        try out.writer.writeAll("  states: []\n");
+    } else {
+        try out.writer.writeByte('\n');
+        try debug_dump.writeStatesWithActions(&out.writer, selected.items, result.actions);
+        try out.writer.writeByte('\n');
+    }
+    return try out.toOwnedSlice();
+}
+
+fn stateReferencesAnyVariable(
+    parse_state: state.ParseState,
+    productions: []const build.ProductionInfo,
+    matching_variables: []const bool,
+) bool {
+    for (parse_state.items) |entry| {
+        const production_id: usize = @intCast(entry.item.production_id);
+        if (production_id >= productions.len) continue;
+        const lhs = productions[production_id].lhs;
+        if (lhs < matching_variables.len and matching_variables[lhs]) return true;
+    }
+    return false;
 }
 
 pub fn generateActionTableDumpFromPrepared(
@@ -717,6 +775,34 @@ test "generateStateActionDumpFromPrepared matches the tiny parser-state action g
         \\    end => reduce 2
         \\
     , dump);
+}
+
+test "generateStateActionDumpForRuleFromPrepared filters parser-state actions by rule name" {
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+    var pipeline_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer pipeline_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        loader_arena.allocator(),
+        fixtures.validResolvedGrammarJson().contents,
+        .{},
+    );
+    defer parsed.deinit();
+
+    const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
+    const dump = try generateStateActionDumpForRuleFromPrepared(pipeline_arena.allocator(), prepared, "expr");
+
+    try std.testing.expect(std.mem.startsWith(u8, dump, "rule expr\n\nstate "));
+    try std.testing.expect(std.mem.containsAtLeast(u8, dump, 1, "actions:\n"));
+    try std.testing.expectError(
+        error.UnknownRule,
+        generateStateActionDumpForRuleFromPrepared(pipeline_arena.allocator(), prepared, "missing_rule"),
+    );
 }
 
 test "buildStatesFromPrepared reports a focused shift/reduce conflict fixture" {

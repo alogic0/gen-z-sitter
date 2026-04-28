@@ -480,7 +480,9 @@ parser output is enabled with `--glr-loop`. README examples cover summary JSON,
 `--minimize`, bounded compatibility checks, known limits, and artifact update
 commands. Follow-up cleanup made `--js-runtime` functional for `grammar.js`
 loading and made unsupported `--abi` values fail explicitly instead of being
-silently ignored.
+silently ignored. The `--report-states-for-rule` flag now emits a bounded
+parser-state/action report for states whose item sets reference the requested
+rule.
 
 Gate:
 

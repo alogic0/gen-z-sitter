@@ -131,7 +131,15 @@ Supported generate options:
 
 `--abi` currently accepts only ABI 15. `--js-runtime` defaults to `node`.
 
-Not every flag currently maps to a fully surfaced end-user feature. The most directly exercised user-facing paths today are grammar loading, preparation, debug dumps, `node-types.json`, opt-in `parser.c`, and `--json-summary`. Some options exist to preserve the eventual generator contract or to drive lower-level emitter and compatibility paths that are more heavily exercised in tests than in the top-level CLI.
+`--report-states-for-rule <rule>` prints the parser states and actions whose
+item sets reference productions owned by the requested rule. This is intended
+for bounded parse-table diagnostics, for example:
+
+```sh
+zig build run -- generate --report-states-for-rule expr grammar.json
+```
+
+Not every flag currently maps to a fully surfaced end-user feature. The most directly exercised user-facing paths today are grammar loading, preparation, debug dumps, `node-types.json`, opt-in `parser.c`, `--report-states-for-rule`, and `--json-summary`. Some options exist to preserve the eventual generator contract or to drive lower-level emitter and compatibility paths that are more heavily exercised in tests than in the top-level CLI.
 
 Current staged compatibility boundary:
 

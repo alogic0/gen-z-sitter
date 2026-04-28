@@ -137,6 +137,33 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
         return;
     }
 
+    if (opts.report_states_for_rule) |rule_name| {
+        var pipeline_arena = std.heap.ArenaAllocator.init(allocator);
+        defer pipeline_arena.deinit();
+
+        const dump = parse_table_pipeline.generateStateActionDumpForRuleFromPrepared(
+            pipeline_arena.allocator(),
+            prepared,
+            rule_name,
+        ) catch |err| switch (err) {
+            error.UnknownRule => {
+                try diag.printStderr(io, .{
+                    .kind = .usage,
+                    .message = "unknown rule for state report",
+                    .note = rule_name,
+                    .path = opts.grammar_path,
+                });
+                return error.InvalidArguments;
+            },
+            else => return err,
+        };
+
+        if (!builtin.is_test) {
+            try std.Io.File.stdout().writeStreamingAll(io, dump);
+        }
+        return;
+    }
+
     if (opts.output_dir) |output_dir| {
         try fs_support.ensureDir(output_dir);
 
@@ -822,6 +849,42 @@ test "runGenerate supports debug node types output mode" {
         .grammar_path = path,
         .debug_node_types = true,
     });
+}
+
+test "runGenerate supports parser state reports for a rule" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validResolvedGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    try runGenerate(std.testing.allocator, std.testing.io, .{
+        .grammar_path = path,
+        .report_states_for_rule = "expr",
+    });
+}
+
+test "runGenerate rejects parser state reports for unknown rules" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validResolvedGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, std.testing.io, .{
+        .grammar_path = path,
+        .report_states_for_rule = "missing_rule",
+    }));
 }
 
 test "runGenerate json summary supports strict expected conflicts flag" {
