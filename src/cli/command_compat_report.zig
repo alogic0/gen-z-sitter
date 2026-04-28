@@ -87,6 +87,8 @@ fn renderCompatReportJsonAlloc(
     try writer.print("  \"parse_action_list_count\": {d},\n", .{serialized.parse_action_list.len});
     try writer.print("  \"symbol_count\": {d},\n", .{serialized.symbols.len});
     try writer.print("  \"lex_table_count\": {d},\n", .{serialized.lex_tables.len});
+    try writer.print("  \"has_keyword_lex_table\": {s},\n", .{boolText(serialized.keyword_lex_table != null)});
+    try writer.print("  \"keyword_unmapped_reserved_word_count\": {d},\n", .{serialized.keyword_unmapped_reserved_word_count});
     try writer.print("  \"blocked\": {s},\n", .{boolText(serialized.blocked)});
     try writer.print("  \"serialization_ready\": {s},\n", .{boolText(serialization_ready)});
     try writer.print("  \"runtime_compatible\": {s},\n", .{boolText(runtime_compatible)});
@@ -132,6 +134,9 @@ fn recommendedNextStep(
     if (!runtime_compatible) {
         return "inspect runtime limits before parser emission";
     }
+    if (serialized.keyword_unmapped_reserved_word_count != 0) {
+        return "inspect reserved-word keyword mapping before runtime proof";
+    }
     if (scanner_linked) {
         return "run scanner runtime-link proof or compare-upstream";
     }
@@ -170,10 +175,45 @@ test "compat report describes scanner-free grammar" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"scanner_free\": true"));
     try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"scanner_linked\": false"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"has_keyword_lex_table\": false"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"keyword_unmapped_reserved_word_count\": 0"));
     try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"serialization_ready\": true"));
     try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"runtime_compatible\": true"));
     try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"diagnostic_only\": false"));
     try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"corpus_compared\": false"));
+}
+
+test "compat report surfaces unmapped reserved keyword blocker" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data =
+        \\{
+        \\  "name": "reserved_gap_report",
+        \\  "word": "identifier",
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "identifier" },
+        \\    "identifier": { "type": "PATTERN", "value": "[a-z]+" }
+        \\  },
+        \\  "reserved": {
+        \\    "global": [
+        \\      { "type": "STRING", "value": "if" }
+        \\    ]
+        \\  }
+        \\}
+        ,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const report = try buildCompatReportJsonAlloc(std.testing.allocator, .{ .grammar_path = path });
+    defer std.testing.allocator.free(report);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"keyword_unmapped_reserved_word_count\": 1"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "inspect reserved-word keyword mapping before runtime proof"));
 }
 
 test "compat report describes external scanner grammar" {

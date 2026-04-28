@@ -589,6 +589,11 @@ where reserved members already map to lexical variables, and positive for the
 real JavaScript reserved-string probe. This keeps the remaining upstream
 reserved-string symbol mapping gap machine-readable.
 
+Batch 80 note: `compat-report` now exposes `has_keyword_lex_table` and
+`keyword_unmapped_reserved_word_count`, and recommends inspecting reserved-word
+keyword mapping before runtime proof when raw reserved strings cannot yet be
+mapped to runtime keyword symbols.
+
 ### 4.3 Emitted Lexer C Parity
 
 - [x] Compare generated lex function structure at the summary level, not by
@@ -991,6 +996,7 @@ Goal: make compatibility claims precise and useful.
   current support boundary for a grammar.
 - [x] Expose whether a generated parser is scanner-free, scanner-linked,
   temporary-GLR, runtime-compatible, corpus-compared, or diagnostic-only.
+- [x] Expose keyword lexer presence and unmapped reserved-word count.
 - [x] Add generated parser metadata strings for known compatibility limits.
 - [x] Document how users can reproduce the upstream comparison for their grammar.
 
