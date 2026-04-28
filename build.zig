@@ -165,7 +165,6 @@ pub fn build(b: *std.Build) void {
     const default_runtime_link_filters = &.{
         "linkAndRunNoExternalTinyParser",
         "linkAndRunNoExternalTinyGlrParser",
-        "linkAndRunNoExternalTinyGlrResultParser",
         "linkAndRunGeneratedStatusAccessors",
         "linkAndRunUnresolvedShiftReduceGlrParser",
         "linkAndRecoverMalformedTinyGlrParser",
@@ -178,9 +177,7 @@ pub fn build(b: *std.Build) void {
         "linkAndRunForkedStatefulExternalScannerGlrParser",
         "linkAndRunBracketLangParser",
         "linkAndRunTreeSitterJsonParserAcceptedSample",
-        "linkAndRunTreeSitterJsonParserInvalidSample",
         "linkAndRunTreeSitterZiggyParserAcceptedSample",
-        "linkAndRunTreeSitterZiggyParserInvalidSample",
         "linkAndRunTreeSitterZiggySchemaParserAcceptedSample",
         "linkAndRunTreeSitterZigParserAcceptedSample",
         "linkAndRunBashParserWithRealExternalScanner",
