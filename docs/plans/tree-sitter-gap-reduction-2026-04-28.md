@@ -588,6 +588,8 @@ temporary generated parser API.
 - [ ] Audit emitted recovery against upstream `parser.c` recovery behavior.
 - [ ] Add error-cost accounting, recovery token insertion/deletion surfaces,
   and bounded retry reporting.
+  - [x] Expose behavioral recovery attempts, stack recoveries, skipped tokens,
+    and skipped bytes in accepted simulation results.
 - [ ] Compare invalid sample tree strings for promoted grammars where upstream
   produces a stable error tree.
 
@@ -595,6 +597,11 @@ Gate:
 
 - JSON and one non-JSON target have invalid-input tree strings compared against
   upstream.
+
+Batch 64 note: behavioral simulation accepted results now include structured
+recovery stats: attempts, stack recoveries, skipped tokens, and skipped bytes.
+Existing invalid-input recovery tests assert skipped-byte accounting while valid
+input keeps recovery attempts at zero.
 
 ### 5.3 Incremental Parsing and Reuse
 

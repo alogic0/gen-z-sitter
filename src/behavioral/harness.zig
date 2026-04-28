@@ -61,12 +61,20 @@ pub const IncrementalStats = struct {
     fresh_shifted_tokens: usize = 0,
 };
 
+pub const RecoveryStats = struct {
+    attempts: u32 = 0,
+    stack_recoveries: u32 = 0,
+    skipped_tokens: u32 = 0,
+    skipped_bytes: u32 = 0,
+};
+
 pub const SimulationResult = union(enum) {
     accepted: struct {
         consumed_bytes: usize,
         shifted_tokens: usize,
         error_count: u32 = 0,
         dynamic_precedence: i32 = 0,
+        recovery: RecoveryStats = .{},
         tree: ?ParseNode = null,
         incremental: IncrementalStats = .{},
     },
@@ -450,6 +458,7 @@ const ParseVersion = struct {
     shifted_tokens: usize,
     dynamic_precedence: i32,
     error_count: u32,
+    recovery: RecoveryStats,
 
     fn initFirst(allocator: std.mem.Allocator) !ParseVersion {
         var s = std.ArrayListUnmanaged(u32).empty;
@@ -463,6 +472,7 @@ const ParseVersion = struct {
             .shifted_tokens = 0,
             .dynamic_precedence = 0,
             .error_count = 0,
+            .recovery = .{},
         };
     }
 
@@ -489,6 +499,7 @@ const ParseVersion = struct {
             .shifted_tokens = self.shifted_tokens,
             .dynamic_precedence = self.dynamic_precedence,
             .error_count = self.error_count,
+            .recovery = self.recovery,
         };
     }
 
@@ -510,6 +521,7 @@ fn acceptedResult(version: ParseVersion) SimulationResult {
         .shifted_tokens = version.shifted_tokens,
         .error_count = version.error_count,
         .dynamic_precedence = version.dynamic_precedence,
+        .recovery = version.recovery,
         .tree = tree,
         .incremental = .{
             .reused_nodes = reuse.reused_nodes,
@@ -622,6 +634,7 @@ fn recoverFromMissingAction(
     matched: ?MatchedTerminal,
     input_len: usize,
 ) bool {
+    version.recovery.attempts += 1;
     if (matched) |m| {
         // Stage 1: look for a predecessor state that handles this lookahead.
         var depth: usize = version.stack.items.len;
@@ -632,18 +645,21 @@ fn recoverFromMissingAction(
                 version.stack.shrinkRetainingCapacity(depth);
                 version.values.shrinkRetainingCapacity(depth - 1);
                 version.error_count += 1;
+                version.recovery.stack_recoveries += 1;
                 return true;
             }
         }
         // Stage 2: skip the unhandled token.
         version.cursor += m.len;
         version.error_count += 1;
+        version.recovery.skipped_tokens += 1;
         return true;
     }
     // No token (unrecognised character) — skip one byte if possible.
     if (version.cursor < input_len) {
         version.cursor += 1;
         version.error_count += 1;
+        version.recovery.skipped_bytes += 1;
         return true;
     }
     return false;
@@ -3261,6 +3277,11 @@ fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResu
             const right = actual.accepted;
             try std.testing.expectEqual(left.consumed_bytes, right.consumed_bytes);
             try std.testing.expectEqual(left.shifted_tokens, right.shifted_tokens);
+            try std.testing.expectEqual(left.error_count, right.error_count);
+            try std.testing.expectEqual(left.recovery.attempts, right.recovery.attempts);
+            try std.testing.expectEqual(left.recovery.stack_recoveries, right.recovery.stack_recoveries);
+            try std.testing.expectEqual(left.recovery.skipped_tokens, right.recovery.skipped_tokens);
+            try std.testing.expectEqual(left.recovery.skipped_bytes, right.recovery.skipped_bytes);
         },
         .rejected => |left| {
             const right = actual.rejected;
@@ -3337,7 +3358,11 @@ test "error recovery skips an unrecognised byte and accepts the rest" {
     // "1" is a valid number; "!" is unrecognised — recovery skips it and the parse accepts.
     const result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1!");
     switch (result) {
-        .accepted => |a| try std.testing.expect(a.error_count > 0),
+        .accepted => |a| {
+            try std.testing.expect(a.error_count > 0);
+            try std.testing.expect(a.recovery.attempts > 0);
+            try std.testing.expect(a.recovery.skipped_bytes > 0);
+        },
         .rejected => return error.UnexpectedReject,
     }
 }
@@ -3348,7 +3373,10 @@ test "error recovery accepts valid input without recording errors" {
     const prepared = try parsePreparedFromJsonFixture(arena.allocator(), ambiguous_expr_grammar_json);
     const result = try simulatePreparedScannerFree(arena.allocator(), prepared, "1");
     switch (result) {
-        .accepted => |a| try std.testing.expectEqual(@as(u32, 0), a.error_count),
+        .accepted => |a| {
+            try std.testing.expectEqual(@as(u32, 0), a.error_count);
+            try std.testing.expectEqual(@as(u32, 0), a.recovery.attempts);
+        },
         .rejected => return error.UnexpectedReject,
     }
 }
