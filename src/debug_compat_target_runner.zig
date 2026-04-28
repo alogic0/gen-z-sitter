@@ -61,6 +61,18 @@ fn printRunSummary(run: result_model.TargetRunResult) void {
         if (emission.compile_smoke_max_rss_bytes) |value| {
             std.debug.print(" compile_smoke_max_rss_bytes={d}", .{value});
         }
+        if (emission.lex) |lex| {
+            std.debug.print(
+                " lex_tables={d} lex_states={d} lex_transitions={d} lex_ranges={d} lex_large_ranges={d}",
+                .{
+                    lex.table_count,
+                    lex.state_count,
+                    lex.transition_count,
+                    lex.range_count,
+                    lex.large_range_transition_count,
+                },
+            );
+        }
         if (emission.parse_construct_profile) |profile| {
             std.debug.print(
                 " state_intern={d}/{d} closure_cache={d}/{d}",

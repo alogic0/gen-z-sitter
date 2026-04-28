@@ -215,7 +215,7 @@ const LargeCharacterSets = struct {
     }
 };
 
-fn isLargeCharacterSet(ranges: []const lexical_serialize.SerializedCharacterRange) bool {
+pub fn isLargeCharacterSet(ranges: []const lexical_serialize.SerializedCharacterRange) bool {
     return ranges.len >= large_character_range_threshold;
 }
 

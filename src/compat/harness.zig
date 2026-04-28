@@ -246,6 +246,23 @@ fn parseConstructProfileSnapshot(
     };
 }
 
+fn lexEmissionSnapshot(stats: parser_c_emit.LexEmissionStats) result_model.LexEmissionSnapshot {
+    return .{
+        .table_count = stats.table_count,
+        .state_count = stats.state_count,
+        .transition_count = stats.transition_count,
+        .range_count = stats.range_count,
+        .accept_state_count = stats.accept_state_count,
+        .eof_target_count = stats.eof_target_count,
+        .skip_transition_count = stats.skip_transition_count,
+        .large_range_transition_count = stats.large_range_transition_count,
+        .max_transition_range_count = stats.max_transition_range_count,
+        .keyword_state_count = stats.keyword_state_count,
+        .keyword_transition_count = stats.keyword_transition_count,
+        .keyword_range_count = stats.keyword_range_count,
+    };
+}
+
 fn functionSpanBytes(source: []const u8, start_marker: []const u8, end_marker: []const u8) usize {
     const start = std.mem.indexOf(u8, source, start_marker) orelse return 0;
     const end = std.mem.indexOfPos(u8, source, start + start_marker.len, end_marker) orelse return source.len - start;
@@ -582,6 +599,7 @@ pub fn runTarget(
                 const compile_smoke_ms = elapsedMs(compile_timer);
                 if (detail_progress) logDetailDone(target.id, "compile_smoke", compile_timer);
                 run.compile_smoke.status = .passed;
+                const lex_stats = parser_c_emit.collectLexEmissionStats(serialized);
                 run.emission = .{
                     .blocked = serialized.blocked,
                     .serialized_state_count = serialized.states.len,
@@ -602,6 +620,7 @@ pub fn runTarget(
                     .compile_smoke_ms = if (options.profile_timings) compile_smoke_ms else null,
                     .compile_smoke_max_rss_bytes = success.max_rss_bytes,
                     .parse_construct_profile = parseConstructProfileSnapshot(parse_construct_profile),
+                    .lex = lexEmissionSnapshot(lex_stats),
                 };
                 if (shouldStopAfter(options, .compile_smoke)) return run;
             },
@@ -1148,6 +1167,7 @@ pub fn runTarget(
         ),
         .emit_parser_c_ms = if (options.profile_timings) parser_c_ms else null,
         .parse_construct_profile = parseConstructProfileSnapshot(parse_construct_profile),
+        .lex = lexEmissionSnapshot(emission_stats.lex),
     };
     if (emission_stats.blocked) {
         const extracted = extract_tokens.extractTokens(arena.allocator(), prepared) catch |err| {

@@ -81,6 +81,21 @@ pub const ParseConstructProfileSnapshot = struct {
     detect_conflicts_ns: u64 = 0,
 };
 
+pub const LexEmissionSnapshot = struct {
+    table_count: usize = 0,
+    state_count: usize = 0,
+    transition_count: usize = 0,
+    range_count: usize = 0,
+    accept_state_count: usize = 0,
+    eof_target_count: usize = 0,
+    skip_transition_count: usize = 0,
+    large_range_transition_count: usize = 0,
+    max_transition_range_count: usize = 0,
+    keyword_state_count: usize = 0,
+    keyword_transition_count: usize = 0,
+    keyword_range_count: usize = 0,
+};
+
 pub const EmissionSnapshot = struct {
     blocked: bool,
     serialized_state_count: usize,
@@ -97,6 +112,7 @@ pub const EmissionSnapshot = struct {
     compile_smoke_ms: ?f64 = null,
     compile_smoke_max_rss_bytes: ?usize = null,
     parse_construct_profile: ?ParseConstructProfileSnapshot = null,
+    lex: ?LexEmissionSnapshot = null,
 };
 
 pub const BlockedSymbolKind = enum {

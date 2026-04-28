@@ -30,6 +30,22 @@ pub const RowSharingStats = struct {
     emitted_array_definitions: usize,
 };
 
+/// Summary of serialized lexer input that shapes emitted `ts_lex` output.
+pub const LexEmissionStats = struct {
+    table_count: usize = 0,
+    state_count: usize = 0,
+    transition_count: usize = 0,
+    range_count: usize = 0,
+    accept_state_count: usize = 0,
+    eof_target_count: usize = 0,
+    skip_transition_count: usize = 0,
+    large_range_transition_count: usize = 0,
+    max_transition_range_count: usize = 0,
+    keyword_state_count: usize = 0,
+    keyword_transition_count: usize = 0,
+    keyword_range_count: usize = 0,
+};
+
 /// Summary of parser C emission after optional serialized-table optimization.
 pub const EmissionStats = struct {
     state_count: usize,
@@ -41,6 +57,7 @@ pub const EmissionStats = struct {
     action_rows: RowSharingStats,
     goto_rows: RowSharingStats,
     unresolved_rows: RowSharingStats,
+    lex: LexEmissionStats,
 };
 
 /// Render parser C into an owned buffer using the default emission options.
@@ -107,7 +124,53 @@ pub fn collectEmissionStatsWithOptions(
         .action_rows = collectRowSharingStats(serialize.SerializedActionEntry, compacted.states, action_owners, stateActions, true),
         .goto_rows = collectRowSharingStats(serialize.SerializedGotoEntry, compacted.states, goto_owners, stateGotos, true),
         .unresolved_rows = collectRowSharingStats(serialize.SerializedUnresolvedEntry, compacted.states, unresolved_owners, stateUnresolved, false),
+        .lex = collectLexEmissionStats(compacted),
     };
+}
+
+pub fn collectLexEmissionStats(serialized: serialize.SerializedTable) LexEmissionStats {
+    var result = collectLexTablesEmissionStats(serialized.lex_tables);
+    if (serialized.keyword_lex_table) |keyword_table| {
+        const keyword = collectLexTableEmissionStats(keyword_table);
+        result.keyword_state_count = keyword.state_count;
+        result.keyword_transition_count = keyword.transition_count;
+        result.keyword_range_count = keyword.range_count;
+    }
+    return result;
+}
+
+fn collectLexTablesEmissionStats(tables: []const lexer_serialize.SerializedLexTable) LexEmissionStats {
+    var result = LexEmissionStats{ .table_count = tables.len };
+    for (tables) |table| {
+        const table_stats = collectLexTableEmissionStats(table);
+        result.state_count += table_stats.state_count;
+        result.transition_count += table_stats.transition_count;
+        result.range_count += table_stats.range_count;
+        result.accept_state_count += table_stats.accept_state_count;
+        result.eof_target_count += table_stats.eof_target_count;
+        result.skip_transition_count += table_stats.skip_transition_count;
+        result.large_range_transition_count += table_stats.large_range_transition_count;
+        result.max_transition_range_count = @max(result.max_transition_range_count, table_stats.max_transition_range_count);
+    }
+    return result;
+}
+
+fn collectLexTableEmissionStats(table: lexer_serialize.SerializedLexTable) LexEmissionStats {
+    var result = LexEmissionStats{ .state_count = table.states.len };
+    for (table.states) |state_value| {
+        if (state_value.accept_symbol != null) result.accept_state_count += 1;
+        if (state_value.eof_target != null) result.eof_target_count += 1;
+        for (state_value.transitions) |transition| {
+            result.transition_count += 1;
+            result.range_count += transition.ranges.len;
+            result.max_transition_range_count = @max(result.max_transition_range_count, transition.ranges.len);
+            if (transition.skip) result.skip_transition_count += 1;
+            if (lexer_emit_c.isLargeCharacterSet(transition.ranges)) {
+                result.large_range_transition_count += 1;
+            }
+        }
+    }
+    return result;
 }
 
 /// Write parser C to an existing writer using the default emission options.
@@ -3447,4 +3510,60 @@ test "collectEmissionStatsWithOptions preserves duplicate states when compaction
     try std.testing.expectEqual(@as(usize, 1), stats.action_rows.shared_non_empty_rows);
     try std.testing.expectEqual(@as(usize, 1), stats.goto_rows.shared_non_empty_rows);
     try std.testing.expectEqual(@as(usize, 1), stats.unresolved_rows.shared_non_empty_rows);
+}
+
+test "collectLexEmissionStats counts lexer structure" {
+    const transition_ranges = [_]lexer_serialize.SerializedCharacterRange{
+        .{ .start = 'a', .end_inclusive = 'a' },
+        .{ .start = 'b', .end_inclusive = 'b' },
+        .{ .start = 'c', .end_inclusive = 'c' },
+        .{ .start = 'd', .end_inclusive = 'd' },
+        .{ .start = 'e', .end_inclusive = 'e' },
+        .{ .start = 'f', .end_inclusive = 'f' },
+        .{ .start = 'g', .end_inclusive = 'g' },
+        .{ .start = 'h', .end_inclusive = 'h' },
+    };
+    const keyword_ranges = [_]lexer_serialize.SerializedCharacterRange{
+        .{ .start = 'k', .end_inclusive = 'k' },
+    };
+    const transitions = [_]lexer_serialize.SerializedLexTransition{
+        .{ .ranges = transition_ranges[0..], .next_state_id = 1, .skip = true },
+    };
+    const keyword_transitions = [_]lexer_serialize.SerializedLexTransition{
+        .{ .ranges = keyword_ranges[0..], .next_state_id = 0, .skip = false },
+    };
+    const states = [_]lexer_serialize.SerializedLexState{
+        .{
+            .accept_symbol = .{ .terminal = 3 },
+            .eof_target = 1,
+            .transitions = transitions[0..],
+        },
+        .{ .transitions = &.{} },
+    };
+    const keyword_states = [_]lexer_serialize.SerializedLexState{
+        .{ .transitions = keyword_transitions[0..] },
+    };
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &.{},
+        .lex_tables = &[_]lexer_serialize.SerializedLexTable{
+            .{ .start_state_id = 0, .states = states[0..] },
+        },
+        .keyword_lex_table = .{ .start_state_id = 0, .states = keyword_states[0..] },
+    };
+
+    const stats = collectLexEmissionStats(serialized);
+
+    try std.testing.expectEqual(@as(usize, 1), stats.table_count);
+    try std.testing.expectEqual(@as(usize, 2), stats.state_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.transition_count);
+    try std.testing.expectEqual(@as(usize, 8), stats.range_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.accept_state_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.eof_target_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.skip_transition_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.large_range_transition_count);
+    try std.testing.expectEqual(@as(usize, 8), stats.max_transition_range_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.keyword_state_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.keyword_transition_count);
+    try std.testing.expectEqual(@as(usize, 1), stats.keyword_range_count);
 }

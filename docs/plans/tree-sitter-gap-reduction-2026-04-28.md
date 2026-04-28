@@ -474,7 +474,7 @@ range-set transition counts.
 
 ### 4.3 Emitted Lexer C Parity
 
-- [ ] Compare generated lex function structure at the summary level, not by
+- [x] Compare generated lex function structure at the summary level, not by
   exact text.
 - [x] Keep compiler-pragmas and large-character-set output measured.
 - [x] Add compile-time profiling for large lexers and keep regression limits in
@@ -491,6 +491,13 @@ sets; shortlist reports now store `lex_function_bytes`,
 `keyword_lex_function_bytes`, `emit_parser_c_ms`, `compile_smoke_ms`, and
 `compile_smoke_max_rss_bytes` for promoted large targets under the accepted
 bounded refresh timeout.
+
+Batch 52 note: compatibility emission snapshots now store generated lexer
+structure counters: lexer table count, state count, transition count, serialized
+range count, accept-state count, EOF-target count, skip-transition count, large
+range-set transition count, max transition range count, and keyword-lexer state,
+transition, and range counts. This keeps emitted lexer shape visible without
+depending on exact generated C text.
 
 ## Phase 5 — Runtime Parser Behavior Parity
 

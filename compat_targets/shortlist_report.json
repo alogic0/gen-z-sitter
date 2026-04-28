@@ -266,9 +266,9 @@
         "parser_c_bytes": 11351,
         "lex_function_bytes": 2702,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 0.127308,
-        "compile_smoke_ms": 28.687666,
-        "compile_smoke_max_rss_bytes": 62648320,
+        "emit_parser_c_ms": 0.118151,
+        "compile_smoke_ms": 30.205785,
+        "compile_smoke_max_rss_bytes": 62148608,
         "parse_construct_profile": {
           "states_processed": 4,
           "successor_groups": 3,
@@ -289,11 +289,25 @@
           "item_set_hash_entries": 14,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 41350,
-          "extra_transitions_ns": 831,
-          "reserved_word_ns": 3567,
-          "build_actions_ns": 11493,
-          "detect_conflicts_ns": 2315
+          "collect_transitions_ns": 44838,
+          "extra_transitions_ns": 732,
+          "reserved_word_ns": 3035,
+          "build_actions_ns": 10711,
+          "detect_conflicts_ns": 2064
+        },
+        "lex": {
+          "table_count": 2,
+          "state_count": 2,
+          "transition_count": 1,
+          "range_count": 1,
+          "accept_state_count": 1,
+          "eof_target_count": 0,
+          "skip_transition_count": 0,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": null
@@ -365,8 +379,8 @@
         "parser_c_bytes": 32920,
         "lex_function_bytes": 20414,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 0.764959,
-        "compile_smoke_ms": 33.882489,
+        "emit_parser_c_ms": 0.837876,
+        "compile_smoke_ms": 37.771697,
         "compile_smoke_max_rss_bytes": 66068480,
         "parse_construct_profile": {
           "states_processed": 51,
@@ -388,11 +402,25 @@
           "item_set_hash_entries": 675,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 654221,
-          "extra_transitions_ns": 5249,
-          "reserved_word_ns": 4540,
-          "build_actions_ns": 53023,
-          "detect_conflicts_ns": 9520
+          "collect_transitions_ns": 744207,
+          "extra_transitions_ns": 5872,
+          "reserved_word_ns": 4778,
+          "build_actions_ns": 56015,
+          "detect_conflicts_ns": 10151
+        },
+        "lex": {
+          "table_count": 7,
+          "state_count": 49,
+          "transition_count": 43,
+          "range_count": 43,
+          "accept_state_count": 20,
+          "eof_target_count": 0,
+          "skip_transition_count": 0,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": null
@@ -464,9 +492,9 @@
         "parser_c_bytes": 19856,
         "lex_function_bytes": 8696,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 0.32355,
-        "compile_smoke_ms": 32.187029,
-        "compile_smoke_max_rss_bytes": 64282624,
+        "emit_parser_c_ms": 0.344012,
+        "compile_smoke_ms": 34.262836,
+        "compile_smoke_max_rss_bytes": 63963136,
         "parse_construct_profile": {
           "states_processed": 17,
           "successor_groups": 22,
@@ -487,11 +515,25 @@
           "item_set_hash_entries": 265,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 334752,
-          "extra_transitions_ns": 2765,
-          "reserved_word_ns": 2344,
-          "build_actions_ns": 36360,
-          "detect_conflicts_ns": 11543
+          "collect_transitions_ns": 239378,
+          "extra_transitions_ns": 2083,
+          "reserved_word_ns": 1907,
+          "build_actions_ns": 27330,
+          "detect_conflicts_ns": 8346
+        },
+        "lex": {
+          "table_count": 4,
+          "state_count": 9,
+          "transition_count": 8,
+          "range_count": 8,
+          "accept_state_count": 6,
+          "eof_target_count": 0,
+          "skip_transition_count": 0,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": {
@@ -607,9 +649,9 @@
         "parser_c_bytes": 289858,
         "lex_function_bytes": 236214,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 21.937135,
-        "compile_smoke_ms": 147.133983,
-        "compile_smoke_max_rss_bytes": 99233792,
+        "emit_parser_c_ms": 22.608261,
+        "compile_smoke_ms": 149.265621,
+        "compile_smoke_max_rss_bytes": 99221504,
         "parse_construct_profile": {
           "states_processed": 540,
           "successor_groups": 1764,
@@ -630,11 +672,25 @@
           "item_set_hash_entries": 23316,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 17319382,
-          "extra_transitions_ns": 56329,
-          "reserved_word_ns": 48528,
-          "build_actions_ns": 858168,
-          "detect_conflicts_ns": 154236
+          "collect_transitions_ns": 19629773,
+          "extra_transitions_ns": 62348,
+          "reserved_word_ns": 56851,
+          "build_actions_ns": 1049637,
+          "detect_conflicts_ns": 174030
+        },
+        "lex": {
+          "table_count": 43,
+          "state_count": 497,
+          "transition_count": 1058,
+          "range_count": 1058,
+          "accept_state_count": 208,
+          "eof_target_count": 0,
+          "skip_transition_count": 86,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": null
@@ -706,9 +762,9 @@
         "parser_c_bytes": 139548,
         "lex_function_bytes": 115222,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 6.469404,
-        "compile_smoke_ms": 89.086082,
-        "compile_smoke_max_rss_bytes": 83456000,
+        "emit_parser_c_ms": 5.475861,
+        "compile_smoke_ms": 91.60921,
+        "compile_smoke_max_rss_bytes": 83095552,
         "parse_construct_profile": {
           "states_processed": 193,
           "successor_groups": 491,
@@ -729,11 +785,25 @@
           "item_set_hash_entries": 5256,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 4725953,
-          "extra_transitions_ns": 20073,
-          "reserved_word_ns": 45471,
-          "build_actions_ns": 319059,
-          "detect_conflicts_ns": 99817
+          "collect_transitions_ns": 4494281,
+          "extra_transitions_ns": 19974,
+          "reserved_word_ns": 44500,
+          "build_actions_ns": 306968,
+          "detect_conflicts_ns": 95841
+        },
+        "lex": {
+          "table_count": 31,
+          "state_count": 270,
+          "transition_count": 661,
+          "range_count": 661,
+          "accept_state_count": 118,
+          "eof_target_count": 0,
+          "skip_transition_count": 62,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": null
@@ -805,9 +875,9 @@
         "parser_c_bytes": 5091498,
         "lex_function_bytes": 5021029,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 207.968965,
-        "compile_smoke_ms": 7098.045139,
-        "compile_smoke_max_rss_bytes": 1603960832,
+        "emit_parser_c_ms": 187.352224,
+        "compile_smoke_ms": 7117.074464,
+        "compile_smoke_max_rss_bytes": 1604333568,
         "parse_construct_profile": {
           "states_processed": 1558,
           "successor_groups": 20774,
@@ -828,11 +898,25 @@
           "item_set_hash_entries": 213635,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 181448270,
-          "extra_transitions_ns": 164119,
-          "reserved_word_ns": 1114884,
-          "build_actions_ns": 6023544,
-          "detect_conflicts_ns": 302196
+          "collect_transitions_ns": 175006931,
+          "extra_transitions_ns": 164213,
+          "reserved_word_ns": 1093083,
+          "build_actions_ns": 5919027,
+          "detect_conflicts_ns": 299676
+        },
+        "lex": {
+          "table_count": 147,
+          "state_count": 12118,
+          "transition_count": 75347,
+          "range_count": 75347,
+          "accept_state_count": 8522,
+          "eof_target_count": 0,
+          "skip_transition_count": 874,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": null
@@ -904,9 +988,9 @@
         "parser_c_bytes": 3018009,
         "lex_function_bytes": 2938015,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 458.825998,
-        "compile_smoke_ms": 4150.950248,
-        "compile_smoke_max_rss_bytes": 952651776,
+        "emit_parser_c_ms": 370.020076,
+        "compile_smoke_ms": 4011.010803,
+        "compile_smoke_max_rss_bytes": 952946688,
         "parse_construct_profile": {
           "states_processed": 1569,
           "successor_groups": 69078,
@@ -927,11 +1011,25 @@
           "item_set_hash_entries": 944703,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 753036582,
-          "extra_transitions_ns": 187570,
-          "reserved_word_ns": 4624138,
-          "build_actions_ns": 21308316,
-          "detect_conflicts_ns": 408593
+          "collect_transitions_ns": 750866875,
+          "extra_transitions_ns": 193823,
+          "reserved_word_ns": 5031605,
+          "build_actions_ns": 21731870,
+          "detect_conflicts_ns": 431896
+        },
+        "lex": {
+          "table_count": 100,
+          "state_count": 7287,
+          "transition_count": 33826,
+          "range_count": 33826,
+          "accept_state_count": 6379,
+          "eof_target_count": 0,
+          "skip_transition_count": 204,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": null
@@ -1003,9 +1101,9 @@
         "parser_c_bytes": 62535,
         "lex_function_bytes": 45839,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 2.461482,
-        "compile_smoke_ms": 45.525653,
-        "compile_smoke_max_rss_bytes": 68968448,
+        "emit_parser_c_ms": 2.328436,
+        "compile_smoke_ms": 43.917416,
+        "compile_smoke_max_rss_bytes": 68882432,
         "parse_construct_profile": {
           "states_processed": 101,
           "successor_groups": 212,
@@ -1026,11 +1124,25 @@
           "item_set_hash_entries": 1988,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 1731581,
-          "extra_transitions_ns": 10263,
-          "reserved_word_ns": 8857,
-          "build_actions_ns": 176405,
-          "detect_conflicts_ns": 39486
+          "collect_transitions_ns": 1679914,
+          "extra_transitions_ns": 10740,
+          "reserved_word_ns": 8916,
+          "build_actions_ns": 171850,
+          "detect_conflicts_ns": 39398
+        },
+        "lex": {
+          "table_count": 9,
+          "state_count": 74,
+          "transition_count": 148,
+          "range_count": 148,
+          "accept_state_count": 36,
+          "eof_target_count": 0,
+          "skip_transition_count": 18,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": null
@@ -1218,9 +1330,9 @@
         "parser_c_bytes": 13866,
         "lex_function_bytes": 3654,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 0.11832,
-        "compile_smoke_ms": 30.578733,
-        "compile_smoke_max_rss_bytes": 63885312,
+        "emit_parser_c_ms": 0.11785,
+        "compile_smoke_ms": 30.446806,
+        "compile_smoke_max_rss_bytes": 63483904,
         "parse_construct_profile": {
           "states_processed": 6,
           "successor_groups": 7,
@@ -1241,11 +1353,25 @@
           "item_set_hash_entries": 37,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 63403,
-          "extra_transitions_ns": 741,
-          "reserved_word_ns": 742,
-          "build_actions_ns": 9097,
-          "detect_conflicts_ns": 4359
+          "collect_transitions_ns": 61510,
+          "extra_transitions_ns": 811,
+          "reserved_word_ns": 872,
+          "build_actions_ns": 9438,
+          "detect_conflicts_ns": 4488
+        },
+        "lex": {
+          "table_count": 3,
+          "state_count": 4,
+          "transition_count": 2,
+          "range_count": 2,
+          "accept_state_count": 2,
+          "eof_target_count": 0,
+          "skip_transition_count": 0,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": {
@@ -1636,9 +1762,9 @@
         "parser_c_bytes": 3129407,
         "lex_function_bytes": 3057734,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 177.834718,
-        "compile_smoke_ms": 3603.87223,
-        "compile_smoke_max_rss_bytes": 857866240,
+        "emit_parser_c_ms": 157.994548,
+        "compile_smoke_ms": 3625.376679,
+        "compile_smoke_max_rss_bytes": 852787200,
         "parse_construct_profile": {
           "states_processed": 1315,
           "successor_groups": 26858,
@@ -1659,11 +1785,25 @@
           "item_set_hash_entries": 362041,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 309588103,
-          "extra_transitions_ns": 150714,
-          "reserved_word_ns": 1811187,
-          "build_actions_ns": 6482042,
-          "detect_conflicts_ns": 287382
+          "collect_transitions_ns": 290083308,
+          "extra_transitions_ns": 141112,
+          "reserved_word_ns": 1505856,
+          "build_actions_ns": 5918949,
+          "detect_conflicts_ns": 261546
+        },
+        "lex": {
+          "table_count": 127,
+          "state_count": 5067,
+          "transition_count": 41579,
+          "range_count": 41579,
+          "accept_state_count": 3446,
+          "eof_target_count": 0,
+          "skip_transition_count": 853,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": null
@@ -1793,9 +1933,9 @@
         "parser_c_bytes": 1685082,
         "lex_function_bytes": 1630591,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 106.125101,
-        "compile_smoke_ms": 2156.731215,
-        "compile_smoke_max_rss_bytes": 536875008,
+        "emit_parser_c_ms": 95.675904,
+        "compile_smoke_ms": 2125.666984,
+        "compile_smoke_max_rss_bytes": 537464832,
         "parse_construct_profile": {
           "states_processed": 1034,
           "successor_groups": 17860,
@@ -1816,11 +1956,25 @@
           "item_set_hash_entries": 222432,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 176614315,
-          "extra_transitions_ns": 113612,
-          "reserved_word_ns": 924096,
-          "build_actions_ns": 3376528,
-          "detect_conflicts_ns": 198140
+          "collect_transitions_ns": 186249284,
+          "extra_transitions_ns": 121016,
+          "reserved_word_ns": 1155229,
+          "build_actions_ns": 3816603,
+          "detect_conflicts_ns": 226033
+        },
+        "lex": {
+          "table_count": 102,
+          "state_count": 3380,
+          "transition_count": 22235,
+          "range_count": 22235,
+          "accept_state_count": 2786,
+          "eof_target_count": 0,
+          "skip_transition_count": 900,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": null
@@ -1950,9 +2104,9 @@
         "parser_c_bytes": 10452477,
         "lex_function_bytes": 10183811,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 992.417578,
-        "compile_smoke_ms": 11881.000099,
-        "compile_smoke_max_rss_bytes": 2615803904,
+        "emit_parser_c_ms": 887.064541,
+        "compile_smoke_ms": 11988.271268,
+        "compile_smoke_max_rss_bytes": 2615771136,
         "parse_construct_profile": {
           "states_processed": 5388,
           "successor_groups": 65588,
@@ -1973,11 +2127,25 @@
           "item_set_hash_entries": 1354100,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 972678413,
-          "extra_transitions_ns": 591212,
-          "reserved_word_ns": 5956474,
-          "build_actions_ns": 18812179,
-          "detect_conflicts_ns": 1036758
+          "collect_transitions_ns": 947409385,
+          "extra_transitions_ns": 579043,
+          "reserved_word_ns": 5831695,
+          "build_actions_ns": 18439893,
+          "detect_conflicts_ns": 1032275
+        },
+        "lex": {
+          "table_count": 213,
+          "state_count": 13156,
+          "transition_count": 135621,
+          "range_count": 135621,
+          "accept_state_count": 10625,
+          "eof_target_count": 0,
+          "skip_transition_count": 1455,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": null
@@ -2107,9 +2275,9 @@
         "parser_c_bytes": 4792247,
         "lex_function_bytes": 4679244,
         "keyword_lex_function_bytes": 0,
-        "emit_parser_c_ms": 498.495609,
-        "compile_smoke_ms": 6771.246945,
-        "compile_smoke_max_rss_bytes": 1507385344,
+        "emit_parser_c_ms": 375.607021,
+        "compile_smoke_ms": 6753.830339,
+        "compile_smoke_max_rss_bytes": 1507352576,
         "parse_construct_profile": {
           "states_processed": 2660,
           "successor_groups": 40937,
@@ -2130,11 +2298,25 @@
           "item_set_hash_entries": 614478,
           "item_set_eql_calls": 0,
           "item_set_eql_entries": 0,
-          "collect_transitions_ns": 480076223,
-          "extra_transitions_ns": 8376764,
-          "reserved_word_ns": 2802632,
-          "build_actions_ns": 13898777,
-          "detect_conflicts_ns": 552343
+          "collect_transitions_ns": 475162060,
+          "extra_transitions_ns": 8435995,
+          "reserved_word_ns": 3062432,
+          "build_actions_ns": 13857321,
+          "detect_conflicts_ns": 553862
+        },
+        "lex": {
+          "table_count": 231,
+          "state_count": 11728,
+          "transition_count": 59809,
+          "range_count": 59809,
+          "accept_state_count": 9612,
+          "eof_target_count": 0,
+          "skip_transition_count": 464,
+          "large_range_transition_count": 0,
+          "max_transition_range_count": 1,
+          "keyword_state_count": 0,
+          "keyword_transition_count": 0,
+          "keyword_range_count": 0
         }
       },
       "blocked_boundary": null
