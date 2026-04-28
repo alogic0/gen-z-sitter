@@ -229,7 +229,15 @@ and proof config are stronger.
 - [x] Promote compile-smoke targets to accepted runtime-link samples only after
   a focused scanner proof exists.
 - [ ] Add invalid runtime-link samples only after recovery parity is stable for
-  that target family.
+  that target family:
+  - [x] Rust raw-string invalid runtime-link proof first, because it is the
+    smallest stateful scanner surface.
+  - [ ] JavaScript ternary/JSX invalid runtime-link proof next.
+  - [ ] TypeScript ternary/JSX invalid runtime-link proof after JavaScript, so
+    JavaScript-family behavior can be compared.
+  - [ ] Python string and indentation invalid runtime-link proof last, because
+    layout state is the most stateful promoted scanner surface.
+  - [ ] Refresh compatibility reports after each promoted invalid proof batch.
 - [ ] Keep thresholded/coarse modes diagnostic unless a target config documents
   why they are part of the promoted proof.
 
@@ -243,6 +251,12 @@ bounded target runs stayed under the accepted cost envelope in focused
 `run-compat-target` checks. Python generated-GLR newline remains deliberately
 outside the promoted config because the current direct-generated proof still
 returns a zero-consumed path under the compat target runner.
+
+Batch 9 note: Rust raw-string invalid input is now covered by a focused
+runtime-link proof using the real Rust scanner. The invalid sample `r#"hi"`
+asserts an error tree without requiring the minimal proof parser to recover to
+a `source_file` root. The Rust scanner config now includes that invalid proof
+and sample alongside the accepted float and raw-string samples.
 
 Gate:
 

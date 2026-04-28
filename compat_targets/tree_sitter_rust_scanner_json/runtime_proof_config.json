@@ -2,13 +2,15 @@
   "proof_level": "full_runtime_link",
   "proof_id": "rust_float_literal_real_external_scanner",
   "additional_proof_ids": [
-    "rust_raw_string_real_external_scanner"
+    "rust_raw_string_real_external_scanner",
+    "rust_raw_string_invalid_real_external_scanner"
   ],
   "external_scanner_source": "../tree-sitter-grammars/tree-sitter-rust/src/scanner.c",
   "external_scanner_include_dir": "../tree-sitter-grammars/tree-sitter-rust/src",
   "sample_files": [
     "compat_targets/tree_sitter_rust_scanner/float.rs",
-    "compat_targets/tree_sitter_rust_scanner/raw_string.rs"
+    "compat_targets/tree_sitter_rust_scanner/raw_string.rs",
+    "compat_targets/tree_sitter_rust_scanner/raw_string_invalid.rs"
   ],
   "compile": {
     "links_external_scanner": true

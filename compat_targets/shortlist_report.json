@@ -294,7 +294,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 62652416,
+        "compile_smoke_max_rss_bytes": 62586880,
         "parse_construct_profile": {
           "states_processed": 4,
           "successor_groups": 3,
@@ -320,11 +320,11 @@
           "symbol_set_free_count": 17,
           "symbol_set_alloc_bytes": 216,
           "symbol_set_free_bytes": 136,
-          "collect_transitions_ns": 38707,
-          "extra_transitions_ns": 592,
-          "reserved_word_ns": 561,
-          "build_actions_ns": 9128,
-          "detect_conflicts_ns": 1412
+          "collect_transitions_ns": 35580,
+          "extra_transitions_ns": 631,
+          "reserved_word_ns": 571,
+          "build_actions_ns": 8658,
+          "detect_conflicts_ns": 1592
         },
         "lex": {
           "table_count": 1,
@@ -412,7 +412,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 64495616,
+        "compile_smoke_max_rss_bytes": 64233472,
         "parse_construct_profile": {
           "states_processed": 51,
           "successor_groups": 70,
@@ -438,11 +438,11 @@
           "symbol_set_free_count": 159,
           "symbol_set_alloc_bytes": 2848,
           "symbol_set_free_bytes": 1272,
-          "collect_transitions_ns": 545645,
-          "extra_transitions_ns": 5361,
-          "reserved_word_ns": 4265,
-          "build_actions_ns": 51641,
-          "detect_conflicts_ns": 9676
+          "collect_transitions_ns": 530876,
+          "extra_transitions_ns": 5835,
+          "reserved_word_ns": 4346,
+          "build_actions_ns": 51991,
+          "detect_conflicts_ns": 9628
         },
         "lex": {
           "table_count": 3,
@@ -530,7 +530,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 63766528,
+        "compile_smoke_max_rss_bytes": 63647744,
         "parse_construct_profile": {
           "states_processed": 17,
           "successor_groups": 22,
@@ -556,11 +556,11 @@
           "symbol_set_free_count": 135,
           "symbol_set_alloc_bytes": 1464,
           "symbol_set_free_bytes": 1080,
-          "collect_transitions_ns": 332970,
-          "extra_transitions_ns": 2976,
-          "reserved_word_ns": 2495,
-          "build_actions_ns": 35138,
-          "detect_conflicts_ns": 11103
+          "collect_transitions_ns": 198024,
+          "extra_transitions_ns": 1948,
+          "reserved_word_ns": 1542,
+          "build_actions_ns": 22996,
+          "detect_conflicts_ns": 7716
         },
         "lex": {
           "table_count": 1,
@@ -692,7 +692,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 77529088,
+        "compile_smoke_max_rss_bytes": 77725696,
         "parse_construct_profile": {
           "states_processed": 540,
           "successor_groups": 1764,
@@ -718,11 +718,11 @@
           "symbol_set_free_count": 2937,
           "symbol_set_alloc_bytes": 71696,
           "symbol_set_free_bytes": 23496,
-          "collect_transitions_ns": 15159118,
-          "extra_transitions_ns": 55862,
-          "reserved_word_ns": 47537,
-          "build_actions_ns": 877016,
-          "detect_conflicts_ns": 155916
+          "collect_transitions_ns": 14603196,
+          "extra_transitions_ns": 59686,
+          "reserved_word_ns": 44288,
+          "build_actions_ns": 826284,
+          "detect_conflicts_ns": 155996
         },
         "lex": {
           "table_count": 14,
@@ -810,7 +810,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 75931648,
+        "compile_smoke_max_rss_bytes": 75870208,
         "parse_construct_profile": {
           "states_processed": 193,
           "successor_groups": 491,
@@ -836,11 +836,11 @@
           "symbol_set_free_count": 1037,
           "symbol_set_alloc_bytes": 21384,
           "symbol_set_free_bytes": 8296,
-          "collect_transitions_ns": 4173901,
-          "extra_transitions_ns": 20834,
-          "reserved_word_ns": 44689,
-          "build_actions_ns": 322120,
-          "detect_conflicts_ns": 94173
+          "collect_transitions_ns": 4089869,
+          "extra_transitions_ns": 21594,
+          "reserved_word_ns": 43583,
+          "build_actions_ns": 308675,
+          "detect_conflicts_ns": 97508
         },
         "lex": {
           "table_count": 11,
@@ -928,7 +928,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 526970880,
+        "compile_smoke_max_rss_bytes": 526876672,
         "parse_construct_profile": {
           "states_processed": 1558,
           "successor_groups": 20774,
@@ -954,11 +954,11 @@
           "symbol_set_free_count": 59319,
           "symbol_set_alloc_bytes": 2664528,
           "symbol_set_free_bytes": 1423656,
-          "collect_transitions_ns": 169535072,
-          "extra_transitions_ns": 163720,
-          "reserved_word_ns": 1236594,
-          "build_actions_ns": 6677069,
-          "detect_conflicts_ns": 320289
+          "collect_transitions_ns": 155995369,
+          "extra_transitions_ns": 176344,
+          "reserved_word_ns": 1107671,
+          "build_actions_ns": 6028170,
+          "detect_conflicts_ns": 305733
         },
         "lex": {
           "table_count": 40,
@@ -1046,7 +1046,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 434417664,
+        "compile_smoke_max_rss_bytes": 433664000,
         "parse_construct_profile": {
           "states_processed": 1569,
           "successor_groups": 69078,
@@ -1072,11 +1072,11 @@
           "symbol_set_free_count": 201997,
           "symbol_set_alloc_bytes": 11423952,
           "symbol_set_free_bytes": 4847928,
-          "collect_transitions_ns": 663400948,
-          "extra_transitions_ns": 173251,
-          "reserved_word_ns": 4497222,
-          "build_actions_ns": 22515889,
-          "detect_conflicts_ns": 395378
+          "collect_transitions_ns": 648228703,
+          "extra_transitions_ns": 178985,
+          "reserved_word_ns": 4433119,
+          "build_actions_ns": 21284303,
+          "detect_conflicts_ns": 401289
         },
         "lex": {
           "table_count": 26,
@@ -1164,7 +1164,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 67145728,
+        "compile_smoke_max_rss_bytes": 67276800,
         "parse_construct_profile": {
           "states_processed": 101,
           "successor_groups": 212,
@@ -1190,11 +1190,11 @@
           "symbol_set_free_count": 516,
           "symbol_set_alloc_bytes": 8712,
           "symbol_set_free_bytes": 4128,
-          "collect_transitions_ns": 1549887,
-          "extra_transitions_ns": 10079,
-          "reserved_word_ns": 8828,
-          "build_actions_ns": 174682,
-          "detect_conflicts_ns": 40570
+          "collect_transitions_ns": 1516074,
+          "extra_transitions_ns": 11398,
+          "reserved_word_ns": 8484,
+          "build_actions_ns": 175443,
+          "detect_conflicts_ns": 44235
         },
         "lex": {
           "table_count": 6,
@@ -1398,7 +1398,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 63606784,
+        "compile_smoke_max_rss_bytes": 63692800,
         "parse_construct_profile": {
           "states_processed": 6,
           "successor_groups": 7,
@@ -1424,11 +1424,11 @@
           "symbol_set_free_count": 33,
           "symbol_set_alloc_bytes": 416,
           "symbol_set_free_bytes": 264,
-          "collect_transitions_ns": 65799,
-          "extra_transitions_ns": 733,
-          "reserved_word_ns": 870,
-          "build_actions_ns": 11542,
-          "detect_conflicts_ns": 5442
+          "collect_transitions_ns": 63355,
+          "extra_transitions_ns": 842,
+          "reserved_word_ns": 730,
+          "build_actions_ns": 11191,
+          "detect_conflicts_ns": 5240
         },
         "lex": {
           "table_count": 2,
@@ -1835,7 +1835,7 @@
         "keyword_lex_function_bytes": 438055,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 354357248,
+        "compile_smoke_max_rss_bytes": 354635776,
         "parse_construct_profile": {
           "states_processed": 1315,
           "successor_groups": 26858,
@@ -1861,11 +1861,11 @@
           "symbol_set_free_count": 66242,
           "symbol_set_alloc_bytes": 5011168,
           "symbol_set_free_bytes": 2119744,
-          "collect_transitions_ns": 268817275,
-          "extra_transitions_ns": 147198,
-          "reserved_word_ns": 1694538,
-          "build_actions_ns": 6860208,
-          "detect_conflicts_ns": 286906
+          "collect_transitions_ns": 256366466,
+          "extra_transitions_ns": 149196,
+          "reserved_word_ns": 1803678,
+          "build_actions_ns": 6348337,
+          "detect_conflicts_ns": 270550
         },
         "lex": {
           "table_count": 43,
@@ -2011,7 +2011,7 @@
         "keyword_lex_function_bytes": 276971,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 299552768,
+        "compile_smoke_max_rss_bytes": 299683840,
         "parse_construct_profile": {
           "states_processed": 1034,
           "successor_groups": 17860,
@@ -2037,11 +2037,11 @@
           "symbol_set_free_count": 57193,
           "symbol_set_alloc_bytes": 2585040,
           "symbol_set_free_bytes": 1372632,
-          "collect_transitions_ns": 158424363,
-          "extra_transitions_ns": 118127,
-          "reserved_word_ns": 1054346,
-          "build_actions_ns": 3911123,
-          "detect_conflicts_ns": 223755
+          "collect_transitions_ns": 150235094,
+          "extra_transitions_ns": 114070,
+          "reserved_word_ns": 943424,
+          "build_actions_ns": 3445681,
+          "detect_conflicts_ns": 202167
         },
         "lex": {
           "table_count": 34,
@@ -2187,7 +2187,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 716873728,
+        "compile_smoke_max_rss_bytes": 717246464,
         "parse_construct_profile": {
           "states_processed": 5388,
           "successor_groups": 65588,
@@ -2213,11 +2213,11 @@
           "symbol_set_free_count": 142937,
           "symbol_set_alloc_bytes": 14458752,
           "symbol_set_free_bytes": 4573984,
-          "collect_transitions_ns": 817577747,
-          "extra_transitions_ns": 559937,
-          "reserved_word_ns": 6213324,
-          "build_actions_ns": 20324206,
-          "detect_conflicts_ns": 1076534
+          "collect_transitions_ns": 796997377,
+          "extra_transitions_ns": 602581,
+          "reserved_word_ns": 6081433,
+          "build_actions_ns": 18925542,
+          "detect_conflicts_ns": 1051028
         },
         "lex": {
           "table_count": 59,
@@ -2363,7 +2363,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 616529920,
+        "compile_smoke_max_rss_bytes": 616464384,
         "parse_construct_profile": {
           "states_processed": 2660,
           "successor_groups": 40937,
@@ -2389,11 +2389,11 @@
           "symbol_set_free_count": 156559,
           "symbol_set_alloc_bytes": 8286560,
           "symbol_set_free_bytes": 5009888,
-          "collect_transitions_ns": 433397430,
-          "extra_transitions_ns": 8993688,
-          "reserved_word_ns": 3255429,
-          "build_actions_ns": 15592054,
-          "detect_conflicts_ns": 572010
+          "collect_transitions_ns": 403322198,
+          "extra_transitions_ns": 8270329,
+          "reserved_word_ns": 3024716,
+          "build_actions_ns": 13984879,
+          "detect_conflicts_ns": 558618
         },
         "lex": {
           "table_count": 55,
@@ -2457,7 +2457,7 @@
       },
       "scanner_boundary_check": {
         "status": "passed",
-        "detail": "runtime proof config=compat_targets/tree_sitter_rust_scanner_json/runtime_proof_config.json proof_id=rust_float_literal_real_external_scanner proof_level=full_runtime_link extra_proofs=1 sample_files=2 blocked_surfaces=0"
+        "detail": "runtime proof config=compat_targets/tree_sitter_rust_scanner_json/runtime_proof_config.json proof_id=rust_float_literal_real_external_scanner proof_level=full_runtime_link extra_proofs=2 sample_files=3 blocked_surfaces=0"
       },
       "compat_check": {
         "status": "not_run",

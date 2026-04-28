@@ -168,6 +168,7 @@ fn executeRuntimeProofId(allocator: std.mem.Allocator, proof_id: RuntimeProofId)
         .python_indent_dedent_real_external_scanner => return try runtime_link.linkAndRunPythonIndentDedentParserWithRealExternalScanner(allocator),
         .rust_float_literal_real_external_scanner => return try runtime_link.linkAndRunRustFloatLiteralParserWithRealExternalScanner(allocator),
         .rust_raw_string_real_external_scanner => return try runtime_link.linkAndRunRustRawStringParserWithRealExternalScanner(allocator),
+        .rust_raw_string_invalid_real_external_scanner => return try runtime_link.linkAndRunRustRawStringInvalidParserWithRealExternalScanner(allocator),
     }
 }
 
@@ -449,6 +450,7 @@ const RuntimeProofId = enum {
     python_indent_dedent_real_external_scanner,
     rust_float_literal_real_external_scanner,
     rust_raw_string_real_external_scanner,
+    rust_raw_string_invalid_real_external_scanner,
 };
 
 const RuntimeProofConfig = struct {

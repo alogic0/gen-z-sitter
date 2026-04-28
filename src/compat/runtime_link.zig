@@ -855,6 +855,29 @@ pub fn linkAndRunRustRawStringParserWithRealExternalScanner(allocator: std.mem.A
     });
 }
 
+pub fn linkAndRunRustRawStringInvalidParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(rust_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitRustRawStringParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        rust_scanner_path,
+        arena.allocator(),
+        .limited(512 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{rust_scanner_include_dir},
+        .input = "r#\"hi\"",
+        .expected_has_error = true,
+    });
+}
+
 pub fn linkAndRunHaskellParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
     try ensureFileAvailableOrSkip(haskell_scanner_path);
@@ -4046,6 +4069,10 @@ test "linkAndRunRustFloatLiteralParserWithRealExternalScanner links generated Ru
 
 test "linkAndRunRustRawStringParserWithRealExternalScanner links generated Rust raw-string parser with upstream scanner" {
     try linkAndRunRustRawStringParserWithRealExternalScanner(std.testing.allocator);
+}
+
+test "linkAndRunRustRawStringInvalidParserWithRealExternalScanner links generated Rust raw-string parser on invalid input" {
+    try linkAndRunRustRawStringInvalidParserWithRealExternalScanner(std.testing.allocator);
 }
 
 test "linkAndRunHaskellParserWithRealExternalScanner links generated Haskell parser with upstream scanner" {
