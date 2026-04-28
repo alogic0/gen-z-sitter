@@ -49,11 +49,10 @@
       "recovery_skip_and_relex": true,
       "recovery_extend_error_span": true,
       "incremental_reuse_guards": true,
-      "expected_conflict_equivalence": true
-    },
-    "active": {
+      "expected_conflict_equivalence": true,
       "complex_scanner_promotion": true
     },
+    "active": {},
     "deferred_measurement_gated": {
       "dag_stack_replacement": true,
       "symbol_set_key_compression": true,
@@ -294,7 +293,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 62586880,
+        "compile_smoke_max_rss_bytes": 62517248,
         "parse_construct_profile": {
           "states_processed": 4,
           "successor_groups": 3,
@@ -320,11 +319,11 @@
           "symbol_set_free_count": 17,
           "symbol_set_alloc_bytes": 216,
           "symbol_set_free_bytes": 136,
-          "collect_transitions_ns": 35580,
-          "extra_transitions_ns": 631,
-          "reserved_word_ns": 571,
-          "build_actions_ns": 8658,
-          "detect_conflicts_ns": 1592
+          "collect_transitions_ns": 37999,
+          "extra_transitions_ns": 581,
+          "reserved_word_ns": 531,
+          "build_actions_ns": 9486,
+          "detect_conflicts_ns": 1745
         },
         "lex": {
           "table_count": 1,
@@ -412,7 +411,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 64233472,
+        "compile_smoke_max_rss_bytes": 64561152,
         "parse_construct_profile": {
           "states_processed": 51,
           "successor_groups": 70,
@@ -438,11 +437,11 @@
           "symbol_set_free_count": 159,
           "symbol_set_alloc_bytes": 2848,
           "symbol_set_free_bytes": 1272,
-          "collect_transitions_ns": 530876,
-          "extra_transitions_ns": 5835,
-          "reserved_word_ns": 4346,
-          "build_actions_ns": 51991,
-          "detect_conflicts_ns": 9628
+          "collect_transitions_ns": 543614,
+          "extra_transitions_ns": 5063,
+          "reserved_word_ns": 4504,
+          "build_actions_ns": 51064,
+          "detect_conflicts_ns": 9609
         },
         "lex": {
           "table_count": 3,
@@ -530,7 +529,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 63647744,
+        "compile_smoke_max_rss_bytes": 63844352,
         "parse_construct_profile": {
           "states_processed": 17,
           "successor_groups": 22,
@@ -556,11 +555,11 @@
           "symbol_set_free_count": 135,
           "symbol_set_alloc_bytes": 1464,
           "symbol_set_free_bytes": 1080,
-          "collect_transitions_ns": 198024,
-          "extra_transitions_ns": 1948,
-          "reserved_word_ns": 1542,
-          "build_actions_ns": 22996,
-          "detect_conflicts_ns": 7716
+          "collect_transitions_ns": 293063,
+          "extra_transitions_ns": 2798,
+          "reserved_word_ns": 2404,
+          "build_actions_ns": 33672,
+          "detect_conflicts_ns": 11129
         },
         "lex": {
           "table_count": 1,
@@ -692,7 +691,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 77725696,
+        "compile_smoke_max_rss_bytes": 76611584,
         "parse_construct_profile": {
           "states_processed": 540,
           "successor_groups": 1764,
@@ -718,11 +717,11 @@
           "symbol_set_free_count": 2937,
           "symbol_set_alloc_bytes": 71696,
           "symbol_set_free_bytes": 23496,
-          "collect_transitions_ns": 14603196,
-          "extra_transitions_ns": 59686,
-          "reserved_word_ns": 44288,
-          "build_actions_ns": 826284,
-          "detect_conflicts_ns": 155996
+          "collect_transitions_ns": 14863712,
+          "extra_transitions_ns": 53696,
+          "reserved_word_ns": 46808,
+          "build_actions_ns": 857339,
+          "detect_conflicts_ns": 158882
         },
         "lex": {
           "table_count": 14,
@@ -810,7 +809,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 75870208,
+        "compile_smoke_max_rss_bytes": 75911168,
         "parse_construct_profile": {
           "states_processed": 193,
           "successor_groups": 491,
@@ -836,11 +835,11 @@
           "symbol_set_free_count": 1037,
           "symbol_set_alloc_bytes": 21384,
           "symbol_set_free_bytes": 8296,
-          "collect_transitions_ns": 4089869,
-          "extra_transitions_ns": 21594,
-          "reserved_word_ns": 43583,
-          "build_actions_ns": 308675,
-          "detect_conflicts_ns": 97508
+          "collect_transitions_ns": 4237830,
+          "extra_transitions_ns": 20179,
+          "reserved_word_ns": 47833,
+          "build_actions_ns": 321649,
+          "detect_conflicts_ns": 100280
         },
         "lex": {
           "table_count": 11,
@@ -928,7 +927,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 526876672,
+        "compile_smoke_max_rss_bytes": 527060992,
         "parse_construct_profile": {
           "states_processed": 1558,
           "successor_groups": 20774,
@@ -954,11 +953,11 @@
           "symbol_set_free_count": 59319,
           "symbol_set_alloc_bytes": 2664528,
           "symbol_set_free_bytes": 1423656,
-          "collect_transitions_ns": 155995369,
-          "extra_transitions_ns": 176344,
-          "reserved_word_ns": 1107671,
-          "build_actions_ns": 6028170,
-          "detect_conflicts_ns": 305733
+          "collect_transitions_ns": 156620704,
+          "extra_transitions_ns": 158057,
+          "reserved_word_ns": 1127166,
+          "build_actions_ns": 6023408,
+          "detect_conflicts_ns": 305193
         },
         "lex": {
           "table_count": 40,
@@ -1046,7 +1045,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 433664000,
+        "compile_smoke_max_rss_bytes": 433676288,
         "parse_construct_profile": {
           "states_processed": 1569,
           "successor_groups": 69078,
@@ -1072,11 +1071,11 @@
           "symbol_set_free_count": 201997,
           "symbol_set_alloc_bytes": 11423952,
           "symbol_set_free_bytes": 4847928,
-          "collect_transitions_ns": 648228703,
-          "extra_transitions_ns": 178985,
-          "reserved_word_ns": 4433119,
-          "build_actions_ns": 21284303,
-          "detect_conflicts_ns": 401289
+          "collect_transitions_ns": 641602500,
+          "extra_transitions_ns": 166248,
+          "reserved_word_ns": 4239967,
+          "build_actions_ns": 20603041,
+          "detect_conflicts_ns": 385894
         },
         "lex": {
           "table_count": 26,
@@ -1164,7 +1163,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 67276800,
+        "compile_smoke_max_rss_bytes": 66936832,
         "parse_construct_profile": {
           "states_processed": 101,
           "successor_groups": 212,
@@ -1190,11 +1189,11 @@
           "symbol_set_free_count": 516,
           "symbol_set_alloc_bytes": 8712,
           "symbol_set_free_bytes": 4128,
-          "collect_transitions_ns": 1516074,
-          "extra_transitions_ns": 11398,
-          "reserved_word_ns": 8484,
-          "build_actions_ns": 175443,
-          "detect_conflicts_ns": 44235
+          "collect_transitions_ns": 1515705,
+          "extra_transitions_ns": 10369,
+          "reserved_word_ns": 12426,
+          "build_actions_ns": 170019,
+          "detect_conflicts_ns": 40440
         },
         "lex": {
           "table_count": 6,
@@ -1424,11 +1423,11 @@
           "symbol_set_free_count": 33,
           "symbol_set_alloc_bytes": 416,
           "symbol_set_free_bytes": 264,
-          "collect_transitions_ns": 63355,
-          "extra_transitions_ns": 842,
-          "reserved_word_ns": 730,
-          "build_actions_ns": 11191,
-          "detect_conflicts_ns": 5240
+          "collect_transitions_ns": 67965,
+          "extra_transitions_ns": 1053,
+          "reserved_word_ns": 700,
+          "build_actions_ns": 12112,
+          "detect_conflicts_ns": 5370
         },
         "lex": {
           "table_count": 2,
@@ -1835,7 +1834,7 @@
         "keyword_lex_function_bytes": 438055,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 354635776,
+        "compile_smoke_max_rss_bytes": 354836480,
         "parse_construct_profile": {
           "states_processed": 1315,
           "successor_groups": 26858,
@@ -1861,11 +1860,11 @@
           "symbol_set_free_count": 66242,
           "symbol_set_alloc_bytes": 5011168,
           "symbol_set_free_bytes": 2119744,
-          "collect_transitions_ns": 256366466,
-          "extra_transitions_ns": 149196,
-          "reserved_word_ns": 1803678,
-          "build_actions_ns": 6348337,
-          "detect_conflicts_ns": 270550
+          "collect_transitions_ns": 250731832,
+          "extra_transitions_ns": 132860,
+          "reserved_word_ns": 1516778,
+          "build_actions_ns": 5922596,
+          "detect_conflicts_ns": 262991
         },
         "lex": {
           "table_count": 43,
@@ -1929,7 +1928,7 @@
       },
       "scanner_boundary_check": {
         "status": "passed",
-        "detail": "runtime proof config=compat_targets/tree_sitter_javascript_scanner_json/runtime_proof_config.json proof_id=javascript_ternary_real_external_scanner proof_level=full_runtime_link extra_proofs=2 sample_files=2 blocked_surfaces=2"
+        "detail": "runtime proof config=compat_targets/tree_sitter_javascript_scanner_json/runtime_proof_config.json proof_id=javascript_ternary_real_external_scanner proof_level=full_runtime_link extra_proofs=4 sample_files=4 blocked_surfaces=2"
       },
       "compat_check": {
         "status": "not_run",
@@ -2011,7 +2010,7 @@
         "keyword_lex_function_bytes": 276971,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 299683840,
+        "compile_smoke_max_rss_bytes": 299646976,
         "parse_construct_profile": {
           "states_processed": 1034,
           "successor_groups": 17860,
@@ -2037,11 +2036,11 @@
           "symbol_set_free_count": 57193,
           "symbol_set_alloc_bytes": 2585040,
           "symbol_set_free_bytes": 1372632,
-          "collect_transitions_ns": 150235094,
-          "extra_transitions_ns": 114070,
-          "reserved_word_ns": 943424,
-          "build_actions_ns": 3445681,
-          "detect_conflicts_ns": 202167
+          "collect_transitions_ns": 149688350,
+          "extra_transitions_ns": 106587,
+          "reserved_word_ns": 921320,
+          "build_actions_ns": 3388998,
+          "detect_conflicts_ns": 199366
         },
         "lex": {
           "table_count": 34,
@@ -2105,7 +2104,7 @@
       },
       "scanner_boundary_check": {
         "status": "passed",
-        "detail": "runtime proof config=compat_targets/tree_sitter_python_scanner_json/runtime_proof_config.json proof_id=python_newline_real_external_scanner proof_level=full_runtime_link extra_proofs=2 sample_files=3 blocked_surfaces=0"
+        "detail": "runtime proof config=compat_targets/tree_sitter_python_scanner_json/runtime_proof_config.json proof_id=python_newline_real_external_scanner proof_level=full_runtime_link extra_proofs=4 sample_files=5 blocked_surfaces=0"
       },
       "compat_check": {
         "status": "not_run",
@@ -2187,7 +2186,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 717246464,
+        "compile_smoke_max_rss_bytes": 717619200,
         "parse_construct_profile": {
           "states_processed": 5388,
           "successor_groups": 65588,
@@ -2213,11 +2212,11 @@
           "symbol_set_free_count": 142937,
           "symbol_set_alloc_bytes": 14458752,
           "symbol_set_free_bytes": 4573984,
-          "collect_transitions_ns": 796997377,
-          "extra_transitions_ns": 602581,
-          "reserved_word_ns": 6081433,
-          "build_actions_ns": 18925542,
-          "detect_conflicts_ns": 1051028
+          "collect_transitions_ns": 791897181,
+          "extra_transitions_ns": 550914,
+          "reserved_word_ns": 5928428,
+          "build_actions_ns": 18608795,
+          "detect_conflicts_ns": 1043824
         },
         "lex": {
           "table_count": 59,
@@ -2281,7 +2280,7 @@
       },
       "scanner_boundary_check": {
         "status": "passed",
-        "detail": "runtime proof config=compat_targets/tree_sitter_typescript_scanner_json/runtime_proof_config.json proof_id=typescript_ternary_real_external_scanner proof_level=full_runtime_link extra_proofs=1 sample_files=2 blocked_surfaces=0"
+        "detail": "runtime proof config=compat_targets/tree_sitter_typescript_scanner_json/runtime_proof_config.json proof_id=typescript_ternary_real_external_scanner proof_level=full_runtime_link extra_proofs=3 sample_files=4 blocked_surfaces=0"
       },
       "compat_check": {
         "status": "not_run",
@@ -2363,7 +2362,7 @@
         "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null,
-        "compile_smoke_max_rss_bytes": 616464384,
+        "compile_smoke_max_rss_bytes": 616390656,
         "parse_construct_profile": {
           "states_processed": 2660,
           "successor_groups": 40937,
@@ -2389,11 +2388,11 @@
           "symbol_set_free_count": 156559,
           "symbol_set_alloc_bytes": 8286560,
           "symbol_set_free_bytes": 5009888,
-          "collect_transitions_ns": 403322198,
-          "extra_transitions_ns": 8270329,
-          "reserved_word_ns": 3024716,
-          "build_actions_ns": 13984879,
-          "detect_conflicts_ns": 558618
+          "collect_transitions_ns": 403440942,
+          "extra_transitions_ns": 8294414,
+          "reserved_word_ns": 2815057,
+          "build_actions_ns": 13595385,
+          "detect_conflicts_ns": 549610
         },
         "lex": {
           "table_count": 55,

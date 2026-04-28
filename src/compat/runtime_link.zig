@@ -622,6 +622,29 @@ pub fn linkAndRunJavascriptTernaryParserWithRealExternalScanner(allocator: std.m
     });
 }
 
+pub fn linkAndRunJavascriptTernaryInvalidParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(javascript_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitJavascriptTernaryParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        javascript_scanner_path,
+        arena.allocator(),
+        .limited(512 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{javascript_scanner_include_dir},
+        .input = "",
+        .expected_has_error = true,
+    });
+}
+
 pub fn linkAndRunJavascriptJsxTextParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
     try ensureFileAvailableOrSkip(javascript_scanner_path);
@@ -642,6 +665,29 @@ pub fn linkAndRunJavascriptJsxTextParserWithRealExternalScanner(allocator: std.m
         .scanner_include_dirs = &.{javascript_scanner_include_dir},
         .input = "hello",
         .expected_root_type = "program",
+    });
+}
+
+pub fn linkAndRunJavascriptJsxTextInvalidParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(javascript_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitJavascriptJsxTextParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        javascript_scanner_path,
+        arena.allocator(),
+        .limited(512 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{javascript_scanner_include_dir},
+        .input = "",
+        .expected_has_error = true,
     });
 }
 
@@ -692,6 +738,29 @@ pub fn linkAndRunTypescriptTernaryParserWithRealExternalScanner(allocator: std.m
     });
 }
 
+pub fn linkAndRunTypescriptTernaryInvalidParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(typescript_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitTypescriptTernaryParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        typescript_scanner_path,
+        arena.allocator(),
+        .limited(512 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{typescript_scanner_include_dir},
+        .input = "",
+        .expected_has_error = true,
+    });
+}
+
 pub fn linkAndRunTypescriptJsxTextParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
     try ensureFileAvailableOrSkip(typescript_scanner_path);
@@ -712,6 +781,29 @@ pub fn linkAndRunTypescriptJsxTextParserWithRealExternalScanner(allocator: std.m
         .scanner_include_dirs = &.{typescript_scanner_include_dir},
         .input = "hello",
         .expected_root_type = "program",
+    });
+}
+
+pub fn linkAndRunTypescriptJsxTextInvalidParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(typescript_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitTypescriptJsxTextParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        typescript_scanner_path,
+        arena.allocator(),
+        .limited(512 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{typescript_scanner_include_dir},
+        .input = "",
+        .expected_has_error = true,
     });
 }
 
@@ -785,6 +877,29 @@ pub fn linkAndRunPythonStringParserWithRealExternalScanner(allocator: std.mem.Al
     });
 }
 
+pub fn linkAndRunPythonStringInvalidParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(python_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitPythonStringParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        python_scanner_path,
+        arena.allocator(),
+        .limited(1024 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{python_scanner_include_dir},
+        .input = "\"hi",
+        .expected_has_error = true,
+    });
+}
+
 pub fn linkAndRunPythonIndentDedentParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
     try ensureFileAvailableOrSkip(python_scanner_path);
@@ -806,6 +921,29 @@ pub fn linkAndRunPythonIndentDedentParserWithRealExternalScanner(allocator: std.
         .input = "\n  x\n",
         .expected_root_type = "module",
         .expected_has_error = false,
+    });
+}
+
+pub fn linkAndRunPythonIndentDedentInvalidParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(python_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitPythonIndentDedentParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        python_scanner_path,
+        arena.allocator(),
+        .limited(1024 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{python_scanner_include_dir},
+        .input = "\n  ",
+        .expected_has_error = true,
     });
 }
 
@@ -4035,8 +4173,16 @@ test "linkAndRunJavascriptTernaryParserWithRealExternalScanner links generated J
     try linkAndRunJavascriptTernaryParserWithRealExternalScanner(std.testing.allocator);
 }
 
+test "linkAndRunJavascriptTernaryInvalidParserWithRealExternalScanner links generated JavaScript parser on invalid ternary input" {
+    try linkAndRunJavascriptTernaryInvalidParserWithRealExternalScanner(std.testing.allocator);
+}
+
 test "linkAndRunJavascriptJsxTextParserWithRealExternalScanner links generated JavaScript JSX text parser with upstream scanner" {
     try linkAndRunJavascriptJsxTextParserWithRealExternalScanner(std.testing.allocator);
+}
+
+test "linkAndRunJavascriptJsxTextInvalidParserWithRealExternalScanner links generated JavaScript JSX text parser on invalid input" {
+    try linkAndRunJavascriptJsxTextInvalidParserWithRealExternalScanner(std.testing.allocator);
 }
 
 test "linkAndRunJavascriptTernaryGeneratedGlrParserWithRealExternalScanner calls generated GLR JavaScript scanner path" {
@@ -4047,8 +4193,16 @@ test "linkAndRunTypescriptTernaryParserWithRealExternalScanner links generated T
     try linkAndRunTypescriptTernaryParserWithRealExternalScanner(std.testing.allocator);
 }
 
+test "linkAndRunTypescriptTernaryInvalidParserWithRealExternalScanner links generated TypeScript parser on invalid ternary input" {
+    try linkAndRunTypescriptTernaryInvalidParserWithRealExternalScanner(std.testing.allocator);
+}
+
 test "linkAndRunTypescriptJsxTextParserWithRealExternalScanner links generated TypeScript JSX text parser with upstream scanner" {
     try linkAndRunTypescriptJsxTextParserWithRealExternalScanner(std.testing.allocator);
+}
+
+test "linkAndRunTypescriptJsxTextInvalidParserWithRealExternalScanner links generated TypeScript JSX text parser on invalid input" {
+    try linkAndRunTypescriptJsxTextInvalidParserWithRealExternalScanner(std.testing.allocator);
 }
 
 test "linkAndRunPythonNewlineParserWithRealExternalScanner links generated Python parser with upstream scanner" {
@@ -4059,8 +4213,16 @@ test "linkAndRunPythonStringParserWithRealExternalScanner links generated Python
     try linkAndRunPythonStringParserWithRealExternalScanner(std.testing.allocator);
 }
 
+test "linkAndRunPythonStringInvalidParserWithRealExternalScanner links generated Python string parser on invalid input" {
+    try linkAndRunPythonStringInvalidParserWithRealExternalScanner(std.testing.allocator);
+}
+
 test "linkAndRunPythonIndentDedentParserWithRealExternalScanner links generated Python indent stack parser with upstream scanner" {
     try linkAndRunPythonIndentDedentParserWithRealExternalScanner(std.testing.allocator);
+}
+
+test "linkAndRunPythonIndentDedentInvalidParserWithRealExternalScanner links generated Python indent parser on invalid input" {
+    try linkAndRunPythonIndentDedentInvalidParserWithRealExternalScanner(std.testing.allocator);
 }
 
 test "linkAndRunRustFloatLiteralParserWithRealExternalScanner links generated Rust parser with upstream scanner" {

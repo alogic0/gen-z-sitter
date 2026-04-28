@@ -2,13 +2,17 @@
   "proof_level": "full_runtime_link",
   "proof_id": "typescript_ternary_real_external_scanner",
   "additional_proof_ids": [
-    "typescript_jsx_text_real_external_scanner"
+    "typescript_ternary_invalid_real_external_scanner",
+    "typescript_jsx_text_real_external_scanner",
+    "typescript_jsx_text_invalid_real_external_scanner"
   ],
   "external_scanner_source": "../tree-sitter-grammars/tree-sitter-typescript/typescript/src/scanner.c",
   "external_scanner_include_dir": "../tree-sitter-grammars/tree-sitter-typescript/typescript/src",
   "sample_files": [
     "compat_targets/tree_sitter_typescript_scanner/ternary.ts",
-    "compat_targets/tree_sitter_typescript_scanner/jsx_text.tsx"
+    "compat_targets/tree_sitter_typescript_scanner/ternary_invalid.ts",
+    "compat_targets/tree_sitter_typescript_scanner/jsx_text.tsx",
+    "compat_targets/tree_sitter_typescript_scanner/jsx_text_invalid.tsx"
   ],
   "compile": {
     "links_external_scanner": true

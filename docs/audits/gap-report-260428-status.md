@@ -37,12 +37,15 @@ implementation plan for remaining work is
 - Generic runtime proof configuration is closed for the promoted runtime-link
   targets: full-link proofs now load `runtime_proof_config.json` and dispatch
   by configured proof id instead of target id.
+- Complex scanner promotion is closed for this audit cycle: JavaScript,
+  Python, TypeScript, and Rust scanner targets now have focused accepted and
+  invalid runtime-link proofs where the current temporary proof parsers expose
+  stable scanner surfaces.
 
 ## Still Open
 
-- Complex scanner promotion: JavaScript, Python, TypeScript, and Rust should
-  advance one boundary at a time using the stronger runtime and proof-config
-  evidence.
+- No active findings remain in `docs/plans/audit-findings-plan-2026-04-28.md`.
+  New work should start from a fresh audit against the current implementation.
 
 ## Measurement-Gated
 

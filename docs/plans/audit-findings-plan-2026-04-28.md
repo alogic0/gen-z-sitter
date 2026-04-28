@@ -38,8 +38,8 @@ Closed since the audit:
 
 Still active from the audit:
 
-- Complex scanner grammars remain intentionally gated until Phase 7 promotes
-  them one boundary at a time.
+- No active findings remain in this plan. New work should come from a fresh
+  audit pass against `docs/audits/gap-report-260428.md` and current code.
 
 Deferred unless measurements demand them:
 
@@ -228,17 +228,17 @@ and proof config are stronger.
   prepare-only complex scanner target remains in the current shortlist.
 - [x] Promote compile-smoke targets to accepted runtime-link samples only after
   a focused scanner proof exists.
-- [ ] Add invalid runtime-link samples only after recovery parity is stable for
+- [x] Add invalid runtime-link samples only after recovery parity is stable for
   that target family:
   - [x] Rust raw-string invalid runtime-link proof first, because it is the
     smallest stateful scanner surface.
-  - [ ] JavaScript ternary/JSX invalid runtime-link proof next.
-  - [ ] TypeScript ternary/JSX invalid runtime-link proof after JavaScript, so
+  - [x] JavaScript ternary/JSX invalid runtime-link proof next.
+  - [x] TypeScript ternary/JSX invalid runtime-link proof after JavaScript, so
     JavaScript-family behavior can be compared.
-  - [ ] Python string and indentation invalid runtime-link proof last, because
+  - [x] Python string and indentation invalid runtime-link proof last, because
     layout state is the most stateful promoted scanner surface.
-  - [ ] Refresh compatibility reports after each promoted invalid proof batch.
-- [ ] Keep thresholded/coarse modes diagnostic unless a target config documents
+  - [x] Refresh compatibility reports after each promoted invalid proof batch.
+- [x] Keep thresholded/coarse modes diagnostic unless a target config documents
   why they are part of the promoted proof.
 
 Batch 8 note: runtime proof configs now support `additional_proof_ids`, letting
@@ -257,6 +257,14 @@ runtime-link proof using the real Rust scanner. The invalid sample `r#"hi"`
 asserts an error tree without requiring the minimal proof parser to recover to
 a `source_file` root. The Rust scanner config now includes that invalid proof
 and sample alongside the accepted float and raw-string samples.
+
+Batch 10 note: JavaScript now has invalid ternary and JSX-text runtime-link
+proofs, TypeScript has matching invalid ternary and JSX-text proofs, and Python
+has invalid string and indentation proofs. All are driven through
+`additional_proof_ids` in per-target runtime proof configs. The compatibility
+report was refreshed after the promoted invalid proofs. Thresholded/coarse
+parser modes remain diagnostic parser-boundary metadata; runtime proof configs
+do not promote them as correctness claims.
 
 Gate:
 

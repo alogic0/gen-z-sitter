@@ -71,11 +71,10 @@ pub const ClosedAuditGaps = struct {
     recovery_extend_error_span: bool = true,
     incremental_reuse_guards: bool = true,
     expected_conflict_equivalence: bool = true,
-};
-
-pub const ActiveAuditGaps = struct {
     complex_scanner_promotion: bool = true,
 };
+
+pub const ActiveAuditGaps = struct {};
 
 pub const DeferredAuditGaps = struct {
     dag_stack_replacement: bool = true,
