@@ -310,11 +310,11 @@ test "buildInventoryReportAlloc summarizes the shortlist boundary" {
     var report = try buildInventoryReportAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 21), report.boundary.total_shortlist_targets);
+    try std.testing.expectEqual(@as(usize, 22), report.boundary.total_shortlist_targets);
     try std.testing.expectEqual(@as(usize, 11), report.boundary.first_wave_targets);
     try std.testing.expectEqual(@as(usize, 11), report.boundary.first_wave_passed);
-    try std.testing.expectEqual(@as(usize, 8), report.boundary.scanner_wave_targets);
-    try std.testing.expectEqual(@as(usize, 8), report.boundary.scanner_wave_passed);
+    try std.testing.expectEqual(@as(usize, 9), report.boundary.scanner_wave_targets);
+    try std.testing.expectEqual(@as(usize, 9), report.boundary.scanner_wave_passed);
     try std.testing.expectEqual(@as(usize, 0), report.boundary.deferred_parser_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.deferred_control_targets);
     try std.testing.expectEqual(@as(usize, 1), report.boundary.frozen_control_fixtures);

@@ -639,6 +639,14 @@ C against the upstream `scanner.c` from `../tree-sitter-grammars`, and exercises
 the `ternary_qmark` scanner path. The scanner source is not copied into this
 repo.
 
+Batch 39 note: Python now has a focused real external-scanner runtime-link
+proof in the bounded compatibility shortlist. The new
+`tree_sitter_python_scanner_json` target loads the Python grammar snapshot,
+extracts the 12-token external scanner boundary, links generated parser C
+against the upstream `scanner.c` from `../tree-sitter-grammars`, and exercises
+the shallow `_newline` scanner path. This does not yet claim the layout
+indent/dedent stack path.
+
 ## Phase 7 — Performance and Capacity
 
 Goal: keep correctness work practical for large grammars.

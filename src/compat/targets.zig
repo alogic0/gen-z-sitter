@@ -425,6 +425,26 @@ pub const shortlist_targets = [_]Target{
         .success_criteria = "load, prepare, and complete the bounded coarse serialize-only parser step while keeping full parser-table and external-scanner runtime-link proofs deferred until bounded measurements are available",
     },
     .{
+        .id = "tree_sitter_python_scanner_json",
+        .display_name = "tree-sitter-python scanner (JSON snapshot)",
+        .grammar_path = "compat_targets/tree_sitter_python/grammar.json",
+        .family = .python,
+        .source_kind = .grammar_json,
+        .boundary_kind = .scanner_external_scanner,
+        .scanner_boundary_check_mode = .full_runtime_link,
+        .real_external_scanner_proof_scope = .full_runtime_link,
+        .provenance = .{
+            .origin_kind = .external_repo_snapshot,
+            .upstream_repository = "tree-sitter-python",
+            .upstream_revision = "26855eabccb19c6abf499fbc5b8dc7cc9ab8bc64",
+            .upstream_grammar_path = "src/grammar.json",
+        },
+        .candidate_status = .intended_scanner_wave,
+        .expected_blocked = false,
+        .notes = "real Python external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow _newline token path",
+        .success_criteria = "load the snapshotted upstream grammar.json, extract the external-scanner boundary, and keep a focused Python _newline runtime-link fixture passing against the real scanner.c",
+    },
+    .{
         .id = "tree_sitter_typescript_json",
         .display_name = "tree-sitter-typescript (JSON snapshot)",
         .grammar_path = "compat_targets/tree_sitter_typescript/grammar.json",
@@ -486,7 +506,7 @@ pub fn firstWaveTargets() []const Target {
 
 test "stagedTargets exposes a small versioned shortlist" {
     const shortlist = shortlistTargets();
-    try std.testing.expectEqual(@as(usize, 21), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 22), shortlist.len);
     try std.testing.expect(shortlist[0].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
@@ -545,16 +565,21 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[18].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[18].parser_boundary_check_mode == .serialize_only);
     try std.testing.expect(shortlist[18].standalone_parser_proof_scope == .coarse_serialize_only);
-    try std.testing.expect(shortlist[19].candidate_status == .intended_first_wave);
-    try std.testing.expect(shortlist[19].family == .typescript);
-    try std.testing.expect(shortlist[19].provenance.origin_kind == .external_repo_snapshot);
-    try std.testing.expect(shortlist[19].parser_boundary_check_mode == .serialize_only);
-    try std.testing.expect(shortlist[19].standalone_parser_proof_scope == .coarse_serialize_only);
+    try std.testing.expect(shortlist[19].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[19].family == .python);
+    try std.testing.expect(shortlist[19].boundary_kind == .scanner_external_scanner);
+    try std.testing.expect(shortlist[19].scanner_boundary_check_mode == .full_runtime_link);
+    try std.testing.expect(shortlist[19].real_external_scanner_proof_scope == .full_runtime_link);
     try std.testing.expect(shortlist[20].candidate_status == .intended_first_wave);
-    try std.testing.expect(shortlist[20].family == .rust);
+    try std.testing.expect(shortlist[20].family == .typescript);
     try std.testing.expect(shortlist[20].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[20].parser_boundary_check_mode == .serialize_only);
     try std.testing.expect(shortlist[20].standalone_parser_proof_scope == .coarse_serialize_only);
+    try std.testing.expect(shortlist[21].candidate_status == .intended_first_wave);
+    try std.testing.expect(shortlist[21].family == .rust);
+    try std.testing.expect(shortlist[21].provenance.origin_kind == .external_repo_snapshot);
+    try std.testing.expect(shortlist[21].parser_boundary_check_mode == .serialize_only);
+    try std.testing.expect(shortlist[21].standalone_parser_proof_scope == .coarse_serialize_only);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {
