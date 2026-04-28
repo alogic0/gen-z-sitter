@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const args = @import("args.zig");
+const node_types_diff = @import("../compat/node_types_diff.zig");
 const upstream_summary = @import("../compat/upstream_summary.zig");
 const diag = @import("../support/diag.zig");
 const fs_support = @import("../support/fs.zig");
@@ -24,6 +25,8 @@ pub fn runCompareUpstream(allocator: std.mem.Allocator, io: std.Io, opts: args.C
     defer local_artifacts.deinit(allocator);
     const corpus = try runCorpusComparisonAlloc(allocator, opts, output_root, local.grammar_name, snapshot, &local_artifacts);
     defer corpus.deinit(allocator);
+    const node_types = try compareNodeTypesArtifactsAlloc(allocator, local_artifacts, snapshot);
+    defer if (node_types) |diff| diff.deinit(allocator);
 
     const diffs = if (snapshot.summary) |summary|
         try upstream_summary.compareSummariesAlloc(allocator, local, summary)
@@ -31,7 +34,7 @@ pub fn runCompareUpstream(allocator: std.mem.Allocator, io: std.Io, opts: args.C
         &.{};
     defer if (snapshot.summary != null) upstream_summary.deinitDiffs(allocator, diffs);
 
-    const report = try renderReportAlloc(allocator, local, local_artifacts, snapshot, diffs, corpus);
+    const report = try renderReportAlloc(allocator, local, local_artifacts, snapshot, diffs, corpus, node_types);
     defer allocator.free(report);
 
     if (opts.output_dir) |output_dir| {
@@ -218,6 +221,20 @@ fn runUpstreamSnapshotAlloc(
 fn pathExists(path: []const u8) bool {
     std.Io.Dir.cwd().access(runtime_io.get(), path, .{}) catch return false;
     return true;
+}
+
+fn compareNodeTypesArtifactsAlloc(
+    allocator: std.mem.Allocator,
+    local_artifacts: LocalArtifacts,
+    snapshot: ReferenceStatus,
+) !?node_types_diff.NodeTypesDiff {
+    const local_path = local_artifacts.node_types_path orelse return null;
+    const upstream_path = snapshot.node_types_path orelse return null;
+    const local_json = try fs_support.readFileAlloc(allocator, local_path, 64 * 1024 * 1024);
+    defer allocator.free(local_json);
+    const upstream_json = try fs_support.readFileAlloc(allocator, upstream_path, 64 * 1024 * 1024);
+    defer allocator.free(upstream_json);
+    return try node_types_diff.compareNodeTypesJsonAlloc(allocator, local_json, upstream_json);
 }
 
 fn runCorpusComparisonAlloc(
@@ -477,6 +494,7 @@ fn renderReportAlloc(
     reference: ReferenceStatus,
     diffs: []const upstream_summary.SummaryDiff,
     corpus: CorpusComparison,
+    node_types: ?node_types_diff.NodeTypesDiff,
 ) ![]const u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
@@ -533,6 +551,13 @@ fn renderReportAlloc(
     try upstream_summary.writeDiffsJson(writer, diffs, 0);
     try writer.writeAll(",\n");
     try writeCorpusComparisonJson(writer, corpus);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"node_types_diff\": ");
+    if (node_types) |diff| {
+        try node_types_diff.writeJson(writer, diff, 2);
+    } else {
+        try writer.writeAll("null");
+    }
     try writer.writeByte('\n');
     try writer.writeAll("}\n");
 

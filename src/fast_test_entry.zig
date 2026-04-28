@@ -54,6 +54,7 @@ test {
     _ = @import("compat/no_vendored_tree_sitter.zig");
     _ = @import("compat/release_boundary.zig");
     _ = @import("compat/minimize_probe.zig");
+    _ = @import("compat/node_types_diff.zig");
     _ = @import("compat/upstream_summary.zig");
     _ = @import("cli/command_compare_upstream.zig");
     _ = @import("support/diag.zig");

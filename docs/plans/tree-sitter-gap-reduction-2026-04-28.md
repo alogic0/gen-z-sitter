@@ -206,6 +206,13 @@ local comparison artifact directory and adds a normalized `node_types_hash` to
 both local and upstream summaries. JSON currently reports a node-types hash
 difference, which becomes the next focused Phase 2.3 diagnostic target.
 
+Batch 4 note: `compare-upstream` now includes a `node_types_diff` section that
+compares top-level node type identities by `{type, named}`. For JSON, the first
+actionable difference is that upstream includes anonymous punctuation nodes
+(`"`, `,`, `:`, `[`, `]`, `{`, `}`) that are absent from the local
+`node-types.json`. Field quantity and child-shape diffs remain the next
+node-types diagnostic layer.
+
 ## Phase 3 — Parse Table Algorithm Parity
 
 Goal: make parse-table differences explainable and shrink the remaining
