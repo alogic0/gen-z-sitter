@@ -184,7 +184,7 @@ Gate:
     document the exact equivalent local invariants.
   - [x] Add local indirect-recursion validation matching upstream
     `validate_indirect_recursion`.
-  - [ ] Add explicit lexical token expansion/inlining artifacts or equivalent
+  - [x] Add explicit lexical token expansion/inlining artifacts or equivalent
     summaries for the local pipeline.
 - [ ] Add a prepared-IR diff for variables, hidden rules, inlined rules,
   auxiliary rules, lexical variables, external tokens, conflicts, and
@@ -234,6 +234,12 @@ Batch 12 note: local raw-grammar lowering now rejects indirect recursion
 through chains of single-symbol productions, matching upstream's
 `validate_indirect_recursion` guard. The diagnostic records the recursive rule
 chain so ambiguous real-grammar failures are visible before symbol lowering.
+
+Batch 13 note: `prepared-ir.json` now records lexical separators, external
+tokens, extra symbols, expected conflicts, precedence orderings,
+variables-to-inline, supertypes, and the word token. These are local
+equivalent artifacts for upstream lexical expansion/inlining surfaces until a
+direct upstream prepared-IR dump exists.
 
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 

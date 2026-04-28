@@ -617,6 +617,48 @@ fn writePreparedIrSnapshotJson(
     if (extracted.lexical.variables.len != 0) try writer.writeAll("  ");
     try writer.writeAll("],\n");
 
+    try writer.writeAll("  \"extracted_lexical_separators\": ");
+    try writeRuleIdArray(writer, extracted.lexical.separators);
+    try writer.writeAll(",\n");
+
+    try writer.writeAll("  \"extracted_external_tokens\": [");
+    if (extracted.syntax.external_tokens.len != 0) try writer.writeByte('\n');
+    for (extracted.syntax.external_tokens, 0..) |token, index| {
+        try writer.writeAll("    { \"name\": ");
+        try writeJsonString(writer, token.name);
+        try writer.writeAll(", \"kind\": ");
+        try writeJsonString(writer, @tagName(token.kind));
+        try writer.writeAll(" }");
+        if (index + 1 != extracted.syntax.external_tokens.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (extracted.syntax.external_tokens.len != 0) try writer.writeAll("  ");
+    try writer.writeAll("],\n");
+
+    try writer.writeAll("  \"extracted_extra_symbols\": ");
+    try writeSymbolRefArray(writer, extracted.syntax.extra_symbols);
+    try writer.writeAll(",\n");
+
+    try writer.writeAll("  \"extracted_expected_conflicts\": ");
+    try writeSymbolRefSets(writer, extracted.syntax.expected_conflicts);
+    try writer.writeAll(",\n");
+
+    try writer.writeAll("  \"extracted_precedence_orderings\": ");
+    try writePrecedenceOrderings(writer, extracted.syntax.precedence_orderings);
+    try writer.writeAll(",\n");
+
+    try writer.writeAll("  \"extracted_variables_to_inline\": ");
+    try writeSymbolRefArray(writer, extracted.syntax.variables_to_inline);
+    try writer.writeAll(",\n");
+
+    try writer.writeAll("  \"extracted_supertype_symbols\": ");
+    try writeSymbolRefArray(writer, extracted.syntax.supertype_symbols);
+    try writer.writeAll(",\n");
+
+    try writer.writeAll("  \"extracted_word_token\": ");
+    try writeOptionalSymbolRef(writer, extracted.syntax.word_token);
+    try writer.writeAll(",\n");
+
     try writer.writeAll("  \"flattened_syntax_variables\": [");
     if (flattened.variables.len != 0) try writer.writeByte('\n');
     for (flattened.variables, 0..) |variable, index| {
@@ -632,6 +674,92 @@ fn writePreparedIrSnapshotJson(
     if (flattened.variables.len != 0) try writer.writeAll("  ");
     try writer.writeAll("]\n");
     try writer.writeAll("}\n");
+}
+
+fn writeRuleIdArray(writer: anytype, values: []const @import("../ir/rules.zig").RuleId) !void {
+    try writer.writeByte('[');
+    for (values, 0..) |value, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writer.print("{d}", .{value});
+    }
+    try writer.writeByte(']');
+}
+
+fn writeOptionalSymbolRef(writer: anytype, maybe_symbol: ?syntax_ir.SymbolRef) !void {
+    if (maybe_symbol) |symbol| {
+        try writeSymbolRef(writer, symbol);
+    } else {
+        try writer.writeAll("null");
+    }
+}
+
+fn writeSymbolRefArray(writer: anytype, values: []const syntax_ir.SymbolRef) !void {
+    try writer.writeByte('[');
+    for (values, 0..) |value, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writeSymbolRef(writer, value);
+    }
+    try writer.writeByte(']');
+}
+
+fn writeSymbolRefSets(writer: anytype, sets: []const []const syntax_ir.SymbolRef) !void {
+    try writer.writeByte('[');
+    for (sets, 0..) |set, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writeSymbolRefArray(writer, set);
+    }
+    try writer.writeByte(']');
+}
+
+fn writePrecedenceOrderings(writer: anytype, orderings: []const []const syntax_ir.PrecedenceEntry) !void {
+    try writer.writeByte('[');
+    for (orderings, 0..) |ordering, ordering_index| {
+        if (ordering_index != 0) try writer.writeAll(", ");
+        try writer.writeByte('[');
+        for (ordering, 0..) |entry, entry_index| {
+            if (entry_index != 0) try writer.writeAll(", ");
+            try writePrecedenceEntry(writer, entry);
+        }
+        try writer.writeByte(']');
+    }
+    try writer.writeByte(']');
+}
+
+fn writePrecedenceEntry(writer: anytype, entry: syntax_ir.PrecedenceEntry) !void {
+    try writer.writeAll("{ \"kind\": ");
+    switch (entry) {
+        .name => |name| {
+            try writeJsonString(writer, "name");
+            try writer.writeAll(", \"name\": ");
+            try writeJsonString(writer, name);
+        },
+        .symbol => |symbol| {
+            try writeJsonString(writer, "symbol");
+            try writer.writeAll(", \"symbol\": ");
+            try writeSymbolRef(writer, symbol);
+        },
+    }
+    try writer.writeAll(" }");
+}
+
+fn writeSymbolRef(writer: anytype, symbol: syntax_ir.SymbolRef) !void {
+    try writer.writeAll("{ \"kind\": ");
+    switch (symbol) {
+        .end => try writeJsonString(writer, "end"),
+        .non_terminal => |index| {
+            try writeJsonString(writer, "non_terminal");
+            try writer.print(", \"index\": {d}", .{index});
+        },
+        .terminal => |index| {
+            try writeJsonString(writer, "terminal");
+            try writer.print(", \"index\": {d}", .{index});
+        },
+        .external => |index| {
+            try writeJsonString(writer, "external");
+            try writer.print(", \"index\": {d}", .{index});
+        },
+    }
+    try writer.writeAll(" }");
 }
 
 fn countVariableSteps(variable: syntax_ir.SyntaxVariable) usize {
@@ -1054,5 +1182,8 @@ test "generateLocalPreparedIrSnapshotJsonAlloc writes diffable sections" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"local_stage_order\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"prepared_symbols\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_lexical_variables\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_expected_conflicts\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_variables_to_inline\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_word_token\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"flattened_syntax_variables\"") != null);
 }
