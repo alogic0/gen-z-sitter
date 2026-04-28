@@ -545,6 +545,12 @@ feature diagnostics for class ranges, negated classes, shorthand/hex/unicode/
 control escapes, and `*`, `+`, `?`, and bounded repetition forms. This makes
 real-grammar regex audits more precise without changing lexer behavior.
 
+Batch 84 note: lex-table summaries now include accept-state samples for the
+serialized keyword lexer, matching the ordinary lex-table `accepts` surface.
+This makes reserved-word keyword terminal mapping inspectable in comparison
+artifacts. The batch also tightened regex-surface coverage around the
+per-pattern `alternation` JSON field.
+
 ### 4.2 Lex Table Construction
 
 - [ ] Audit local NFA/DFA construction against upstream `nfa.rs` and

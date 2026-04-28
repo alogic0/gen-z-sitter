@@ -1901,7 +1901,7 @@ fn writeLexTableSummaryJson(
     try writeUsizeField(writer, 2, "keyword_unmapped_reserved_word_count", serialized.keyword_unmapped_reserved_word_count, true);
     try writer.writeAll("  \"keyword_table\": ");
     if (serialized.keyword_lex_table) |keyword_table| {
-        try writeLexTableCountsObject(writer, countLexTable(keyword_table));
+        try writeLexTableCountsObject(writer, countLexTable(keyword_table), keyword_table.states);
     } else {
         try writer.writeAll("null");
     }
@@ -1965,7 +1965,11 @@ fn writeLexAcceptsJson(
     try writer.writeByte(']');
 }
 
-fn writeLexTableCountsObject(writer: anytype, counts: LexTableCounts) !void {
+fn writeLexTableCountsObject(
+    writer: anytype,
+    counts: LexTableCounts,
+    states: []const @import("../lexer/serialize.zig").SerializedLexState,
+) !void {
     try writer.writeAll("{ \"state_count\": ");
     try writer.print("{d}", .{counts.state_count});
     try writer.writeAll(", \"transition_count\": ");
@@ -1988,6 +1992,8 @@ fn writeLexTableCountsObject(writer: anytype, counts: LexTableCounts) !void {
     try writeJsonHexU64(writer, counts.transition_target_hash);
     try writer.writeAll(", \"range_hash\": ");
     try writeJsonHexU64(writer, counts.range_hash);
+    try writer.writeAll(", \"accepts\": ");
+    try writeLexAcceptsJson(writer, states);
     try writer.writeAll(" }");
 }
 
@@ -3284,6 +3290,7 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_pattern\": 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"supported_subset\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_features\": []") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"alternation\": true, \"anchor\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"flags\": \"i\"") != null);
 }
 
@@ -3377,6 +3384,7 @@ test "writeLexTableSummaryJson writes keyword table counts" {
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_table\": {") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_unmapped_reserved_word_count\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"accepts\": [{ \"state\": 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"accept_symbol_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_target_hash\"") != null);
 }
