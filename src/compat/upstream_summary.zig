@@ -285,6 +285,30 @@ pub fn generateLocalParseStateSummaryJsonAlloc(
     return try out.toOwnedSlice();
 }
 
+pub fn generateLocalConflictSummaryJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+    const result = try parse_table_pipeline.buildStatesFromPrepared(arena.allocator(), prepared);
+    const unresolved = try result.unresolvedDecisionsAlloc(arena.allocator());
+    const expected_report = try parse_table_pipeline.expectedConflictReportFromBuildResultAlloc(arena.allocator(), result);
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeConflictSummaryJson(&out.writer, prepared.expected_conflicts.len, expected_report.unused_expected_conflict_indexes, unresolved);
+    return try out.toOwnedSlice();
+}
+
 pub fn parseUpstreamParserCSummaryAlloc(
     allocator: std.mem.Allocator,
     grammar_name: []const u8,
@@ -715,6 +739,58 @@ fn hashSymbolSet(hasher: *std.hash.Wyhash, set: @import("../parse_table/first.zi
     hasher.update(set.externals.maskBytes());
     hashBool(hasher, set.includes_end);
     hashBool(hasher, set.includes_epsilon);
+}
+
+fn writeConflictSummaryJson(
+    writer: anytype,
+    declared_expected_count: usize,
+    unused_expected_indexes: []const usize,
+    unresolved: []const @import("../parse_table/resolution.zig").UnresolvedDecisionRef,
+) !void {
+    const counts = conflictReasonCounts(unresolved);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, 2, "declared_expected_conflict_count", declared_expected_count, true);
+    try writeUsizeField(writer, 2, "unused_expected_conflict_count", unused_expected_indexes.len, true);
+    try writer.writeAll("  \"unused_expected_conflict_indexes\": [");
+    for (unused_expected_indexes, 0..) |index_value, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writer.print("{d}", .{index_value});
+    }
+    try writer.writeAll("],\n");
+    try writeUsizeField(writer, 2, "unresolved_count", unresolved.len, true);
+    try writer.writeAll("  \"unresolved_reasons\": {\n");
+    try writeUsizeField(writer, 4, "multiple_candidates", counts.multiple_candidates, true);
+    try writeUsizeField(writer, 4, "shift_reduce", counts.shift_reduce, true);
+    try writeUsizeField(writer, 4, "shift_reduce_expected", counts.shift_reduce_expected, true);
+    try writeUsizeField(writer, 4, "reduce_reduce_deferred", counts.reduce_reduce_deferred, true);
+    try writeUsizeField(writer, 4, "reduce_reduce_expected", counts.reduce_reduce_expected, true);
+    try writeUsizeField(writer, 4, "unsupported_action_mix", counts.unsupported_action_mix, false);
+    try writer.writeAll("  }\n");
+    try writer.writeAll("}\n");
+}
+
+const ConflictReasonCounts = struct {
+    multiple_candidates: usize = 0,
+    shift_reduce: usize = 0,
+    shift_reduce_expected: usize = 0,
+    reduce_reduce_deferred: usize = 0,
+    reduce_reduce_expected: usize = 0,
+    unsupported_action_mix: usize = 0,
+};
+
+fn conflictReasonCounts(unresolved: []const @import("../parse_table/resolution.zig").UnresolvedDecisionRef) ConflictReasonCounts {
+    var counts = ConflictReasonCounts{};
+    for (unresolved) |decision| {
+        switch (decision.reason) {
+            .multiple_candidates => counts.multiple_candidates += 1,
+            .shift_reduce => counts.shift_reduce += 1,
+            .shift_reduce_expected => counts.shift_reduce_expected += 1,
+            .reduce_reduce_deferred => counts.reduce_reduce_deferred += 1,
+            .reduce_reduce_expected => counts.reduce_reduce_expected += 1,
+            .unsupported_action_mix => counts.unsupported_action_mix += 1,
+        }
+    }
+    return counts;
 }
 
 fn countProductions(variables: []const syntax_ir.SyntaxVariable) usize {
@@ -1623,4 +1699,24 @@ test "generateLocalParseStateSummaryJsonAlloc writes item-set summary hashes" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"core_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"lookahead_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_hash\"") != null);
+}
+
+test "generateLocalConflictSummaryJsonAlloc writes unresolved reason counts" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validBlankGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalConflictSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"declared_expected_conflict_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unused_expected_conflict_indexes\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_reasons\"") != null);
 }

@@ -353,6 +353,8 @@ cores, lookaheads, transitions, and conflicts.
 
 - [ ] Audit local conflict resolution against upstream
   `build_parse_table.rs` conflict handling.
+- [x] Write local conflict summary artifacts with declared expected-conflict
+  counts, unused expected-conflict indexes, and unresolved reason counts.
 - [ ] Add differential fixtures for:
   - shift/reduce resolved by static precedence,
   - shift/reduce resolved by associativity,
@@ -367,6 +369,12 @@ Gate:
 
 - The local generator rejects the same intentionally ambiguous fixture that
   upstream rejects and accepts the same expected-conflict variant.
+
+Batch 18 note: local comparison artifacts now include
+`conflict-summary.json`, recording declared expected conflicts, unused expected
+conflict indexes, total unresolved decisions, and unresolved reason counts.
+This gives conflict-resolution work a stable local baseline before adding
+upstream-shaped conflict comparison fixtures.
 
 ### 3.3 Token Conflicts and Lexical Precedence
 
