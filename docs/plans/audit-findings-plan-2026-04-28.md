@@ -104,7 +104,7 @@ ambiguous input.
   decisions.
 - [x] Add fixtures with equal error counts but different skipped-byte costs.
 - [x] Add fixtures where dynamic precedence only wins after equal error cost.
-- [ ] Record `error_cost`, `error_count`, and dynamic precedence in runtime-link
+- [x] Record `error_cost`, `error_count`, and dynamic precedence in runtime-link
   proof output where useful.
 
 Batch 2 note: behavioral parse versions now carry `error_cost` alongside
@@ -114,6 +114,11 @@ versions only after the overflow threshold, merges duplicate positions by lower
 error cost first, and uses dynamic precedence only as the equal-cost
 tie-breaker. Generated parser C now emits `GEN_Z_SITTER_MAX_PARSE_VERSION_OVERFLOW`
 and applies the same overflow-gated cost threshold.
+
+Batch 3 note: direct generated-result runtime-link proofs can now assert
+`error_count`, `error_cost`, and `dynamic_precedence` from
+`TSGeneratedParseResult`. The no-external GLR result proof locks the valid
+zero-error path to all three values.
 
 Gate:
 

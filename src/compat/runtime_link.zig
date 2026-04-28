@@ -85,6 +85,9 @@ pub fn linkAndRunNoExternalTinyGlrResultParser(allocator: std.mem.Allocator) Run
         .direct_generated_parse = true,
         .direct_generated_result = true,
         .expected_consumed_bytes = 2,
+        .expected_error_count = 0,
+        .expected_error_cost = 0,
+        .expected_dynamic_precedence = 0,
     });
 }
 
@@ -3208,6 +3211,9 @@ const GeneratedParserRun = struct {
     direct_generated_result: bool = false,
     expected_direct_parse_success: bool = true,
     expected_consumed_bytes: ?u32 = null,
+    expected_error_count: ?u32 = null,
+    expected_error_cost: ?u32 = null,
+    expected_dynamic_precedence: ?i32 = null,
     extra_driver_declarations: []const u8 = "",
     after_parser_delete_check: []const u8 = "",
 };
@@ -3761,6 +3767,8 @@ fn directGeneratedParseDriverSourceAlloc(
     const input_literal = try cStringLiteralAlloc(allocator, generated.input);
     defer allocator.free(input_literal);
     const expected_consumed = generated.expected_consumed_bytes orelse @as(u32, @intCast(generated.input.len));
+    const result_metrics_check = try generatedResultMetricsCheckAlloc(allocator, generated);
+    defer allocator.free(result_metrics_check);
     const success_check =
         if (generated.expected_direct_parse_success)
             "  if (!parse_ok) return 40;\n"
@@ -3827,6 +3835,7 @@ fn directGeneratedParseDriverSourceAlloc(
         \\    return 41;
         \\  }}
         \\{s}
+        \\{s}
         \\  return 0;
         \\}}
         \\
@@ -3837,8 +3846,40 @@ fn directGeneratedParseDriverSourceAlloc(
         success_check,
         expected_consumed,
         expected_consumed,
+        result_metrics_check,
         generated.after_parser_delete_check,
     });
+}
+
+fn generatedResultMetricsCheckAlloc(
+    allocator: std.mem.Allocator,
+    generated: GeneratedParserRun,
+) RuntimeLinkError![]const u8 {
+    if (!generated.direct_generated_result) return try allocator.dupe(u8, "");
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+
+    if (generated.expected_error_count) |expected| {
+        try out.writer.print(
+            "  if (parse_ok && result.error_count != {d}) return 60;\n",
+            .{expected},
+        );
+    }
+    if (generated.expected_error_cost) |expected| {
+        try out.writer.print(
+            "  if (parse_ok && result.error_cost != {d}) return 61;\n",
+            .{expected},
+        );
+    }
+    if (generated.expected_dynamic_precedence) |expected| {
+        try out.writer.print(
+            "  if (parse_ok && result.dynamic_precedence != {d}) return 62;\n",
+            .{expected},
+        );
+    }
+
+    return try out.toOwnedSlice();
 }
 
 fn cStringLiteralAlloc(allocator: std.mem.Allocator, value: []const u8) RuntimeLinkError![]const u8 {
