@@ -508,23 +508,46 @@ The project is release-ready only when these are true:
   and limitations.
 - [x] No tree-sitter implementation files are vendored into the project.
 
+Implementation batches:
+
+1. Release boundary audit.
+   - [x] Re-check Phase 3/7 evidence against the release-readiness checklist.
+   - [x] Confirm JSON plus promoted Ziggy-family and Zig evidence satisfy the
+     current staged "real grammar" boundary.
+   - [x] Confirm Bash/Haskell generated-GLR scanner proofs satisfy the external
+     scanner release-readiness boundary.
+   - [x] Confirm heavy compatibility checks are bounded and separate from fast
+     local tests.
+
+2. Public generated-parser status surface.
+   - [x] Add a generated parser status string for the temporary result/tree API.
+   - [x] Add a generated parser status string for bounded GLR recovery.
+   - [x] Emit `ts_generated_result_api_status()` and
+     `ts_generated_error_recovery_status()` in generated `parser.c`.
+   - [x] Add focused emitter tests for the new status accessors.
+   - [x] Refresh parser.c golden fixtures.
+
+3. Documentation and plan closure.
+   - [x] Document the temporary generated result/tree-string API in README.
+   - [x] Document that generated GLR recovery is bounded and not full
+     tree-sitter runtime recovery parity.
+   - [x] Mark Phase 8 readiness checkboxes according to the staged release
+     boundary, not full upstream parity.
+   - [x] Record that the project still claims staged release readiness only.
+
+4. Release hardening follow-up.
+   - [ ] Add a release checklist command that runs the accepted bounded release
+     gates in one build step.
+   - [ ] Add a generated parser status runtime-link proof that calls the two new
+     status accessors from compiled generated C.
+   - [ ] Add a compact release artifact summarizing promoted grammars, deferred
+     grammars, and known runtime-surface gaps.
+   - [ ] Add a no-vendored-tree-sitter-files check that ignores `.zig-cache/`
+     but scans committed source and compatibility fixture paths.
+
 Phase 8 note: release-readiness is still a staged project claim, not full
 upstream parity. The current release boundary is JSON plus promoted Ziggy-family
 and Zig runtime-link/compile-smoke evidence, focused Bash/Haskell generated-GLR
 external scanner proofs, an opt-in generated result/tree-string API, bounded
 generated GLR recovery, bounded heavy compatibility tests, documented limits,
 and no vendored tree-sitter implementation files.
-
-## Recommended Immediate Order
-
-1. Finish emitted no-action recovery in generated GLR.
-2. Add direct `ts_generated_parse` runtime-link tests.
-3. Add external scanner callback support to generated GLR.
-4. Prove Bash or Haskell through the generated GLR scanner path.
-5. Reclassify JavaScript, Python, TypeScript, and Rust based on supported
-   scanner boundaries.
-6. Promote one real grammar at a time with artifacts refreshed after each batch.
-
-This order keeps the next work tied to correctness gates and avoids spending
-time on large grammar promotion before the generated runtime can actually model
-the scanner and recovery surfaces those grammars require.
