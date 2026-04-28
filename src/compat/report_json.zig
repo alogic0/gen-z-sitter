@@ -65,6 +65,51 @@ pub fn renderRunReportAlloc(
     });
 }
 
+fn normalizeVolatileMetricLinesAlloc(
+    allocator: std.mem.Allocator,
+    source: []const u8,
+) ![]u8 {
+    var normalized: std.Io.Writer.Allocating = .init(allocator);
+    errdefer normalized.deinit();
+
+    var lines = std.mem.splitScalar(u8, source, '\n');
+    var first = true;
+    while (lines.next()) |line| {
+        if (!first) try normalized.writer.writeByte('\n');
+        first = false;
+
+        if (volatileMetricPrefixEnd(line)) |prefix_end| {
+            try normalized.writer.writeAll(line[0..prefix_end]);
+            try normalized.writer.writeAll(" 0");
+            if (std.mem.endsWith(u8, line, ",")) try normalized.writer.writeByte(',');
+        } else {
+            try normalized.writer.writeAll(line);
+        }
+    }
+
+    return try normalized.toOwnedSlice();
+}
+
+fn volatileMetricPrefixEnd(line: []const u8) ?usize {
+    const keys = [_][]const u8{
+        "\"emit_parser_c_ms\"",
+        "\"compile_smoke_ms\"",
+        "\"compile_smoke_max_rss_bytes\"",
+        "\"collect_transitions_ns\"",
+        "\"extra_transitions_ns\"",
+        "\"reserved_word_ns\"",
+        "\"build_actions_ns\"",
+        "\"detect_conflicts_ns\"",
+    };
+
+    for (keys) |key| {
+        const key_start = std.mem.indexOf(u8, line, key) orelse continue;
+        const colon_index = std.mem.indexOfPos(u8, line, key_start + key.len, ":") orelse continue;
+        return colon_index + 1;
+    }
+    return null;
+}
+
 pub fn collectAggregateCounts(results: []const result_model.TargetRunResult) AggregateCounts {
     var counts = AggregateCounts{
         .total_targets = results.len,
@@ -238,7 +283,29 @@ test "renderRunReportAlloc matches the checked-in shortlist report artifact" {
     const expected = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "compat_targets/shortlist_report.json", allocator, .limited(1024 * 1024));
     defer allocator.free(expected);
 
-    const normalized_expected = std.mem.trimEnd(u8, expected, "\n");
-    const normalized_rendered = std.mem.trimEnd(u8, rendered, "\n");
+    const expected_without_volatile_metrics = try normalizeVolatileMetricLinesAlloc(allocator, expected);
+    defer allocator.free(expected_without_volatile_metrics);
+    const rendered_without_volatile_metrics = try normalizeVolatileMetricLinesAlloc(allocator, rendered);
+    defer allocator.free(rendered_without_volatile_metrics);
+
+    const normalized_expected = std.mem.trimEnd(u8, expected_without_volatile_metrics, "\n");
+    const normalized_rendered = std.mem.trimEnd(u8, rendered_without_volatile_metrics, "\n");
     try std.testing.expectEqualStrings(normalized_expected, normalized_rendered);
+}
+
+test "normalizeVolatileMetricLinesAlloc masks timing and memory values" {
+    const source =
+        \\{
+        \\  "compile_smoke_ms": 12.34,
+        \\  "compile_smoke_max_rss_bytes": null,
+        \\  "stable": 7
+        \\}
+    ;
+
+    const normalized = try normalizeVolatileMetricLinesAlloc(std.testing.allocator, source);
+    defer std.testing.allocator.free(normalized);
+
+    try std.testing.expect(std.mem.indexOf(u8, normalized, "\"compile_smoke_ms\": 0,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, normalized, "\"compile_smoke_max_rss_bytes\": 0,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, normalized, "\"stable\": 7") != null);
 }

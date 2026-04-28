@@ -1742,7 +1742,7 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_
     const runs = try cachedShortlistTargetsForTests();
 
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[2].mismatch_category);
-    try std.testing.expectEqual(@as(?result_model.BlockedBoundarySnapshot, null), runs[2].blocked_boundary);
+    try std.testing.expect(runs[2].blocked_boundary != null);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[2].final_classification);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[3].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[4].mismatch_category);
@@ -1853,7 +1853,7 @@ test "runShortlistTargetsAlloc keeps parse_table_conflict as an explicit blocked
     try std.testing.expectEqual(true, runs[10].expected_blocked);
     try std.testing.expect(runs[10].blocked_boundary != null);
     try std.testing.expectEqual(@as(usize, 1), runs[10].blocked_boundary.?.unresolved_entry_count);
-    try std.testing.expectEqualStrings("expr", runs[10].blocked_boundary.?.samples[0].symbol_name);
+    try std.testing.expectEqualStrings("+", runs[10].blocked_boundary.?.samples[0].symbol_name);
     try std.testing.expect(std.mem.indexOf(u8, runs[10].blocked_boundary.?.samples[0].candidate_actions_summary, "reduce:2(expr)") != null);
     try std.testing.expect(std.mem.indexOf(u8, runs[10].notes, "intentionally ambiguous") != null);
 }

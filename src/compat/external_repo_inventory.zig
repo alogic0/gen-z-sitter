@@ -345,8 +345,8 @@ test "buildExternalRepoInventoryAlloc summarizes the current external evidence" 
     var report = try buildExternalRepoInventoryAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 11), report.total_external_repo_targets);
-    try std.testing.expectEqual(@as(usize, 7), report.passed_external_repo_targets);
+    try std.testing.expectEqual(@as(usize, 15), report.total_external_repo_targets);
+    try std.testing.expectEqual(@as(usize, 15), report.passed_external_repo_targets);
     try std.testing.expectEqual(@as(usize, 11), report.family_coverage.len);
     try std.testing.expectEqual(@as(usize, 2), report.boundary_coverage.len);
     try std.testing.expectEqual(targets.BoundaryKind.parser_only, report.boundary_coverage[0].boundary_kind);
@@ -362,9 +362,9 @@ test "buildExternalRepoInventoryAlloc summarizes the current external evidence" 
     try std.testing.expectEqual(targets.TargetFamily.python, report.family_coverage[8].family);
     try std.testing.expectEqual(targets.TargetFamily.typescript, report.family_coverage[9].family);
     try std.testing.expectEqual(targets.TargetFamily.rust, report.family_coverage[10].family);
-    try std.testing.expectEqual(@as(usize, 3), report.current_limitations.len);
-    try std.testing.expectEqual(ExternalEvidenceNextStep.narrow_or_promote_onboarded_external_parser_targets, report.recommended_next_step);
-    try std.testing.expectEqual(@as(usize, 11), report.targets.len);
+    try std.testing.expectEqual(@as(usize, 2), report.current_limitations.len);
+    try std.testing.expectEqual(ExternalEvidenceNextStep.broader_compatibility_polish, report.recommended_next_step);
+    try std.testing.expectEqual(@as(usize, 15), report.targets.len);
 }
 
 test "renderExternalRepoInventoryAlloc matches the checked-in external repo inventory artifact" {

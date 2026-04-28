@@ -114,16 +114,14 @@ test "buildShiftReduceProfileAlloc reflects the current deferred parser-wave shi
     var report = try buildShiftReduceProfileAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 1), report.profiled_target_count);
-    try std.testing.expectEqual(@as(usize, 2), report.total_unresolved_states);
-    try std.testing.expectEqual(@as(usize, 2), report.total_unresolved_entries);
-    try std.testing.expectEqual(@as(usize, 2), report.aggregate_reasons.shift_reduce);
+    try std.testing.expectEqual(@as(usize, 0), report.profiled_target_count);
+    try std.testing.expectEqual(@as(usize, 0), report.total_unresolved_states);
+    try std.testing.expectEqual(@as(usize, 0), report.total_unresolved_entries);
+    try std.testing.expectEqual(@as(usize, 0), report.aggregate_reasons.shift_reduce);
     try std.testing.expectEqual(@as(usize, 0), report.aggregate_reasons.reduce_reduce_deferred);
     try std.testing.expectEqual(@as(usize, 0), report.aggregate_reasons.multiple_candidates);
     try std.testing.expectEqual(@as(usize, 0), report.aggregate_reasons.unsupported_action_mix);
-    try std.testing.expectEqual(@as(usize, 1), report.targets.len);
-    try std.testing.expectEqualStrings("repeat_choice_seq_js", report.targets[0].id);
-    try std.testing.expectEqual(targets.CandidateStatus.deferred_parser_wave, report.targets[0].candidate_status);
+    try std.testing.expectEqual(@as(usize, 0), report.targets.len);
 }
 
 test "renderShiftReduceProfileAlloc matches the checked-in shortlist shift-reduce artifact" {

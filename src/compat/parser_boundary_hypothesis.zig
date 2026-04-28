@@ -311,9 +311,9 @@ test "buildParserBoundaryHypothesisAlloc summarizes the current deferred parser-
     var report = try buildParserBoundaryHypothesisAlloc(allocator, runs);
     defer report.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 5), report.deferred_parser_wave_target_count);
+    try std.testing.expectEqual(@as(usize, 0), report.deferred_parser_wave_target_count);
     try std.testing.expect(!report.singleton_parser_wave);
-    try std.testing.expectEqual(@as(usize, 5), report.entries.len);
+    try std.testing.expectEqual(@as(usize, 0), report.entries.len);
 }
 
 test "renderParserBoundaryHypothesisAlloc matches the checked-in parser boundary hypothesis artifact" {
