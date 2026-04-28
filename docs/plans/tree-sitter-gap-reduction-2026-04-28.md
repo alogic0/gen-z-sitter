@@ -591,6 +591,8 @@ selected grammars, not only compile and link.
 - [ ] Audit generated GLR stack behavior against upstream `stack.c`.
 - [ ] Add tests for stack version merge, split, dynamic precedence selection,
   subtree reuse decisions, paused versions, and last external token state.
+  - [x] Cover local GLR version condensation: duplicate stack merge,
+    dynamic-precedence retention, and active-version cap.
 - [x] Preserve dynamic precedence through generated result trees.
 
 Gate:
@@ -602,6 +604,11 @@ precedence in accepted parse results and has a focused dynamic-precedence
 fixture. Generated C already carries `dynamic_precedence` in
 `TSGeneratedParseResult`; this closes the local result-surface gap for the
 temporary generated parser API.
+
+Batch 72 note: behavioral GLR tests now cover the version-condensation path
+directly. Duplicate versions with the same stack and cursor merge while keeping
+the higher dynamic precedence, and over-cap version sets are trimmed to
+`MAX_PARSE_VERSIONS`.
 
 ### 5.2 Error Recovery
 

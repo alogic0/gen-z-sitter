@@ -717,6 +717,68 @@ fn condenseVersions(allocator: std.mem.Allocator, versions: *std.ArrayListUnmana
     }
 }
 
+test "condenseVersions merges duplicate stacks and keeps higher dynamic precedence" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var versions = std.ArrayListUnmanaged(ParseVersion).empty;
+    defer {
+        for (versions.items) |*version| version.deinit(allocator);
+        versions.deinit(allocator);
+    }
+
+    var low = try ParseVersion.initFirst(allocator);
+    try low.stack.append(allocator, 7);
+    low.cursor = 3;
+    low.dynamic_precedence = 1;
+    try versions.append(allocator, low);
+
+    var high = try ParseVersion.initFirst(allocator);
+    try high.stack.append(allocator, 7);
+    high.cursor = 3;
+    high.dynamic_precedence = 5;
+    try versions.append(allocator, high);
+
+    var distinct = try ParseVersion.initFirst(allocator);
+    try distinct.stack.append(allocator, 8);
+    distinct.cursor = 3;
+    distinct.dynamic_precedence = 2;
+    try versions.append(allocator, distinct);
+
+    condenseVersions(allocator, &versions);
+
+    try std.testing.expectEqual(@as(usize, 2), versions.items.len);
+    try std.testing.expectEqual(@as(i32, 5), versions.items[0].dynamic_precedence);
+    try std.testing.expectEqual(@as(u32, 7), versions.items[0].topState());
+    try std.testing.expectEqual(@as(u32, 8), versions.items[1].topState());
+}
+
+test "condenseVersions caps active GLR versions" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var versions = std.ArrayListUnmanaged(ParseVersion).empty;
+    defer {
+        for (versions.items) |*version| version.deinit(allocator);
+        versions.deinit(allocator);
+    }
+
+    for (0..MAX_PARSE_VERSIONS + 2) |index| {
+        var version = try ParseVersion.initFirst(allocator);
+        try version.stack.append(allocator, @intCast(index + 1));
+        version.cursor = index;
+        try versions.append(allocator, version);
+    }
+
+    condenseVersions(allocator, &versions);
+
+    try std.testing.expectEqual(@as(usize, MAX_PARSE_VERSIONS), versions.items.len);
+    try std.testing.expectEqual(@as(u32, 1), versions.items[0].topState());
+    try std.testing.expectEqual(@as(u32, MAX_PARSE_VERSIONS), versions.items[MAX_PARSE_VERSIONS - 1].topState());
+}
+
 fn tryReuseOldSubtree(
     allocator: std.mem.Allocator,
     result: build.BuildResult,
