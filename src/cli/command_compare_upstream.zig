@@ -296,6 +296,7 @@ fn runCorpusComparisonAlloc(
     try fs_support.writeFile(local_raw_grammar_path, local_raw_grammar_json);
     const local_parse_state_dump = try upstream_summary.generateLocalParseStateDumpAlloc(allocator, opts.grammar_path, .{
         .js_runtime = opts.js_runtime orelse "node",
+        .report_states_for_rule = opts.report_states_for_rule,
         .minimize_states = opts.minimize_states,
     });
     defer allocator.free(local_parse_state_dump);

@@ -34,6 +34,7 @@ pub const CompareUpstreamOptions = struct {
     output_dir: ?[]const u8 = null,
     tree_sitter_dir: []const u8 = "../tree-sitter",
     js_runtime: ?[]const u8 = null,
+    report_states_for_rule: ?[]const u8 = null,
     minimize_states: bool = false,
 };
 
@@ -94,6 +95,13 @@ fn parseCompareUpstreamArgs(args: []const []const u8) ParseError!CompareUpstream
                 return error.InvalidArguments;
             }
             opts.js_runtime = args[i];
+        } else if (std.mem.eql(u8, arg, "--report-states-for-rule")) {
+            i += 1;
+            if (i >= args.len) {
+                last_error_message = "missing value for --report-states-for-rule";
+                return error.InvalidArguments;
+            }
+            opts.report_states_for_rule = args[i];
         } else if (std.mem.eql(u8, arg, "--minimize")) {
             opts.minimize_states = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
@@ -233,6 +241,7 @@ pub fn helpText() []const u8 {
     \\  --output <dir>                 Write local-upstream-summary.json into <dir>.
     \\  --tree-sitter-dir <dir>        Reference tree-sitter checkout, default: ../tree-sitter.
     \\  --js-runtime <runtime>         Runtime command used for grammar.js loading, default: node.
+    \\  --report-states-for-rule <rule> Limit local parse-states.txt to states referencing <rule>.
     \\  --minimize                     Enable parse-table minimization in the local summary.
     \\
     \\Current limits:
@@ -299,6 +308,18 @@ test "parse compare-upstream command with output and reference directory" {
     try std.testing.expectEqualStrings(".zig-cache/compat", cli.command.compare_upstream.output_dir.?);
     try std.testing.expectEqualStrings("../tree-sitter", cli.command.compare_upstream.tree_sitter_dir);
     try std.testing.expectEqualStrings("grammar.json", cli.command.compare_upstream.grammar_path);
+}
+
+test "parse compare-upstream command with selected parse-state rule" {
+    const cli = try parseArgs(std.testing.allocator, &.{
+        "gen-z-sitter",
+        "compare-upstream",
+        "--report-states-for-rule",
+        "expr",
+        "grammar.json",
+    });
+    try std.testing.expect(cli.command == .compare_upstream);
+    try std.testing.expectEqualStrings("expr", cli.command.compare_upstream.report_states_for_rule.?);
 }
 
 test "reject missing grammar path" {

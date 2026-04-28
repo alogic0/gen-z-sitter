@@ -17,6 +17,7 @@ pub fn build(b: *std.Build) void {
     const compat_stop_after = b.option([]const u8, "compat-stop-after", "Stop run-compat-target after this stage");
     const upstream_compare_grammar = b.option([]const u8, "upstream-compare-grammar", "Grammar path for run-compare-upstream");
     const upstream_compare_output = b.option([]const u8, "upstream-compare-output", "Output directory for run-compare-upstream");
+    const upstream_compare_report_states_for_rule = b.option([]const u8, "upstream-compare-report-states-for-rule", "Rule name for filtered parse-states artifact in run-compare-upstream");
     const tree_sitter_dir = b.option([]const u8, "tree-sitter-dir", "Reference tree-sitter checkout for run-compare-upstream");
 
     const exe = b.addExecutable(.{
@@ -53,6 +54,10 @@ pub fn build(b: *std.Build) void {
     compare_upstream_cmd.addArg(upstream_compare_output orelse ".zig-cache/upstream-compare");
     compare_upstream_cmd.addArg("--tree-sitter-dir");
     compare_upstream_cmd.addArg(tree_sitter_dir orelse "../tree-sitter");
+    if (upstream_compare_report_states_for_rule) |rule_name| {
+        compare_upstream_cmd.addArg("--report-states-for-rule");
+        compare_upstream_cmd.addArg(rule_name);
+    }
     compare_upstream_cmd.addArg(upstream_compare_grammar orelse "compat_targets/tree_sitter_json/grammar.json");
     const compare_upstream_step = b.step("run-compare-upstream", "Write a bounded local/upstream comparison summary for one grammar");
     compare_upstream_step.dependOn(&compare_upstream_cmd.step);

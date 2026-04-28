@@ -16,6 +16,7 @@ const fixtures = @import("../tests/fixtures.zig");
 
 pub const LocalSummaryOptions = struct {
     js_runtime: []const u8 = "node",
+    report_states_for_rule: ?[]const u8 = null,
     minimize_states: bool = false,
     compact_duplicate_states: bool = true,
 };
@@ -255,7 +256,10 @@ pub fn generateLocalParseStateDumpAlloc(
     defer arena.deinit();
 
     const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
-    const dump = try parse_table_pipeline.generateStateDumpFromPrepared(arena.allocator(), prepared);
+    const dump = if (options.report_states_for_rule) |rule_name|
+        try parse_table_pipeline.generateStateActionDumpForRuleFromPrepared(arena.allocator(), prepared, rule_name)
+    else
+        try parse_table_pipeline.generateStateDumpFromPrepared(arena.allocator(), prepared);
     return try allocator.dupe(u8, dump);
 }
 
@@ -1447,4 +1451,25 @@ test "generateLocalParseStateDumpAlloc writes item-set states" {
     try std.testing.expect(std.mem.indexOf(u8, dump, "state 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, dump, "items:") != null);
     try std.testing.expect(std.mem.indexOf(u8, dump, "transitions:") != null);
+}
+
+test "generateLocalParseStateDumpAlloc supports selected rule snapshots" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validResolvedGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const dump = try generateLocalParseStateDumpAlloc(std.testing.allocator, path, .{
+        .report_states_for_rule = "expr",
+    });
+    defer std.testing.allocator.free(dump);
+
+    try std.testing.expect(std.mem.indexOf(u8, dump, "rule expr") != null);
+    try std.testing.expect(std.mem.indexOf(u8, dump, "actions:") != null);
 }
