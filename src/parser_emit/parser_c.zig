@@ -143,7 +143,7 @@ pub fn writeParserCWithOptions(
     if (has_unresolved) try writer.writeAll("#include <string.h>\n\n");
     try compat.writeCompilerOptimizationPragmas(writer, runtime_lex.table.states.len);
     try compat.writeContractTypesAndConstants(writer, compatibility);
-    try compat.writeReleaseReadinessStatusAccessors(writer);
+    try compat.writeReleaseReadinessStatusAccessors(writer, has_external_scanner);
     if (options.glr_loop) {
         try writer.writeAll("#define GEN_Z_SITTER_ENABLE_GLR_LOOP 1\n\n");
         try writeGlrVersionStorage(writer, has_external_scanner);
@@ -2688,8 +2688,14 @@ test "emitParserCAlloc emits release-readiness status accessors" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_result_api_status(void) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_error_recovery_status(void) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_support_boundary_status(void) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_corpus_status(void) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_external_scanner_status(void) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_result_api_status));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_error_recovery_status));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_support_boundary_status));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_corpus_status));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_scanner_free_status));
 }
 
 test "emitParserCAlloc emits serialized lex modes" {

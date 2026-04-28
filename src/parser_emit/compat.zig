@@ -22,6 +22,22 @@ pub const generated_result_api_status =
 pub const generated_error_recovery_status =
     "bounded generated GLR recovery is enabled; it is not yet a full tree-sitter runtime recovery implementation";
 
+/// User-visible status for generated parser support boundary evidence.
+pub const generated_support_boundary_status =
+    "local generator evidence only; use gen-z-sitter compat-report and compare-upstream for grammar-specific compatibility";
+
+/// User-visible status for corpus comparison evidence.
+pub const generated_corpus_status =
+    "corpus comparison is not embedded in parser.c; use compare-upstream to reproduce upstream and runtime evidence";
+
+/// User-visible status for generated parser external scanner linkage.
+pub const generated_scanner_free_status =
+    "scanner-free generated parser; no external scanner callbacks are required";
+
+/// User-visible status for generated parser external scanner linkage.
+pub const generated_scanner_linked_status =
+    "scanner-linked generated parser; external scanner callbacks must be linked by the host build";
+
 /// Runtime ABI version pair used by the generated C contract.
 pub const RuntimeCompatibilityInfo = struct {
     language_version: u16,
@@ -201,18 +217,36 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
 }
 
 /// Write explicit release-readiness status strings into generated parser C.
-pub fn writeReleaseReadinessStatusAccessors(writer: anytype) !void {
+pub fn writeReleaseReadinessStatusAccessors(writer: anytype, scanner_linked: bool) !void {
     try writer.writeAll("#define GEN_Z_SITTER_RESULT_API_STATUS \"");
     try writer.writeAll(generated_result_api_status);
     try writer.writeAll("\"\n");
     try writer.writeAll("#define GEN_Z_SITTER_ERROR_RECOVERY_STATUS \"");
     try writer.writeAll(generated_error_recovery_status);
+    try writer.writeAll("\"\n");
+    try writer.writeAll("#define GEN_Z_SITTER_SUPPORT_BOUNDARY_STATUS \"");
+    try writer.writeAll(generated_support_boundary_status);
+    try writer.writeAll("\"\n");
+    try writer.writeAll("#define GEN_Z_SITTER_CORPUS_STATUS \"");
+    try writer.writeAll(generated_corpus_status);
+    try writer.writeAll("\"\n");
+    try writer.writeAll("#define GEN_Z_SITTER_EXTERNAL_SCANNER_STATUS \"");
+    try writer.writeAll(if (scanner_linked) generated_scanner_linked_status else generated_scanner_free_status);
     try writer.writeAll("\"\n\n");
     try writer.writeAll("const char *ts_generated_result_api_status(void) {\n");
     try writer.writeAll("  return GEN_Z_SITTER_RESULT_API_STATUS;\n");
     try writer.writeAll("}\n\n");
     try writer.writeAll("const char *ts_generated_error_recovery_status(void) {\n");
     try writer.writeAll("  return GEN_Z_SITTER_ERROR_RECOVERY_STATUS;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("const char *ts_generated_support_boundary_status(void) {\n");
+    try writer.writeAll("  return GEN_Z_SITTER_SUPPORT_BOUNDARY_STATUS;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("const char *ts_generated_corpus_status(void) {\n");
+    try writer.writeAll("  return GEN_Z_SITTER_CORPUS_STATUS;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("const char *ts_generated_external_scanner_status(void) {\n");
+    try writer.writeAll("  return GEN_Z_SITTER_EXTERNAL_SCANNER_STATUS;\n");
     try writer.writeAll("}\n\n");
 }
 
@@ -294,13 +328,26 @@ test "writeReleaseReadinessStatusAccessors emits visible generated-parser status
     var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer buffer.deinit();
 
-    try writeReleaseReadinessStatusAccessors(&buffer.writer);
+    try writeReleaseReadinessStatusAccessors(&buffer.writer, false);
     const emitted = buffer.writer.buffered();
 
     try std.testing.expect(std.mem.indexOf(u8, emitted, "GEN_Z_SITTER_RESULT_API_STATUS") != null);
     try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_result_api_status") != null);
     try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_error_recovery_status") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_support_boundary_status") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_corpus_status") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_external_scanner_status") != null);
     try std.testing.expect(std.mem.indexOf(u8, emitted, generated_error_recovery_status) != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, generated_scanner_free_status) != null);
+}
+
+test "writeReleaseReadinessStatusAccessors emits scanner-linked status when needed" {
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buffer.deinit();
+
+    try writeReleaseReadinessStatusAccessors(&buffer.writer, true);
+
+    try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), generated_scanner_linked_status) != null);
 }
 
 test "writeCompilerOptimizationPragmas only emits for large lexers" {

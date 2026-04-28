@@ -146,6 +146,45 @@ gen-z-sitter generate --json-summary path/to/grammar.json
 gen-z-sitter generate --json-summary --minimize path/to/grammar.json
 ```
 
+## Check Local Compatibility Status
+
+Use `compat-report` when you want a quick local status report for one grammar:
+
+```bash
+gen-z-sitter compat-report path/to/grammar.json
+gen-z-sitter compat-report --minimize path/to/grammar.json
+gen-z-sitter compat-report --js-runtime node path/to/grammar.js
+```
+
+The report tells you whether the grammar is loaded and prepared, whether it is
+scanner-free or scanner-linked, whether serialization is blocked, whether the
+serialized tables fit the generated runtime's current `uint16_t` limits, and
+whether the generated output should be treated as runtime-compatible or
+diagnostic-only.
+
+`compat-report` is local evidence. It does not compare against upstream
+Tree-sitter and it does not run corpus samples. Use it to decide which more
+expensive proof to run next.
+
+## Reproduce Upstream Comparison
+
+Use `compare-upstream` when you want local artifacts and upstream evidence for a
+grammar. The command expects a reference Tree-sitter checkout, defaulting to
+`../tree-sitter`:
+
+```bash
+gen-z-sitter compare-upstream --output .zig-cache/upstream-compare path/to/grammar.json
+gen-z-sitter compare-upstream --tree-sitter-dir /path/to/tree-sitter --output .zig-cache/upstream-compare path/to/grammar.json
+```
+
+The output directory contains `local-upstream-summary.json` plus local artifacts
+such as parse states, conflict summaries, token-conflict summaries,
+minimization summaries, regex-surface summaries, lexer-table summaries,
+`parser.c`, and `node-types.json` when the grammar reaches those stages. These
+artifacts are the reproducible trail for deciding whether a difference is an
+expected local extension, a known unsupported surface, a suspected algorithm
+gap, or a regression.
+
 ## Generate `node-types.json`
 
 To write `node-types.json`:
@@ -194,6 +233,9 @@ When `--glr-loop` is enabled, generated C exposes:
 - `ts_generated_result_tree_string`
 - `ts_generated_result_api_status`
 - `ts_generated_error_recovery_status`
+- `ts_generated_support_boundary_status`
+- `ts_generated_corpus_status`
+- `ts_generated_external_scanner_status`
 
 This API is temporary. It is useful for focused generated-runtime proofs and
 experiments, but it is not a stable replacement for the upstream Tree-sitter C
@@ -208,6 +250,8 @@ You can use the project to get:
 - generated `node-types.json`
 - parse-table diagnostics
 - parser-emission size and optimization summaries
+- local compatibility reports
+- upstream comparison artifacts
 - experimental generated `parser.c`
 - generated GLR result/tree-string experiments
 - compatibility artifacts under `compat_targets/`
@@ -216,7 +260,6 @@ You should not currently expect:
 
 - complete upstream `tree-sitter generate` parity
 - corpus-level runtime equivalence for all grammars
-- first-class CLI output for compatibility reports
 - stable public generated-tree ABI
 - broad support for every external scanner grammar beyond the promoted proofs
 

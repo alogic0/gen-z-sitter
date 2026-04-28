@@ -635,8 +635,8 @@ Goal: make compatibility claims precise and useful.
   current support boundary for a grammar.
 - [x] Expose whether a generated parser is scanner-free, scanner-linked,
   temporary-GLR, runtime-compatible, corpus-compared, or diagnostic-only.
-- [ ] Add generated parser metadata strings for known compatibility limits.
-- [ ] Document how users can reproduce the upstream comparison for their grammar.
+- [x] Add generated parser metadata strings for known compatibility limits.
+- [x] Document how users can reproduce the upstream comparison for their grammar.
 
 Batch 24 note: `gen-z-sitter compat-report` now prints local support status for
 one grammar, including scanner-free/scanner-linked status, external token count,
@@ -644,6 +644,15 @@ serialized table sizes, runtime-limit fit, serialization readiness, runtime
 compatibility, diagnostic-only status, temporary GLR availability, corpus
 comparison status, and a recommended next step. The report is intentionally
 local-only; upstream/corpus parity still comes from `compare-upstream`.
+
+Batch 25 note: generated `parser.c` now exposes explicit status-string
+accessors for the local support boundary, corpus evidence boundary, and
+scanner-free/scanner-linked status, alongside the existing generated result API
+and recovery status strings.
+
+Batch 26 note: the CLI HOWTO now documents `compat-report` as quick local
+evidence and `compare-upstream` as the reproducible upstream/local artifact
+workflow for one grammar.
 
 Gate:
 
