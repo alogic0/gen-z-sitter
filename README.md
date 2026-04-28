@@ -83,10 +83,14 @@ zig build test-cli-generate
 zig build test-pipeline
 zig build test-link-runtime
 zig build test-compat-heavy
+zig build test-release
 zig build run-minimize-report
 ```
 
 `test`, `test-build-config`, `test-cli-generate`, and `test-pipeline` are fast local gates. `test-compat-heavy` is intentionally separate because it exercises larger compatibility targets and can take substantially longer.
+`test-release` aggregates the accepted bounded release-readiness gates: fast
+tests, CLI generation tests, pipeline goldens, runtime-link proofs, heavy
+compatibility checks, and the generator smoke check.
 `run-generate-smoke` is a bounded generator smoke check over the tiny checked-in
 grammar and prints the generator summary JSON without writing artifacts.
 `run-minimize-report` is a bounded diagnostic command. It prints parse-table minimization counts for the staged safe compatibility targets and lists larger or JS-loader targets that are intentionally skipped from fast minimization probes.

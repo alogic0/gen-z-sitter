@@ -536,7 +536,7 @@ Implementation batches:
    - [x] Record that the project still claims staged release readiness only.
 
 4. Release hardening follow-up.
-   - [ ] Add a release checklist command that runs the accepted bounded release
+   - [x] Add a release checklist command that runs the accepted bounded release
      gates in one build step.
    - [ ] Add a generated parser status runtime-link proof that calls the two new
      status accessors from compiled generated C.

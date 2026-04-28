@@ -6,6 +6,7 @@ const custom_step_names = [_][]const u8{
     "run-phase5-profile",
     "run-zig-runtime-link-profile",
     "test-build-config",
+    "test-release",
 };
 
 pub fn build(b: *std.Build) void {
@@ -293,6 +294,15 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_minimize_report.addArgs(args);
     const minimize_report_step = b.step("run-minimize-report", "Print bounded parse-table minimization JSON report");
     minimize_report_step.dependOn(&run_minimize_report.step);
+
+    const release_test_step = b.step("test-release", "Run accepted bounded release-readiness gates");
+    release_test_step.dependOn(&run_tests.step);
+    release_test_step.dependOn(&run_build_config_tests.step);
+    release_test_step.dependOn(&run_cli_generate_tests.step);
+    release_test_step.dependOn(&run_pipeline_tests.step);
+    release_test_step.dependOn(&run_runtime_link_tests.step);
+    release_test_step.dependOn(&run_compat_heavy_tests.step);
+    release_test_step.dependOn(&generate_smoke_cmd.step);
 }
 
 test "custom build steps stay documented" {
@@ -301,6 +311,7 @@ test "custom build steps stay documented" {
     try std.testing.expect(std.mem.eql(u8, custom_step_names[2], "run-phase5-profile"));
     try std.testing.expect(std.mem.eql(u8, custom_step_names[3], "run-zig-runtime-link-profile"));
     try std.testing.expect(std.mem.eql(u8, custom_step_names[4], "test-build-config"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[5], "test-release"));
 }
 
 fn createTestModule(
