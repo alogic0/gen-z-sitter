@@ -665,6 +665,9 @@ real-grammar regex audit open.
   - [x] Expose per-table accept states and accepted symbols in lex summaries.
   - [x] Expose independent EOF-target, skip-action, and large-range decision
     hashes in lex summaries.
+  - [x] Expose upstream-shaped lex-table comparison keys for table counts,
+    accepts, EOF targets, transitions, skip actions, large ranges, ranges, and
+    keyword tables.
 - [x] Reproduce upstream keyword lexer behavior for real word-token grammars.
   - [x] Include serialized keyword-lexer table counts and hashes in lex table
     comparison artifacts.
@@ -732,6 +735,13 @@ fields at the aggregate, per-table, and keyword-table levels. This separates
 EOF handling, skip actions, and large character-set decisions from the broader
 transition/range hashes so lex-table parity failures can be localized more
 precisely.
+
+Batch 108 note: `lex-table-summary.json` now exposes `comparison_keys` for
+table counts, accept symbols, EOF targets, transition targets, skip
+transitions, large-range transitions, ranges, and keyword tables. Each key
+records a stable local hash with `upstream_hash = null` and
+`status = upstream_oracle_missing`, matching the other local-only comparison
+artifacts until a direct upstream lex-table oracle exists.
 
 Batch 101 note: the real word-token keyword parent item is now marked complete.
 The focused JavaScript reserved-string proof still passes with a non-empty

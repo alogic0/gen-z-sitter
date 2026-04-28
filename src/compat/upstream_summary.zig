@@ -2304,11 +2304,14 @@ fn writeLexTableSummaryJson(
     try writeU64HexField(writer, 2, "range_hash", counts.range_hash, true);
     try writeUsizeField(writer, 2, "keyword_unmapped_reserved_word_count", serialized.keyword_unmapped_reserved_word_count, true);
     try writer.writeAll("  \"keyword_table\": ");
+    const keyword_counts = if (serialized.keyword_lex_table) |keyword_table| countLexTable(keyword_table) else null;
     if (serialized.keyword_lex_table) |keyword_table| {
-        try writeLexTableCountsObject(writer, countLexTable(keyword_table), keyword_table.states);
+        try writeLexTableCountsObject(writer, keyword_counts.?, keyword_table.states);
     } else {
         try writer.writeAll("null");
     }
+    try writer.writeAll(",\n");
+    try writeLexComparisonKeysJson(writer, counts, keyword_counts, 2);
     try writer.writeAll(",\n");
     try writer.writeAll("  \"tables\": [\n");
     for (serialized.lex_tables, 0..) |table, index| {
@@ -2354,6 +2357,78 @@ fn writeLexTableSummaryJson(
     }
     try writer.writeAll("  ]\n");
     try writer.writeAll("}\n");
+}
+
+fn writeLexComparisonKeysJson(
+    writer: anytype,
+    counts: LexTableCounts,
+    keyword_counts: ?LexTableCounts,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("\"comparison_keys\": {\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"note\": ");
+    try writeJsonString(writer, "local lex-table comparison keys are stable; tree-sitter parser.c summaries do not expose equivalent serialized lexer tables through the bounded snapshot");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"keys\": [\n");
+    try writeLexComparisonKey(writer, indent + 4, "table_counts", hashLexTableCounts(counts), true);
+    try writeLexComparisonKey(writer, indent + 4, "accept_symbols", counts.accept_symbol_hash, true);
+    try writeLexComparisonKey(writer, indent + 4, "eof_targets", counts.eof_target_hash, true);
+    try writeLexComparisonKey(writer, indent + 4, "transition_targets", counts.transition_target_hash, true);
+    try writeLexComparisonKey(writer, indent + 4, "skip_transitions", counts.skip_transition_hash, true);
+    try writeLexComparisonKey(writer, indent + 4, "large_range_transitions", counts.large_range_transition_hash, true);
+    try writeLexComparisonKey(writer, indent + 4, "ranges", counts.range_hash, true);
+    try writeLexComparisonKey(writer, indent + 4, "keyword_table", if (keyword_counts) |value| hashLexTableCounts(value) else 0, false);
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("]\n");
+    try writeIndent(writer, indent);
+    try writer.writeAll("}");
+}
+
+fn writeLexComparisonKey(
+    writer: anytype,
+    indent: usize,
+    name: []const u8,
+    hash: u64,
+    trailing_comma: bool,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"name\": ");
+    try writeJsonString(writer, name);
+    try writer.writeAll(", \"local_hash\": \"");
+    try writer.print("0x{x:0>16}", .{hash});
+    try writer.writeByte('"');
+    try writer.writeAll(", \"upstream_hash\": null, \"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(" }");
+    if (trailing_comma) try writer.writeByte(',');
+    try writer.writeByte('\n');
+}
+
+fn hashLexTableCounts(counts: LexTableCounts) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, counts.table_count);
+    hashUsize(&hasher, counts.state_count);
+    hashUsize(&hasher, counts.transition_count);
+    hashUsize(&hasher, counts.range_count);
+    hashUsize(&hasher, counts.accept_state_count);
+    hashUsize(&hasher, counts.eof_target_count);
+    hashUsize(&hasher, counts.skip_transition_count);
+    hashUsize(&hasher, counts.large_range_transition_count);
+    hashUsize(&hasher, counts.max_transition_range_count);
+    hashU64(&hasher, counts.accept_symbol_hash);
+    hashU64(&hasher, counts.eof_target_hash);
+    hashU64(&hasher, counts.transition_target_hash);
+    hashU64(&hasher, counts.skip_transition_hash);
+    hashU64(&hasher, counts.large_range_transition_hash);
+    hashU64(&hasher, counts.range_hash);
+    return hasher.final();
 }
 
 fn writeLexAcceptsJson(
@@ -4162,6 +4237,9 @@ test "generateLocalLexTableSummaryJsonAlloc writes lexer table counts" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"skip_transition_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"large_range_transition_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"range_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"comparison_keys\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"skip_transitions\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"upstream_oracle_missing\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_unmapped_reserved_word_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_table\": null") != null);
 }
@@ -4200,4 +4278,5 @@ test "writeLexTableSummaryJson writes keyword table counts" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_target_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"skip_transition_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"large_range_transition_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"keyword_table\"") != null);
 }
