@@ -143,6 +143,7 @@ pub fn writeParserCWithOptions(
     if (has_unresolved) try writer.writeAll("#include <string.h>\n\n");
     try compat.writeCompilerOptimizationPragmas(writer, runtime_lex.table.states.len);
     try compat.writeContractTypesAndConstants(writer, compatibility);
+    try compat.writeReleaseReadinessStatusAccessors(writer);
     if (options.glr_loop) {
         try writer.writeAll("#define GEN_Z_SITTER_ENABLE_GLR_LOOP 1\n\n");
         try writeGlrVersionStorage(writer, has_external_scanner);
@@ -2663,6 +2664,32 @@ test "emitParserCAlloc emits opt-in GLR raw input parse entry point" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_symbol_metadata[child_symbol].named) continue;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (set.versions[i].shifted && advance_bytes > 0) set.versions[i].byte_offset += advance_bytes;\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "set.versions[i].shifted = false;\n"));
+}
+
+test "emitParserCAlloc emits release-readiness status accessors" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &.{},
+                .gotos = &.{},
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_result_api_status(void) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "const char *ts_generated_error_recovery_status(void) {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_result_api_status));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, compat.generated_error_recovery_status));
 }
 
 test "emitParserCAlloc emits serialized lex modes" {

@@ -1040,6 +1040,17 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\  do { result = true; lexer->result_symbol = symbol_value; lexer->mark_end(lexer); } while (0)
         \\#define END_STATE() return result
         \\
+        \\#define GEN_Z_SITTER_RESULT_API_STATUS "temporary generated result API: ts_generated_parse_result and ts_generated_result_tree_string are available when parser.c is emitted with --glr-loop"
+        \\#define GEN_Z_SITTER_ERROR_RECOVERY_STATUS "bounded generated GLR recovery is enabled; it is not yet a full tree-sitter runtime recovery implementation"
+        \\
+        \\const char *ts_generated_result_api_status(void) {
+        \\  return GEN_Z_SITTER_RESULT_API_STATUS;
+        \\}
+        \\
+        \\const char *ts_generated_error_recovery_status(void) {
+        \\  return GEN_Z_SITTER_ERROR_RECOVERY_STATUS;
+        \\}
+        \\
         \\#define STATE_COUNT 7
         \\#define LARGE_STATE_COUNT 2
         \\#define SYMBOL_COUNT 6
@@ -1436,6 +1447,17 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\#define ACCEPT_TOKEN(symbol_value) \
         \\  do { result = true; lexer->result_symbol = symbol_value; lexer->mark_end(lexer); } while (0)
         \\#define END_STATE() return result
+        \\
+        \\#define GEN_Z_SITTER_RESULT_API_STATUS "temporary generated result API: ts_generated_parse_result and ts_generated_result_tree_string are available when parser.c is emitted with --glr-loop"
+        \\#define GEN_Z_SITTER_ERROR_RECOVERY_STATUS "bounded generated GLR recovery is enabled; it is not yet a full tree-sitter runtime recovery implementation"
+        \\
+        \\const char *ts_generated_result_api_status(void) {
+        \\  return GEN_Z_SITTER_RESULT_API_STATUS;
+        \\}
+        \\
+        \\const char *ts_generated_error_recovery_status(void) {
+        \\  return GEN_Z_SITTER_ERROR_RECOVERY_STATUS;
+        \\}
         \\
         \\typedef struct {
         \\  uint16_t symbol_id;

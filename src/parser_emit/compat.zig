@@ -14,6 +14,14 @@ pub const layout_comment = "/* tree-sitter runtime ABI layout */\n";
 
 pub const large_lexer_optimization_state_threshold: usize = 300;
 
+/// User-visible status for the temporary generated parse result API.
+pub const generated_result_api_status =
+    "temporary generated result API: ts_generated_parse_result and ts_generated_result_tree_string are available when parser.c is emitted with --glr-loop";
+
+/// User-visible status for emitted generated-parser recovery.
+pub const generated_error_recovery_status =
+    "bounded generated GLR recovery is enabled; it is not yet a full tree-sitter runtime recovery implementation";
+
 /// Runtime ABI version pair used by the generated C contract.
 pub const RuntimeCompatibilityInfo = struct {
     language_version: u16,
@@ -192,6 +200,22 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
     try writeLexerMacros(writer);
 }
 
+/// Write explicit release-readiness status strings into generated parser C.
+pub fn writeReleaseReadinessStatusAccessors(writer: anytype) !void {
+    try writer.writeAll("#define GEN_Z_SITTER_RESULT_API_STATUS \"");
+    try writer.writeAll(generated_result_api_status);
+    try writer.writeAll("\"\n");
+    try writer.writeAll("#define GEN_Z_SITTER_ERROR_RECOVERY_STATUS \"");
+    try writer.writeAll(generated_error_recovery_status);
+    try writer.writeAll("\"\n\n");
+    try writer.writeAll("const char *ts_generated_result_api_status(void) {\n");
+    try writer.writeAll("  return GEN_Z_SITTER_RESULT_API_STATUS;\n");
+    try writer.writeAll("}\n\n");
+    try writer.writeAll("const char *ts_generated_error_recovery_status(void) {\n");
+    try writer.writeAll("  return GEN_Z_SITTER_ERROR_RECOVERY_STATUS;\n");
+    try writer.writeAll("}\n\n");
+}
+
 /// Write the lexer helper macros used by generated `ts_lex` functions.
 pub fn writeLexerMacros(writer: anytype) !void {
     try writer.writeAll("#ifdef _MSC_VER\n");
@@ -264,6 +288,19 @@ test "writeContractTypesAndConstants emits runtime ABI version constants only" {
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "struct TSLanguage") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define START_LEXER()") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.writer.buffered(), "#define ACCEPT_TOKEN(symbol_value)") != null);
+}
+
+test "writeReleaseReadinessStatusAccessors emits visible generated-parser status strings" {
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buffer.deinit();
+
+    try writeReleaseReadinessStatusAccessors(&buffer.writer);
+    const emitted = buffer.writer.buffered();
+
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "GEN_Z_SITTER_RESULT_API_STATUS") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_result_api_status") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "ts_generated_error_recovery_status") != null);
+    try std.testing.expect(std.mem.indexOf(u8, emitted, generated_error_recovery_status) != null);
 }
 
 test "writeCompilerOptimizationPragmas only emits for large lexers" {

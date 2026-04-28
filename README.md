@@ -169,7 +169,14 @@ The current heavy compatibility path is bounded and separated from the fast defa
 - `parser.c` output is available with `--emit-parser-c`, but the project still does not claim full upstream `tree-sitter generate` parity.
 - External scanner grammars have focused runtime-link proofs for promoted targets, not broad corpus-level runtime equivalence.
 - The generated GLR loop is experimental and opt-in with `--glr-loop`.
-- Generated tree output exists for focused generated-runtime proofs, but the CLI does not yet expose a stable public tree API.
+- Generated tree output is exposed through the temporary generated result API
+  when `parser.c` is emitted with `--glr-loop`: `ts_generated_parse_result`
+  returns `TSGeneratedParseResult`, and `ts_generated_result_tree_string`
+  renders its tree string. The generated C also exposes
+  `ts_generated_result_api_status()` so callers can identify this as temporary.
+- Generated GLR error recovery is bounded and visible through
+  `ts_generated_error_recovery_status()`. It is not yet full tree-sitter
+  runtime recovery parity.
 - Large real grammars stay behind bounded compatibility and profiling commands. Do not run broad compatibility probes without explicit timeouts.
 - Emitted `grammar.json` and compatibility reports are still produced through internal artifacts and update scripts, not a stable `generate` output.
 

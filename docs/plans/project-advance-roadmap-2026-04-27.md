@@ -495,18 +495,25 @@ Gate:
 
 The project is release-ready only when these are true:
 
-- [ ] JSON and at least two additional real grammars pass full pipeline.
+- [x] JSON and at least two additional real grammars pass full pipeline.
 - [x] At least one real external-scanner grammar passes generated GLR
   runtime-link proof.
-- [ ] Generated parser has either tree output or a clearly documented accepted
+- [x] Generated parser has either tree output or a clearly documented accepted
   temporary result API.
-- [ ] Error recovery is implemented in the emitted parser or explicitly disabled
+- [x] Error recovery is implemented in the emitted parser or explicitly disabled
   with a visible compatibility warning.
-- [ ] Heavy compatibility tests are bounded, documented, and separate from fast
+- [x] Heavy compatibility tests are bounded, documented, and separate from fast
   local tests.
-- [ ] README documents the actual executable name, current compatibility level,
+- [x] README documents the actual executable name, current compatibility level,
   and limitations.
-- [ ] No tree-sitter implementation files are vendored into the project.
+- [x] No tree-sitter implementation files are vendored into the project.
+
+Phase 8 note: release-readiness is still a staged project claim, not full
+upstream parity. The current release boundary is JSON plus promoted Ziggy-family
+and Zig runtime-link/compile-smoke evidence, focused Bash/Haskell generated-GLR
+external scanner proofs, an opt-in generated result/tree-string API, bounded
+generated GLR recovery, bounded heavy compatibility tests, documented limits,
+and no vendored tree-sitter implementation files.
 
 ## Recommended Immediate Order
 
