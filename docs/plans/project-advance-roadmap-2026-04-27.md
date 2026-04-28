@@ -538,7 +538,7 @@ Implementation batches:
 4. Release hardening follow-up.
    - [x] Add a release checklist command that runs the accepted bounded release
      gates in one build step.
-   - [ ] Add a generated parser status runtime-link proof that calls the two new
+   - [x] Add a generated parser status runtime-link proof that calls the two new
      status accessors from compiled generated C.
    - [ ] Add a compact release artifact summarizing promoted grammars, deferred
      grammars, and known runtime-surface gaps.

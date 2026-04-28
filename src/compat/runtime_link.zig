@@ -72,6 +72,33 @@ pub fn linkAndRunNoExternalTinyGlrResultParser(allocator: std.mem.Allocator) Run
     });
 }
 
+pub fn linkAndRunGeneratedStatusAccessors(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitTinyGlrParserC(arena.allocator());
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .input = "x",
+        .direct_generated_parse = true,
+        .expected_consumed_bytes = 1,
+        .extra_driver_declarations =
+        \\const char *ts_generated_result_api_status(void);
+        \\const char *ts_generated_error_recovery_status(void);
+        \\
+        ,
+        .after_parser_delete_check =
+        \\  const char *result_status = ts_generated_result_api_status();
+        \\  const char *recovery_status = ts_generated_error_recovery_status();
+        \\  if (!result_status || !strstr(result_status, "temporary generated result API")) return 70;
+        \\  if (!recovery_status || !strstr(recovery_status, "bounded generated GLR recovery")) return 71;
+        \\
+        ,
+    });
+}
+
 pub fn linkAndRunUnresolvedShiftReduceGlrParser(allocator: std.mem.Allocator) RuntimeLinkError!void {
     try ensureTreeSitterRuntimeAvailable();
 
@@ -2547,6 +2574,10 @@ test "linkAndRunNoExternalTinyGlrParser calls generated GLR parse entry directly
 
 test "linkAndRunNoExternalTinyGlrResultParser calls generated GLR result entry directly" {
     try linkAndRunNoExternalTinyGlrResultParser(std.testing.allocator);
+}
+
+test "linkAndRunGeneratedStatusAccessors calls generated release status accessors" {
+    try linkAndRunGeneratedStatusAccessors(std.testing.allocator);
 }
 
 test "linkAndRunUnresolvedShiftReduceGlrParser accepts intended unresolved branch" {
