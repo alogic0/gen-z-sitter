@@ -370,7 +370,7 @@ lookahead, conflict, and minimization gaps.
   - [x] Add upstream-shaped item-set comparison.
 - [ ] Compare kernel items, closure additions, lookaheads, reserved lookaheads,
   and propagation flags against upstream concepts from `item_set_builder.rs`.
-- [ ] Add fixtures for nullable suffixes, nested repeats, expected conflicts,
+- [x] Add fixtures for nullable suffixes, nested repeats, expected conflicts,
   dynamic precedence, and token.immediate interactions.
 - [ ] Remove any remaining coarse-mode behavior from promoted runtime paths
   unless the target is explicitly classified as diagnostic-only.
@@ -398,6 +398,11 @@ items, closure items, completed items, lookaheads, reserved lookaheads, and
 transitions. Each key records the local hash, `upstream_hash = null`, and
 `status = upstream_oracle_missing`, making the artifact upstream-shaped without
 pretending that the bounded parser.c snapshot exposes Tree-sitter item sets.
+
+Batch 110 note: item-set snapshot coverage now includes focused fixture shapes
+for nullable suffixes, nested repeats, expected conflicts, dynamic precedence,
+and token.immediate interactions. Each fixture must render the compact
+comparison block, upstream-shaped comparison keys, and selected state entries.
 
 Batch 94 note: Haskell scanner build tuning now comes from
 `compat_targets/tree_sitter_haskell_json/build_config.json` instead of

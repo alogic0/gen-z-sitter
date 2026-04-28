@@ -3888,6 +3888,106 @@ test "generateLocalItemSetSnapshotJsonAlloc writes selected item-set entries" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"following_reserved_word_set_id\"") != null);
 }
 
+test "generateLocalItemSetSnapshotJsonAlloc covers parity fixture shapes" {
+    const FixtureCase = struct {
+        name: []const u8,
+        contents: []const u8,
+    };
+    const cases = [_]FixtureCase{
+        .{
+            .name = "nullable_suffix",
+            .contents =
+            \\{
+            \\  "name": "nullable_suffix",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        { "type": "STRING", "value": "a" },
+            \\        { "type": "CHOICE", "members": [
+            \\          { "type": "BLANK" },
+            \\          { "type": "STRING", "value": "b" }
+            \\        ] }
+            \\      ]
+            \\    }
+            \\  }
+            \\}
+            ,
+        },
+        .{
+            .name = "nested_repeats",
+            .contents =
+            \\{
+            \\  "name": "nested_repeats",
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "REPEAT",
+            \\      "content": {
+            \\        "type": "REPEAT1",
+            \\        "content": { "type": "STRING", "value": "a" }
+            \\      }
+            \\    }
+            \\  }
+            \\}
+            ,
+        },
+        .{
+            .name = "dynamic_precedence",
+            .contents = fixtures.parseTableDynamicPrecedenceGrammarJson().contents,
+        },
+        .{
+            .name = "token_immediate",
+            .contents =
+            \\{
+            \\  "name": "token_immediate",
+            \\  "extras": [
+            \\    { "type": "PATTERN", "value": "[ ]+" }
+            \\  ],
+            \\  "rules": {
+            \\    "source_file": {
+            \\      "type": "SEQ",
+            \\      "members": [
+            \\        { "type": "STRING", "value": "a" },
+            \\        { "type": "IMMEDIATE_TOKEN", "content": { "type": "STRING", "value": "b" } }
+            \\      ]
+            \\    }
+            \\  }
+            \\}
+            ,
+        },
+    };
+
+    inline for (cases) |case| {
+        var tmp = std.testing.tmpDir(.{});
+        defer tmp.cleanup();
+
+        try tmp.dir.writeFile(std.testing.io, .{
+            .sub_path = "grammar.json",
+            .data = case.contents,
+        });
+
+        const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+        defer std.testing.allocator.free(path);
+
+        const json = try generateLocalItemSetSnapshotJsonAlloc(std.testing.allocator, path, .{});
+        defer std.testing.allocator.free(json);
+
+        try std.testing.expect(std.mem.indexOf(u8, json, "\"comparison\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, json, "\"comparison_keys\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, json, "\"states\"") != null);
+    }
+
+    const expected_conflict_json = try generateLocalItemSetSnapshotJsonAlloc(
+        std.testing.allocator,
+        "compat_targets/parse_table_expected_conflict/grammar.json",
+        .{},
+    );
+    defer std.testing.allocator.free(expected_conflict_json);
+
+    try std.testing.expect(std.mem.indexOf(u8, expected_conflict_json, "\"comparison\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, expected_conflict_json, "\"comparison_keys\"") != null);
+}
+
 test "generateLocalConflictSummaryJsonAlloc writes unresolved reason counts" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
