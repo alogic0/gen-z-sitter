@@ -637,6 +637,8 @@ real-grammar regex audit open.
 - [ ] Compare lex-state counts, accept token priorities, advance actions,
   skip actions, and large character set decisions.
   - [x] Expose per-table accept states and accepted symbols in lex summaries.
+  - [x] Expose independent EOF-target, skip-action, and large-range decision
+    hashes in lex summaries.
 - [ ] Reproduce upstream keyword lexer behavior for real word-token grammars.
   - [x] Include serialized keyword-lexer table counts and hashes in lex table
     comparison artifacts.
@@ -697,6 +699,13 @@ the extracted lexical grammar. The reserved-word tables and keyword lexer use
 the same deterministic terminal mapping, which gives real JavaScript grammar
 snapshots a non-empty keyword lexer table and clears the raw reserved-string
 counter. Non-string reserved members remain counted as unmapped diagnostics.
+
+Batch 100 note: `lex-table-summary.json` now includes independent
+`eof_target_hash`, `skip_transition_hash`, and `large_range_transition_hash`
+fields at the aggregate, per-table, and keyword-table levels. This separates
+EOF handling, skip actions, and large character-set decisions from the broader
+transition/range hashes so lex-table parity failures can be localized more
+precisely.
 
 ### 4.3 Emitted Lexer C Parity
 
