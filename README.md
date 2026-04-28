@@ -87,6 +87,8 @@ zig build run-minimize-report
 ```
 
 `test`, `test-build-config`, `test-cli-generate`, and `test-pipeline` are fast local gates. `test-compat-heavy` is intentionally separate because it exercises larger compatibility targets and can take substantially longer.
+`run-generate-smoke` is a bounded generator smoke check over the tiny checked-in
+grammar and prints the generator summary JSON without writing artifacts.
 `run-minimize-report` is a bounded diagnostic command. It prints parse-table minimization counts for the staged safe compatibility targets and lists larger or JS-loader targets that are intentionally skipped from fast minimization probes.
 
 Expected current behavior:
@@ -178,6 +180,7 @@ Use bounded commands when refreshing generated or compatibility artifacts:
 ```bash
 zig build test
 zig build test-pipeline
+zig build run-generate-smoke
 zig run update_compat_artifacts.zig
 zig run update_parser_boundary_probe.zig
 ```

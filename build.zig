@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const custom_step_names = [_][]const u8{
+    "run-generate-smoke",
     "run-minimize-report",
     "run-phase5-profile",
     "run-zig-runtime-link-profile",
@@ -32,6 +33,15 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the gen-z-sitter executable");
     run_step.dependOn(&run_cmd.step);
+
+    const generate_smoke_cmd = b.addRunArtifact(exe);
+    generate_smoke_cmd.addArgs(&.{
+        "generate",
+        "--json-summary",
+        "compat_targets/parse_table_tiny/grammar.json",
+    });
+    const generate_smoke_step = b.step("run-generate-smoke", "Run a bounded generator smoke check on a tiny grammar");
+    generate_smoke_step.dependOn(&generate_smoke_cmd.step);
 
     const unit_tests = b.addTest(.{
         .root_module = createTestModule(b, "src/fast_test_entry.zig", target, optimize),
@@ -286,10 +296,11 @@ pub fn build(b: *std.Build) void {
 }
 
 test "custom build steps stay documented" {
-    try std.testing.expect(std.mem.eql(u8, custom_step_names[0], "run-minimize-report"));
-    try std.testing.expect(std.mem.eql(u8, custom_step_names[1], "run-phase5-profile"));
-    try std.testing.expect(std.mem.eql(u8, custom_step_names[2], "run-zig-runtime-link-profile"));
-    try std.testing.expect(std.mem.eql(u8, custom_step_names[3], "test-build-config"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[0], "run-generate-smoke"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[1], "run-minimize-report"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[2], "run-phase5-profile"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[3], "run-zig-runtime-link-profile"));
+    try std.testing.expect(std.mem.eql(u8, custom_step_names[4], "test-build-config"));
 }
 
 fn createTestModule(

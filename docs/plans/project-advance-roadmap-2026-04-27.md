@@ -473,6 +473,7 @@ Goal: make the project useful as a command-line generator.
   output, and heavy grammars.
 - [x] Add a generated-output golden update workflow that is explicit and
   bounded.
+- [x] Add a bounded generator smoke build step for a tiny checked-in grammar.
 
 Phase 7 note: the CLI now documents `gen-z-sitter` consistently and exposes
 opt-in `parser.c` output with `--emit-parser-c`. Experimental generated GLR
@@ -482,7 +483,8 @@ commands. Follow-up cleanup made `--js-runtime` functional for `grammar.js`
 loading and made unsupported `--abi` values fail explicitly instead of being
 silently ignored. The `--report-states-for-rule` flag now emits a bounded
 parser-state/action report for states whose item sets reference the requested
-rule.
+rule. The `run-generate-smoke` build step now gives new users a small
+end-to-end generator check that prints summary JSON without writing artifacts.
 
 Gate:
 
