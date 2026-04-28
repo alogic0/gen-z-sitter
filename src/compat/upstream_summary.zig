@@ -1371,7 +1371,38 @@ fn writeSerializedTableCountFields(
     try writeUsizeField(writer, 4, "parse_action_list_count", serialized.parse_action_list.len, true);
     try writeUsizeField(writer, 4, "action_entry_count", countSerializedActionEntries(serialized.states), true);
     try writeUsizeField(writer, 4, "goto_entry_count", countSerializedGotoEntries(serialized.states), true);
-    try writeUsizeField(writer, 4, "unresolved_entry_count", countSerializedUnresolvedEntries(serialized.states), false);
+    try writeUsizeField(writer, 4, "unresolved_entry_count", countSerializedUnresolvedEntries(serialized.states), true);
+    try writeU64HexField(writer, 4, "lex_mode_hash", hashSerializedLexModes(serialized.lex_modes), true);
+    try writeU64HexField(writer, 4, "primary_state_id_hash", hashPrimaryStateIds(serialized.primary_state_ids), true);
+    try writeU64HexField(writer, 4, "production_metadata_hash", hashSerializedProductions(serialized.productions), false);
+}
+
+fn hashSerializedLexModes(modes: []const @import("../lexer/serialize.zig").SerializedLexMode) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (modes) |mode| {
+        hashU32(&hasher, @intCast(mode.lex_state));
+        hashU32(&hasher, @intCast(mode.external_lex_state));
+        hashU32(&hasher, @intCast(mode.reserved_word_set_id));
+    }
+    return hasher.final();
+}
+
+fn hashPrimaryStateIds(ids: []const @import("../parse_table/state.zig").StateId) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (ids) |id| hashU32(&hasher, id);
+    return hasher.final();
+}
+
+fn hashSerializedProductions(productions: []const parse_table_serialize.SerializedProductionInfo) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (productions) |production| {
+        hashU32(&hasher, production.lhs);
+        hashU32(&hasher, @intCast(production.child_count));
+        var dynamic_buffer: [@sizeOf(i16)]u8 = undefined;
+        std.mem.writeInt(i16, &dynamic_buffer, production.dynamic_precedence, .little);
+        hasher.update(&dynamic_buffer);
+    }
+    return hasher.final();
 }
 
 fn countSerializedActionEntries(states: []const parse_table_serialize.SerializedState) usize {
@@ -2852,6 +2883,9 @@ test "generateLocalMinimizationSummaryJsonAlloc writes default and minimized cou
     try std.testing.expect(std.mem.indexOf(u8, json, "\"minimized\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"merged_state_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"removed_action_entry_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"lex_mode_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"primary_state_id_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"production_metadata_hash\"") != null);
 }
 
 test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries" {
