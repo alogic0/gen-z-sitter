@@ -407,12 +407,20 @@ prefix, continuation, separator, different-string, and starting-overlap cases.
   removal, and descending-size reorder.
 - [ ] Preserve correct primary state IDs, lex modes, external lex states, and
   production metadata after minimization.
+- [x] Add a local minimization summary artifact for selected comparison
+  grammars.
 - [ ] Add a minimization diff report for large real grammars.
 
 Gate:
 
 - `--minimize` can be enabled for promoted compile-smoke targets without
   changing runtime-link results.
+
+Batch 21 note: local comparison artifacts now include
+`minimization-summary.json`, comparing default and minimized serialized table
+counts for the selected grammar. It records state, large-state, small-row,
+parse-action-list, action-entry, goto-entry, unresolved-entry, merged-state,
+removed-action-entry, and removed-goto-entry counts.
 
 ## Phase 4 — Lexer and Regex Parity
 

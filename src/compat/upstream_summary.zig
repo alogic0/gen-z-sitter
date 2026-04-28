@@ -10,6 +10,7 @@ const node_type_pipeline = @import("../node_types/pipeline.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const raw_grammar = @import("../grammar/raw_grammar.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
+const parse_table_serialize = @import("../parse_table/serialize.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const parser_compat = @import("../parser_emit/compat.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
@@ -341,6 +342,46 @@ pub fn generateLocalTokenConflictSummaryJsonAlloc(
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     try writeTokenConflictSummaryJson(&out.writer, expanded, conflict_map);
+    return try out.toOwnedSlice();
+}
+
+pub fn generateLocalMinimizationSummaryJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena_allocator, &loaded.json.grammar);
+    const default_serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+        arena_allocator,
+        prepared,
+        .diagnostic,
+        .{
+            .minimize_states = false,
+            .strict_expected_conflicts = false,
+        },
+    );
+    const minimized_serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+        arena_allocator,
+        prepared,
+        .diagnostic,
+        .{
+            .minimize_states = true,
+            .strict_expected_conflicts = false,
+        },
+    );
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeMinimizationSummaryJson(&out.writer, default_serialized, minimized_serialized);
     return try out.toOwnedSlice();
 }
 
@@ -970,6 +1011,55 @@ fn countTokenIndexSet(set: lexer_model.TokenIndexSet) usize {
 fn directionalPairCount(variable_count: usize) usize {
     if (variable_count == 0) return 0;
     return variable_count * (variable_count - 1);
+}
+
+fn writeMinimizationSummaryJson(
+    writer: anytype,
+    default_serialized: parse_table_serialize.SerializedTable,
+    minimized_serialized: parse_table_serialize.SerializedTable,
+) !void {
+    try writer.writeAll("{\n");
+    try writer.writeAll("  \"default\": {\n");
+    try writeSerializedTableCountFields(writer, default_serialized);
+    try writer.writeAll("  },\n");
+    try writer.writeAll("  \"minimized\": {\n");
+    try writeSerializedTableCountFields(writer, minimized_serialized);
+    try writer.writeAll("  },\n");
+    try writeUsizeField(writer, 2, "merged_state_count", default_serialized.states.len -| minimized_serialized.states.len, true);
+    try writeUsizeField(writer, 2, "removed_action_entry_count", countSerializedActionEntries(default_serialized.states) -| countSerializedActionEntries(minimized_serialized.states), true);
+    try writeUsizeField(writer, 2, "removed_goto_entry_count", countSerializedGotoEntries(default_serialized.states) -| countSerializedGotoEntries(minimized_serialized.states), false);
+    try writer.writeAll("}\n");
+}
+
+fn writeSerializedTableCountFields(
+    writer: anytype,
+    serialized: parse_table_serialize.SerializedTable,
+) !void {
+    try writeUsizeField(writer, 4, "state_count", serialized.states.len, true);
+    try writeUsizeField(writer, 4, "large_state_count", serialized.large_state_count, true);
+    try writeUsizeField(writer, 4, "small_parse_row_count", serialized.small_parse_table.rows.len, true);
+    try writeUsizeField(writer, 4, "parse_action_list_count", serialized.parse_action_list.len, true);
+    try writeUsizeField(writer, 4, "action_entry_count", countSerializedActionEntries(serialized.states), true);
+    try writeUsizeField(writer, 4, "goto_entry_count", countSerializedGotoEntries(serialized.states), true);
+    try writeUsizeField(writer, 4, "unresolved_entry_count", countSerializedUnresolvedEntries(serialized.states), false);
+}
+
+fn countSerializedActionEntries(states: []const parse_table_serialize.SerializedState) usize {
+    var count: usize = 0;
+    for (states) |serialized_state| count += serialized_state.actions.len;
+    return count;
+}
+
+fn countSerializedGotoEntries(states: []const parse_table_serialize.SerializedState) usize {
+    var count: usize = 0;
+    for (states) |serialized_state| count += serialized_state.gotos.len;
+    return count;
+}
+
+fn countSerializedUnresolvedEntries(states: []const parse_table_serialize.SerializedState) usize {
+    var count: usize = 0;
+    for (states) |serialized_state| count += serialized_state.unresolved.len;
+    return count;
 }
 
 fn countProductions(variables: []const syntax_ir.SyntaxVariable) usize {
@@ -1965,4 +2055,25 @@ test "generateLocalTokenConflictSummaryJsonAlloc writes lexical conflict pairs" 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"matches_same_string\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"pairs\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "identifier") != null);
+}
+
+test "generateLocalMinimizationSummaryJsonAlloc writes default and minimized counts" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validBlankGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalMinimizationSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"default\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"minimized\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"merged_state_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"removed_action_entry_count\"") != null);
 }
