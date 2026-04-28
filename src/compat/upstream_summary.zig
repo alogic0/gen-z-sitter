@@ -1489,9 +1489,18 @@ const RegexSurfaceCounts = struct {
     pattern_count: usize = 0,
     flagged_pattern_count: usize = 0,
     class_count: usize = 0,
+    negated_class_count: usize = 0,
+    class_range_count: usize = 0,
     escape_count: usize = 0,
+    shorthand_escape_count: usize = 0,
+    hex_escape_count: usize = 0,
+    unicode_escape_count: usize = 0,
+    control_escape_count: usize = 0,
     unicode_property_count: usize = 0,
     bounded_repeat_count: usize = 0,
+    zero_or_more_count: usize = 0,
+    one_or_more_count: usize = 0,
+    optional_count: usize = 0,
     group_count: usize = 0,
     alternation_count: usize = 0,
     anchor_count: usize = 0,
@@ -1518,9 +1527,18 @@ fn writeRegexSurfaceSummaryJson(
             if (pattern.flags != null) counts.flagged_pattern_count += 1;
             const features = regexFeatureSummary(pattern.value);
             if (features.has_class) counts.class_count += 1;
+            if (features.has_negated_class) counts.negated_class_count += 1;
+            if (features.has_class_range) counts.class_range_count += 1;
             if (features.has_escape) counts.escape_count += 1;
+            if (features.has_shorthand_escape) counts.shorthand_escape_count += 1;
+            if (features.has_hex_escape) counts.hex_escape_count += 1;
+            if (features.has_unicode_escape) counts.unicode_escape_count += 1;
+            if (features.has_control_escape) counts.control_escape_count += 1;
             if (features.has_unicode_property) counts.unicode_property_count += 1;
             if (features.has_bounded_repeat) counts.bounded_repeat_count += 1;
+            if (features.has_zero_or_more) counts.zero_or_more_count += 1;
+            if (features.has_one_or_more) counts.one_or_more_count += 1;
+            if (features.has_optional) counts.optional_count += 1;
             if (features.has_group) counts.group_count += 1;
             if (features.has_alternation) counts.alternation_count += 1;
             if (features.has_anchor) counts.anchor_count += 1;
@@ -1539,9 +1557,18 @@ fn writeRegexSurfaceSummaryJson(
     try writer.writeAll("  \"feature_counts\": {\n");
     try writeUsizeField(writer, 4, "flagged", counts.flagged_pattern_count, true);
     try writeUsizeField(writer, 4, "class", counts.class_count, true);
+    try writeUsizeField(writer, 4, "negated_class", counts.negated_class_count, true);
+    try writeUsizeField(writer, 4, "class_range", counts.class_range_count, true);
     try writeUsizeField(writer, 4, "escape", counts.escape_count, true);
+    try writeUsizeField(writer, 4, "shorthand_escape", counts.shorthand_escape_count, true);
+    try writeUsizeField(writer, 4, "hex_escape", counts.hex_escape_count, true);
+    try writeUsizeField(writer, 4, "unicode_escape", counts.unicode_escape_count, true);
+    try writeUsizeField(writer, 4, "control_escape", counts.control_escape_count, true);
     try writeUsizeField(writer, 4, "unicode_property", counts.unicode_property_count, true);
     try writeUsizeField(writer, 4, "bounded_repeat", counts.bounded_repeat_count, true);
+    try writeUsizeField(writer, 4, "zero_or_more", counts.zero_or_more_count, true);
+    try writeUsizeField(writer, 4, "one_or_more", counts.one_or_more_count, true);
+    try writeUsizeField(writer, 4, "optional", counts.optional_count, true);
     try writeUsizeField(writer, 4, "group", counts.group_count, true);
     try writeUsizeField(writer, 4, "alternation", counts.alternation_count, true);
     try writeUsizeField(writer, 4, "anchor", counts.anchor_count, true);
@@ -1639,9 +1666,18 @@ fn collectPatternRefsForRule(
 
 const RegexFeatureSummary = struct {
     has_class: bool = false,
+    has_negated_class: bool = false,
+    has_class_range: bool = false,
     has_escape: bool = false,
+    has_shorthand_escape: bool = false,
+    has_hex_escape: bool = false,
+    has_unicode_escape: bool = false,
+    has_control_escape: bool = false,
     has_unicode_property: bool = false,
     has_bounded_repeat: bool = false,
+    has_zero_or_more: bool = false,
+    has_one_or_more: bool = false,
+    has_optional: bool = false,
     has_group: bool = false,
     has_alternation: bool = false,
     has_anchor: bool = false,
@@ -1655,12 +1691,21 @@ fn regexFeatureSummary(value: []const u8) RegexFeatureSummary {
     var result = RegexFeatureSummary{};
     var escaped = false;
     var in_class = false;
+    var class_content_index: usize = 0;
     for (value, 0..) |ch, index| {
         if (escaped) {
             result.has_escape = true;
-            if (ch == 'p' or ch == 'P') result.has_unicode_property = true;
+            switch (ch) {
+                'd', 'D', 's', 'S', 'w', 'W' => result.has_shorthand_escape = true,
+                'x' => result.has_hex_escape = true,
+                'u' => result.has_unicode_escape = true,
+                'c' => result.has_control_escape = true,
+                'p', 'P' => result.has_unicode_property = true,
+                else => {},
+            }
             if (ch >= '1' and ch <= '9') result.has_backreference = true;
             escaped = false;
+            if (in_class) class_content_index += 1;
             continue;
         }
         switch (ch) {
@@ -1668,6 +1713,7 @@ fn regexFeatureSummary(value: []const u8) RegexFeatureSummary {
             '[' => {
                 result.has_class = true;
                 in_class = true;
+                class_content_index = 0;
             },
             ']' => in_class = false,
             '{' => result.has_bounded_repeat = true,
@@ -1686,8 +1732,32 @@ fn regexFeatureSummary(value: []const u8) RegexFeatureSummary {
             '.' => {
                 if (!in_class) result.has_dot = true;
             },
+            '*' => {
+                if (!in_class) result.has_zero_or_more = true;
+            },
+            '+' => {
+                if (!in_class) result.has_one_or_more = true;
+            },
+            '?' => {
+                if (!in_class) {
+                    const quantifier_suffix = index > 0 and switch (value[index - 1]) {
+                        '*', '+', '?', '}' => true,
+                        else => false,
+                    };
+                    if (!quantifier_suffix) result.has_optional = true;
+                }
+            },
+            '-' => {
+                if (in_class and class_content_index > 0 and index + 1 < value.len and value[index + 1] != ']') {
+                    result.has_class_range = true;
+                }
+            },
             else => {},
         }
+        if (in_class and ch == '^' and class_content_index == 0) {
+            result.has_negated_class = true;
+        }
+        if (in_class and ch != '[') class_content_index += 1;
         if (!in_class and ch == '?' and index > 0) {
             const previous = value[index - 1];
             if (previous == '*' or previous == '+' or previous == '?' or previous == '}') {
@@ -1736,12 +1806,30 @@ fn writeMaybeComma(writer: anytype, wrote: *bool) !void {
 fn writeRegexFeaturesJson(writer: anytype, features: RegexFeatureSummary) !void {
     try writer.writeAll("{ \"class\": ");
     try writeBoolJson(writer, features.has_class);
+    try writer.writeAll(", \"negated_class\": ");
+    try writeBoolJson(writer, features.has_negated_class);
+    try writer.writeAll(", \"class_range\": ");
+    try writeBoolJson(writer, features.has_class_range);
     try writer.writeAll(", \"escape\": ");
     try writeBoolJson(writer, features.has_escape);
+    try writer.writeAll(", \"shorthand_escape\": ");
+    try writeBoolJson(writer, features.has_shorthand_escape);
+    try writer.writeAll(", \"hex_escape\": ");
+    try writeBoolJson(writer, features.has_hex_escape);
+    try writer.writeAll(", \"unicode_escape\": ");
+    try writeBoolJson(writer, features.has_unicode_escape);
+    try writer.writeAll(", \"control_escape\": ");
+    try writeBoolJson(writer, features.has_control_escape);
     try writer.writeAll(", \"unicode_property\": ");
     try writeBoolJson(writer, features.has_unicode_property);
     try writer.writeAll(", \"bounded_repeat\": ");
     try writeBoolJson(writer, features.has_bounded_repeat);
+    try writer.writeAll(", \"zero_or_more\": ");
+    try writeBoolJson(writer, features.has_zero_or_more);
+    try writer.writeAll(", \"one_or_more\": ");
+    try writeBoolJson(writer, features.has_one_or_more);
+    try writer.writeAll(", \"optional\": ");
+    try writeBoolJson(writer, features.has_optional);
     try writer.writeAll(", \"group\": ");
     try writeBoolJson(writer, features.has_group);
     try writer.writeAll(", \"alternation\": ");
@@ -3155,7 +3243,7 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries
         \\    "source_file": { "type": "SYMBOL", "name": "identifier" },
         \\    "identifier": {
         \\      "type": "PATTERN",
-        \\      "value": "(\\p{XID_Start}|_)[\\p{XID_Continue}_]{0,3}",
+        \\      "value": "(\\p{XID_Start}|_)[A-Z\\d\\x41\\u0041\\cA_]{0,3}",
         \\      "flags": "i"
         \\    }
         \\  }
@@ -3174,6 +3262,11 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries
     defer std.testing.allocator.free(json);
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"pattern_count\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"class_range\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shorthand_escape\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"hex_escape\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unicode_escape\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"control_escape\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unicode_property\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"bounded_repeat\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_pattern\": 0") != null);

@@ -498,6 +498,8 @@ Goal: close the scanner-free lexical gap enough for larger real grammars.
     artifacts.
   - [x] Explicitly flag anchors, `(?...)` group prefixes, backreferences, and
     lazy quantifiers in regex-surface artifacts.
+  - [x] Expose class-range, negated-class, escape-kind, and repetition-kind
+    diagnostics in regex-surface artifacts.
 - [ ] Add grammar-level tests where regex support affects accepted input, not
   just regex unit tests.
   - [x] Cover scanner-free accepted input for character classes, escapes, and
@@ -530,6 +532,11 @@ Batch 79 note: regex-surface artifacts now classify additional unsupported
 constructs explicitly: anchors, `(?...)` group prefixes, numeric
 backreferences, and lazy quantifiers. These show up in per-pattern
 `unsupported_features` and aggregate feature counts before lexer construction.
+
+Batch 82 note: regex-surface artifacts now expose more granular supported
+feature diagnostics for class ranges, negated classes, shorthand/hex/unicode/
+control escapes, and `*`, `+`, `?`, and bounded repetition forms. This makes
+real-grammar regex audits more precise without changing lexer behavior.
 
 ### 4.2 Lex Table Construction
 
