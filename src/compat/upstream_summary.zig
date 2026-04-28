@@ -5,6 +5,7 @@ const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
 const grammar_loader = @import("../grammar/loader.zig");
 const grammar_ir = @import("../ir/grammar_ir.zig");
 const lexical_ir = @import("../ir/lexical_grammar.zig");
+const lexer_model = @import("../lexer/model.zig");
 const node_type_pipeline = @import("../node_types/pipeline.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const raw_grammar = @import("../grammar/raw_grammar.zig");
@@ -306,6 +307,40 @@ pub fn generateLocalConflictSummaryJsonAlloc(
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     try writeConflictSummaryJson(&out.writer, prepared.expected_conflicts.len, expected_report.unused_expected_conflict_indexes, unresolved);
+    return try out.toOwnedSlice();
+}
+
+pub fn generateLocalTokenConflictSummaryJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena_allocator, &loaded.json.grammar);
+    const extracted = try extract_tokens.extractTokens(arena_allocator, prepared);
+    const expanded = try lexer_model.expandExtractedLexicalGrammar(arena_allocator, prepared.rules, extracted.lexical);
+    const following_tokens = try lexer_model.computeFollowingTokensAlloc(
+        arena_allocator,
+        extracted.syntax,
+        expanded.variables.len,
+    );
+    const conflict_map = try lexer_model.buildTokenConflictMapWithFollowingTokensAlloc(
+        arena_allocator,
+        expanded,
+        following_tokens,
+    );
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeTokenConflictSummaryJson(&out.writer, expanded, conflict_map);
     return try out.toOwnedSlice();
 }
 
@@ -791,6 +826,150 @@ fn conflictReasonCounts(unresolved: []const @import("../parse_table/resolution.z
         }
     }
     return counts;
+}
+
+fn writeTokenConflictSummaryJson(
+    writer: anytype,
+    grammar: lexer_model.ExpandedLexicalGrammar,
+    conflict_map: lexer_model.TokenConflictMap,
+) !void {
+    const counts = tokenConflictCounts(conflict_map);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, 2, "variable_count", grammar.variables.len, true);
+    try writeUsizeField(writer, 2, "directional_pair_count", directionalPairCount(grammar.variables.len), true);
+    try writeUsizeField(writer, 2, "conflict_pair_count", counts.conflict_pairs, true);
+    try writer.writeAll("  \"status_counts\": {\n");
+    try writeUsizeField(writer, 4, "matches_prefix", counts.matches_prefix, true);
+    try writeUsizeField(writer, 4, "does_match_continuation", counts.does_match_continuation, true);
+    try writeUsizeField(writer, 4, "does_match_valid_continuation", counts.does_match_valid_continuation, true);
+    try writeUsizeField(writer, 4, "does_match_separators", counts.does_match_separators, true);
+    try writeUsizeField(writer, 4, "matches_same_string", counts.matches_same_string, true);
+    try writeUsizeField(writer, 4, "matches_different_string", counts.matches_different_string, true);
+    try writeUsizeField(writer, 4, "starting_overlap", counts.starting_overlap, false);
+    try writer.writeAll("  },\n");
+
+    try writer.writeAll("  \"variables\": [\n");
+    for (grammar.variables, 0..) |variable, index| {
+        try writeIndent(writer, 4);
+        try writer.writeAll("{ \"index\": ");
+        try writer.print("{d}", .{index});
+        try writer.writeAll(", \"name\": ");
+        try writeJsonString(writer, variable.name);
+        try writer.writeAll(", \"starting_range_count\": ");
+        try writer.print("{d}", .{conflict_map.starting_chars_by_index[index].ranges.items.len});
+        try writer.writeAll(", \"following_token_count\": ");
+        try writer.print("{d}", .{countTokenIndexSet(conflict_map.following_tokens_by_index[index])});
+        try writer.writeAll(", \"following_range_count\": ");
+        try writer.print("{d}", .{conflict_map.following_chars_by_index[index].ranges.items.len});
+        try writer.writeAll(" }");
+        if (index + 1 != grammar.variables.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    try writer.writeAll("  ],\n");
+
+    try writer.writeAll("  \"pairs\": [\n");
+    var wrote_pair = false;
+    for (0..grammar.variables.len) |left| {
+        for (0..grammar.variables.len) |right| {
+            if (left == right) continue;
+            const status = conflict_map.status(left, right);
+            if (!tokenConflictStatusIsConcretePair(status)) continue;
+            if (wrote_pair) try writer.writeAll(",\n");
+            wrote_pair = true;
+            try writeTokenConflictPairJson(writer, grammar, left, right, status);
+        }
+    }
+    if (wrote_pair) try writer.writeByte('\n');
+    try writer.writeAll("  ]\n");
+    try writer.writeAll("}\n");
+}
+
+const TokenConflictCounts = struct {
+    conflict_pairs: usize = 0,
+    matches_prefix: usize = 0,
+    does_match_continuation: usize = 0,
+    does_match_valid_continuation: usize = 0,
+    does_match_separators: usize = 0,
+    matches_same_string: usize = 0,
+    matches_different_string: usize = 0,
+    starting_overlap: usize = 0,
+};
+
+fn tokenConflictCounts(conflict_map: lexer_model.TokenConflictMap) TokenConflictCounts {
+    var counts = TokenConflictCounts{};
+    for (0..conflict_map.variable_count) |left| {
+        for (0..conflict_map.variable_count) |right| {
+            if (left == right) continue;
+            const status = conflict_map.status(left, right);
+            if (tokenConflictStatusIsConcretePair(status)) counts.conflict_pairs += 1;
+            if (status.matches_prefix) counts.matches_prefix += 1;
+            if (status.does_match_continuation) counts.does_match_continuation += 1;
+            if (status.does_match_valid_continuation) counts.does_match_valid_continuation += 1;
+            if (status.does_match_separators) counts.does_match_separators += 1;
+            if (status.matches_same_string) counts.matches_same_string += 1;
+            if (status.matches_different_string) counts.matches_different_string += 1;
+            if (status.starting_overlap) counts.starting_overlap += 1;
+        }
+    }
+    return counts;
+}
+
+fn writeTokenConflictPairJson(
+    writer: anytype,
+    grammar: lexer_model.ExpandedLexicalGrammar,
+    left: usize,
+    right: usize,
+    status: lexer_model.TokenConflictStatus,
+) !void {
+    try writeIndent(writer, 4);
+    try writer.writeAll("{ \"left\": ");
+    try writer.print("{d}", .{left});
+    try writer.writeAll(", \"left_name\": ");
+    try writeJsonString(writer, grammar.variables[left].name);
+    try writer.writeAll(", \"right\": ");
+    try writer.print("{d}", .{right});
+    try writer.writeAll(", \"right_name\": ");
+    try writeJsonString(writer, grammar.variables[right].name);
+    try writer.writeAll(", \"matches_prefix\": ");
+    try writeBoolJson(writer, status.matches_prefix);
+    try writer.writeAll(", \"does_match_continuation\": ");
+    try writeBoolJson(writer, status.does_match_continuation);
+    try writer.writeAll(", \"does_match_valid_continuation\": ");
+    try writeBoolJson(writer, status.does_match_valid_continuation);
+    try writer.writeAll(", \"does_match_separators\": ");
+    try writeBoolJson(writer, status.does_match_separators);
+    try writer.writeAll(", \"matches_same_string\": ");
+    try writeBoolJson(writer, status.matches_same_string);
+    try writer.writeAll(", \"matches_different_string\": ");
+    try writeBoolJson(writer, status.matches_different_string);
+    try writer.writeAll(", \"starting_overlap\": ");
+    try writeBoolJson(writer, status.starting_overlap);
+    try writer.writeAll(" }");
+}
+
+fn writeBoolJson(writer: anytype, value: bool) !void {
+    try writer.writeAll(if (value) "true" else "false");
+}
+
+fn tokenConflictStatusIsConcretePair(status: lexer_model.TokenConflictStatus) bool {
+    return status.matches_prefix or
+        status.does_match_continuation or
+        status.does_match_valid_continuation or
+        status.does_match_separators or
+        status.matches_same_string;
+}
+
+fn countTokenIndexSet(set: lexer_model.TokenIndexSet) usize {
+    var count: usize = 0;
+    for (set.values) |present| {
+        if (present) count += 1;
+    }
+    return count;
+}
+
+fn directionalPairCount(variable_count: usize) usize {
+    if (variable_count == 0) return 0;
+    return variable_count * (variable_count - 1);
 }
 
 fn countProductions(variables: []const syntax_ir.SyntaxVariable) usize {
@@ -1747,4 +1926,43 @@ test "generateLocalConflictSummaryJsonAlloc records unexpected shift reduce conf
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_count\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce_expected\": 0") != null);
+}
+
+test "generateLocalTokenConflictSummaryJsonAlloc writes lexical conflict pairs" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const contents =
+        \\{
+        \\  "name": "token_conflict_summary",
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "CHOICE",
+        \\      "members": [
+        \\        { "type": "SYMBOL", "name": "keyword" },
+        \\        { "type": "SYMBOL", "name": "identifier" }
+        \\      ]
+        \\    },
+        \\    "keyword": { "type": "STRING", "value": "let" },
+        \\    "identifier": { "type": "PATTERN", "value": "[a-z]+" }
+        \\  }
+        \\}
+    ;
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalTokenConflictSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"variable_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"conflict_pair_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"matches_same_string\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"pairs\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "identifier") != null);
 }

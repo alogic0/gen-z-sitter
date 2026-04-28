@@ -386,7 +386,7 @@ local `conflict-summary.json`; the expected shift/reduce fixture records
 
 - [ ] Reproduce upstream token conflict analysis for overlapping literals,
   regex tokens, externals, keywords, and immediate tokens.
-- [ ] Add local summaries for coincident token groups and lexical conflict
+- [x] Add local summaries for coincident token groups and lexical conflict
   pairs.
 - [ ] Use those summaries in parse-state minimization and lex-mode assignment.
 
@@ -394,6 +394,11 @@ Gate:
 
 - State minimization never merges states that upstream would split because of
   token conflicts or external/internal token interaction.
+
+Batch 20 note: local comparison artifacts now include `token-conflicts.json`,
+with lexer variable counts, per-token starting/following ranges, grammar-based
+following-token counts, and directional conflict-pair flags for same-string,
+prefix, continuation, separator, different-string, and starting-overlap cases.
 
 ### 3.4 Minimize Parse Table Parity
 
