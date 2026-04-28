@@ -272,6 +272,12 @@ records `upstream_hash = null` and `status = upstream_oracle_missing` so the
 report is structured without pretending Tree-sitter exposes a comparable
 prepared-IR artifact.
 
+Batch 107 note: prepared-IR snapshots now expose `immediate` on extracted
+lexical variables and include that flag in the extracted lexical comparison
+hash. This makes `token.immediate` drift visible before lex-table/runtime
+behavior, and the focused nested-metadata fixture covers the extracted metadata
+surface.
+
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 
 - [x] Compare local `node-types.json` with upstream for promoted targets.

@@ -2626,7 +2626,7 @@ fn hashSymbolIds(symbols: []const ir_symbols.SymbolId) u64 {
     return hasher.final();
 }
 
-fn hashLexicalGrammar(grammar: lexical_ir.LexicalGrammar) u64 {
+fn hashLexicalGrammar(grammar: lexical_ir.LexicalGrammar, rules: []const ir_rules.Rule) u64 {
     var hasher = std.hash.Wyhash.init(0);
     for (grammar.variables) |variable| {
         hashString(&hasher, variable.name);
@@ -2635,9 +2635,25 @@ fn hashLexicalGrammar(grammar: lexical_ir.LexicalGrammar) u64 {
         hashI32(&hasher, variable.implicit_precedence);
         hashU32(&hasher, variable.start_state);
         hashTag(&hasher, @tagName(variable.source_kind));
+        hashBool(&hasher, variable.rule < rules.len and ruleHasImmediateToken(rules, variable.rule));
     }
     for (grammar.separators) |separator| hashU32(&hasher, separator);
     return hasher.final();
+}
+
+fn ruleHasImmediateToken(rules: []const ir_rules.Rule, rule_id: ir_rules.RuleId) bool {
+    if (rule_id >= rules.len) return false;
+    return switch (rules[rule_id]) {
+        .metadata => |metadata| metadata.data.immediate_token or ruleHasImmediateToken(rules, metadata.inner),
+        .choice, .seq => |members| {
+            for (members) |member| {
+                if (ruleHasImmediateToken(rules, member)) return true;
+            }
+            return false;
+        },
+        .repeat, .repeat1 => |inner| ruleHasImmediateToken(rules, inner),
+        else => false,
+    };
 }
 
 fn hashSymbolRefArray(values: []const syntax_ir.SymbolRef) u64 {
@@ -2973,8 +2989,15 @@ fn writePreparedIrSnapshotJson(
         try writer.writeAll("    { \"name\": ");
         try writeJsonString(writer, variable.name);
         try writer.print(
-            ", \"kind\": \"{s}\", \"source_kind\": \"{s}\", \"rule\": {d}, \"implicit_precedence\": {d}, \"start_state\": {d} }}",
-            .{ @tagName(variable.kind), @tagName(variable.source_kind), variable.rule, variable.implicit_precedence, variable.start_state },
+            ", \"kind\": \"{s}\", \"source_kind\": \"{s}\", \"rule\": {d}, \"implicit_precedence\": {d}, \"start_state\": {d}, \"immediate\": {} }}",
+            .{
+                @tagName(variable.kind),
+                @tagName(variable.source_kind),
+                variable.rule,
+                variable.implicit_precedence,
+                variable.start_state,
+                variable.rule < prepared.rules.len and ruleHasImmediateToken(prepared.rules, variable.rule),
+            },
         );
         if (index + 1 != extracted.lexical.variables.len) try writer.writeByte(',');
         try writer.writeByte('\n');
@@ -3183,7 +3206,7 @@ fn preparedIrSummary(
         .extracted_word_token_hash = hashOptionalSymbolRef(extracted.syntax.word_token),
         .extracted_lexical_variable_count = extracted.lexical.variables.len,
         .extracted_lexical_separator_count = extracted.lexical.separators.len,
-        .extracted_lexical_hash = hashLexicalGrammar(extracted.lexical),
+        .extracted_lexical_hash = hashLexicalGrammar(extracted.lexical, prepared.rules),
         .flattened_syntax_variable_count = flattened.variables.len,
         .flattened_syntax_production_count = countProductions(flattened.variables),
         .flattened_syntax_step_count = countSteps(flattened.variables),
@@ -3650,6 +3673,25 @@ test "generateLocalPreparedIrSnapshotJsonAlloc writes diffable sections" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_variables_to_inline\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_word_token\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"flattened_syntax_variables\"") != null);
+}
+
+test "generateLocalPreparedIrSnapshotJsonAlloc writes immediate lexical metadata" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.nestedMetadataGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalPreparedIrSnapshotJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"extracted_lexical_variables\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"immediate\": true") != null);
 }
 
 test "generateLocalRawGrammarSnapshotJsonAlloc writes raw grammar structure" {
