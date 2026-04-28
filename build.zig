@@ -15,6 +15,9 @@ pub fn build(b: *std.Build) void {
     const test_filter = b.option([]const u8, "test-filter", "Filter tests by name substring");
     const compat_target = b.option([]const u8, "compat-target", "Compatibility target id for run-compat-target");
     const compat_stop_after = b.option([]const u8, "compat-stop-after", "Stop run-compat-target after this stage");
+    const upstream_compare_grammar = b.option([]const u8, "upstream-compare-grammar", "Grammar path for run-compare-upstream");
+    const upstream_compare_output = b.option([]const u8, "upstream-compare-output", "Output directory for run-compare-upstream");
+    const tree_sitter_dir = b.option([]const u8, "tree-sitter-dir", "Reference tree-sitter checkout for run-compare-upstream");
 
     const exe = b.addExecutable(.{
         .name = "gen-z-sitter",
@@ -43,6 +46,16 @@ pub fn build(b: *std.Build) void {
     });
     const generate_smoke_step = b.step("run-generate-smoke", "Run a bounded generator smoke check on a tiny grammar");
     generate_smoke_step.dependOn(&generate_smoke_cmd.step);
+
+    const compare_upstream_cmd = b.addRunArtifact(exe);
+    compare_upstream_cmd.addArg("compare-upstream");
+    compare_upstream_cmd.addArg("--output");
+    compare_upstream_cmd.addArg(upstream_compare_output orelse ".zig-cache/upstream-compare");
+    compare_upstream_cmd.addArg("--tree-sitter-dir");
+    compare_upstream_cmd.addArg(tree_sitter_dir orelse "../tree-sitter");
+    compare_upstream_cmd.addArg(upstream_compare_grammar orelse "compat_targets/tree_sitter_json/grammar.json");
+    const compare_upstream_step = b.step("run-compare-upstream", "Write a bounded local/upstream comparison summary for one grammar");
+    compare_upstream_step.dependOn(&compare_upstream_cmd.step);
 
     const unit_tests = b.addTest(.{
         .root_module = createTestModule(b, "src/fast_test_entry.zig", target, optimize),

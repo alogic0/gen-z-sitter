@@ -1,5 +1,6 @@
 const std = @import("std");
 const cli_args = @import("cli/args.zig");
+const command_compare_upstream = @import("cli/command_compare_upstream.zig");
 const command_generate = @import("cli/command_generate.zig");
 const grammar_loader = @import("grammar/loader.zig");
 const diag = @import("support/diag.zig");
@@ -32,6 +33,20 @@ pub fn main(init: std.process.Init) !void {
         },
         .generate => |opts| {
             command_generate.runGenerate(allocator, io, opts) catch |err| switch (err) {
+                error.InvalidArguments => {
+                    std.process.exit(2);
+                },
+                else => {
+                    try diag.printStderr(io, diag.Diagnostic{
+                        .kind = .internal,
+                        .message = @errorName(err),
+                    });
+                    std.process.exit(1);
+                },
+            };
+        },
+        .compare_upstream => |opts| {
+            command_compare_upstream.runCompareUpstream(allocator, io, opts) catch |err| switch (err) {
                 error.InvalidArguments => {
                     std.process.exit(2);
                 },

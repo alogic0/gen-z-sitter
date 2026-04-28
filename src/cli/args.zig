@@ -9,6 +9,7 @@ pub const Cli = struct {
 pub const Command = union(enum) {
     help,
     generate: GenerateOptions,
+    compare_upstream: CompareUpstreamOptions,
 };
 
 pub const GenerateOptions = struct {
@@ -26,6 +27,14 @@ pub const GenerateOptions = struct {
     optimize_merge_states: bool = true,
     minimize_states: bool = false,
     strict_expected_conflicts: bool = false,
+};
+
+pub const CompareUpstreamOptions = struct {
+    grammar_path: []const u8,
+    output_dir: ?[]const u8 = null,
+    tree_sitter_dir: []const u8 = "../tree-sitter",
+    js_runtime: ?[]const u8 = null,
+    minimize_states: bool = false,
 };
 
 pub const ParseError = error{
@@ -47,9 +56,63 @@ pub fn parseArgs(allocator: std.mem.Allocator, argv: []const []const u8) ParseEr
     if (std.mem.eql(u8, cmd, "generate")) {
         return Cli{ .command = .{ .generate = try parseGenerateArgs(argv[2..]) } };
     }
+    if (std.mem.eql(u8, cmd, "compare-upstream")) {
+        return Cli{ .command = .{ .compare_upstream = try parseCompareUpstreamArgs(argv[2..]) } };
+    }
 
     last_error_message = "unknown command";
     return error.InvalidArguments;
+}
+
+fn parseCompareUpstreamArgs(args: []const []const u8) ParseError!CompareUpstreamOptions {
+    var opts = CompareUpstreamOptions{
+        .grammar_path = "",
+    };
+
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
+
+        if (std.mem.eql(u8, arg, "--output")) {
+            i += 1;
+            if (i >= args.len) {
+                last_error_message = "missing value for --output";
+                return error.InvalidArguments;
+            }
+            opts.output_dir = args[i];
+        } else if (std.mem.eql(u8, arg, "--tree-sitter-dir")) {
+            i += 1;
+            if (i >= args.len) {
+                last_error_message = "missing value for --tree-sitter-dir";
+                return error.InvalidArguments;
+            }
+            opts.tree_sitter_dir = args[i];
+        } else if (std.mem.eql(u8, arg, "--js-runtime")) {
+            i += 1;
+            if (i >= args.len) {
+                last_error_message = "missing value for --js-runtime";
+                return error.InvalidArguments;
+            }
+            opts.js_runtime = args[i];
+        } else if (std.mem.eql(u8, arg, "--minimize")) {
+            opts.minimize_states = true;
+        } else if (std.mem.startsWith(u8, arg, "-")) {
+            last_error_message = "unknown compare-upstream flag";
+            return error.InvalidArguments;
+        } else if (opts.grammar_path.len == 0) {
+            opts.grammar_path = arg;
+        } else {
+            last_error_message = "compare-upstream accepts only one grammar path";
+            return error.InvalidArguments;
+        }
+    }
+
+    if (opts.grammar_path.len == 0) {
+        last_error_message = "missing grammar path";
+        return error.InvalidArguments;
+    }
+
+    return opts;
 }
 
 fn parseGenerateArgs(args: []const []const u8) ParseError!GenerateOptions {
@@ -140,6 +203,7 @@ pub fn helpText() []const u8 {
     \\Usage:
     \\  gen-z-sitter help
     \\  gen-z-sitter generate [options] <grammar-path>
+    \\  gen-z-sitter compare-upstream [options] <grammar-path>
     \\
     \\Common examples:
     \\  gen-z-sitter generate grammar.json
@@ -148,6 +212,7 @@ pub fn helpText() []const u8 {
     \\  gen-z-sitter generate --json-summary grammar.json
     \\  gen-z-sitter generate --json-summary --minimize grammar.json
     \\  gen-z-sitter generate --output out --emit-parser-c --glr-loop grammar.json
+    \\  gen-z-sitter compare-upstream --output .zig-cache/compat grammar.json
     \\
     \\Generate options:
     \\  --output <dir>                 Write generated artifacts into <dir>.
@@ -163,6 +228,12 @@ pub fn helpText() []const u8 {
     \\  --no-optimize-merge-states     Disable emitted duplicate-state compaction in summary paths.
     \\  --minimize                     Enable parse-table minimization for summary paths.
     \\  --strict-expected-conflicts    Fail when declared conflicts are unused.
+    \\
+    \\Compare-upstream options:
+    \\  --output <dir>                 Write local-upstream-summary.json into <dir>.
+    \\  --tree-sitter-dir <dir>        Reference tree-sitter checkout, default: ../tree-sitter.
+    \\  --js-runtime <runtime>         Runtime command used for grammar.js loading, default: node.
+    \\  --minimize                     Enable parse-table minimization in the local summary.
     \\
     \\Current limits:
     \\  emitted grammar.json and compatibility reports are exercised through tests and build/debug targets rather than as stable CLI outputs.
@@ -212,6 +283,22 @@ test "parse generate command with minimize flag" {
     const cli = try parseArgs(std.testing.allocator, &.{ "gen-z-sitter", "generate", "--minimize", "grammar.json" });
     try std.testing.expect(cli.command == .generate);
     try std.testing.expect(cli.command.generate.minimize_states);
+}
+
+test "parse compare-upstream command with output and reference directory" {
+    const cli = try parseArgs(std.testing.allocator, &.{
+        "gen-z-sitter",
+        "compare-upstream",
+        "--output",
+        ".zig-cache/compat",
+        "--tree-sitter-dir",
+        "../tree-sitter",
+        "grammar.json",
+    });
+    try std.testing.expect(cli.command == .compare_upstream);
+    try std.testing.expectEqualStrings(".zig-cache/compat", cli.command.compare_upstream.output_dir.?);
+    try std.testing.expectEqualStrings("../tree-sitter", cli.command.compare_upstream.tree_sitter_dir);
+    try std.testing.expectEqualStrings("grammar.json", cli.command.compare_upstream.grammar_path);
 }
 
 test "reject missing grammar path" {

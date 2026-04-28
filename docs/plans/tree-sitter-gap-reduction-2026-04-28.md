@@ -82,8 +82,14 @@ phase.
 - [ ] Capture upstream `parser.c`, `node-types.json`, generated symbol metadata,
   parse-state count, lex-state count, external token count, and parse-action
   table sizes into `.zig-cache/` artifacts.
-- [ ] Keep generated upstream artifacts out of source control.
-- [ ] Add clear skip behavior when `../tree-sitter` or `node` is missing.
+- [x] Keep generated upstream artifacts out of source control.
+- [x] Add clear skip behavior when `../tree-sitter` or `node` is missing.
+
+Batch 1 note: `gen-z-sitter compare-upstream` and `zig build
+run-compare-upstream` now write a local/upstream summary envelope under
+`.zig-cache/upstream-compare` by default. The upstream side currently records
+reference-checkout availability and `snapshot_status = "not_run"`; actual
+upstream `tree-sitter generate` execution remains the next open item.
 
 Gate:
 
@@ -92,16 +98,16 @@ Gate:
 
 ### 1.2 Local-vs-Upstream Summary Diff
 
-- [ ] Add a compact JSON diff format for generator-level differences.
+- [x] Add a compact JSON diff format for generator-level differences.
 - [ ] Compare grammar name, ABI metadata, symbol count/order, field names,
   alias rows, lex modes, external scanner states, parse-state count, large-state
   count, parse-action list width, and small-table size.
 - [ ] Classify each diff as:
-  - expected local extension,
-  - known unsupported surface,
-  - suspected algorithm gap,
-  - regression.
-- [ ] Add focused tests for the diff classifier using synthetic summaries.
+  - [x] expected local extension,
+  - [x] known unsupported surface,
+  - [x] suspected algorithm gap,
+  - [x] regression.
+- [x] Add focused tests for the diff classifier using synthetic summaries.
 
 Gate:
 
