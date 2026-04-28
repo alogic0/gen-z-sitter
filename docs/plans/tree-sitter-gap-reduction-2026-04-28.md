@@ -884,6 +884,8 @@ selected grammars, not only compile and link.
   subtree reuse decisions, paused versions, and last external token state.
   - [x] Cover local GLR version condensation: duplicate stack merge,
     dynamic-precedence retention, and active-version cap.
+  - [x] Keep emitted GLR version condensation from merging versions with
+    different serialized external scanner states.
 - [x] Preserve dynamic precedence through generated result trees.
 
 Gate:
@@ -901,10 +903,16 @@ directly. Duplicate versions with the same stack and cursor merge while keeping
 the higher dynamic precedence, and over-cap version sets are trimmed to
 `MAX_PARSE_VERSIONS`.
 
+Batch 121 note: emitted GLR version condensation now treats serialized external
+scanner state as part of version identity. Versions with the same parse stack,
+cursor, values, and nodes no longer merge if their external scanner payload
+length or bytes differ, preventing scanner-owned layout/comment/string state
+from being lost during runtime version pruning.
+
 ### 5.2 Error Recovery
 
 - [x] Audit emitted recovery against upstream `parser.c` recovery behavior.
-- [ ] Add error-cost accounting, recovery token insertion/deletion surfaces,
+- [x] Add error-cost accounting, recovery token insertion/deletion surfaces,
   and bounded retry reporting.
   - [x] Rank generated GLR versions by weighted error cost instead of raw
     error count.

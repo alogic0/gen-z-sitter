@@ -444,7 +444,7 @@ pub fn writeParserCWithOptions(
     if (has_unresolved) try writeUnresolvedAccessors(writer, compacted.states, unresolved_owners);
     try writeExternalScannerTables(writer, emitted_symbols, compacted.grammar_name, compacted.external_scanner);
     if (options.glr_loop and has_unresolved) try writeGlrUnresolvedForkHelpers(writer);
-    if (options.glr_loop) try writeGlrVersionCondenseHelpers(writer);
+    if (options.glr_loop) try writeGlrVersionCondenseHelpers(writer, has_external_scanner);
     if (options.glr_loop) try writeGlrInputLexerHelpers(writer, compacted.grammar_name, has_external_scanner);
     if (options.glr_loop) try writeGlrVersionStepLoop(writer, has_unresolved);
     if (options.glr_loop) try writeGlrMainParseFunction(writer);
@@ -964,7 +964,7 @@ fn writeGlrUnresolvedForkHelpers(writer: anytype) !void {
     try writer.writeAll("}\n\n");
 }
 
-fn writeGlrVersionCondenseHelpers(writer: anytype) !void {
+fn writeGlrVersionCondenseHelpers(writer: anytype, has_external_scanner: bool) !void {
     try writer.writeAll("static bool ts_generated_parse_versions_same_position(const TSGeneratedParseVersion *left, const TSGeneratedParseVersion *right) {\n");
     try writer.writeAll("  if (left->active != right->active) return false;\n");
     try writer.writeAll("  if (left->state != right->state) return false;\n");
@@ -997,6 +997,12 @@ fn writeGlrVersionCondenseHelpers(writer: anytype) !void {
     try writer.writeAll("      if (left->nodes[index].child_aliases[child_index] != right->nodes[index].child_aliases[child_index]) return false;\n");
     try writer.writeAll("    }\n");
     try writer.writeAll("  }\n");
+    if (has_external_scanner) {
+        try writer.writeAll("  if (left->external_scanner_state_len != right->external_scanner_state_len) return false;\n");
+        try writer.writeAll("  for (uint16_t index = 0; index < left->external_scanner_state_len; index++) {\n");
+        try writer.writeAll("    if (left->external_scanner_state[index] != right->external_scanner_state[index]) return false;\n");
+        try writer.writeAll("  }\n");
+    }
     try writer.writeAll("  return true;\n");
     try writer.writeAll("}\n\n");
     try writer.writeAll("static void ts_generated_condense_parse_versions(TSGeneratedParseVersionSet *set) {\n");
@@ -3301,6 +3307,8 @@ test "emitParserCAlloc emits opt-in GLR external scanner callback path" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "*out_symbol = ts_external_scanner_symbol_map[lexer->base.result_symbol];\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "version->external_scanner_state_len = (uint16_t)tree_sitter_external_grammar_external_scanner_serialize(payload, version->external_scanner_state);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "tree_sitter_external_grammar_external_scanner_destroy(payload);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->external_scanner_state_len != right->external_scanner_state_len) return false;\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (left->external_scanner_state[index] != right->external_scanner_state[index]) return false;\n"));
 }
 
 test "emitParserCAlloc emits primary state ids by parse state" {
