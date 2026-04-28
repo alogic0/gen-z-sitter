@@ -2652,6 +2652,63 @@ pub fn writePreparedIrSummaryJson(writer: anytype, summary: PreparedIrSummary, i
     try writer.writeByte('}');
 }
 
+pub fn writePreparedIrComparisonKeysJson(writer: anytype, summary: PreparedIrSummary, indent: usize) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"note\": ");
+    try writeJsonString(writer, "local prepared/extracted comparison keys are stable; tree-sitter does not expose an equivalent prepared-IR artifact through the bounded generator snapshot");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"keys\": [\n");
+    try writePreparedIrComparisonKey(writer, indent + 4, "stage_order", summary.stage_order_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "prepared_variables", summary.prepared_variable_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "prepared_symbols", summary.prepared_symbol_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "prepared_reserved_word_sets", summary.prepared_reserved_word_set_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "prepared_conflicts", summary.prepared_conflict_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "prepared_precedence", summary.prepared_precedence_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "prepared_inline", summary.prepared_inline_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "prepared_supertypes", summary.prepared_supertype_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "prepared_word_token", summary.prepared_word_token_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "extracted_extra_symbols", summary.extracted_extra_symbol_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "extracted_expected_conflicts", summary.extracted_expected_conflict_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "extracted_precedence", summary.extracted_precedence_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "extracted_inline", summary.extracted_inline_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "extracted_supertypes", summary.extracted_supertype_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "extracted_word_token", summary.extracted_word_token_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "extracted_lexical_variables", summary.extracted_lexical_hash, true);
+    try writePreparedIrComparisonKey(writer, indent + 4, "flattened_syntax", summary.flattened_syntax_hash, false);
+    try writer.writeByte('\n');
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("]\n");
+    try writeIndent(writer, indent);
+    try writer.writeByte('}');
+}
+
+fn writePreparedIrComparisonKey(
+    writer: anytype,
+    indent: usize,
+    name: []const u8,
+    hash: u64,
+    trailing_comma: bool,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"name\": ");
+    try writeJsonString(writer, name);
+    try writer.writeAll(", \"local_hash\": \"");
+    try writer.print("0x{x:0>16}", .{hash});
+    try writer.writeByte('"');
+    try writer.writeAll(", \"upstream_hash\": null, \"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(" }");
+    if (trailing_comma) try writer.writeByte(',');
+    try writer.writeByte('\n');
+}
+
 fn writePreparedIrSnapshotJson(
     writer: anytype,
     prepared: grammar_ir.PreparedGrammar,
@@ -3363,6 +3420,15 @@ test "generateLocalPreparedIrSummaryAlloc summarizes preparation stages" {
     try std.testing.expect(std.mem.indexOf(u8, rendered, "\"prepared_conflict_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "\"extracted_expected_conflict_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "\"extracted_word_token_hash\"") != null);
+
+    var comparison_json: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer comparison_json.deinit();
+    try writePreparedIrComparisonKeysJson(&comparison_json.writer, summary, 0);
+    const comparison_rendered = comparison_json.written();
+    try std.testing.expect(std.mem.indexOf(u8, comparison_rendered, "\"status\": \"upstream_oracle_missing\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, comparison_rendered, "\"name\": \"prepared_variables\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, comparison_rendered, "\"name\": \"extracted_lexical_variables\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, comparison_rendered, "\"upstream_hash\": null") != null);
 }
 
 test "generateLocalPreparedIrSnapshotJsonAlloc writes diffable sections" {

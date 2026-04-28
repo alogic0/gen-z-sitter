@@ -635,6 +635,9 @@ fn renderReportAlloc(
     try writer.writeAll("  \"local_prepared_ir\":\n");
     try upstream_summary.writePreparedIrSummaryJson(writer, local_prepared, 2);
     try writer.writeAll(",\n");
+    try writer.writeAll("  \"prepared_ir_comparison\":\n");
+    try upstream_summary.writePreparedIrComparisonKeysJson(writer, local_prepared, 2);
+    try writer.writeAll(",\n");
     try writer.writeAll("  \"local_artifacts\": {\n");
     try writer.writeAll("    \"output_dir\": ");
     try writeOptionalJsonString(writer, local_artifacts.output_dir);
@@ -819,6 +822,8 @@ test "runCompareUpstream writes local summary report" {
     defer std.testing.allocator.free(report);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"local\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"local_prepared_ir\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report, "\"prepared_ir_comparison\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report, "\"upstream_oracle_missing\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"raw_grammar_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"parse_states_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"parse_states_summary_path\"") != null);

@@ -208,6 +208,9 @@ Gate:
     `prepared-ir.json`.
   - [x] Add granular prepared/extracted hashes for conflicts, precedence,
     inline/supertypes, reserved sets, extras, and word-token metadata.
+  - [x] Expose those hashes as structured comparison keys in
+    `local-upstream-summary.json`, with an explicit `upstream_oracle_missing`
+    status until a real upstream prepared-IR source exists.
 - [ ] Reproduce upstream repeat expansion and dedup behavior where local names
   or rule shapes still differ.
 - [ ] Reproduce upstream token extraction behavior for hidden terminals,
@@ -259,6 +262,15 @@ Batch 77 note: `prepared-ir.json` now records the prepared word token before
 extraction and each prepared reserved-word set with its context and lowered
 member rule IDs. This makes raw reserved-string keyword gaps visible at the
 preparation artifact layer before lex-table serialization.
+
+Batch 97 note: `compare-upstream` now writes a `prepared_ir_comparison`
+section in `local-upstream-summary.json`. It lists stable local comparison keys
+for stage order, prepared variables/symbols/reserved/conflict/precedence/
+inline/supertypes/word token, extracted extras/conflicts/precedence/inline/
+supertypes/word token/lexical variables, and flattened syntax. Each entry
+records `upstream_hash = null` and `status = upstream_oracle_missing` so the
+report is structured without pretending Tree-sitter exposes a comparable
+prepared-IR artifact.
 
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 
