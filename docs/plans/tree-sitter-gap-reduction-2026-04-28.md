@@ -414,6 +414,8 @@ comparison artifact without depending on parser-state text dumps.
 - [x] Add local summaries for coincident token groups and lexical conflict
   pairs.
 - [ ] Use those summaries in parse-state minimization and lex-mode assignment.
+  - [x] Keep parse-state minimization from merging states with different
+    assigned lex modes.
 
 Gate:
 
@@ -424,6 +426,11 @@ Batch 20 note: local comparison artifacts now include `token-conflicts.json`,
 with lexer variable counts, per-token starting/following ranges, grammar-based
 following-token counts, and directional conflict-pair flags for same-string,
 prefix, continuation, separator, different-string, and starting-overlap cases.
+
+Batch 59 note: parse-state minimization signatures now include assigned lex
+state IDs. States with identical actions but different lexer modes remain
+separate, protecting token-conflict and keyword/external-token boundaries
+before downstream parser emission.
 
 ### 3.4 Minimize Parse Table Parity
 
