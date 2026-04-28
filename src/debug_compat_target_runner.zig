@@ -39,7 +39,7 @@ fn printRunSummary(run: result_model.TargetRunResult) void {
 
     if (run.emission) |emission| {
         std.debug.print(
-            "[compat_target_runner] emission blocked={} serialized_states={d} emitted_states={d} merged_states={d} unresolved_entries={d} parser_tables_bytes={d} parser_c_bytes={d}\n",
+            "[compat_target_runner] emission blocked={} serialized_states={d} emitted_states={d} merged_states={d} unresolved_entries={d} parser_tables_bytes={d} parser_c_bytes={d}",
             .{
                 emission.blocked,
                 emission.serialized_state_count,
@@ -50,6 +50,13 @@ fn printRunSummary(run: result_model.TargetRunResult) void {
                 emission.parser_c_bytes,
             },
         );
+        if (emission.emit_parser_c_ms) |value| {
+            std.debug.print(" emit_parser_c_ms={d:.2}", .{value});
+        }
+        if (emission.compile_smoke_ms) |value| {
+            std.debug.print(" compile_smoke_ms={d:.2}", .{value});
+        }
+        std.debug.print("\n", .{});
     }
 
     if (run.blocked_boundary) |blocked_boundary| {
@@ -93,11 +100,12 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(arena);
 
     if (args.len < 2) {
-        std.debug.print("usage: zig run src/debug_compat_target_runner.zig -- <target-id> [--stop-after <stage>]\n", .{});
+        std.debug.print("usage: zig run src/debug_compat_target_runner.zig -- <target-id> [--stop-after <stage>] [--profile-timings]\n", .{});
         std.process.exit(1);
     }
     const target_id = args[1];
     var stop_after_stage: ?result_model.StepName = null;
+    var profile_timings = false;
     var arg_index: usize = 2;
     while (arg_index < args.len) {
         const arg = args[arg_index];
@@ -115,7 +123,11 @@ pub fn main(init: std.process.Init) !void {
             };
             continue;
         }
-        std.debug.print("usage: zig run src/debug_compat_target_runner.zig -- <target-id> [--stop-after <stage>]\n", .{});
+        if (std.mem.eql(u8, arg, "--profile-timings")) {
+            profile_timings = true;
+            continue;
+        }
+        std.debug.print("usage: zig run src/debug_compat_target_runner.zig -- <target-id> [--stop-after <stage>] [--profile-timings]\n", .{});
         std.process.exit(1);
     }
 
@@ -127,6 +139,7 @@ pub fn main(init: std.process.Init) !void {
     const start_ts = std.Io.Timestamp.now(runtime_io.get(), .awake);
     var run = try compat_harness.runTarget(allocator, target, .{
         .progress_log = true,
+        .profile_timings = profile_timings,
         .stop_after_stage = stop_after_stage,
     });
     defer run.deinit(allocator);

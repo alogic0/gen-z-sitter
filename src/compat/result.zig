@@ -64,6 +64,8 @@ pub const EmissionSnapshot = struct {
     unresolved_entry_count: usize,
     parser_tables_bytes: usize,
     parser_c_bytes: usize,
+    emit_parser_c_ms: ?f64 = null,
+    compile_smoke_ms: ?f64 = null,
 };
 
 pub const BlockedSymbolKind = enum {

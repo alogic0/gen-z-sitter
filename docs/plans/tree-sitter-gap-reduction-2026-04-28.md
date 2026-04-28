@@ -584,6 +584,11 @@ Gate:
 - At least one target from Rust, Python, JavaScript, or TypeScript moves to a
   stronger boundary than it has today.
 
+Batch 30 note: compatibility runs now have opt-in timing fields for parser C
+emission and compile smoke in `EmissionSnapshot`. The single-target debug runner
+can enable and print them with `--profile-timings` without making checked-in
+compat reports nondeterministic by default.
+
 ## Phase 7 — Performance and Capacity
 
 Goal: keep correctness work practical for large grammars.

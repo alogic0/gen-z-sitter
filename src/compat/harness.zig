@@ -21,6 +21,7 @@ const runtime_link = @import("runtime_link.zig");
 pub const RunOptions = struct {
     optimize: emit_optimize.Options = .{},
     progress_log: bool = false,
+    profile_timings: bool = false,
     stop_after_stage: ?result_model.StepName = null,
 };
 
@@ -194,8 +195,12 @@ fn logDetailStart(target_id: []const u8, step: []const u8) void {
 }
 
 fn logDetailDone(target_id: []const u8, step: []const u8, start_ts: std.Io.Timestamp) void {
-    const elapsed_ms = @as(f64, @floatFromInt(start_ts.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake)).nanoseconds)) / @as(f64, std.time.ns_per_ms);
-    std.debug.print("[compat_harness_detail] done  {s} {s} ({d:.2} ms)\n", .{ target_id, step, elapsed_ms });
+    std.debug.print("[compat_harness_detail] done  {s} {s} ({d:.2} ms)\n", .{ target_id, step, elapsedMs(start_ts) });
+}
+
+fn elapsedMs(start_ts: std.Io.Timestamp) f64 {
+    const elapsed = start_ts.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake));
+    return @as(f64, @floatFromInt(elapsed.nanoseconds)) / @as(f64, std.time.ns_per_ms);
 }
 
 fn logDetailSummary(comptime format: []const u8, args: anytype) void {
@@ -470,6 +475,7 @@ pub fn runTarget(
                 try std.fmt.allocPrint(allocator, "routine parser.c emission proof failed: {s}", .{@errorName(err)}),
             );
         };
+        const parser_c_ms = elapsedMs(parser_c_timer);
         if (detail_progress) {
             logDetailDone(target.id, "emit_parser_c", parser_c_timer);
             logDetailSummary(
@@ -509,8 +515,22 @@ pub fn runTarget(
         defer compile_result.deinit(allocator);
         switch (compile_result) {
             .success => {
+                const compile_smoke_ms = elapsedMs(compile_timer);
                 if (detail_progress) logDetailDone(target.id, "compile_smoke", compile_timer);
                 run.compile_smoke.status = .passed;
+                run.emission = .{
+                    .blocked = serialized.blocked,
+                    .serialized_state_count = serialized.states.len,
+                    .emitted_state_count = 0,
+                    .merged_state_count = 0,
+                    .action_entry_count = 0,
+                    .goto_entry_count = 0,
+                    .unresolved_entry_count = 0,
+                    .parser_tables_bytes = parser_tables.len,
+                    .parser_c_bytes = parser_c.len,
+                    .emit_parser_c_ms = if (options.profile_timings) parser_c_ms else null,
+                    .compile_smoke_ms = if (options.profile_timings) compile_smoke_ms else null,
+                };
                 if (shouldStopAfter(options, .compile_smoke)) return run;
             },
             .compiler_error => |stderr| {
@@ -523,17 +543,6 @@ pub fn runTarget(
                 );
             },
         }
-        run.emission = .{
-            .blocked = serialized.blocked,
-            .serialized_state_count = serialized.states.len,
-            .emitted_state_count = 0,
-            .merged_state_count = 0,
-            .action_entry_count = 0,
-            .goto_entry_count = 0,
-            .unresolved_entry_count = 0,
-            .parser_tables_bytes = parser_tables.len,
-            .parser_c_bytes = parser_c.len,
-        };
 
         return run;
     }
@@ -1028,6 +1037,7 @@ pub fn runTarget(
     run.emit_parser_tables.status = .passed;
     if (shouldStopAfter(options, .emit_parser_tables)) return run;
 
+    const parser_c_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     const parser_c = parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, options.optimize) catch |err| {
         return failRun(
             &run,
@@ -1037,6 +1047,7 @@ pub fn runTarget(
             try std.fmt.allocPrint(allocator, "parser.c emission failed: {s}", .{@errorName(err)}),
         );
     };
+    const parser_c_ms = elapsedMs(parser_c_timer);
     run.emit_parser_c.status = .passed;
     if (shouldStopAfter(options, .emit_parser_c)) return run;
 
@@ -1051,6 +1062,7 @@ pub fn runTarget(
         .unresolved_entry_count = emission_stats.unresolved_entry_count,
         .parser_tables_bytes = parser_tables.len,
         .parser_c_bytes = parser_c.len,
+        .emit_parser_c_ms = if (options.profile_timings) parser_c_ms else null,
     };
     if (emission_stats.blocked) {
         const extracted = extract_tokens.extractTokens(arena.allocator(), prepared) catch |err| {
@@ -1139,6 +1151,7 @@ pub fn runTarget(
     run.compat_check.status = .passed;
     if (shouldStopAfter(options, .compat_check)) return run;
 
+    const compile_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
     var compile_result = compile_smoke.compileParserC(allocator, parser_c) catch |err| {
         return failRun(
             &run,
@@ -1152,6 +1165,9 @@ pub fn runTarget(
 
     switch (compile_result) {
         .success => {
+            if (options.profile_timings) {
+                if (run.emission) |*emission| emission.compile_smoke_ms = elapsedMs(compile_timer);
+            }
             run.compile_smoke.status = .passed;
             if (shouldStopAfter(options, .compile_smoke)) return run;
         },
