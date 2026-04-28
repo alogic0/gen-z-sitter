@@ -66,6 +66,7 @@ pub const SimulationResult = union(enum) {
         consumed_bytes: usize,
         shifted_tokens: usize,
         error_count: u32 = 0,
+        dynamic_precedence: i32 = 0,
         tree: ?ParseNode = null,
         incremental: IncrementalStats = .{},
     },
@@ -508,6 +509,7 @@ fn acceptedResult(version: ParseVersion) SimulationResult {
         .consumed_bytes = version.cursor,
         .shifted_tokens = version.shifted_tokens,
         .error_count = version.error_count,
+        .dynamic_precedence = version.dynamic_precedence,
         .tree = tree,
         .incremental = .{
             .reused_nodes = reuse.reused_nodes,
@@ -2773,6 +2775,18 @@ test "GLR simulation accepts ambiguous input by forking on the unresolved shift/
             try std.testing.expect(r.reason != .unresolved_decision);
         },
     }
+}
+
+test "GLR simulation exposes accumulated dynamic precedence" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(), fixtures.parseTableDynamicPrecedenceGrammarJson().contents);
+    const result = try simulatePreparedScannerFree(arena.allocator(), prepared, "x+x");
+
+    const accepted = result.accepted;
+    try std.testing.expectEqual(@as(i32, 1), accepted.dynamic_precedence);
+    try std.testing.expectEqual(@as(usize, 3), accepted.consumed_bytes);
 }
 
 test "simulatePreparedScannerFree returns a parse tree for scanner-free input" {

@@ -571,11 +571,17 @@ selected grammars, not only compile and link.
 - [ ] Audit generated GLR stack behavior against upstream `stack.c`.
 - [ ] Add tests for stack version merge, split, dynamic precedence selection,
   subtree reuse decisions, paused versions, and last external token state.
-- [ ] Preserve dynamic precedence through generated result trees.
+- [x] Preserve dynamic precedence through generated result trees.
 
 Gate:
 
 - A dynamic-precedence fixture chooses the same tree as upstream.
+
+Batch 63 note: the behavioral GLR simulation now exposes accumulated dynamic
+precedence in accepted parse results and has a focused dynamic-precedence
+fixture. Generated C already carries `dynamic_precedence` in
+`TSGeneratedParseResult`; this closes the local result-surface gap for the
+temporary generated parser API.
 
 ### 5.2 Error Recovery
 
