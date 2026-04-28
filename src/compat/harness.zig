@@ -284,6 +284,41 @@ test "parseConstructProfileSnapshot carries SymbolSet allocation counters" {
     try std.testing.expectEqual(@as(usize, 256), snapshot.symbol_set_free_bytes);
 }
 
+test "parseTargetBuildConfig supports thresholded closure pressure" {
+    const config = try parseTargetBuildConfig(std.testing.allocator,
+        \\{
+        \\  "closure_pressure_mode": "thresholded_lr0",
+        \\  "closure_pressure_thresholds": {
+        \\    "max_closure_items": 3584,
+        \\    "max_duplicate_hits": 12000,
+        \\    "max_contexts_per_non_terminal": 160
+        \\  }
+        \\}
+    );
+
+    try std.testing.expectEqual(parse_table_build.ClosurePressureMode.thresholded_lr0, config.closure_pressure_mode);
+    try std.testing.expectEqual(@as(usize, 3584), config.closure_pressure_thresholds.max_closure_items);
+    try std.testing.expectEqual(@as(usize, 12000), config.closure_pressure_thresholds.max_duplicate_hits);
+    try std.testing.expectEqual(@as(usize, 160), config.closure_pressure_thresholds.max_contexts_per_non_terminal);
+}
+
+test "parseTargetBuildConfig rejects thresholds without pressure mode" {
+    try std.testing.expectError(error.InvalidTargetBuildConfig, parseTargetBuildConfig(std.testing.allocator,
+        \\{
+        \\  "closure_pressure_thresholds": {
+        \\    "max_closure_items": 3584
+        \\  }
+        \\}
+    ));
+}
+
+test "targetBuildConfigPathAlloc uses target id directory" {
+    const path = try targetBuildConfigPathAlloc(std.testing.allocator, "tree_sitter_haskell_json");
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expectEqualStrings("compat_targets/tree_sitter_haskell_json/build_config.json", path);
+}
+
 fn functionSpanBytes(source: []const u8, start_marker: []const u8, end_marker: []const u8) usize {
     const start = std.mem.indexOf(u8, source, start_marker) orelse return 0;
     const end = std.mem.indexOfPos(u8, source, start + start_marker.len, end_marker) orelse return source.len - start;
@@ -332,105 +367,89 @@ fn shouldEnableParseTableScopedProgress(target_id: []const u8) bool {
     return std.mem.eql(u8, value, target_id);
 }
 
-fn shouldEnableHaskellStartLayoutExperiment(target_id: []const u8) bool {
-    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
+const TargetBuildConfig = struct {
+    config_path: ?[]const u8 = null,
+    closure_pressure_mode: parse_table_build.ClosurePressureMode = .none,
+    closure_pressure_thresholds: parse_table_build.ClosurePressureThresholds = .{},
 
-    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_COARSE_START_LAYOUT") orelse return false;
+    fn hasClosurePressure(self: TargetBuildConfig) bool {
+        return self.closure_pressure_mode != .none;
+    }
+};
 
-    if (value.len == 0) return false;
-    if (std.mem.eql(u8, value, "0")) return false;
-    return true;
+fn loadTargetBuildConfigAlloc(allocator: std.mem.Allocator, target: targets.Target) !TargetBuildConfig {
+    const config_path = try targetBuildConfigPathAlloc(allocator, target.id);
+    errdefer allocator.free(config_path);
+
+    const contents = std.Io.Dir.cwd().readFileAlloc(runtime_io.get(), config_path, allocator, .limited(16 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => {
+            allocator.free(config_path);
+            return .{};
+        },
+        else => return err,
+    };
+    defer allocator.free(contents);
+
+    var config = try parseTargetBuildConfig(allocator, contents);
+    config.config_path = config_path;
+    return config;
 }
 
-fn shouldEnableHaskellModifierExperiment(target_id: []const u8) bool {
-    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
-
-    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_COARSE_MODIFIER") orelse return false;
-
-    if (value.len == 0) return false;
-    if (std.mem.eql(u8, value, "0")) return false;
-    return true;
+fn targetBuildConfigPathAlloc(allocator: std.mem.Allocator, target_id: []const u8) ![]const u8 {
+    return try std.fs.path.join(allocator, &.{ "compat_targets", target_id, "build_config.json" });
 }
 
-fn shouldEnableHaskellState5NonTerminal386Experiment(target_id: []const u8) bool {
-    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
+fn parseTargetBuildConfig(allocator: std.mem.Allocator, contents: []const u8) !TargetBuildConfig {
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, contents, .{});
+    defer parsed.deinit();
 
-    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_COARSE_STATE5_NONTERMINAL386") orelse return false;
+    const root = switch (parsed.value) {
+        .object => |object| object,
+        else => return error.InvalidTargetBuildConfig,
+    };
 
-    if (value.len == 0) return false;
-    if (std.mem.eql(u8, value, "0")) return false;
-    return true;
+    var config: TargetBuildConfig = .{};
+    if (root.get("closure_pressure_mode")) |mode_value| {
+        const mode_text = switch (mode_value) {
+            .string => |value| value,
+            else => return error.InvalidTargetBuildConfig,
+        };
+        config.closure_pressure_mode = if (std.mem.eql(u8, mode_text, "none"))
+            .none
+        else if (std.mem.eql(u8, mode_text, "thresholded_lr0"))
+            .thresholded_lr0
+        else
+            return error.InvalidTargetBuildConfig;
+    }
+
+    if (root.get("closure_pressure_thresholds")) |thresholds_value| {
+        const thresholds = switch (thresholds_value) {
+            .object => |object| object,
+            else => return error.InvalidTargetBuildConfig,
+        };
+        config.closure_pressure_thresholds = .{
+            .max_closure_items = try optionalUsizeField(thresholds, "max_closure_items"),
+            .max_duplicate_hits = try optionalUsizeField(thresholds, "max_duplicate_hits"),
+            .max_contexts_per_non_terminal = try optionalUsizeField(thresholds, "max_contexts_per_non_terminal"),
+        };
+    }
+
+    if (config.closure_pressure_mode == .thresholded_lr0 and !config.closure_pressure_thresholds.enabled()) {
+        return error.InvalidTargetBuildConfig;
+    }
+    if (config.closure_pressure_mode == .none and config.closure_pressure_thresholds.enabled()) {
+        return error.InvalidTargetBuildConfig;
+    }
+    return config;
 }
 
-fn shouldEnableHaskellState5NonTerminal390Experiment(target_id: []const u8) bool {
-    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
-
-    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_COARSE_STATE5_NONTERMINAL390") orelse return false;
-
-    if (value.len == 0) return false;
-    if (std.mem.eql(u8, value, "0")) return false;
-    return true;
-}
-
-fn shouldEnableHaskellState5OpenerFamilyExperiment(target_id: []const u8) bool {
-    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
-
-    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_COARSE_STATE5_OPENERS") orelse return false;
-
-    if (value.len == 0) return false;
-    if (std.mem.eql(u8, value, "0")) return false;
-    return true;
-}
-
-fn shouldEnableHaskellThresholdedClosureExperiment(target_id: []const u8) bool {
-    if (!std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) return false;
-
-    const value = runtime_io.environ().getPosix("GEN_Z_SITTER_HASKELL_THRESHOLD_LR0") orelse return false;
-
-    if (value.len == 0) return false;
-    if (std.mem.eql(u8, value, "0")) return false;
-    return true;
-}
-
-fn haskellThresholdedClosureThresholds() parse_table_build.ClosurePressureThresholds {
-    return .{
-        .max_closure_items = 3584,
-        .max_duplicate_hits = 12000,
-        .max_contexts_per_non_terminal = 160,
+fn optionalUsizeField(object: std.json.ObjectMap, name: []const u8) !usize {
+    const value = object.get(name) orelse return 0;
+    return switch (value) {
+        .integer => |integer| if (integer >= 0) @intCast(integer) else error.InvalidTargetBuildConfig,
+        else => error.InvalidTargetBuildConfig,
     };
 }
-
-const haskell_start_layout_family = [_]parse_table_build.CoarseTransitionSpec{
-    .{ .source_state_id = 0, .symbol = .{ .external = 2 } },
-    .{ .source_state_id = 0, .symbol = .{ .external = 3 } },
-    .{ .source_state_id = 0, .symbol = .{ .external = 4 } },
-    .{ .source_state_id = 0, .symbol = .{ .external = 5 } },
-    .{ .source_state_id = 0, .symbol = .{ .external = 6 } },
-    .{ .source_state_id = 0, .symbol = .{ .external = 7 } },
-    .{ .source_state_id = 0, .symbol = .{ .external = 8 } },
-};
-
-const haskell_modifier_transition = parse_table_build.CoarseTransitionSpec{
-    .source_state_id = 5,
-    .symbol = .{ .terminal = 41 },
-};
-
-const haskell_state5_non_terminal_386_transition = parse_table_build.CoarseTransitionSpec{
-    .source_state_id = 5,
-    .symbol = .{ .non_terminal = 386 },
-};
-
-const haskell_state5_non_terminal_390_transition = parse_table_build.CoarseTransitionSpec{
-    .source_state_id = 5,
-    .symbol = .{ .non_terminal = 390 },
-};
-
-const haskell_state5_opener_family = [_]parse_table_build.CoarseTransitionSpec{
-    .{ .source_state_id = 5, .symbol = .{ .terminal = 41 } },
-    .{ .source_state_id = 5, .symbol = .{ .non_terminal = 386 } },
-    .{ .source_state_id = 5, .symbol = .{ .non_terminal = 388 } },
-    .{ .source_state_id = 5, .symbol = .{ .non_terminal = 390 } },
-};
 
 pub fn runTarget(
     allocator: std.mem.Allocator,
@@ -899,91 +918,32 @@ pub fn runTarget(
 
         const scanner_build_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
         if (detail_progress) logDetailStart(target.id, "scanner_build_states");
-        var coarse_transitions_buf: [11]parse_table_build.CoarseTransitionSpec = undefined;
-        var coarse_transition_count: usize = 0;
-        const enable_haskell_start_layout = shouldEnableHaskellStartLayoutExperiment(target.id);
-        const enable_haskell_state5_opener_family = shouldEnableHaskellState5OpenerFamilyExperiment(target.id);
-        const enable_haskell_modifier = shouldEnableHaskellModifierExperiment(target.id);
-        const enable_haskell_state5_non_terminal_386 = shouldEnableHaskellState5NonTerminal386Experiment(target.id);
-        const enable_haskell_state5_non_terminal_390 = shouldEnableHaskellState5NonTerminal390Experiment(target.id);
-        const enable_haskell_thresholded_closure = shouldEnableHaskellThresholdedClosureExperiment(target.id);
-        if (enable_haskell_start_layout) {
-            @memcpy(coarse_transitions_buf[0..haskell_start_layout_family.len], haskell_start_layout_family[0..]);
-            coarse_transition_count += haskell_start_layout_family.len;
-        }
-        if (enable_haskell_state5_opener_family) {
-            @memcpy(
-                coarse_transitions_buf[coarse_transition_count .. coarse_transition_count + haskell_state5_opener_family.len],
-                haskell_state5_opener_family[0..],
+        const target_build_config = loadTargetBuildConfigAlloc(arena.allocator(), target) catch |err| {
+            return failRun(
+                &run,
+                .scanner_boundary_check,
+                .deferred_for_scanner_boundary,
+                .scanner_external_scanner_boundary_gap,
+                try std.fmt.allocPrint(allocator, "build_config load failed: {s}", .{@errorName(err)}),
             );
-            coarse_transition_count += haskell_state5_opener_family.len;
-        } else {
-            if (enable_haskell_modifier) {
-                coarse_transitions_buf[coarse_transition_count] = haskell_modifier_transition;
-                coarse_transition_count += 1;
-            }
-            if (enable_haskell_state5_non_terminal_386) {
-                coarse_transitions_buf[coarse_transition_count] = haskell_state5_non_terminal_386_transition;
-                coarse_transition_count += 1;
-            }
-            if (enable_haskell_state5_non_terminal_390) {
-                coarse_transitions_buf[coarse_transition_count] = haskell_state5_non_terminal_390_transition;
-                coarse_transition_count += 1;
-            }
-        }
-        const build_options: parse_table_build.BuildOptions = .{
-            .closure_pressure_mode = if (enable_haskell_thresholded_closure) .thresholded_lr0 else .none,
-            .closure_pressure_thresholds = if (enable_haskell_thresholded_closure) haskellThresholdedClosureThresholds() else .{},
-            .coarse_transitions = if (enable_haskell_thresholded_closure) &.{} else coarse_transitions_buf[0..coarse_transition_count],
         };
-        if (detail_progress and enable_haskell_thresholded_closure) {
+        const build_options: parse_table_build.BuildOptions = .{
+            .closure_pressure_mode = target_build_config.closure_pressure_mode,
+            .closure_pressure_thresholds = target_build_config.closure_pressure_thresholds,
+        };
+        if (detail_progress and target_build_config.hasClosurePressure()) {
             const thresholds = build_options.closure_pressure_thresholds;
             logDetailSummary(
-                "{s} scanner_build_states enabling thresholded_lr0 max_closure_items={d} max_duplicate_hits={d} max_contexts_per_non_terminal={d}",
+                "{s} scanner_build_states build_config={s} closure_pressure_mode={s} max_closure_items={d} max_duplicate_hits={d} max_contexts_per_non_terminal={d}",
                 .{
                     target.id,
+                    target_build_config.config_path orelse "<none>",
+                    @tagName(target_build_config.closure_pressure_mode),
                     thresholds.max_closure_items,
                     thresholds.max_duplicate_hits,
                     thresholds.max_contexts_per_non_terminal,
                 },
             );
-            if (coarse_transition_count != 0) {
-                logDetailSummary(
-                    "{s} scanner_build_states ignoring coarse_transition overrides while thresholded_lr0 is active",
-                    .{target.id},
-                );
-            }
-        }
-        if (detail_progress and build_options.coarse_transitions.len != 0) {
-            if (enable_haskell_start_layout) {
-                logDetailSummary(
-                    "{s} scanner_build_states enabling coarse_transition_family source_state=0 externals=2,3,4,5,6,7,8",
-                    .{target.id},
-                );
-            }
-            if (enable_haskell_state5_opener_family) {
-                logDetailSummary(
-                    "{s} scanner_build_states enabling coarse_transition_family source_state=5 terminal=41 non_terminals=386,388,390",
-                    .{target.id},
-                );
-            } else if (enable_haskell_modifier) {
-                logDetailSummary(
-                    "{s} scanner_build_states enabling coarse_transition source_state=5 terminal=41",
-                    .{target.id},
-                );
-            }
-            if (!enable_haskell_state5_opener_family and enable_haskell_state5_non_terminal_386) {
-                logDetailSummary(
-                    "{s} scanner_build_states enabling coarse_transition source_state=5 non_terminal=386",
-                    .{target.id},
-                );
-            }
-            if (!enable_haskell_state5_opener_family and enable_haskell_state5_non_terminal_390) {
-                logDetailSummary(
-                    "{s} scanner_build_states enabling coarse_transition source_state=5 non_terminal=390",
-                    .{target.id},
-                );
-            }
         }
         const build_result = parse_table_build.buildStatesWithOptions(arena.allocator(), flattened, build_options) catch |err| {
             return failRun(

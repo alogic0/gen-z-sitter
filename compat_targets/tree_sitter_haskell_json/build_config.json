@@ -1,0 +1,8 @@
+{
+  "closure_pressure_mode": "thresholded_lr0",
+  "closure_pressure_thresholds": {
+    "max_closure_items": 3584,
+    "max_duplicate_hits": 12000,
+    "max_contexts_per_non_terminal": 160
+  }
+}

@@ -350,6 +350,8 @@ lookahead, conflict, and minimization gaps.
   dynamic precedence, and token.immediate interactions.
 - [ ] Remove any remaining coarse-mode behavior from promoted runtime paths
   unless the target is explicitly classified as diagnostic-only.
+  - [x] Replace hardcoded Haskell state/symbol coarse-transition experiments
+    with a per-target `build_config.json` closure-pressure mode.
 
 Gate:
 
@@ -366,6 +368,13 @@ selected states. It records counts and hashes for kernel items, closure items,
 completed items, lookaheads, reserved lookaheads, and transitions so future
 upstream/local state comparison can use stable keys instead of scanning the
 verbose entry list first.
+
+Batch 94 note: Haskell scanner build tuning now comes from
+`compat_targets/tree_sitter_haskell_json/build_config.json` instead of
+hardcoded internal state/symbol IDs in the harness. The generic target config
+loader currently supports `closure_pressure_mode = thresholded_lr0` and
+threshold values, keeping grammar-specific pressure tuning self-describing and
+outside Zig code.
 
 Batch 15 note: local comparison artifacts now include `parse-states.txt`, using
 the existing deterministic item-set/state dump. This is the local side of the
