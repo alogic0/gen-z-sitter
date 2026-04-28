@@ -1707,6 +1707,7 @@ const RegexFeatureSummary = struct {
     has_anchor: bool = false,
     has_dot: bool = false,
     has_group_prefix: bool = false,
+    has_unsupported_group_prefix: bool = false,
     has_backreference: bool = false,
     has_lazy_quantifier: bool = false,
 };
@@ -1745,6 +1746,9 @@ fn regexFeatureSummary(value: []const u8) RegexFeatureSummary {
                 if (!in_class) result.has_group = true;
                 if (!in_class and index + 1 < value.len and value[index + 1] == '?') {
                     result.has_group_prefix = true;
+                    if (index + 2 >= value.len or value[index + 2] != ':') {
+                        result.has_unsupported_group_prefix = true;
+                    }
                 }
             },
             '|' => {
@@ -1795,9 +1799,9 @@ fn regexFeatureSummary(value: []const u8) RegexFeatureSummary {
 
 fn regexFeaturesUnsupported(features: RegexFeatureSummary) bool {
     return features.has_anchor or
-        features.has_group_prefix or
+        features.has_unsupported_group_prefix or
         features.has_backreference or
-        features.has_lazy_quantifier;
+        features.has_control_escape;
 }
 
 fn writeRegexUnsupportedFeaturesJson(writer: anytype, features: RegexFeatureSummary) !void {
@@ -1807,7 +1811,7 @@ fn writeRegexUnsupportedFeaturesJson(writer: anytype, features: RegexFeatureSumm
         try writeMaybeComma(writer, &wrote);
         try writeJsonString(writer, "anchor");
     }
-    if (features.has_group_prefix) {
+    if (features.has_unsupported_group_prefix) {
         try writeMaybeComma(writer, &wrote);
         try writeJsonString(writer, "group_prefix");
     }
@@ -1815,9 +1819,9 @@ fn writeRegexUnsupportedFeaturesJson(writer: anytype, features: RegexFeatureSumm
         try writeMaybeComma(writer, &wrote);
         try writeJsonString(writer, "backreference");
     }
-    if (features.has_lazy_quantifier) {
+    if (features.has_control_escape) {
         try writeMaybeComma(writer, &wrote);
-        try writeJsonString(writer, "lazy_quantifier");
+        try writeJsonString(writer, "control_escape");
     }
     try writer.writeByte(']');
 }
@@ -1864,6 +1868,8 @@ fn writeRegexFeaturesJson(writer: anytype, features: RegexFeatureSummary) !void 
     try writeBoolJson(writer, features.has_dot);
     try writer.writeAll(", \"group_prefix\": ");
     try writeBoolJson(writer, features.has_group_prefix);
+    try writer.writeAll(", \"unsupported_group_prefix\": ");
+    try writeBoolJson(writer, features.has_unsupported_group_prefix);
     try writer.writeAll(", \"backreference\": ");
     try writeBoolJson(writer, features.has_backreference);
     try writer.writeAll(", \"lazy_quantifier\": ");
@@ -3295,7 +3301,7 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries
         \\    "source_file": { "type": "SYMBOL", "name": "identifier" },
         \\    "identifier": {
         \\      "type": "PATTERN",
-        \\      "value": "(\\p{XID_Start}|_)[A-Z\\d\\x41\\u0041\\cA_]{0,3}",
+        \\      "value": "(?:\\p{XID_Start}|_)[A-Z\\d\\x41\\u0041_]{0,3}?",
         \\      "flags": "i"
         \\    }
         \\  }
@@ -3321,9 +3327,10 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries
     try std.testing.expect(std.mem.indexOf(u8, json, "\"shorthand_escape\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"hex_escape\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unicode_escape\": 1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"control_escape\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unicode_property\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"bounded_repeat\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"group_prefix\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"lazy_quantifier\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_pattern\": 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"supported_subset\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_features\": []") != null);
@@ -3342,7 +3349,7 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc marks unsupported regex construc
         \\    "source_file": { "type": "SYMBOL", "name": "identifier" },
         \\    "identifier": {
         \\      "type": "PATTERN",
-        \\      "value": "^(?:a+?)\\1$"
+        \\      "value": "^(?=a)\\1\\cA$"
         \\    }
         \\  }
         \\}
@@ -3361,9 +3368,10 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc marks unsupported regex construc
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_pattern\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"group_prefix\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_group_prefix\": true") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"backreference\": 1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"lazy_quantifier\": 1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_features\": [\"anchor\", \"group_prefix\", \"backreference\", \"lazy_quantifier\"]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"control_escape\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_features\": [\"anchor\", \"group_prefix\", \"backreference\", \"control_escape\"]") != null);
 }
 
 test "generateLocalLexTableSummaryJsonAlloc writes lexer table counts" {

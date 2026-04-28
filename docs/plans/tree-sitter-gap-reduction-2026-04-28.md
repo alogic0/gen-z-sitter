@@ -564,6 +564,12 @@ implicit precedence, and start state. This makes token and immediate-token
 boundaries visible in regex audit artifacts instead of requiring a separate
 prepared-IR dump lookup.
 
+Batch 87 note: regex-surface support classification now matches the local
+lexer model more closely: non-capturing `(?:...)` groups and lazy quantifier
+suffixes remain feature-counted but no longer mark a pattern unsupported, while
+unsupported `(?...)` group prefixes, anchors, numeric backreferences, and
+control escapes are still reported as unsupported diagnostics.
+
 ### 4.2 Lex Table Construction
 
 - [ ] Audit local NFA/DFA construction against upstream `nfa.rs` and
@@ -1064,18 +1070,39 @@ Gate:
 
 ## Suggested Implementation Order
 
+Near-term execution queue after Batch 86:
+
+1. Phase 4.1 regex-surface accuracy: align `regex-surface.json` support and
+   unsupported-feature classification with what `src/lexer/model.zig` actually
+   accepts today, so diagnostics do not understate local regex support.
+2. Phase 2.2 prepared-IR diff: add structured local/upstream comparison for
+   variables, hidden rules, inline rules, precedence, conflicts, reserved sets,
+   supertypes, and token extraction metadata.
+3. Phase 3.1 item-set comparison: use the existing item-set snapshots to add a
+   normalized comparison layer for kernel items, closure additions, lookaheads,
+   reserved lookaheads, completed items, and transitions.
+4. Phase 2.3 node-types cleanup: resolve or explicitly classify remaining
+   field `multiple`/`required`, alias visibility/namedness, and supertype
+   ordering gaps for promoted grammars.
+5. Phase 6.2 Python promotion: resume only after scanner-state evidence is
+   bounded enough for an indentation-sensitive target.
+6. Phase 3.1 coarse-mode removal: profile and debug strict promoted runtime
+   paths before removing any coarse parser-table override; do not promote a
+   strict path that exceeds the bounded runtime budget.
+
+Historical order already completed or superseded:
+
 1. Phase 1.1 and 1.2: upstream/local summary oracle.
-2. Phase 2.1 and 2.2: grammar preparation diff, because later table diffs are
-   noisy without it.
-3. Phase 3.1 and 3.2: item-set and conflict parity.
-4. Phase 4.1: regex/token support classification for real grammar blockers.
-5. Phase 6.1 on C: first larger scanner-free promotion wave.
+2. Phase 2.1 and 2.2: grammar preparation diff foundations.
+3. Phase 3.1 and 3.2: item-set and conflict artifact foundations.
+4. Phase 4.1: regex/token support classification foundations.
+5. Phase 6.1 on C, Bash, Haskell, Rust, JavaScript, and TypeScript promotion
+   waves within their current compatibility boundaries.
 6. Phase 5.1 and 5.2: runtime stack and recovery parity where corpus samples
    expose real behavior differences.
-7. Phase 6.1 on Bash/Haskell/Python: scanner-state promotion wave.
-8. Phase 7 targeted optimizations only after profile artifacts point to a
+7. Phase 7 targeted optimizations only after profile artifacts point to a
    bottleneck.
-9. Phase 8 compatibility-report UX after the evidence model is stable.
+8. Phase 8 compatibility-report UX after the evidence model is stable.
 
 ## Batch Policy
 
