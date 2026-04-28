@@ -51,6 +51,7 @@ test {
     _ = @import("parser_emit/compat_checks.zig");
     _ = @import("parser_emit/parser_tables.zig");
     _ = @import("parser_emit/parser_c.zig");
+    _ = @import("compat/release_boundary.zig");
     _ = @import("compat/minimize_probe.zig");
     _ = @import("support/diag.zig");
     _ = @import("support/fs.zig");

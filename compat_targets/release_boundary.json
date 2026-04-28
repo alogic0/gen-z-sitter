@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "boundary": "staged release readiness, not full upstream tree-sitter generate parity",
+  "promoted_grammars": [
+    {
+      "id": "tree_sitter_json_json",
+      "status": "promoted",
+      "proof": "full parser emission, compile-smoke, accepted runtime-link samples, and invalid runtime-link sample"
+    },
+    {
+      "id": "tree_sitter_ziggy_json",
+      "status": "promoted",
+      "proof": "full parser emission, compile-smoke, and accepted runtime-link sample"
+    },
+    {
+      "id": "tree_sitter_ziggy_schema_json",
+      "status": "promoted",
+      "proof": "full parser emission, compile-smoke, and accepted runtime-link sample"
+    },
+    {
+      "id": "tree_sitter_zig_json",
+      "status": "promoted",
+      "proof": "bounded parser.c emission, compile-smoke, and focused accepted runtime-link sample"
+    },
+    {
+      "id": "tree_sitter_bash_json",
+      "status": "promoted_scanner_boundary",
+      "proof": "regular and generated-GLR runtime-link proofs against the real scanner.c"
+    },
+    {
+      "id": "tree_sitter_haskell_json",
+      "status": "promoted_scanner_boundary",
+      "proof": "regular and generated-GLR runtime-link proofs against the real scanner.c"
+    }
+  ],
+  "deferred_grammars": [
+    {
+      "id": "tree_sitter_javascript_json",
+      "status": "deferred",
+      "proof": "load/prepare plus bounded parser-boundary classification; broader parser-table proof remains outside the routine budget"
+    },
+    {
+      "id": "tree_sitter_python_json",
+      "status": "deferred",
+      "proof": "load/prepare plus bounded parser-boundary classification; indentation scanner promotion remains separate"
+    },
+    {
+      "id": "tree_sitter_typescript_json",
+      "status": "deferred",
+      "proof": "load/prepare plus bounded parser-boundary classification; large parser-table proof remains heavy"
+    },
+    {
+      "id": "tree_sitter_rust_json",
+      "status": "deferred",
+      "proof": "load/prepare plus bounded parser-boundary classification; large lexer/parser proof remains heavy"
+    },
+    {
+      "id": "parse_table_conflict_json",
+      "status": "deferred_control_fixture",
+      "proof": "intentional ambiguous control fixture for unresolved conflict handling"
+    }
+  ],
+  "runtime_surface_gaps": [
+    "generated GLR recovery is bounded and visible, but not full tree-sitter runtime recovery parity",
+    "generated result/tree output is exposed through the temporary ts_generated_parse_result API",
+    "external scanner proofs are focused runtime-link samples, not broad corpus-level runtime equivalence",
+    "large deferred grammars remain behind bounded parser-boundary classification and profiling"
+  ],
+  "bounded_release_gates": [
+    "zig build test",
+    "zig build test-build-config",
+    "zig build test-cli-generate",
+    "zig build test-pipeline",
+    "zig build test-link-runtime",
+    "zig build test-compat-heavy",
+    "zig build run-generate-smoke",
+    "zig build test-release"
+  ]
+}

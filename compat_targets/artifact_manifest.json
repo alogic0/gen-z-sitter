@@ -66,6 +66,12 @@
       "description": "classification notes for deferred JavaScript, Python, TypeScript, and Rust parser-wave targets"
     },
     {
+      "path": "compat_targets/release_boundary.json",
+      "refresh_kind": "routine_refresh",
+      "generator": "update_compat_artifacts.zig",
+      "description": "compact staged release boundary summary for promoted grammars, deferred grammars, and known runtime-surface gaps"
+    },
+    {
       "path": "compat_targets/artifact_manifest.json",
       "refresh_kind": "routine_refresh",
       "generator": "update_compat_artifacts.zig",

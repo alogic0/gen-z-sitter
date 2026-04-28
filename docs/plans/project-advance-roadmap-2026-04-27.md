@@ -540,7 +540,7 @@ Implementation batches:
      gates in one build step.
    - [x] Add a generated parser status runtime-link proof that calls the two new
      status accessors from compiled generated C.
-   - [ ] Add a compact release artifact summarizing promoted grammars, deferred
+   - [x] Add a compact release artifact summarizing promoted grammars, deferred
      grammars, and known runtime-surface gaps.
    - [ ] Add a no-vendored-tree-sitter-files check that ignores `.zig-cache/`
      but scans committed source and compatibility fixture paths.

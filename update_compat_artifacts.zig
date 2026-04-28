@@ -13,6 +13,7 @@ const coverage_decision = @import("src/compat/coverage_decision.zig");
 const shift_reduce_profile = @import("src/compat/shift_reduce_profile.zig");
 const external_repo_inventory = @import("src/compat/external_repo_inventory.zig");
 const external_scanner_repo_inventory = @import("src/compat/external_scanner_repo_inventory.zig");
+const release_boundary = @import("src/compat/release_boundary.zig");
 const runtime_io = @import("src/support/runtime_io.zig");
 
 fn logStepStart(name: []const u8) void {
@@ -93,6 +94,11 @@ pub fn main(init: std.process.Init) !void {
     logStepDone("external_scanner_repo_inventory");
     defer allocator.free(external_scanner_repo);
 
+    logStepStart("release_boundary");
+    const release_boundary_json = try release_boundary.renderReleaseBoundaryAlloc(allocator);
+    logStepDone("release_boundary");
+    defer allocator.free(release_boundary_json);
+
     try writeArtifact("compat_targets/artifact_manifest.json", manifest);
     try writeArtifact("compat_targets/shortlist.json", shortlist);
     try writeArtifact("compat_targets/shortlist_inventory.json", inventory_json);
@@ -104,6 +110,7 @@ pub fn main(init: std.process.Init) !void {
     try writeArtifact("compat_targets/shortlist_shift_reduce_profile.json", shift_reduce);
     try writeArtifact("compat_targets/external_repo_inventory.json", external_repo);
     try writeArtifact("compat_targets/external_scanner_repo_inventory.json", external_scanner_repo);
+    try writeArtifact("compat_targets/release_boundary.json", release_boundary_json);
 
     std.debug.print("[update_compat_artifacts] complete\n", .{});
 }

@@ -15,6 +15,7 @@ test {
     _ = @import("compat/parser_boundary_hypothesis.zig");
     _ = @import("compat/parser_boundary_profile.zig");
     _ = @import("compat/parser_boundary_probe.zig");
+    _ = @import("compat/release_boundary.zig");
     _ = @import("compat/report_json.zig");
     _ = @import("compat/shortlist_json.zig");
     _ = @import("compat/shift_reduce_profile.zig");

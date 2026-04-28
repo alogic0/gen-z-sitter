@@ -263,7 +263,7 @@
         "goto_entry_count": 2,
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 232,
-        "parser_c_bytes": 9670
+        "parser_c_bytes": 10616
       },
       "blocked_boundary": null
     },
@@ -324,14 +324,14 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 23,
-        "emitted_state_count": 23,
+        "serialized_state_count": 51,
+        "emitted_state_count": 51,
         "merged_state_count": 0,
-        "action_entry_count": 47,
-        "goto_entry_count": 11,
+        "action_entry_count": 87,
+        "goto_entry_count": 19,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 1881,
-        "parser_c_bytes": 22317
+        "parser_tables_bytes": 3651,
+        "parser_c_bytes": 32185
       },
       "blocked_boundary": null
     },
@@ -376,7 +376,7 @@
       },
       "emit_parser_c": {
         "status": "failed",
-        "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:5, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:10, reduce:2(_entry)] count=1], samples=[state 9 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:10, reduce:2(_entry)]; state 12 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:5, reduce:3(_entry)]]"
+        "detail": "parser-wave target remains deferred at emit_parser_c: blocked boundary summary: states=2, entries=2, reasons={shift_reduce:2, reduce_reduce_deferred:0, multiple_candidates:0, unsupported_action_mix:0}, dominant_signatures=[identifier shift_reduce actions=[shift:13, reduce:3(_entry)] count=1; number_literal shift_reduce actions=[shift:10, reduce:2(_entry)] count=1], samples=[state 9 terminal:1 (number_literal) shift_reduce candidates=2 actions=[shift:10, reduce:2(_entry)]; state 12 terminal:0 (identifier) shift_reduce candidates=2 actions=[shift:13, reduce:3(_entry)]]"
       },
       "scanner_boundary_check": {
         "status": "not_run",
@@ -392,14 +392,14 @@
       },
       "emission": {
         "blocked": true,
-        "serialized_state_count": 16,
-        "emitted_state_count": 16,
+        "serialized_state_count": 17,
+        "emitted_state_count": 17,
         "merged_state_count": 0,
-        "action_entry_count": 39,
+        "action_entry_count": 40,
         "goto_entry_count": 14,
         "unresolved_entry_count": 2,
-        "parser_tables_bytes": 1737,
-        "parser_c_bytes": 18280
+        "parser_tables_bytes": 1781,
+        "parser_c_bytes": 19745
       },
       "blocked_boundary": {
         "unresolved_state_count": 2,
@@ -428,14 +428,14 @@
             "symbol_name": "identifier",
             "reason": "shift_reduce",
             "candidate_count": 2,
-            "candidate_actions_summary": "shift:5, reduce:3(_entry)"
+            "candidate_actions_summary": "shift:13, reduce:3(_entry)"
           }
         ],
         "dominant_signatures": [
           {
             "symbol_name": "identifier",
             "reason": "shift_reduce",
-            "candidate_actions_summary": "shift:5, reduce:3(_entry)",
+            "candidate_actions_summary": "shift:13, reduce:3(_entry)",
             "count": 1
           },
           {
@@ -504,14 +504,14 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 1281,
-        "emitted_state_count": 1281,
+        "serialized_state_count": 546,
+        "emitted_state_count": 546,
         "merged_state_count": 0,
-        "action_entry_count": 3900,
-        "goto_entry_count": 861,
+        "action_entry_count": 1917,
+        "goto_entry_count": 812,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 157190,
-        "parser_c_bytes": 666280
+        "parser_tables_bytes": 86692,
+        "parser_c_bytes": 293285
       },
       "blocked_boundary": null
     },
@@ -572,14 +572,14 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 238,
-        "emitted_state_count": 238,
+        "serialized_state_count": 193,
+        "emitted_state_count": 193,
         "merged_state_count": 0,
-        "action_entry_count": 717,
-        "goto_entry_count": 228,
+        "action_entry_count": 671,
+        "goto_entry_count": 231,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 30269,
-        "parser_c_bytes": 143937
+        "parser_tables_bytes": 28803,
+        "parser_c_bytes": 138479
       },
       "blocked_boundary": null
     },
@@ -640,14 +640,14 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 2336,
+        "serialized_state_count": 1556,
         "emitted_state_count": 0,
         "merged_state_count": 0,
         "action_entry_count": 0,
         "goto_entry_count": 0,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 613619,
-        "parser_c_bytes": 3908039
+        "parser_tables_bytes": 529541,
+        "parser_c_bytes": 4977550
       },
       "blocked_boundary": null
     },
@@ -708,14 +708,14 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 1666,
+        "serialized_state_count": 1559,
         "emitted_state_count": 0,
         "merged_state_count": 0,
         "action_entry_count": 0,
         "goto_entry_count": 0,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 1828411,
-        "parser_c_bytes": 3271199
+        "parser_tables_bytes": 1683283,
+        "parser_c_bytes": 3355728
       },
       "blocked_boundary": null
     },
@@ -776,14 +776,14 @@
       },
       "emission": {
         "blocked": false,
-        "serialized_state_count": 615,
-        "emitted_state_count": 615,
+        "serialized_state_count": 101,
+        "emitted_state_count": 101,
         "merged_state_count": 0,
-        "action_entry_count": 5635,
-        "goto_entry_count": 110,
+        "action_entry_count": 369,
+        "goto_entry_count": 102,
         "unresolved_entry_count": 0,
-        "parser_tables_bytes": 182543,
-        "parser_c_bytes": 364126
+        "parser_tables_bytes": 14800,
+        "parser_c_bytes": 61800
       },
       "blocked_boundary": null
     },
@@ -967,7 +967,7 @@
         "goto_entry_count": 3,
         "unresolved_entry_count": 1,
         "parser_tables_bytes": 438,
-        "parser_c_bytes": 12488
+        "parser_c_bytes": 13442
       },
       "blocked_boundary": {
         "unresolved_state_count": 1,
