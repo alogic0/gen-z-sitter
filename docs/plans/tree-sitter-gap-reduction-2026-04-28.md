@@ -484,6 +484,8 @@ Goal: close the scanner-free lexical gap enough for larger real grammars.
     artifacts.
 - [ ] Add grammar-level tests where regex support affects accepted input, not
   just regex unit tests.
+  - [x] Cover scanner-free accepted input for character classes, escapes, and
+    bounded repeats.
 
 Gate:
 
@@ -501,6 +503,12 @@ Batch 61 note: `regex-surface.json` now adds per-pattern support status and
 unsupported feature names. The current classifier marks anchors as unsupported
 while treating bounded repeats, ordinary/non-capturing groups, and alternation
 as supported by the local regex parser.
+
+Batch 70 note: behavioral scanner-free simulation now has a grammar-level regex
+token test for character classes, `\d` escapes, and bounded repeats. The test
+asserts that valid input is accepted without recovery and that a malformed
+short token makes less progress, so regex support is covered through parser
+behavior instead of only lexer-model unit tests.
 
 ### 4.2 Lex Table Construction
 

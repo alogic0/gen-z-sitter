@@ -2095,6 +2095,39 @@ test "simulatePreparedScannerFree accepts the valid behavioral config input" {
     }
 }
 
+test "simulatePreparedScannerFree accepts regex tokens with classes escapes and bounded repeats" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const prepared = try parsePreparedFromJsonFixture(arena.allocator(),
+        \\{
+        \\  "name": "regex_behavior",
+        \\  "rules": {
+        \\    "source_file": {
+        \\      "type": "SYMBOL",
+        \\      "name": "identifier"
+        \\    },
+        \\    "identifier": {
+        \\      "type": "TOKEN",
+        \\      "content": { "type": "PATTERN", "value": "[A-Z_]\\d{1,3}" }
+        \\    }
+        \\  }
+        \\}
+    );
+
+    const valid = try simulatePreparedScannerFree(arena.allocator(), prepared, "A123");
+    switch (valid) {
+        .accepted => |accepted| {
+            try std.testing.expectEqual(@as(usize, 4), accepted.consumed_bytes);
+            try std.testing.expectEqual(@as(u32, 0), accepted.error_count);
+        },
+        .rejected => return error.TestUnexpectedResult,
+    }
+
+    const invalid = try simulatePreparedScannerFree(arena.allocator(), prepared, "A");
+    try std.testing.expect(progressOf(invalid) < progressOf(valid));
+}
+
 test "simulatePreparedScannerFree records recovery for the invalid behavioral config input" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
