@@ -169,6 +169,7 @@ pub fn build(b: *std.Build) void {
         "linkAndRunJavascriptTernaryGeneratedGlrParserWithRealExternalScanner",
         "linkAndRunTypescriptTernaryParserWithRealExternalScanner",
         "linkAndRunPythonNewlineParserWithRealExternalScanner",
+        "linkAndRunPythonStringParserWithRealExternalScanner",
         "linkAndRunRustFloatLiteralParserWithRealExternalScanner",
         "linkAndRunRustRawStringParserWithRealExternalScanner",
         "linkAndRunHaskellParserWithRealExternalScanner",

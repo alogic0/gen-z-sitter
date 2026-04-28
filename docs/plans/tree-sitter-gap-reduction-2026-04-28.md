@@ -671,6 +671,14 @@ fixture scans `_raw_string_literal_start`, `raw_string_literal_content`, and
 the upstream scanner payload state alive across multiple external-token scans.
 Block-comment scanner-state coverage remains separate.
 
+Batch 43 note: Python scanner runtime coverage now includes a stateful string
+delimiter path in addition to the shallow `_newline` proof. The focused
+runtime-link fixture scans `string_start`, `_string_content`, and `string_end`
+against `"hi"`, proving the generated parser keeps the upstream delimiter stack
+alive across multiple external-token scans. The indentation layout stack remains
+separate because a tiny artificial parser needs a faithful newline/indent token
+boundary to avoid overstating parity.
+
 ## Phase 7 — Performance and Capacity
 
 Goal: keep correctness work practical for large grammars.
