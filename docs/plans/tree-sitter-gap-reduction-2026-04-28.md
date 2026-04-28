@@ -879,7 +879,7 @@ selected grammars, not only compile and link.
 
 ### 5.1 Stack and Dynamic Precedence
 
-- [ ] Audit generated GLR stack behavior against upstream `stack.c`.
+- [x] Audit generated GLR stack behavior against upstream `stack.c`.
 - [ ] Add tests for stack version merge, split, dynamic precedence selection,
   subtree reuse decisions, paused versions, and last external token state.
   - [x] Cover local GLR version condensation: duplicate stack merge,
@@ -908,6 +908,13 @@ scanner state as part of version identity. Versions with the same parse stack,
 cursor, values, and nodes no longer merge if their external scanner payload
 length or bytes differ, preventing scanner-owned layout/comment/string state
 from being lost during runtime version pruning.
+
+Batch 122 note: upstream `stack.c` and parser stack-version handling were
+audited against the temporary generated GLR runtime. Local coverage now maps the
+active-version merge, dynamic-precedence tie-break, active-version cap, forked
+unresolved actions, and last-external-scanner-state merge boundary. Paused
+version parity remains open because the temporary generated parser does not yet
+model Tree-sitter paused stack heads.
 
 ### 5.2 Error Recovery
 
