@@ -148,8 +148,8 @@ Goal: remove hidden differences before table construction starts.
 
 ### 2.1 DSL and Raw Grammar Semantics
 
-- [ ] Audit local `grammar.js` loading against upstream `dsl.js`.
-- [ ] Cover `prec`, `prec.left`, `prec.right`, `prec.dynamic`, `token`,
+- [x] Audit local `grammar.js` loading against upstream `dsl.js`.
+- [x] Cover `prec`, `prec.left`, `prec.right`, `prec.dynamic`, `token`,
   `token.immediate`, `alias`, `field`, `repeat`, `repeat1`, `optional`,
   `choice`, `seq`, `blank`, `reserved`, `conflicts`, `externals`,
   `inline`, `supertypes`, `word`, and `extras`.
@@ -157,6 +157,14 @@ Goal: remove hidden differences before table construction starts.
   local raw grammar structure.
 - [ ] Make unsupported DSL constructs fail explicitly with target name and rule
   path.
+
+Batch 3 note: `docs/plans/dsl-coverage-2026-04-28.md` records the current DSL
+coverage matrix. The important correction is that local `grammar.js` loading
+does not inject upstream `dsl.js`; it expects a module that exports a
+JSON-shaped grammar object. Upstream `tree-sitter generate --no-parser` did not
+produce a normalized `grammar.json` for the JSON snapshot, so raw-grammar
+differential fixtures need a different oracle than the standard upstream output
+directory.
 
 Gate:
 
@@ -181,7 +189,7 @@ Gate:
 
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 
-- [ ] Compare local `node-types.json` with upstream for promoted targets.
+- [x] Compare local `node-types.json` with upstream for promoted targets.
 - [ ] Fix field `multiple` and `required` classification mismatches.
 - [ ] Fix alias visibility/namedness mismatches.
 - [ ] Fix supertype and subtype ordering mismatches.
@@ -192,6 +200,11 @@ Gate:
 
 - JSON and two real non-JSON targets have node-types output matching upstream or
   explicitly classified.
+
+Batch 3 note: `compare-upstream` now writes local `node-types.json` under the
+local comparison artifact directory and adds a normalized `node_types_hash` to
+both local and upstream summaries. JSON currently reports a node-types hash
+difference, which becomes the next focused Phase 2.3 diagnostic target.
 
 ## Phase 3 — Parse Table Algorithm Parity
 

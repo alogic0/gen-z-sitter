@@ -1,5 +1,6 @@
 const std = @import("std");
 const grammar_loader = @import("../grammar/loader.zig");
+const node_type_pipeline = @import("../node_types/pipeline.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
@@ -24,6 +25,7 @@ pub const Summary = struct {
     token_count: usize,
     field_count: usize,
     field_names_hash: u64,
+    node_types_hash: u64,
     alias_count: usize,
     production_id_count: usize,
     serialized_state_count: usize,
@@ -79,8 +81,9 @@ pub fn generateLocalSummaryAlloc(
     const parser_c = try parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, .{
         .compact_duplicate_states = options.compact_duplicate_states,
     });
+    const node_types_json = try node_type_pipeline.generateNodeTypesJsonFromPrepared(arena.allocator(), prepared);
 
-    var summary = try parseUpstreamParserCSummaryAlloc(allocator, loaded.json.grammar.name, parser_c, null);
+    var summary = try parseUpstreamParserCSummaryAlloc(allocator, loaded.json.grammar.name, parser_c, node_types_json);
     summary.language_version = parser_compat.language_version;
     summary.blocked = serialized.blocked or emission_stats.blocked;
     summary.rule_count = loaded.json.grammar.ruleCount();
@@ -88,6 +91,24 @@ pub fn generateLocalSummaryAlloc(
     summary.serialized_state_count = serialized.states.len;
     summary.emitted_state_count = emission_stats.state_count;
     return summary;
+}
+
+pub fn generateLocalNodeTypesJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+    const json = try node_type_pipeline.generateNodeTypesJsonFromPrepared(arena.allocator(), prepared);
+    return try allocator.dupe(u8, json);
 }
 
 pub fn generateLocalParserCAlloc(
@@ -124,7 +145,6 @@ pub fn parseUpstreamParserCSummaryAlloc(
     parser_c: []const u8,
     node_types_json: ?[]const u8,
 ) !Summary {
-    _ = node_types_json;
     const state_count = defineValue(parser_c, "STATE_COUNT") orelse 0;
     const large_state_count = defineValue(parser_c, "LARGE_STATE_COUNT") orelse 0;
     const symbol_count = defineValue(parser_c, "SYMBOL_COUNT") orelse 0;
@@ -142,6 +162,7 @@ pub fn parseUpstreamParserCSummaryAlloc(
         .token_count = defineValue(parser_c, "TOKEN_COUNT") orelse 0,
         .field_count = defineValue(parser_c, "FIELD_COUNT") orelse 0,
         .field_names_hash = initializerBodyHash(parser_c, "static const char * const ts_field_names"),
+        .node_types_hash = if (node_types_json) |json| normalizedJsonHash(json) else 0,
         .alias_count = defineValue(parser_c, "ALIAS_COUNT") orelse 0,
         .production_id_count = defineValue(parser_c, "PRODUCTION_ID_COUNT") orelse 0,
         .serialized_state_count = state_count,
@@ -178,6 +199,29 @@ fn initializerBodyHash(source: []const u8, header: []const u8) u64 {
     const end_rel = std.mem.indexOf(u8, source[body_start..], "\n};") orelse return 0;
     const body = std.mem.trim(u8, source[body_start..][0..end_rel], " \n\r\t");
     return std.hash.Wyhash.hash(0, body);
+}
+
+fn normalizedJsonHash(source: []const u8) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    var in_string = false;
+    var escaped = false;
+    for (source) |ch| {
+        if (in_string) {
+            hasher.update(&.{ch});
+            if (escaped) {
+                escaped = false;
+            } else if (ch == '\\') {
+                escaped = true;
+            } else if (ch == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (std.ascii.isWhitespace(ch)) continue;
+        hasher.update(&.{ch});
+        if (ch == '"') in_string = true;
+    }
+    return hasher.final();
 }
 
 fn countInitializerEntries(source: []const u8, header: []const u8) usize {
@@ -259,6 +303,7 @@ pub fn writeSummaryJson(writer: anytype, summary: Summary, indent: usize) !void 
     try writeUsizeField(writer, indent + 2, "token_count", summary.token_count, true);
     try writeUsizeField(writer, indent + 2, "field_count", summary.field_count, true);
     try writeU64HexField(writer, indent + 2, "field_names_hash", summary.field_names_hash, true);
+    try writeU64HexField(writer, indent + 2, "node_types_hash", summary.node_types_hash, true);
     try writeUsizeField(writer, indent + 2, "alias_count", summary.alias_count, true);
     try writeUsizeField(writer, indent + 2, "production_id_count", summary.production_id_count, true);
     try writeUsizeField(writer, indent + 2, "serialized_state_count", summary.serialized_state_count, true);
@@ -292,6 +337,7 @@ pub fn compareSummariesAlloc(
     try compareUsizeField(allocator, &diffs, "token_count", local.token_count, upstream.token_count, .suspected_algorithm_gap);
     try compareUsizeField(allocator, &diffs, "field_count", local.field_count, upstream.field_count, .suspected_algorithm_gap);
     try compareU64HexField(allocator, &diffs, "field_names_hash", local.field_names_hash, upstream.field_names_hash, .suspected_algorithm_gap);
+    try compareU64HexField(allocator, &diffs, "node_types_hash", local.node_types_hash, upstream.node_types_hash, .suspected_algorithm_gap);
     try compareUsizeField(allocator, &diffs, "alias_count", local.alias_count, upstream.alias_count, .suspected_algorithm_gap);
     try compareUsizeField(allocator, &diffs, "production_id_count", local.production_id_count, upstream.production_id_count, .suspected_algorithm_gap);
     try compareUsizeField(allocator, &diffs, "serialized_state_count", local.serialized_state_count, upstream.serialized_state_count, .suspected_algorithm_gap);
@@ -465,6 +511,7 @@ test "compareSummariesAlloc classifies changed fields" {
         .token_count = 2,
         .field_count = 0,
         .field_names_hash = 0,
+        .node_types_hash = 0,
         .alias_count = 0,
         .production_id_count = 0,
         .serialized_state_count = 5,
@@ -530,6 +577,27 @@ test "parseUpstreamParserCSummaryAlloc reads generated parser defines" {
     try std.testing.expectEqual(@as(usize, 2), summary.field_count);
     try std.testing.expect(summary.field_names_hash != 0);
     try std.testing.expectEqual(@as(usize, 2), summary.small_parse_row_count);
+}
+
+test "parseUpstreamParserCSummaryAlloc hashes node-types JSON ignoring whitespace" {
+    const parser_c =
+        \\#define LANGUAGE_VERSION 15
+        \\#define STATE_COUNT 1
+        \\#define LARGE_STATE_COUNT 1
+        \\#define SYMBOL_COUNT 1
+        \\#define ALIAS_COUNT 0
+        \\#define TOKEN_COUNT 1
+        \\#define EXTERNAL_TOKEN_COUNT 0
+        \\#define FIELD_COUNT 0
+        \\#define PRODUCTION_ID_COUNT 0
+    ;
+    const left = try parseUpstreamParserCSummaryAlloc(std.testing.allocator, "demo", parser_c, "[ { \"type\": \"x\" } ]");
+    defer deinitSummary(std.testing.allocator, left);
+    const right = try parseUpstreamParserCSummaryAlloc(std.testing.allocator, "demo", parser_c, "[{\"type\":\"x\"}]");
+    defer deinitSummary(std.testing.allocator, right);
+
+    try std.testing.expect(left.node_types_hash != 0);
+    try std.testing.expectEqual(left.node_types_hash, right.node_types_hash);
 }
 
 test "generateLocalSummaryAlloc summarizes a tiny grammar" {

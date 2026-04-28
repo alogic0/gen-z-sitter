@@ -20,7 +20,9 @@ pub fn runCompareUpstream(allocator: std.mem.Allocator, io: std.Io, opts: args.C
     const output_root = opts.output_dir orelse ".zig-cache/upstream-compare";
     const snapshot = try runUpstreamSnapshotAlloc(allocator, opts, output_root, local.grammar_name);
     defer snapshot.deinit(allocator);
-    const corpus = try runCorpusComparisonAlloc(allocator, opts, output_root, local.grammar_name, snapshot);
+    var local_artifacts: LocalArtifacts = .{};
+    defer local_artifacts.deinit(allocator);
+    const corpus = try runCorpusComparisonAlloc(allocator, opts, output_root, local.grammar_name, snapshot, &local_artifacts);
     defer corpus.deinit(allocator);
 
     const diffs = if (snapshot.summary) |summary|
@@ -29,7 +31,7 @@ pub fn runCompareUpstream(allocator: std.mem.Allocator, io: std.Io, opts: args.C
         &.{};
     defer if (snapshot.summary != null) upstream_summary.deinitDiffs(allocator, diffs);
 
-    const report = try renderReportAlloc(allocator, local, snapshot, diffs, corpus);
+    const report = try renderReportAlloc(allocator, local, local_artifacts, snapshot, diffs, corpus);
     defer allocator.free(report);
 
     if (opts.output_dir) |output_dir| {
@@ -108,6 +110,18 @@ const CorpusComparison = struct {
         allocator.free(self.note);
         for (self.samples) |sample| sample.deinit(allocator);
         allocator.free(self.samples);
+    }
+};
+
+const LocalArtifacts = struct {
+    output_dir: ?[]const u8 = null,
+    parser_c_path: ?[]const u8 = null,
+    node_types_path: ?[]const u8 = null,
+
+    fn deinit(self: LocalArtifacts, allocator: std.mem.Allocator) void {
+        if (self.output_dir) |value| allocator.free(value);
+        if (self.parser_c_path) |value| allocator.free(value);
+        if (self.node_types_path) |value| allocator.free(value);
     }
 };
 
@@ -212,6 +226,7 @@ fn runCorpusComparisonAlloc(
     output_root: []const u8,
     grammar_name: []const u8,
     snapshot: ReferenceStatus,
+    local_artifacts: *LocalArtifacts,
 ) !CorpusComparison {
     if (snapshot.parser_c_path == null) {
         return .{
@@ -227,17 +242,29 @@ fn runCorpusComparisonAlloc(
     }
 
     const local_dir = try std.fs.path.join(allocator, &.{ output_root, "local" });
-    defer allocator.free(local_dir);
+    errdefer allocator.free(local_dir);
     std.Io.Dir.cwd().deleteTree(runtime_io.get(), local_dir) catch {};
     try fs_support.ensureDir(local_dir);
     const local_parser_path = try std.fs.path.join(allocator, &.{ local_dir, "parser.c" });
-    defer allocator.free(local_parser_path);
+    errdefer allocator.free(local_parser_path);
+    const local_node_types_path = try std.fs.path.join(allocator, &.{ local_dir, "node-types.json" });
+    errdefer allocator.free(local_node_types_path);
     const local_parser_c = try upstream_summary.generateLocalParserCAlloc(allocator, opts.grammar_path, .{
         .js_runtime = opts.js_runtime orelse "node",
         .minimize_states = opts.minimize_states,
     });
     defer allocator.free(local_parser_c);
     try fs_support.writeFile(local_parser_path, local_parser_c);
+    const local_node_types_json = try upstream_summary.generateLocalNodeTypesJsonAlloc(allocator, opts.grammar_path, .{
+        .js_runtime = opts.js_runtime orelse "node",
+        .minimize_states = opts.minimize_states,
+    });
+    defer allocator.free(local_node_types_json);
+    try fs_support.writeFile(local_node_types_path, local_node_types_json);
+
+    local_artifacts.output_dir = local_dir;
+    local_artifacts.parser_c_path = local_parser_path;
+    local_artifacts.node_types_path = local_node_types_path;
 
     const driver_path = try std.fs.path.join(allocator, &.{ output_root, "corpus_driver.c" });
     defer allocator.free(driver_path);
@@ -446,6 +473,7 @@ fn treeSitterFunctionNameAlloc(allocator: std.mem.Allocator, grammar_name: []con
 fn renderReportAlloc(
     allocator: std.mem.Allocator,
     local: upstream_summary.Summary,
+    local_artifacts: LocalArtifacts,
     reference: ReferenceStatus,
     diffs: []const upstream_summary.SummaryDiff,
     corpus: CorpusComparison,
@@ -458,6 +486,17 @@ fn renderReportAlloc(
     try writer.writeAll("  \"local\":\n");
     try upstream_summary.writeSummaryJson(writer, local, 2);
     try writer.writeAll(",\n");
+    try writer.writeAll("  \"local_artifacts\": {\n");
+    try writer.writeAll("    \"output_dir\": ");
+    try writeOptionalJsonString(writer, local_artifacts.output_dir);
+    try writer.writeAll(",\n");
+    try writer.writeAll("    \"parser_c_path\": ");
+    try writeOptionalJsonString(writer, local_artifacts.parser_c_path);
+    try writer.writeAll(",\n");
+    try writer.writeAll("    \"node_types_path\": ");
+    try writeOptionalJsonString(writer, local_artifacts.node_types_path);
+    try writer.writeAll("\n");
+    try writer.writeAll("  },\n");
     try writer.writeAll("  \"upstream\": {\n");
     try writer.writeAll("    \"tree_sitter_dir\": ");
     try writeJsonString(writer, reference.tree_sitter_dir);
@@ -543,6 +582,14 @@ fn writeParserRunJson(writer: anytype, maybe_result: ?ParserRunResult) !void {
     try writer.writeAll(", \"tree\": ");
     try writeJsonString(writer, result.tree);
     try writer.writeAll(" }");
+}
+
+fn writeOptionalJsonString(writer: anytype, maybe_value: ?[]const u8) !void {
+    if (maybe_value) |value| {
+        try writeJsonString(writer, value);
+    } else {
+        try writer.writeAll("null");
+    }
 }
 
 fn writeJsonString(writer: anytype, value: []const u8) !void {
