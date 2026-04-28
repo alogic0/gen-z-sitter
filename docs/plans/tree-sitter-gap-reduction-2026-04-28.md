@@ -639,7 +639,7 @@ real-grammar regex audit open.
   - [x] Expose per-table accept states and accepted symbols in lex summaries.
   - [x] Expose independent EOF-target, skip-action, and large-range decision
     hashes in lex summaries.
-- [ ] Reproduce upstream keyword lexer behavior for real word-token grammars.
+- [x] Reproduce upstream keyword lexer behavior for real word-token grammars.
   - [x] Include serialized keyword-lexer table counts and hashes in lex table
     comparison artifacts.
   - [x] Add bounded real-grammar coverage for the current unmapped
@@ -706,6 +706,13 @@ fields at the aggregate, per-table, and keyword-table levels. This separates
 EOF handling, skip actions, and large character-set decisions from the broader
 transition/range hashes so lex-table parity failures can be localized more
 precisely.
+
+Batch 101 note: the real word-token keyword parent item is now marked complete.
+The focused JavaScript reserved-string proof still passes with a non-empty
+keyword lexer and zero unmapped reserved words, and Python `compat-report`
+shows `has_keyword_lex_table = true` with zero unmapped reserved words. Full
+JavaScript `compat-report` remains blocked by the separate parse-action-list
+capacity boundary, not by keyword lexer construction.
 
 ### 4.3 Emitted Lexer C Parity
 
