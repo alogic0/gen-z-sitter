@@ -459,7 +459,7 @@ behavior.
 - [ ] Compare lex-state counts, accept token priorities, advance actions,
   skip actions, and large character set decisions.
 - [ ] Reproduce upstream keyword lexer behavior for real word-token grammars.
-- [ ] Protect external-token valid-symbol behavior with stateful scanner tests.
+- [x] Protect external-token valid-symbol behavior with stateful scanner tests.
 
 Gate:
 
@@ -575,10 +575,10 @@ Use this order unless profiling shows a clear reason to change it:
 
 ### 6.3 Promotion Artifact Discipline
 
-- [ ] Every promotion updates `compat_targets/shortlist_report.json`.
+- [x] Every promotion updates `compat_targets/shortlist_report.json`.
 - [ ] Every deferred target records the exact blocker and next proof.
 - [ ] Heavy timings are stored in `docs/plans` or compat artifacts.
-- [ ] No target enters the default bounded suite without clear headroom.
+- [x] No target enters the default bounded suite without clear headroom.
 
 Gate:
 
