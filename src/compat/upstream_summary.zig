@@ -10,6 +10,7 @@ const lexer_model = @import("../lexer/model.zig");
 const node_type_pipeline = @import("../node_types/pipeline.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const raw_grammar = @import("../grammar/raw_grammar.zig");
+const parse_table_build = @import("../parse_table/build.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parse_table_serialize = @import("../parse_table/serialize.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
@@ -327,6 +328,8 @@ pub fn generateLocalConflictSummaryJsonAlloc(
     defer arena.deinit();
 
     const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const flattened = try flatten_grammar.flattenGrammar(arena.allocator(), extracted.syntax);
     const result = try parse_table_pipeline.buildStatesFromPrepared(arena.allocator(), prepared);
     const unresolved = try result.unresolvedDecisionsAlloc(arena.allocator());
     const chosen = try result.chosenDecisionsAlloc(arena.allocator());
@@ -334,7 +337,15 @@ pub fn generateLocalConflictSummaryJsonAlloc(
 
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
-    try writeConflictSummaryJson(&out.writer, prepared.expected_conflicts.len, expected_report.unused_expected_conflict_indexes, chosen, unresolved);
+    try writeConflictSummaryJson(
+        &out.writer,
+        prepared.expected_conflicts.len,
+        expected_report.unused_expected_conflict_indexes,
+        chosen,
+        unresolved,
+        result,
+        flattened,
+    );
     return try out.toOwnedSlice();
 }
 
@@ -1084,6 +1095,8 @@ fn writeConflictSummaryJson(
     unused_expected_indexes: []const usize,
     chosen: []const @import("../parse_table/resolution.zig").ChosenDecisionRef,
     unresolved: []const @import("../parse_table/resolution.zig").UnresolvedDecisionRef,
+    result: parse_table_build.BuildResult,
+    flattened: syntax_ir.SyntaxGrammar,
 ) !void {
     const chosen_counts = chosenDecisionCounts(chosen);
     const counts = conflictReasonCounts(unresolved);
@@ -1117,8 +1130,50 @@ fn writeConflictSummaryJson(
     try writeUsizeField(writer, 4, "reduce_reduce_deferred", counts.reduce_reduce_deferred, true);
     try writeUsizeField(writer, 4, "reduce_reduce_expected", counts.reduce_reduce_expected, true);
     try writeUsizeField(writer, 4, "unsupported_action_mix", counts.unsupported_action_mix, false);
-    try writer.writeAll("  }\n");
+    try writer.writeAll("  },\n");
+    try writer.writeAll("  \"unresolved_samples\": [");
+    if (unresolved.len != 0) try writer.writeByte('\n');
+    for (unresolved[0..@min(unresolved.len, 16)], 0..) |decision, index| {
+        try writer.writeAll("    { \"state_id\": ");
+        try writer.print("{d}", .{decision.state_id});
+        try writer.writeAll(", \"lookahead\": ");
+        try writeSymbolRef(writer, decision.symbol);
+        try writer.writeAll(", \"reason\": ");
+        try writeJsonString(writer, @tagName(decision.reason));
+        try writer.writeAll(", \"candidate_shape\": ");
+        try writeJsonString(writer, @tagName(candidateShape(decision.candidate_actions)));
+        try writer.writeAll(", \"reduce_parent_rules\": ");
+        try writeReduceParentRuleNames(writer, result, flattened, decision.candidate_actions);
+        try writer.writeAll(" }");
+        if (index + 1 != @min(unresolved.len, 16)) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (unresolved.len != 0) try writer.writeAll("  ");
+    try writer.writeAll("]\n");
     try writer.writeAll("}\n");
+}
+
+fn writeReduceParentRuleNames(
+    writer: anytype,
+    result: parse_table_build.BuildResult,
+    flattened: syntax_ir.SyntaxGrammar,
+    candidate_actions: []const @import("../parse_table/actions.zig").ParseAction,
+) !void {
+    try writer.writeByte('[');
+    var written: usize = 0;
+    for (candidate_actions) |action| {
+        const production_id = switch (action) {
+            .reduce => |id| id,
+            else => continue,
+        };
+        if (production_id >= result.productions.len) continue;
+        const lhs = result.productions[production_id].lhs;
+        if (lhs >= flattened.variables.len) continue;
+        if (written != 0) try writer.writeAll(", ");
+        try writeJsonString(writer, flattened.variables[lhs].name);
+        written += 1;
+    }
+    try writer.writeByte(']');
 }
 
 const ChosenDecisionCounts = struct {
@@ -2889,6 +2944,7 @@ test "generateLocalConflictSummaryJsonAlloc writes unresolved reason counts" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_actions\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_candidate_shapes\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_reasons\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_samples\"") != null);
 }
 
 test "generateLocalConflictSummaryJsonAlloc writes resolved precedence decisions" {
@@ -2978,6 +3034,8 @@ test "generateLocalConflictSummaryJsonAlloc records unexpected shift reduce conf
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_count\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce_expected\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"reduce_parent_rules\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"candidate_shape\": \"shift_reduce\"") != null);
 }
 
 test "generateLocalTokenConflictSummaryJsonAlloc writes lexical conflict pairs" {

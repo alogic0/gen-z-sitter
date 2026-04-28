@@ -386,6 +386,8 @@ evidence; direct upstream item-set comparison remains open.
   - [x] unexpected conflict rejected.
 - [ ] Ensure error messages identify the same useful parent rules that upstream
   reports.
+  - [x] Include reduce parent rule names in sampled unresolved conflict
+    summary entries.
 
 Gate:
 
@@ -419,6 +421,11 @@ shift/reduce, associativity-driven shift/reduce, and precedence-driven
 reduce/reduce decisions. These checks keep the comparison artifact surface tied
 to the existing resolved-action fixtures instead of only testing parser-table
 text dumps.
+
+Batch 78 note: `conflict-summary.json` now includes sampled unresolved entries
+with state ID, lookahead, unresolved reason, candidate shape, and reduce parent
+rule names. This gives local diagnostics a parent-rule surface comparable to
+the useful parent-rule hints in upstream conflict errors.
 
 ### 3.3 Token Conflicts and Lexical Precedence
 
