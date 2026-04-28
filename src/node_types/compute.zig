@@ -54,7 +54,11 @@ pub const ChildQuantity = struct {
     }
 
     fn mergeAlternatives(a: ChildQuantity, b: ChildQuantity) ChildQuantity {
-        if (!a.exists) return b;
+        if (!a.exists) return .{
+            .exists = b.exists,
+            .required = false,
+            .multiple = b.multiple,
+        };
         if (!b.exists) return .{
             .exists = a.exists,
             .required = false,
@@ -85,6 +89,7 @@ pub fn computeNodeTypes(
     defaults: alias_ir.AliasMap,
 ) ComputeNodeTypesError![]const NodeType {
     var summary_context = try SummaryContext.init(allocator, syntax, lexical, defaults);
+    const referenced_terminals = try referencedTerminalsAlloc(allocator, syntax, defaults, lexical.variables.len);
     var nodes = std.array_list.Managed(NodeType).init(allocator);
     defer nodes.deinit();
 
@@ -124,6 +129,7 @@ pub fn computeNodeTypes(
     for (lexical.variables, 0..) |variable, index| {
         const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
         const alias = defaults.findForSymbol(symbol);
+        if (!referenced_terminals[index] and alias == null) continue;
         if (!isVisibleLexicalVariable(variable, alias)) continue;
         const kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults);
         const named = isNamedLexicalVariable(variable, alias);
@@ -131,6 +137,7 @@ pub fn computeNodeTypes(
         if (named) {
             if (findNodeIndex(nodes.items, kind, named)) |existing_index| {
                 weakenNodeForNamedLeaf(&nodes.items[existing_index]);
+                removeSelfReferencesFromNode(&nodes.items[existing_index]);
                 nodes.items[existing_index].extra = nodes.items[existing_index].extra or containsSymbolRef(syntax.extra_symbols, symbol);
                 continue;
             }
@@ -153,6 +160,7 @@ pub fn computeNodeTypes(
         if (named) {
             if (findNodeIndex(nodes.items, kind, named)) |existing_index| {
                 weakenNodeForNamedLeaf(&nodes.items[existing_index]);
+                removeSelfReferencesFromNode(&nodes.items[existing_index]);
                 nodes.items[existing_index].extra = nodes.items[existing_index].extra or containsSymbolRef(syntax.extra_symbols, symbol);
                 continue;
             }
@@ -169,6 +177,44 @@ pub fn computeNodeTypes(
     const merged = try mergeDuplicateNodeTypes(allocator, nodes.items);
     try pruneSubtypeRefsFromNodes(allocator, @constCast(merged));
     return merged;
+}
+
+fn referencedTerminalsAlloc(
+    allocator: std.mem.Allocator,
+    syntax: syntax_ir.SyntaxGrammar,
+    defaults: alias_ir.AliasMap,
+    terminal_count: usize,
+) ComputeNodeTypesError![]bool {
+    const referenced = try allocator.alloc(bool, terminal_count);
+    @memset(referenced, false);
+
+    for (syntax.variables) |variable| {
+        for (variable.productions) |production| {
+            for (production.steps) |step| {
+                markReferencedTerminal(referenced, step.symbol);
+            }
+        }
+    }
+    for (syntax.extra_symbols) |symbol| {
+        markReferencedTerminal(referenced, symbol);
+    }
+    for (defaults.entries) |entry| {
+        switch (entry.target) {
+            .symbol => |symbol| markReferencedTerminal(referenced, symbol),
+            .rule => {},
+        }
+    }
+
+    return referenced;
+}
+
+fn markReferencedTerminal(referenced: []bool, symbol: syntax_ir.SymbolRef) void {
+    switch (symbol) {
+        .terminal => |index| if (index < referenced.len) {
+            referenced[index] = true;
+        },
+        else => {},
+    }
 }
 
 fn computeSupertypeRefs(
@@ -273,10 +319,15 @@ const SummaryContext = struct {
             defer production_field_quantities.deinit();
             var production_children_quantity = ChildQuantity.zero();
             var production_children_without_fields_quantity = ChildQuantity.zero();
+            var production_is_self_recursive = false;
 
             if (production.steps.len > 1) has_multi_step = true;
 
             for (production.steps) |step| {
+                if (symbolRefEql(step.symbol, .{ .non_terminal = @intCast(index) })) {
+                    production_is_self_recursive = true;
+                }
+
                 const hidden_index = self.hiddenInheritableIndex(step.symbol);
                 if (hidden_index) |child_index| {
                     const child_summary = try self.get(child_index);
@@ -335,6 +386,15 @@ const SummaryContext = struct {
                 } else if (child_type.named) {
                     try addNodeTypeRef(&child_types_without_fields, child_type);
                     production_children_without_fields_quantity.append(ChildQuantity.one());
+                }
+            }
+
+            if (production_is_self_recursive) {
+                if (production_children_quantity.exists) production_children_quantity.multiple = true;
+                if (production_children_without_fields_quantity.exists) production_children_without_fields_quantity.multiple = true;
+                var quantity_iter = production_field_quantities.valueIterator();
+                while (quantity_iter.next()) |quantity| {
+                    if (quantity.exists) quantity.multiple = true;
                 }
             }
 
@@ -636,6 +696,33 @@ fn weakenNodeForNamedLeaf(node: *NodeType) void {
     }
 }
 
+fn removeSelfReferencesFromNode(node: *NodeType) void {
+    if (node.children) |children| {
+        const filtered = removeNodeTypeRefInPlace(children.types, .{
+            .kind = node.kind,
+            .named = node.named,
+        });
+        node.children = if (filtered.len == 0)
+            null
+        else
+            .{
+                .quantity = children.quantity,
+                .types = filtered,
+            };
+    }
+}
+
+fn removeNodeTypeRefInPlace(types: []const NodeTypeRef, needle: NodeTypeRef) []const NodeTypeRef {
+    const writable = @constCast(types);
+    var len: usize = 0;
+    for (writable) |candidate| {
+        if (candidate.named == needle.named and std.mem.eql(u8, candidate.kind, needle.kind)) continue;
+        writable[len] = candidate;
+        len += 1;
+    }
+    return writable[0..len];
+}
+
 fn isVisibleChild(
     symbol: syntax_ir.SymbolRef,
     syntax: syntax_ir.SyntaxGrammar,
@@ -644,7 +731,7 @@ fn isVisibleChild(
 ) bool {
     return switch (symbol) {
         .end => false,
-        .non_terminal => |index| isVisibleSyntaxVariable(syntax.variables[index]),
+        .non_terminal => |index| isVisibleSyntaxVariable(syntax.variables[index]) or containsSymbolRef(syntax.supertype_symbols, symbol),
         .terminal => |index| isVisibleLexicalVariable(lexical.variables[index], defaults.findForSymbol(symbol)),
         .external => |index| isVisibleExternalToken(syntax.external_tokens[index], defaults.findForSymbol(symbol)),
     };
@@ -696,7 +783,10 @@ fn isNamedSymbol(
     const alias = defaults.findForSymbol(symbol);
     return switch (symbol) {
         .end => false,
-        .non_terminal => |index| isNamedSyntaxVariable(syntax.variables[index], alias),
+        .non_terminal => |index| if (containsSymbolRef(syntax.supertype_symbols, symbol))
+            true
+        else
+            isNamedSyntaxVariable(syntax.variables[index], alias),
         .terminal => |index| isNamedLexicalVariable(lexical.variables[index], alias),
         .external => |index| isNamedExternalToken(syntax.external_tokens[index], alias),
     };
@@ -909,10 +999,7 @@ test "computeNodeTypes merges duplicate entries with the same effective type nam
     try std.testing.expectEqual(@as(usize, 2), nodes.len);
 
     const expr = findNodeByKind(nodes, "expr").?;
-    try std.testing.expect(expr.children != null);
-    try std.testing.expectEqual(@as(usize, 1), expr.children.?.types.len);
-    try std.testing.expectEqualStrings("expr", expr.children.?.types[0].kind);
-    try std.testing.expect(!expr.children.?.quantity.required);
+    try std.testing.expect(expr.children == null);
 }
 
 test "computeNodeTypes weakens requiredness for named external collisions" {

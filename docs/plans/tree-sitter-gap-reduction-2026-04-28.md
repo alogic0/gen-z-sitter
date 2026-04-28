@@ -181,6 +181,10 @@ Gate:
   or rule shapes still differ.
 - [ ] Reproduce upstream token extraction behavior for hidden terminals,
   duplicate literals, token aliases, and external/internal token pairing.
+  - [x] Use literal names for nested string/pattern terminals while keeping
+    top-level lexical rules named after their grammar variable.
+  - [x] Keep nested composite token extraction from crashing when no literal
+    terminal name exists.
 
 Gate:
 
@@ -191,8 +195,12 @@ Gate:
 
 - [x] Compare local `node-types.json` with upstream for promoted targets.
 - [ ] Fix field `multiple` and `required` classification mismatches.
+  - [x] Match JSON `children` and field required/multiple quantities against
+    upstream, including blank alternatives and self-recursive repeat helpers.
 - [ ] Fix alias visibility/namedness mismatches.
 - [ ] Fix supertype and subtype ordering mismatches.
+  - [x] Treat hidden supertypes as visible named child/field entries in
+    node-types computation.
 - [ ] Add a golden-refresh command that only updates local goldens after the
   upstream comparison is clean or classified.
 
@@ -212,6 +220,14 @@ actionable difference is that upstream includes anonymous punctuation nodes
 (`"`, `,`, `:`, `[`, `]`, `{`, `}`) that are absent from the local
 `node-types.json`. Field quantity and child-shape diffs remain the next
 node-types diagnostic layer.
+
+Batch 5 note: JSON `node-types.json` now hashes exactly with upstream. The fix
+covered nested literal token names, named lexical self-child removal, hidden
+supertype child visibility, blank-alternative requiredness, self-recursive
+repeat multiplicity, and empty `fields: {}` emission for non-leaf syntax nodes.
+The Ziggy comparison still reports extra anonymous regex component node types,
+so the next node-types target is distinguishing public token entries from
+lexical helper terminals in composite token extraction.
 
 ## Phase 3 — Parse Table Algorithm Parity
 

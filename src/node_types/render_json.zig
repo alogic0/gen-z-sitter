@@ -26,7 +26,7 @@ pub fn renderNodeTypesJson(
             try writeBoolField(writer, 2, "extra", node.extra, false, false);
         }
 
-        if (hasRenderableFields(node.fields)) {
+        if (hasRenderableFields(node.fields) or node.children != null) {
             try writer.writeAll(",\n");
             try renderFields(writer, node.fields);
         }
@@ -67,6 +67,11 @@ pub fn renderNodeTypesJsonAlloc(
 
 fn renderFields(writer: anytype, fields: []const compute.Field) RenderJsonError!void {
     try writeIndent(writer, 2);
+    if (!hasRenderableFields(fields)) {
+        try writer.writeAll("\"fields\": {}");
+        return;
+    }
+
     try writer.writeAll("\"fields\": {\n");
 
     var rendered_count: usize = 0;

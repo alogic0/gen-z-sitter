@@ -342,7 +342,21 @@ const Extractor = struct {
     }
 
     fn extractProductions(self: *Extractor, variable_name: []const u8, rule_id: ir_rules.RuleId) ExtractTokensError![]syntax_ir.Production {
-        if (self.tryEnsureLexicalVariable(variable_name, rule_id)) |terminal_index| {
+        return self.extractProductionsWithLexicalName(variable_name, rule_id, variable_name);
+    }
+
+    fn extractNestedProductions(self: *Extractor, variable_name: []const u8, rule_id: ir_rules.RuleId) ExtractTokensError![]syntax_ir.Production {
+        return self.extractProductionsWithLexicalName(variable_name, rule_id, null);
+    }
+
+    fn extractProductionsWithLexicalName(
+        self: *Extractor,
+        variable_name: []const u8,
+        rule_id: ir_rules.RuleId,
+        lexical_preferred_name: ?[]const u8,
+    ) ExtractTokensError![]syntax_ir.Production {
+        const lexical_name = lexical_preferred_name orelse if (self.lexicalRuleHasDirectLiteralName(rule_id)) null else variable_name;
+        if (self.tryEnsureLexicalVariable(lexical_name, rule_id)) |terminal_index| {
             return try self.singleStepProductions(.{
                 .symbol = .{ .terminal = terminal_index },
             });
@@ -362,7 +376,7 @@ const Extractor = struct {
             .seq => |members| self.extractSequenceProductions(variable_name, members),
             .repeat => |inner| self.extractRepeatProductions(variable_name, inner, false),
             .repeat1 => |inner| self.extractRepeatProductions(variable_name, inner, true),
-            .metadata => |metadata| self.extractMetadataProductions(variable_name, metadata),
+            .metadata => |metadata| self.extractMetadataProductions(variable_name, metadata, lexical_preferred_name),
         };
     }
 
@@ -383,7 +397,7 @@ const Extractor = struct {
         defer result.deinit();
 
         for (members) |member| {
-            const productions = try self.extractProductions(variable_name, member);
+            const productions = try self.extractNestedProductions(variable_name, member);
             try result.appendSlice(productions);
         }
 
@@ -394,7 +408,7 @@ const Extractor = struct {
         var current = try self.singleProduction(&.{}); // one empty production
 
         for (members) |member| {
-            const next = try self.extractProductions(variable_name, member);
+            const next = try self.extractNestedProductions(variable_name, member);
             current = try self.combineProductionSets(current, next);
         }
 
@@ -405,9 +419,10 @@ const Extractor = struct {
         self: *Extractor,
         variable_name: []const u8,
         metadata: ir_rules.MetadataRule,
+        lexical_preferred_name: ?[]const u8,
     ) ExtractTokensError![]syntax_ir.Production {
         if (metadata.data.token or metadata.data.immediate_token) {
-            if (self.tryEnsureLexicalVariable(variable_name, @intCast(metadata.inner))) |terminal_index| {
+            if (self.tryEnsureLexicalVariable(lexical_preferred_name, @intCast(metadata.inner))) |terminal_index| {
                 const productions = try self.singleStepProductions(.{
                     .symbol = .{ .terminal = terminal_index },
                 });
@@ -416,7 +431,7 @@ const Extractor = struct {
             }
         }
 
-        const productions = try self.extractProductions(variable_name, metadata.inner);
+        const productions = try self.extractProductionsWithLexicalName(variable_name, metadata.inner, lexical_preferred_name);
         self.applyMetadataToProductions(productions, metadata.data);
         return productions;
     }
@@ -435,7 +450,7 @@ const Extractor = struct {
         }
     }
 
-    fn tryEnsureLexicalVariable(self: *Extractor, preferred_name: []const u8, rule_id: ir_rules.RuleId) ?u32 {
+    fn tryEnsureLexicalVariable(self: *Extractor, preferred_name: ?[]const u8, rule_id: ir_rules.RuleId) ?u32 {
         if (!self.isLexicalRule(rule_id)) return null;
 
         if (self.findLexicalVariable(rule_id)) |index| return index;
@@ -511,7 +526,7 @@ const Extractor = struct {
         try self.repeat_cache.put(key, symbol_index);
         errdefer _ = self.repeat_cache.remove(key);
 
-        const inner_productions = try self.extractProductions(variable_name, inner);
+        const inner_productions = try self.extractNestedProductions(variable_name, inner);
         const expansion = try expand_repeats.createRepeatAuxiliary(
             self.allocator,
             variable_name,
@@ -586,18 +601,35 @@ const Extractor = struct {
         };
     }
 
-    fn lexicalNameForRule(self: *Extractor, rule_id: ir_rules.RuleId, preferred_name: []const u8) []const u8 {
+    fn lexicalRuleHasDirectLiteralName(self: *Extractor, rule_id: ir_rules.RuleId) bool {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
-            .string => |value| if (shouldUseLiteralLexicalName(preferred_name)) value else preferred_name,
-            .pattern => |pattern| if (shouldUseLiteralLexicalName(preferred_name)) pattern.value else preferred_name,
-            .metadata => |metadata| self.lexicalNameForRule(metadata.inner, preferred_name),
-            else => preferred_name,
+            .string, .pattern => true,
+            .metadata => |metadata| self.lexicalRuleHasDirectLiteralName(metadata.inner),
+            else => false,
         };
     }
 
-    fn lexicalKindForRule(self: *Extractor, rule_id: ir_rules.RuleId, preferred_name: []const u8) lexical_ir.VariableKind {
+    fn lexicalNameForRule(self: *Extractor, rule_id: ir_rules.RuleId, preferred_name: ?[]const u8) []const u8 {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
-            .string, .pattern => if (shouldUseLiteralLexicalName(preferred_name)) .anonymous else .named,
+            .string => |value| if (preferred_name) |name|
+                if (shouldUseLiteralLexicalName(name)) value else name
+            else
+                value,
+            .pattern => |pattern| if (preferred_name) |name|
+                if (shouldUseLiteralLexicalName(name)) pattern.value else name
+            else
+                pattern.value,
+            .metadata => |metadata| self.lexicalNameForRule(metadata.inner, preferred_name),
+            else => preferred_name.?,
+        };
+    }
+
+    fn lexicalKindForRule(self: *Extractor, rule_id: ir_rules.RuleId, preferred_name: ?[]const u8) lexical_ir.VariableKind {
+        return switch (self.prepared.rules[@intCast(rule_id)]) {
+            .string, .pattern => if (preferred_name) |name|
+                if (shouldUseLiteralLexicalName(name)) .anonymous else .named
+            else
+                .anonymous,
             .metadata => |metadata| self.lexicalKindForRule(metadata.inner, preferred_name),
             else => .named,
         };
@@ -639,7 +671,8 @@ test "extractTokens splits simple prepared grammar into syntax and lexical parts
     try std.testing.expectEqualStrings("indent", extracted.syntax.external_tokens[0].name);
     try std.testing.expectEqual(syntax_ir.VariableKind.named, extracted.syntax.external_tokens[0].kind);
     try std.testing.expectEqual(@as(usize, 2), extracted.lexical.variables.len);
-    try std.testing.expectEqualStrings("expr", extracted.lexical.variables[0].name);
+    try std.testing.expectEqualStrings("x", extracted.lexical.variables[0].name);
+    try std.testing.expectEqual(lexical_ir.VariableKind.anonymous, extracted.lexical.variables[0].kind);
     try std.testing.expectEqualStrings("term", extracted.lexical.variables[1].name);
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.separators.len);
     try std.testing.expectEqual(@as(usize, 0), extracted.syntax.extra_symbols.len);
