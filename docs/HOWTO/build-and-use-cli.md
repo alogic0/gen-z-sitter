@@ -28,11 +28,10 @@ Zig uses two relevant output locations:
 
 - `.zig-cache/` stores build intermediates and compiled artifacts used by build
   steps.
-- `zig-out/` is the install prefix used by the default `install` step.
+- `zig-out/` is the default install prefix for the command line binary.
 
-This project registers the CLI with `b.installArtifact(exe)`. In Zig 0.16, the
-default `zig build` step is `install`, so `zig build` compiles the executable
-and copies it into:
+`zig build` compiles `gen-z-sitter` through Zig's build cache and copies the
+installed binary into:
 
 ```bash
 ./zig-out/bin/gen-z-sitter
@@ -54,28 +53,21 @@ zig build run -- help
 zig build run -- generate path/to/grammar.json
 ```
 
-`zig build run` uses `b.addRunArtifact(exe)`, so it runs the freshly built
-artifact from Zig's cache, not the installed file under `zig-out/bin/`.
-Practically, both commands run the same program for the same build options, but
-they exercise different paths:
+`zig build run` runs the freshly rebuilt artifact from `.zig-cache/`, not the
+installed file under `zig-out/bin/`. Practically, both commands run the same
+program for the same build options, but they exercise different paths:
 
 - Use `zig build run -- ...` while iterating on source changes.
 - Use `./zig-out/bin/gen-z-sitter ...` to test or use the installed binary.
 
 ## Install Somewhere Else
 
-Use `--prefix` to install into another directory:
+Use `zig build install -p` to install into another directory. The executable is
+placed under that directory's `bin/` folder:
 
 ```bash
-zig build --prefix /tmp/gen-z-sitter-install
+zig build install -p /tmp/gen-z-sitter-install
 /tmp/gen-z-sitter-install/bin/gen-z-sitter help
-```
-
-Or choose only the executable directory:
-
-```bash
-zig build --prefix-exe-dir /tmp/bin
-/tmp/bin/gen-z-sitter help
 ```
 
 The generated CLI binary is self-contained for this project. It does not need
