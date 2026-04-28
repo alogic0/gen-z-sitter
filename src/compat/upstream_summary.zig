@@ -1536,8 +1536,61 @@ fn writeTokenConflictSummaryJson(
         }
     }
     if (wrote_pair) try writer.writeByte('\n');
-    try writer.writeAll("  ]\n");
+    try writer.writeAll("  ],\n");
+    try writeTokenConflictComparisonKeysJson(writer, grammar, conflict_map, counts, 2);
     try writer.writeAll("}\n");
+}
+
+fn writeTokenConflictComparisonKeysJson(
+    writer: anytype,
+    grammar: lexer_model.ExpandedLexicalGrammar,
+    conflict_map: lexer_model.TokenConflictMap,
+    counts: TokenConflictCounts,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("\"comparison_keys\": {\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"note\": ");
+    try writeJsonString(writer, "local token-conflict comparison keys are stable; tree-sitter does not expose equivalent token-conflict internals through the bounded parser.c snapshot");
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"keys\": [\n");
+    try writeTokenConflictComparisonKey(writer, indent + 4, "counts", hashTokenConflictCounts(counts), true);
+    try writeTokenConflictComparisonKey(writer, indent + 4, "variables", hashTokenConflictVariables(grammar), true);
+    try writeTokenConflictComparisonKey(writer, indent + 4, "starting_ranges", hashTokenConflictCharacterSets(conflict_map.starting_chars_by_index), true);
+    try writeTokenConflictComparisonKey(writer, indent + 4, "following_tokens", hashTokenConflictFollowingTokens(conflict_map.following_tokens_by_index), true);
+    try writeTokenConflictComparisonKey(writer, indent + 4, "following_ranges", hashTokenConflictCharacterSets(conflict_map.following_chars_by_index), true);
+    try writeTokenConflictComparisonKey(writer, indent + 4, "status_matrix", hashTokenConflictStatusMatrix(conflict_map), true);
+    try writeTokenConflictComparisonKey(writer, indent + 4, "concrete_pairs", hashTokenConflictConcretePairs(grammar, conflict_map), false);
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("]\n");
+    try writeIndent(writer, indent);
+    try writer.writeAll("}\n");
+}
+
+fn writeTokenConflictComparisonKey(
+    writer: anytype,
+    indent: usize,
+    name: []const u8,
+    hash: u64,
+    trailing_comma: bool,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"name\": ");
+    try writeJsonString(writer, name);
+    try writer.writeAll(", \"local_hash\": \"");
+    try writer.print("0x{x:0>16}", .{hash});
+    try writer.writeByte('"');
+    try writer.writeAll(", \"upstream_hash\": null, \"status\": ");
+    try writeJsonString(writer, "upstream_oracle_missing");
+    try writer.writeAll(" }");
+    if (trailing_comma) try writer.writeByte(',');
+    try writer.writeByte('\n');
 }
 
 const TokenConflictCounts = struct {
@@ -1568,6 +1621,99 @@ fn tokenConflictCounts(conflict_map: lexer_model.TokenConflictMap) TokenConflict
         }
     }
     return counts;
+}
+
+fn hashTokenConflictCounts(counts: TokenConflictCounts) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, counts.conflict_pairs);
+    hashUsize(&hasher, counts.matches_prefix);
+    hashUsize(&hasher, counts.does_match_continuation);
+    hashUsize(&hasher, counts.does_match_valid_continuation);
+    hashUsize(&hasher, counts.does_match_separators);
+    hashUsize(&hasher, counts.matches_same_string);
+    hashUsize(&hasher, counts.matches_different_string);
+    hashUsize(&hasher, counts.starting_overlap);
+    return hasher.final();
+}
+
+fn hashTokenConflictVariables(grammar: lexer_model.ExpandedLexicalGrammar) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, grammar.variables.len);
+    for (grammar.variables) |variable| {
+        hashString(&hasher, variable.name);
+        hashString(&hasher, lexicalVariableKindName(variable.kind));
+        hashI32(&hasher, variable.completion_precedence);
+        hashI32(&hasher, variable.implicit_precedence);
+        hashU32(&hasher, variable.start_state);
+        hashU32(&hasher, variable.source_rule);
+    }
+    return hasher.final();
+}
+
+fn hashTokenConflictCharacterSets(sets: []const lexer_model.CharacterSet) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, sets.len);
+    for (sets) |set| {
+        hashUsize(&hasher, set.ranges.items.len);
+        for (set.ranges.items) |range| {
+            hashU32(&hasher, range.start);
+            hashU32(&hasher, range.end);
+        }
+    }
+    return hasher.final();
+}
+
+fn hashTokenConflictFollowingTokens(sets: []const lexer_model.TokenIndexSet) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, sets.len);
+    for (sets) |set| {
+        hashUsize(&hasher, set.values.len);
+        for (set.values) |present| hashBool(&hasher, present);
+    }
+    return hasher.final();
+}
+
+fn hashTokenConflictStatusMatrix(conflict_map: lexer_model.TokenConflictMap) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, conflict_map.variable_count);
+    for (0..conflict_map.variable_count) |left| {
+        for (0..conflict_map.variable_count) |right| {
+            if (left == right) continue;
+            hashTokenConflictStatus(&hasher, conflict_map.status(left, right));
+        }
+    }
+    return hasher.final();
+}
+
+fn hashTokenConflictConcretePairs(
+    grammar: lexer_model.ExpandedLexicalGrammar,
+    conflict_map: lexer_model.TokenConflictMap,
+) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    hashUsize(&hasher, conflict_map.variable_count);
+    for (0..conflict_map.variable_count) |left| {
+        for (0..conflict_map.variable_count) |right| {
+            if (left == right) continue;
+            const status = conflict_map.status(left, right);
+            if (!tokenConflictStatusIsConcretePair(status)) continue;
+            hashUsize(&hasher, left);
+            hashString(&hasher, grammar.variables[left].name);
+            hashUsize(&hasher, right);
+            hashString(&hasher, grammar.variables[right].name);
+            hashTokenConflictStatus(&hasher, status);
+        }
+    }
+    return hasher.final();
+}
+
+fn hashTokenConflictStatus(hasher: *std.hash.Wyhash, status: lexer_model.TokenConflictStatus) void {
+    hashBool(hasher, status.matches_prefix);
+    hashBool(hasher, status.does_match_continuation);
+    hashBool(hasher, status.does_match_valid_continuation);
+    hashBool(hasher, status.does_match_separators);
+    hashBool(hasher, status.matches_same_string);
+    hashBool(hasher, status.matches_different_string);
+    hashBool(hasher, status.starting_overlap);
 }
 
 fn writeTokenConflictPairJson(
@@ -4158,6 +4304,10 @@ test "generateLocalTokenConflictSummaryJsonAlloc writes lexical conflict pairs" 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"conflict_pair_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"matches_same_string\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"pairs\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"comparison_keys\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"status_matrix\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"concrete_pairs\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"upstream_oracle_missing\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "identifier") != null);
 }
 

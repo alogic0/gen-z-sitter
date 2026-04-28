@@ -550,6 +550,12 @@ state IDs. States with identical actions but different lexer modes remain
 separate, protecting token-conflict and keyword/external-token boundaries
 before downstream parser emission.
 
+Batch 114 note: `token-conflicts.json` now includes stable comparison keys for
+status counts, lexical variable identity, starting ranges, grammar-derived
+following-token sets, following ranges, the directional status matrix, and
+concrete conflict-pair identity. These keys make token-conflict drift visible in
+automation even while the upstream raw token-conflict oracle remains open.
+
 ### 3.4 Minimize Parse Table Parity
 
 - [ ] Audit local minimization against upstream `minimize_parse_table.rs`.
