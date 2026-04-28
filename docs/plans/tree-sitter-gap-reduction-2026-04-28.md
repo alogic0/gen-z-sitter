@@ -524,7 +524,7 @@ Goal: close the scanner-free lexical gap enough for larger real grammars.
   real grammars.
 - [x] Add local regex-surface artifacts that list pattern tokens and classify
   regex features by token name.
-- [ ] Add explicit support or explicit diagnostics for character classes,
+- [x] Add explicit support or explicit diagnostics for character classes,
   escapes, Unicode categories, ranges, repetitions, anchors as used by
   Tree-sitter grammar tokens, and immediate-token boundaries.
   - [x] Mark unsupported regex-surface features per pattern in comparison
@@ -595,6 +595,14 @@ reserved/conflict/precedence/inline/supertype/word-token metadata and extracted
 extra/conflict/precedence/inline/supertype/word-token metadata. This gives the
 future upstream/local prepared-IR diff stable comparison keys before a direct
 upstream prepared-IR dump exists.
+
+Batch 96 note: regex-surface diagnostics now distinguish Unicode properties
+that the current lexer model supports from unsupported property names such as
+script-qualified properties, and they flag regex flags outside the locally
+implemented `i` and `s` subset. This closes the support-or-diagnostic surface
+for character classes, escapes, Unicode categories, ranges, repetitions,
+anchors, flags, and token/immediate metadata while keeping the broader staged
+real-grammar regex audit open.
 
 ### 4.2 Lex Table Construction
 
@@ -1132,25 +1140,34 @@ Gate:
 
 ## Suggested Implementation Order
 
-Near-term execution queue after Batch 86:
+Near-term execution queue after Batch 95:
 
-1. Phase 4.1 regex-surface accuracy: align `regex-surface.json` support and
-   unsupported-feature classification with what `src/lexer/model.zig` actually
-   accepts today, so diagnostics do not understate local regex support.
-2. Phase 2.2 prepared-IR diff: add structured local/upstream comparison for
-   variables, hidden rules, inline rules, precedence, conflicts, reserved sets,
-   supertypes, and token extraction metadata.
-3. Phase 3.1 item-set comparison: use the existing item-set snapshots to add a
-   normalized comparison layer for kernel items, closure additions, lookaheads,
-   reserved lookaheads, completed items, and transitions.
+1. Phase 4.1 regex-surface audit: classify the staged real-grammar regex
+   constructs against the current lexer model and keep unsupported diagnostics
+   precise before changing parser-table behavior again.
+2. Phase 2.2 prepared-IR diff: turn the existing prepared/extracted hashes into
+   a structured local/upstream comparison for variables, hidden rules, inline
+   rules, precedence, conflicts, reserved sets, supertypes, extras, word-token
+   metadata, and token extraction.
+3. Phase 3.1 item-set comparison: add the upstream-shaped comparison layer for
+   kernel items, closure additions, lookaheads, reserved lookaheads, completed
+   items, and transitions.
 4. Phase 2.3 node-types cleanup: resolve or explicitly classify remaining
    field `multiple`/`required`, alias visibility/namedness, and supertype
    ordering gaps for promoted grammars.
-5. Phase 6.2 Python promotion: resume only after scanner-state evidence is
-   bounded enough for an indentation-sensitive target.
-6. Phase 3.1 coarse-mode removal: profile and debug strict promoted runtime
-   paths before removing any coarse parser-table override; do not promote a
-   strict path that exceeds the bounded runtime budget.
+5. Phase 4.2 lex-table parity: compare lex-state counts, accept token
+   priorities, advance/skip actions, large character set decisions, and real
+   word-token keyword lexer behavior.
+6. Phase 3.2/3.4 parse-table parity: add conflict-resolution differential
+   fixtures, upstream minimization comparison, and primary-state/lex-mode
+   preservation checks around minimized states.
+7. Phase 5.1/5.2 runtime parser parity: replace count-only recovery ranking
+   with weighted error costs and continue stack/version merge work only where
+   focused samples expose a divergence.
+8. Phase 5.3 incremental reuse: add first-leaf, changed, fragile, error, and
+   scanner-state guards before expanding scanner-aware incremental samples.
+9. Phase 7 performance: finish SymbolSet/key compression and emitted-C tuning
+   only when current profile artifacts show they are active bottlenecks.
 
 Historical order already completed or superseded:
 
@@ -1165,6 +1182,9 @@ Historical order already completed or superseded:
 7. Phase 7 targeted optimizations only after profile artifacts point to a
    bottleneck.
 8. Phase 8 compatibility-report UX after the evidence model is stable.
+9. Batch 95 invalid runtime-link recovery: emitted runtime parser recovery state
+   and promoted JSON/Ziggy invalid samples are now covered by the bounded
+   runtime-link gate.
 
 ## Batch Policy
 

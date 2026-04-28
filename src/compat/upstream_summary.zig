@@ -1669,6 +1669,8 @@ const RegexSurfaceCounts = struct {
     unicode_escape_count: usize = 0,
     control_escape_count: usize = 0,
     unicode_property_count: usize = 0,
+    unsupported_unicode_property_count: usize = 0,
+    unsupported_flag_count: usize = 0,
     bounded_repeat_count: usize = 0,
     zero_or_more_count: usize = 0,
     one_or_more_count: usize = 0,
@@ -1697,7 +1699,7 @@ fn writeRegexSurfaceSummaryJson(
         for (variable_patterns[index]) |pattern| {
             counts.pattern_count += 1;
             if (pattern.flags != null) counts.flagged_pattern_count += 1;
-            const features = regexFeatureSummary(pattern.value);
+            const features = regexFeatureSummary(pattern.value, pattern.flags);
             if (features.has_class) counts.class_count += 1;
             if (features.has_negated_class) counts.negated_class_count += 1;
             if (features.has_class_range) counts.class_range_count += 1;
@@ -1707,6 +1709,8 @@ fn writeRegexSurfaceSummaryJson(
             if (features.has_unicode_escape) counts.unicode_escape_count += 1;
             if (features.has_control_escape) counts.control_escape_count += 1;
             if (features.has_unicode_property) counts.unicode_property_count += 1;
+            if (features.has_unsupported_unicode_property) counts.unsupported_unicode_property_count += 1;
+            if (features.has_unsupported_flag) counts.unsupported_flag_count += 1;
             if (features.has_bounded_repeat) counts.bounded_repeat_count += 1;
             if (features.has_zero_or_more) counts.zero_or_more_count += 1;
             if (features.has_one_or_more) counts.one_or_more_count += 1;
@@ -1737,6 +1741,8 @@ fn writeRegexSurfaceSummaryJson(
     try writeUsizeField(writer, 4, "unicode_escape", counts.unicode_escape_count, true);
     try writeUsizeField(writer, 4, "control_escape", counts.control_escape_count, true);
     try writeUsizeField(writer, 4, "unicode_property", counts.unicode_property_count, true);
+    try writeUsizeField(writer, 4, "unsupported_unicode_property", counts.unsupported_unicode_property_count, true);
+    try writeUsizeField(writer, 4, "unsupported_flag", counts.unsupported_flag_count, true);
     try writeUsizeField(writer, 4, "bounded_repeat", counts.bounded_repeat_count, true);
     try writeUsizeField(writer, 4, "zero_or_more", counts.zero_or_more_count, true);
     try writeUsizeField(writer, 4, "one_or_more", counts.one_or_more_count, true);
@@ -1783,7 +1789,7 @@ fn writeRegexVariableSurfaceJson(
     try writer.writeAll(", \"patterns\": [");
     for (patterns, 0..) |pattern, index| {
         if (index != 0) try writer.writeAll(", ");
-        const features = regexFeatureSummary(pattern.value);
+        const features = regexFeatureSummary(pattern.value, pattern.flags);
         try writer.writeAll("{ \"rule_id\": ");
         try writer.print("{d}", .{pattern.rule_id});
         try writer.writeAll(", \"value\": ");
@@ -1852,6 +1858,8 @@ const RegexFeatureSummary = struct {
     has_unicode_escape: bool = false,
     has_control_escape: bool = false,
     has_unicode_property: bool = false,
+    has_unsupported_unicode_property: bool = false,
+    has_unsupported_flag: bool = false,
     has_bounded_repeat: bool = false,
     has_zero_or_more: bool = false,
     has_one_or_more: bool = false,
@@ -1866,8 +1874,10 @@ const RegexFeatureSummary = struct {
     has_lazy_quantifier: bool = false,
 };
 
-fn regexFeatureSummary(value: []const u8) RegexFeatureSummary {
-    var result = RegexFeatureSummary{};
+fn regexFeatureSummary(value: []const u8, flags: ?[]const u8) RegexFeatureSummary {
+    var result = RegexFeatureSummary{
+        .has_unsupported_flag = regexFlagsUnsupported(flags),
+    };
     var escaped = false;
     var in_class = false;
     var class_content_index: usize = 0;
@@ -1879,7 +1889,16 @@ fn regexFeatureSummary(value: []const u8) RegexFeatureSummary {
                 'x' => result.has_hex_escape = true,
                 'u' => result.has_unicode_escape = true,
                 'c' => result.has_control_escape = true,
-                'p', 'P' => result.has_unicode_property = true,
+                'p', 'P' => {
+                    result.has_unicode_property = true;
+                    if (regexUnicodePropertyNameAt(value, index + 1)) |property_name| {
+                        if (!regexUnicodePropertySupported(property_name)) {
+                            result.has_unsupported_unicode_property = true;
+                        }
+                    } else {
+                        result.has_unsupported_unicode_property = true;
+                    }
+                },
                 else => {},
             }
             if (ch >= '1' and ch <= '9') result.has_backreference = true;
@@ -1955,7 +1974,55 @@ fn regexFeaturesUnsupported(features: RegexFeatureSummary) bool {
     return features.has_anchor or
         features.has_unsupported_group_prefix or
         features.has_backreference or
-        features.has_control_escape;
+        features.has_control_escape or
+        features.has_unsupported_unicode_property or
+        features.has_unsupported_flag;
+}
+
+fn regexFlagsUnsupported(flags: ?[]const u8) bool {
+    const value = flags orelse return false;
+    for (value) |flag| {
+        switch (flag) {
+            'i', 's' => {},
+            else => return true,
+        }
+    }
+    return false;
+}
+
+fn regexUnicodePropertyNameAt(value: []const u8, start_index: usize) ?[]const u8 {
+    if (start_index >= value.len) return null;
+    if (value[start_index] == '{') {
+        const property_start = start_index + 1;
+        var cursor = property_start;
+        while (cursor < value.len and value[cursor] != '}') : (cursor += 1) {}
+        if (cursor >= value.len or cursor == property_start) return null;
+        return value[property_start..cursor];
+    }
+
+    var cursor = start_index;
+    while (cursor < value.len and std.ascii.isAlphabetic(value[cursor])) : (cursor += 1) {}
+    if (cursor == start_index) return null;
+    return value[start_index..cursor];
+}
+
+fn regexUnicodePropertySupported(property_name: []const u8) bool {
+    const supported = [_][]const u8{
+        "Zs",
+        "Ll",
+        "Lo",
+        "Lu",
+        "Lt",
+        "L",
+        "XID_Start",
+        "XID_Continue",
+        "Mn",
+        "N",
+    };
+    for (supported) |candidate| {
+        if (std.mem.eql(u8, property_name, candidate)) return true;
+    }
+    return false;
 }
 
 fn writeRegexUnsupportedFeaturesJson(writer: anytype, features: RegexFeatureSummary) !void {
@@ -1976,6 +2043,14 @@ fn writeRegexUnsupportedFeaturesJson(writer: anytype, features: RegexFeatureSumm
     if (features.has_control_escape) {
         try writeMaybeComma(writer, &wrote);
         try writeJsonString(writer, "control_escape");
+    }
+    if (features.has_unsupported_unicode_property) {
+        try writeMaybeComma(writer, &wrote);
+        try writeJsonString(writer, "unsupported_unicode_property");
+    }
+    if (features.has_unsupported_flag) {
+        try writeMaybeComma(writer, &wrote);
+        try writeJsonString(writer, "unsupported_flag");
     }
     try writer.writeByte(']');
 }
@@ -2004,6 +2079,10 @@ fn writeRegexFeaturesJson(writer: anytype, features: RegexFeatureSummary) !void 
     try writeBoolJson(writer, features.has_control_escape);
     try writer.writeAll(", \"unicode_property\": ");
     try writeBoolJson(writer, features.has_unicode_property);
+    try writer.writeAll(", \"unsupported_unicode_property\": ");
+    try writeBoolJson(writer, features.has_unsupported_unicode_property);
+    try writer.writeAll(", \"unsupported_flag\": ");
+    try writeBoolJson(writer, features.has_unsupported_flag);
     try writer.writeAll(", \"bounded_repeat\": ");
     try writeBoolJson(writer, features.has_bounded_repeat);
     try writer.writeAll(", \"zero_or_more\": ");
@@ -3690,6 +3769,41 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc marks unsupported regex construc
     try std.testing.expect(std.mem.indexOf(u8, json, "\"backreference\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"control_escape\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_features\": [\"anchor\", \"group_prefix\", \"backreference\", \"control_escape\"]") != null);
+}
+
+test "generateLocalRegexSurfaceSummaryJsonAlloc marks unsupported unicode properties and flags" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const contents =
+        \\{
+        \\  "name": "regex_unsupported_property_surface",
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "identifier" },
+        \\    "identifier": {
+        \\      "type": "PATTERN",
+        \\      "value": "\\p{Script=Greek}+",
+        \\      "flags": "m"
+        \\    }
+        \\  }
+        \\}
+    ;
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalRegexSurfaceSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unicode_property\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_unicode_property\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_flag\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_features\": [\"unsupported_unicode_property\", \"unsupported_flag\"]") != null);
 }
 
 test "generateLocalLexTableSummaryJsonAlloc writes lexer table counts" {
