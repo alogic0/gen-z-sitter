@@ -518,6 +518,7 @@ behavior instead of only lexer-model unit tests.
   transitions, skip transitions, ranges, and large range-set indicators.
 - [ ] Compare lex-state counts, accept token priorities, advance actions,
   skip actions, and large character set decisions.
+  - [x] Expose per-table accept states and accepted symbols in lex summaries.
 - [ ] Reproduce upstream keyword lexer behavior for real word-token grammars.
   - [x] Include serialized keyword-lexer table counts and hashes in lex table
     comparison artifacts.
@@ -543,6 +544,11 @@ Batch 62 note: `lex-table-summary.json` now includes the serialized keyword
 lexer table when a grammar has word/reserved-word metadata. The keyword section
 uses the same state, transition, range, accept-symbol, target, and range hashes
 as ordinary lex tables.
+
+Batch 71 note: `lex-table-summary.json` table entries now include an `accepts`
+array with accept state IDs and accepted symbols. This makes accept-token shape
+inspectable directly in comparison artifacts instead of requiring users to infer
+it from the aggregate accept-symbol hash.
 
 ### 4.3 Emitted Lexer C Parity
 

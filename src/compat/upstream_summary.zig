@@ -1726,6 +1726,8 @@ fn writeLexTableSummaryJson(
         try writer.print("{d}", .{table_counts.range_count});
         try writer.writeAll(", \"accept_state_count\": ");
         try writer.print("{d}", .{table_counts.accept_state_count});
+        try writer.writeAll(", \"accepts\": ");
+        try writeLexAcceptsJson(writer, table.states);
         try writer.writeAll(", \"eof_target_count\": ");
         try writer.print("{d}", .{table_counts.eof_target_count});
         try writer.writeAll(", \"skip_transition_count\": ");
@@ -1746,6 +1748,25 @@ fn writeLexTableSummaryJson(
     }
     try writer.writeAll("  ]\n");
     try writer.writeAll("}\n");
+}
+
+fn writeLexAcceptsJson(
+    writer: anytype,
+    states: []const @import("../lexer/serialize.zig").SerializedLexState,
+) !void {
+    try writer.writeByte('[');
+    var first = true;
+    for (states, 0..) |state_value, state_index| {
+        const symbol = state_value.accept_symbol orelse continue;
+        if (!first) try writer.writeAll(", ");
+        first = false;
+        try writer.writeAll("{ \"state\": ");
+        try writer.print("{d}", .{state_index});
+        try writer.writeAll(", \"symbol\": ");
+        try writeSymbolRef(writer, symbol);
+        try writer.writeAll(" }");
+    }
+    try writer.writeByte(']');
 }
 
 fn writeLexTableCountsObject(writer: anytype, counts: LexTableCounts) !void {
@@ -3044,6 +3065,7 @@ test "generateLocalLexTableSummaryJsonAlloc writes lexer table counts" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"state_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"max_transition_range_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"accepts\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"accept_symbol_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_target_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"range_hash\"") != null);
