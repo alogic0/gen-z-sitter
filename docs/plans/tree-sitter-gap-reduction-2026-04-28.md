@@ -570,7 +570,7 @@ Goal: close the scanner-free lexical gap enough for larger real grammars.
 
 ### 4.1 Regex Feature Coverage
 
-- [ ] Audit local regex support against the regex constructs present in staged
+- [x] Audit local regex support against the regex constructs present in staged
   real grammars.
 - [x] Add local regex-surface artifacts that list pattern tokens and classify
   regex features by token name.
@@ -585,7 +585,7 @@ Goal: close the scanner-free lexical gap enough for larger real grammars.
     diagnostics in regex-surface artifacts.
   - [x] Expose lexical source kind, implicit precedence, and start state in
     regex-surface artifacts so token/immediate boundaries are visible.
-- [ ] Add grammar-level tests where regex support affects accepted input, not
+- [x] Add grammar-level tests where regex support affects accepted input, not
   just regex unit tests.
   - [x] Cover scanner-free accepted input for character classes, escapes, and
     bounded repeats.
@@ -653,6 +653,13 @@ implemented `i` and `s` subset. This closes the support-or-diagnostic surface
 for character classes, escapes, Unicode categories, ranges, repetitions,
 anchors, flags, and token/immediate metadata while keeping the broader staged
 real-grammar regex audit open.
+
+Batch 109 note: the staged real-grammar regex audit is now covered by a
+bounded regex-surface test over C, Zig, Rust, JavaScript, Python, and
+TypeScript grammar snapshots. Each target must produce pattern counts, token
+entries, per-pattern status, and unsupported-feature lists, while the existing
+behavioral scanner-free test covers accepted-input impact for supported
+character classes, escapes, and bounded repeats.
 
 ### 4.2 Lex Table Construction
 

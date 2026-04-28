@@ -4211,6 +4211,27 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc marks unsupported unicode proper
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_features\": [\"unsupported_unicode_property\", \"unsupported_flag\"]") != null);
 }
 
+test "generateLocalRegexSurfaceSummaryJsonAlloc classifies staged real grammar regex surfaces" {
+    const paths = [_][]const u8{
+        "compat_targets/tree_sitter_c/grammar.json",
+        "compat_targets/tree_sitter_zig/grammar.json",
+        "compat_targets/tree_sitter_rust/grammar.json",
+        "compat_targets/tree_sitter_javascript/grammar.json",
+        "compat_targets/tree_sitter_python/grammar.json",
+        "compat_targets/tree_sitter_typescript/grammar.json",
+    };
+
+    for (paths) |path| {
+        const json = try generateLocalRegexSurfaceSummaryJsonAlloc(std.testing.allocator, path, .{});
+        defer std.testing.allocator.free(json);
+
+        try std.testing.expect(std.mem.indexOf(u8, json, "\"pattern_count\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, json, "\"variables\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, json, "\"status\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, json, "\"unsupported_features\"") != null);
+    }
+}
+
 test "generateLocalLexTableSummaryJsonAlloc writes lexer table counts" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
