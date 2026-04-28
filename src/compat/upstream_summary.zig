@@ -46,6 +46,9 @@ pub const Summary = struct {
     small_parse_row_count: usize,
     small_parse_map_count: usize,
     lex_mode_count: usize,
+    lex_function_case_count: usize,
+    keyword_lex_function_case_count: usize,
+    large_character_set_count: usize,
     external_lex_state_count: usize,
 };
 
@@ -496,6 +499,9 @@ pub fn parseUpstreamParserCSummaryAlloc(
         .small_parse_row_count = countUniqueSmallParseOffsets(parser_c),
         .small_parse_map_count = if (state_count >= large_state_count) state_count - large_state_count else 0,
         .lex_mode_count = state_count,
+        .lex_function_case_count = countLexFunctionCases(parser_c),
+        .keyword_lex_function_case_count = countKeywordLexFunctionCases(parser_c),
+        .large_character_set_count = std.mem.count(u8, parser_c, "static const TSCharacterRange "),
         .external_lex_state_count = externalScannerStateCount(parser_c),
     };
 }
@@ -600,6 +606,30 @@ fn externalScannerStateCount(source: []const u8) usize {
     const value_start = start + header.len;
     const end = std.mem.indexOfScalarPos(u8, source, value_start, ']') orelse return 0;
     return std.fmt.parseUnsigned(usize, source[value_start..end], 10) catch 0;
+}
+
+fn countLexFunctionCases(source: []const u8) usize {
+    const start_marker = "static bool ts_lex(TSLexer *lexer, TSStateId state)";
+    const keyword_marker = "static bool ts_lex_keywords(TSLexer *lexer, TSStateId state)";
+    const modes_marker = "static const TSLexerMode ts_lex_modes";
+    return countCasesBetween(source, start_marker, keyword_marker) orelse
+        countCasesBetween(source, start_marker, modes_marker) orelse
+        0;
+}
+
+fn countKeywordLexFunctionCases(source: []const u8) usize {
+    return countCasesBetween(
+        source,
+        "static bool ts_lex_keywords(TSLexer *lexer, TSStateId state)",
+        "static const TSLexerMode ts_lex_modes",
+    ) orelse 0;
+}
+
+fn countCasesBetween(source: []const u8, start_marker: []const u8, end_marker: []const u8) ?usize {
+    const start = std.mem.indexOf(u8, source, start_marker) orelse return null;
+    const body_start = start + start_marker.len;
+    const end = std.mem.indexOfPos(u8, source, body_start, end_marker) orelse return null;
+    return std.mem.count(u8, source[body_start..end], "\n    case ");
 }
 
 fn writeRawGrammarJson(writer: anytype, grammar: raw_grammar.RawGrammar) anyerror!void {
@@ -2108,6 +2138,9 @@ pub fn writeSummaryJson(writer: anytype, summary: Summary, indent: usize) !void 
     try writeUsizeField(writer, indent + 2, "small_parse_row_count", summary.small_parse_row_count, true);
     try writeUsizeField(writer, indent + 2, "small_parse_map_count", summary.small_parse_map_count, true);
     try writeUsizeField(writer, indent + 2, "lex_mode_count", summary.lex_mode_count, true);
+    try writeUsizeField(writer, indent + 2, "lex_function_case_count", summary.lex_function_case_count, true);
+    try writeUsizeField(writer, indent + 2, "keyword_lex_function_case_count", summary.keyword_lex_function_case_count, true);
+    try writeUsizeField(writer, indent + 2, "large_character_set_count", summary.large_character_set_count, true);
     try writeUsizeField(writer, indent + 2, "external_lex_state_count", summary.external_lex_state_count, false);
     try writeIndent(writer, indent);
     try writer.writeByte('}');
@@ -2142,6 +2175,9 @@ pub fn compareSummariesAlloc(
     try compareUsizeField(allocator, &diffs, "small_parse_row_count", local.small_parse_row_count, upstream.small_parse_row_count, .suspected_algorithm_gap);
     try compareUsizeField(allocator, &diffs, "small_parse_map_count", local.small_parse_map_count, upstream.small_parse_map_count, .suspected_algorithm_gap);
     try compareUsizeField(allocator, &diffs, "lex_mode_count", local.lex_mode_count, upstream.lex_mode_count, .suspected_algorithm_gap);
+    try compareUsizeField(allocator, &diffs, "lex_function_case_count", local.lex_function_case_count, upstream.lex_function_case_count, .suspected_algorithm_gap);
+    try compareUsizeField(allocator, &diffs, "keyword_lex_function_case_count", local.keyword_lex_function_case_count, upstream.keyword_lex_function_case_count, .suspected_algorithm_gap);
+    try compareUsizeField(allocator, &diffs, "large_character_set_count", local.large_character_set_count, upstream.large_character_set_count, .suspected_algorithm_gap);
     try compareUsizeField(allocator, &diffs, "external_lex_state_count", local.external_lex_state_count, upstream.external_lex_state_count, .known_unsupported_surface);
 
     return try diffs.toOwnedSlice(allocator);
@@ -2316,6 +2352,9 @@ test "compareSummariesAlloc classifies changed fields" {
         .small_parse_row_count = 1,
         .small_parse_map_count = 3,
         .lex_mode_count = 5,
+        .lex_function_case_count = 5,
+        .keyword_lex_function_case_count = 0,
+        .large_character_set_count = 0,
         .external_lex_state_count = 0,
     };
     var upstream = local;
@@ -2359,6 +2398,25 @@ test "parseUpstreamParserCSummaryAlloc reads generated parser defines" {
         \\  [0] = {.entry = {.count = 0, .reusable = false}},
         \\  [1] = {.entry = {.count = 1, .reusable = true}}, SHIFT(1),
         \\};
+        \\static const TSCharacterRange ts_lex_character_set_0[] = {
+        \\  { 1, 2 },
+        \\};
+        \\static bool ts_lex(TSLexer *lexer, TSStateId state) {
+        \\  switch (state) {
+        \\    case 0:
+        \\      return true;
+        \\    case 1:
+        \\      return false;
+        \\  }
+        \\}
+        \\static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {
+        \\  switch (state) {
+        \\    case 0:
+        \\      return false;
+        \\  }
+        \\}
+        \\static const TSLexerMode ts_lex_modes[1] = {
+        \\};
     ;
     const summary = try parseUpstreamParserCSummaryAlloc(std.testing.allocator, "demo", parser_c, null);
     defer deinitSummary(std.testing.allocator, summary);
@@ -2372,6 +2430,9 @@ test "parseUpstreamParserCSummaryAlloc reads generated parser defines" {
     try std.testing.expectEqual(@as(usize, 2), summary.field_count);
     try std.testing.expect(summary.field_names_hash != 0);
     try std.testing.expectEqual(@as(usize, 2), summary.small_parse_row_count);
+    try std.testing.expectEqual(@as(usize, 2), summary.lex_function_case_count);
+    try std.testing.expectEqual(@as(usize, 1), summary.keyword_lex_function_case_count);
+    try std.testing.expectEqual(@as(usize, 1), summary.large_character_set_count);
 }
 
 test "parseUpstreamParserCSummaryAlloc hashes node-types JSON ignoring whitespace" {

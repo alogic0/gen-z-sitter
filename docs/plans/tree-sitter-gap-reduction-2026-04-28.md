@@ -519,6 +519,10 @@ range-set transition count, max transition range count, and keyword-lexer state,
 transition, and range counts. This keeps emitted lexer shape visible without
 depending on exact generated C text.
 
+Batch 56 note: local/upstream parser C summaries now include `ts_lex` case
+count, keyword lexer case count, and TSCharacterRange declaration count. These
+fields make generated lexer structure diffable at the parser.c summary layer.
+
 ## Phase 5 — Runtime Parser Behavior Parity
 
 Goal: make the generated parser behave like a real Tree-sitter parser for
