@@ -1875,7 +1875,7 @@ test "serializeTableFromPrepared carries recursive external close reduce lookahe
     try std.testing.expect(external_state[1]);
 }
 
-test "attachKeywordLexTableAlloc exposes unmapped real reserved-word strings" {
+test "attachKeywordLexTableAlloc maps real reserved-word strings" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -1895,8 +1895,8 @@ test "attachKeywordLexTableAlloc exposes unmapped real reserved-word strings" {
         .blocked = false,
     }, prepared, extracted.lexical);
 
-    try std.testing.expect(serialized.keyword_lex_table == null);
-    try std.testing.expect(serialized.keyword_unmapped_reserved_word_count > 0);
+    try std.testing.expect(serialized.keyword_lex_table != null);
+    try std.testing.expectEqual(@as(usize, 0), serialized.keyword_unmapped_reserved_word_count);
 }
 
 test "serializeTableFromPrepared carries promoted default aliases into alias sequences" {

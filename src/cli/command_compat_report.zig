@@ -183,7 +183,7 @@ test "compat report describes scanner-free grammar" {
     try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"corpus_compared\": false"));
 }
 
-test "compat report surfaces unmapped reserved keyword blocker" {
+test "compat report treats raw reserved strings as keyword lexable" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
@@ -200,6 +200,40 @@ test "compat report surfaces unmapped reserved keyword blocker" {
         \\  "reserved": {
         \\    "global": [
         \\      { "type": "STRING", "value": "if" }
+        \\    ]
+        \\  }
+        \\}
+        ,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const report = try buildCompatReportJsonAlloc(std.testing.allocator, .{ .grammar_path = path });
+    defer std.testing.allocator.free(report);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"has_keyword_lex_table\": true"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "\"keyword_unmapped_reserved_word_count\": 0"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, report, 1, "run compare-upstream for upstream and corpus evidence"));
+}
+
+test "compat report surfaces unsupported reserved keyword blocker" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data =
+        \\{
+        \\  "name": "reserved_pattern_gap_report",
+        \\  "word": "identifier",
+        \\  "rules": {
+        \\    "source_file": { "type": "SYMBOL", "name": "identifier" },
+        \\    "identifier": { "type": "PATTERN", "value": "[a-z]+" }
+        \\  },
+        \\  "reserved": {
+        \\    "global": [
+        \\      { "type": "PATTERN", "value": "if" }
         \\    ]
         \\  }
         \\}

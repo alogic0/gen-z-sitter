@@ -593,9 +593,12 @@ pub fn attachKeywordLexTableAlloc(
     if (prepared.word_token == null or prepared.reserved_word_sets.len == 0) return serialized;
 
     var result = serialized;
-    result.keyword_unmapped_reserved_word_count = countUnmappedReservedWords(prepared, lexical);
+    const keyword_lexical = try buildKeywordLexicalGrammarAlloc(allocator, prepared, lexical);
+    defer keyword_lexical.deinit(allocator);
 
-    const terminal_set = try buildKeywordTerminalSetAlloc(allocator, prepared, lexical);
+    result.keyword_unmapped_reserved_word_count = countUnmappedReservedWords(prepared, keyword_lexical.lexical);
+
+    const terminal_set = try buildKeywordTerminalSetAlloc(allocator, prepared, keyword_lexical.lexical);
     defer allocator.free(terminal_set);
     var any_terminal = false;
     for (terminal_set) |enabled| {
@@ -609,7 +612,7 @@ pub fn attachKeywordLexTableAlloc(
     const tables = try lexer_serialize.buildSerializedLexTablesAlloc(
         allocator,
         prepared.rules,
-        lexical,
+        keyword_lexical.lexical,
         &.{terminal_set},
     );
     defer allocator.free(tables);
@@ -1593,6 +1596,9 @@ fn buildReservedWordsAlloc(
     prepared: grammar_ir.PreparedGrammar,
     lexical: lexical_ir.LexicalGrammar,
 ) std.mem.Allocator.Error!SerializedReservedWords {
+    const keyword_lexical = try buildKeywordLexicalGrammarAlloc(allocator, prepared, lexical);
+    defer keyword_lexical.deinit(allocator);
+
     const sets = try allocator.alloc([]const syntax_ir.SymbolRef, prepared.reserved_word_sets.len + 1);
     var initialized: usize = 0;
     errdefer {
@@ -1609,7 +1615,7 @@ fn buildReservedWordsAlloc(
         defer members.deinit();
 
         for (reserved_set.members) |member_rule| {
-            if (terminalRefForLexicalRule(lexical, member_rule)) |symbol| {
+            if (keywordTerminalRefForRule(prepared, keyword_lexical.lexical, member_rule)) |symbol| {
                 try appendUniqueSymbolRef(&members, symbol);
             }
         }
@@ -1633,6 +1639,92 @@ fn terminalRefForLexicalRule(
         if (variable.rule == rule_id) return .{ .terminal = @intCast(index) };
     }
     return null;
+}
+
+const KeywordLexicalGrammar = struct {
+    lexical: lexical_ir.LexicalGrammar,
+    owned_variables: []const lexical_ir.LexicalVariable = &.{},
+
+    fn deinit(self: KeywordLexicalGrammar, allocator: std.mem.Allocator) void {
+        allocator.free(self.owned_variables);
+    }
+};
+
+fn buildKeywordLexicalGrammarAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) std.mem.Allocator.Error!KeywordLexicalGrammar {
+    var additions = std.array_list.Managed(lexical_ir.LexicalVariable).init(allocator);
+    defer additions.deinit();
+
+    for (prepared.reserved_word_sets) |reserved_set| {
+        for (reserved_set.members) |member_rule| {
+            if (keywordTerminalRefForRuleWithAdditions(prepared, lexical, additions.items, member_rule) != null) continue;
+            const literal = directStringRuleValue(prepared.rules, member_rule) orelse continue;
+            try additions.append(.{
+                .name = literal,
+                .kind = .anonymous,
+                .rule = member_rule,
+                .source_kind = .string,
+            });
+        }
+    }
+
+    if (additions.items.len == 0) {
+        return .{ .lexical = lexical };
+    }
+
+    const variables = try allocator.alloc(lexical_ir.LexicalVariable, lexical.variables.len + additions.items.len);
+    @memcpy(variables[0..lexical.variables.len], lexical.variables);
+    @memcpy(variables[lexical.variables.len..], additions.items);
+    return .{
+        .lexical = .{
+            .variables = variables,
+            .separators = lexical.separators,
+        },
+        .owned_variables = variables,
+    };
+}
+
+fn keywordTerminalRefForRule(
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    rule_id: ir_rules.RuleId,
+) ?syntax_ir.SymbolRef {
+    if (terminalRefForLexicalRule(lexical, rule_id)) |symbol| return symbol;
+    const literal = directStringRuleValue(prepared.rules, rule_id) orelse return null;
+    for (lexical.variables, 0..) |variable, index| {
+        const variable_literal = directStringRuleValue(prepared.rules, variable.rule) orelse continue;
+        if (std.mem.eql(u8, literal, variable_literal)) return .{ .terminal = @intCast(index) };
+    }
+    return null;
+}
+
+fn keywordTerminalRefForRuleWithAdditions(
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    additions: []const lexical_ir.LexicalVariable,
+    rule_id: ir_rules.RuleId,
+) ?syntax_ir.SymbolRef {
+    if (keywordTerminalRefForRule(prepared, lexical, rule_id)) |symbol| return symbol;
+    const literal = directStringRuleValue(prepared.rules, rule_id) orelse return null;
+    for (additions, 0..) |variable, index| {
+        const variable_literal = directStringRuleValue(prepared.rules, variable.rule) orelse continue;
+        if (std.mem.eql(u8, literal, variable_literal)) {
+            return .{ .terminal = @intCast(lexical.variables.len + index) };
+        }
+    }
+    return null;
+}
+
+fn directStringRuleValue(rules: []const ir_rules.Rule, rule_id: ir_rules.RuleId) ?[]const u8 {
+    if (rule_id >= rules.len) return null;
+    return switch (rules[@intCast(rule_id)]) {
+        .string => |value| value,
+        .metadata => |metadata| directStringRuleValue(rules, metadata.inner),
+        else => null,
+    };
 }
 
 fn hasRepetitionShift(
@@ -1692,7 +1784,7 @@ fn buildKeywordTerminalSetAlloc(
     @memset(terminal_set, false);
     for (prepared.reserved_word_sets) |reserved_set| {
         for (reserved_set.members) |member_rule| {
-            if (terminalRefForLexicalRule(lexical, member_rule)) |symbol| switch (symbol) {
+            if (keywordTerminalRefForRule(prepared, lexical, member_rule)) |symbol| switch (symbol) {
                 .terminal => |index| {
                     if (index < terminal_set.len) terminal_set[index] = true;
                 },
@@ -1710,7 +1802,7 @@ fn countUnmappedReservedWords(
     var count: usize = 0;
     for (prepared.reserved_word_sets) |reserved_set| {
         for (reserved_set.members) |member_rule| {
-            if (terminalRefForLexicalRule(lexical, member_rule) == null) count += 1;
+            if (keywordTerminalRefForRule(prepared, lexical, member_rule) == null) count += 1;
         }
     }
     return count;
@@ -2680,6 +2772,57 @@ test "attachKeywordLexTableAlloc builds keyword table from reserved words" {
     try std.testing.expect(lexTableAcceptsSymbol(keyword_lex_table, .{ .terminal = 0 }));
     try std.testing.expect(lexTableAcceptsSymbol(keyword_lex_table, .{ .terminal = 1 }));
     try std.testing.expect(!lexTableAcceptsSymbol(keyword_lex_table, .{ .terminal = 2 }));
+}
+
+test "attachKeywordLexTableAlloc builds keyword table from reserved string-only rules" {
+    const allocator = std.testing.allocator;
+    const rules = [_]ir_rules.Rule{
+        .{ .string = "if" },
+        .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
+    };
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "keyword_string_fixture",
+        .variables = &.{},
+        .external_tokens = &.{},
+        .rules = rules[0..],
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = .{ .kind = .non_terminal, .index = 0 },
+        .reserved_word_sets = &.{
+            .{ .context_name = "default", .members = &.{0} },
+        },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "identifier", .kind = .named, .rule = 1, .source_kind = .pattern },
+        },
+        .separators = &.{},
+    };
+
+    const with_reserved_words = try attachReservedWordsAlloc(allocator, .{
+        .states = &.{},
+        .blocked = false,
+    }, prepared, lexical);
+    defer deinitReservedWords(allocator, with_reserved_words.reserved_words);
+
+    const serialized = try attachKeywordLexTableAlloc(allocator, .{
+        .states = &.{},
+        .blocked = false,
+    }, prepared, lexical);
+    defer if (serialized.keyword_lex_table) |keyword_lex_table| {
+        lexer_serialize.deinitSerializedLexTable(allocator, keyword_lex_table);
+    };
+
+    try std.testing.expectEqual(@as(usize, 2), with_reserved_words.reserved_words.sets.len);
+    try std.testing.expectEqual(@as(usize, 1), with_reserved_words.reserved_words.sets[1].len);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .terminal = 1 }, with_reserved_words.reserved_words.sets[1][0]);
+    try std.testing.expect(serialized.keyword_lex_table != null);
+    try std.testing.expectEqual(@as(usize, 0), serialized.keyword_unmapped_reserved_word_count);
+    try std.testing.expect(lexTableAcceptsSymbol(serialized.keyword_lex_table.?, .{ .terminal = 1 }));
 }
 
 fn lexTableAcceptsSymbol(

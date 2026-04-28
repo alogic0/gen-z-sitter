@@ -545,7 +545,7 @@ backreferences, and lazy quantifiers. These show up in per-pattern
     comparison artifacts.
   - [x] Add bounded real-grammar coverage for the current unmapped
     reserved-string gap.
-  - [ ] Map raw reserved-word strings to runtime keyword symbols so JavaScript
+  - [x] Map raw reserved-word strings to runtime keyword symbols so JavaScript
     and Python produce non-empty keyword lexer tables.
 - [x] Protect external-token valid-symbol behavior with stateful scanner tests.
 
@@ -591,8 +591,15 @@ reserved-string symbol mapping gap machine-readable.
 
 Batch 80 note: `compat-report` now exposes `has_keyword_lex_table` and
 `keyword_unmapped_reserved_word_count`, and recommends inspecting reserved-word
-keyword mapping before runtime proof when raw reserved strings cannot yet be
+keyword mapping before runtime proof when reserved members still cannot be
 mapped to runtime keyword symbols.
+
+Batch 81 note: reserved-word serialization now synthesizes keyword-only
+lexical variables for direct raw string members that do not otherwise appear in
+the extracted lexical grammar. The reserved-word tables and keyword lexer use
+the same deterministic terminal mapping, which gives real JavaScript grammar
+snapshots a non-empty keyword lexer table and clears the raw reserved-string
+counter. Non-string reserved members remain counted as unmapped diagnostics.
 
 ### 4.3 Emitted Lexer C Parity
 
