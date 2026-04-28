@@ -751,10 +751,16 @@ JSON still diverges from the upstream-observed `(document (ERROR (UNEXPECTED
 '@')))`.
 
 Batch 91 note: the default `test-link-runtime` filter list now excludes known
-failing recovery and temporary-result API probes while leaving the focused tests
-available by name. This keeps the bounded runtime-link step green for promoted
-accepted/scanner proofs and leaves JSON/Ziggy invalid tree recovery plus the
-direct GLR result crash as explicit follow-up work.
+failing recovery probes while leaving the focused tests available by name. This
+keeps the bounded runtime-link step green for promoted accepted/scanner proofs
+and leaves JSON/Ziggy invalid tree recovery as explicit follow-up work.
+
+Batch 92 note: the direct GLR result probe is back in the default runtime-link
+step after fixing the C driver-side `TSGeneratedParseResult` ABI mirror. The
+driver had omitted recovery counters that generated parser.c now writes, which
+caused a stack-canary crash before assertions could run.
+`GEN_Z_SITTER_KEEP_RUNTIME_LINK_TEMP` can retain generated runtime-link temp
+directories for this class of focused debugging.
 
 ### 5.3 Incremental Parsing and Reuse
 

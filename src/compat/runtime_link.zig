@@ -3207,7 +3207,9 @@ fn linkAndRunGeneratedParserMaybeProfile(
     );
     defer allocator.free(tmp_path);
     try std.Io.Dir.cwd().createDirPath(runtime_io.get(), tmp_path);
-    defer std.Io.Dir.cwd().deleteTree(runtime_io.get(), tmp_path) catch {};
+    const keep_tmp = runtime_io.environ().getPosix("GEN_Z_SITTER_KEEP_RUNTIME_LINK_TEMP") != null;
+    defer if (!keep_tmp) std.Io.Dir.cwd().deleteTree(runtime_io.get(), tmp_path) catch {};
+    if (keep_tmp) std.debug.print("[runtime-link] keeping temp dir {s}\n", .{tmp_path});
 
     var tmp_dir = try std.Io.Dir.cwd().openDir(runtime_io.get(), tmp_path, .{});
     defer tmp_dir.close(runtime_io.get());
@@ -3765,6 +3767,10 @@ fn directGeneratedParseDriverSourceAlloc(
         \\  uint16_t root_node;
         \\  uint16_t node_count;
         \\  uint32_t error_count;
+        \\  uint32_t recovery_attempts;
+        \\  uint32_t stack_recoveries;
+        \\  uint32_t skipped_tokens;
+        \\  uint32_t skipped_bytes;
         \\  int32_t dynamic_precedence;
         \\  TSGeneratedNode nodes[256];
         \\}} TSGeneratedParseResult;
