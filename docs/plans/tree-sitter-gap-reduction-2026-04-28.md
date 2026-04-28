@@ -392,7 +392,7 @@ lookahead, conflict, and minimization gaps.
     items, closure items, completed items, lookaheads, reserved lookaheads, and
     transitions.
   - [x] Add upstream-shaped item-set comparison.
-- [ ] Compare kernel items, closure additions, lookaheads, reserved lookaheads,
+- [x] Compare kernel items, closure additions, lookaheads, reserved lookaheads,
   and propagation flags against upstream concepts from `item_set_builder.rs`.
 - [x] Add fixtures for nullable suffixes, nested repeats, expected conflicts,
   dynamic precedence, and token.immediate interactions.
@@ -428,6 +428,12 @@ for nullable suffixes, nested repeats, expected conflicts, dynamic precedence,
 and token.immediate interactions. Each fixture must render the compact
 comparison block, upstream-shaped comparison keys, and selected state entries.
 
+Batch 118 note: upstream `item_set_builder.rs` concepts are now mapped to the
+local `item-set-snapshot.json` comparison surface. Kernel-vs-closure origin,
+lookahead sets, reserved lookaheads, completed-item markers, production LHS,
+production length, and transitions are all represented by stable local counts
+and hashes. The direct upstream raw item-set oracle remains open separately.
+
 Batch 94 note: Haskell scanner build tuning now comes from
 `compat_targets/tree_sitter_haskell_json/build_config.json` instead of
 hardcoded internal state/symbol IDs in the harness. The generic target config
@@ -459,7 +465,7 @@ evidence; direct upstream item-set comparison remains open.
 
 ### 3.2 Conflict Resolution and Expected Conflicts
 
-- [ ] Audit local conflict resolution against upstream
+- [x] Audit local conflict resolution against upstream
   `build_parse_table.rs` conflict handling.
 - [x] Write local conflict summary artifacts with declared expected-conflict
   counts, unused expected-conflict indexes, and unresolved reason counts.
@@ -525,6 +531,14 @@ complete. Conflict-summary coverage now includes static-precedence
 shift/reduce, associativity shift/reduce, precedence reduce/reduce, dynamic
 precedence, expected conflicts, and unexpected conflicts.
 
+Batch 119 note: upstream `build_parse_table.rs` conflict handling was audited
+against local resolution coverage. The local summary covers the upstream
+decision surfaces that affect generator behavior: declared and unused expected
+conflicts, unresolved reasons, shift/reduce and reduce/reduce candidate shapes,
+static precedence, associativity, dynamic precedence, and reduce parent rule
+names. Exact formatted upstream conflict text remains outside the local summary
+oracle.
+
 ### 3.3 Token Conflicts and Lexical Precedence
 
 - [ ] Reproduce upstream token conflict analysis for overlapping literals,
@@ -568,7 +582,7 @@ yet.
 
 ### 3.4 Minimize Parse Table Parity
 
-- [ ] Audit local minimization against upstream `minimize_parse_table.rs`.
+- [x] Audit local minimization against upstream `minimize_parse_table.rs`.
 - [ ] Compare removed unit reductions, merged compatible states, unused-state
   removal, and descending-size reorder.
   - [x] Expose upstream-shaped local minimization comparison keys for table
@@ -619,6 +633,13 @@ state actions, gotos, parse-action-list rows, small parse-table rows, and
 external scanner states. This closes the local visibility part of upstream
 minimization parity work while the raw upstream minimization oracle remains
 open.
+
+Batch 120 note: upstream `minimize_parse_table.rs` was audited against the
+local minimizer and comparison artifacts. The upstream phases are merge
+compatible states, remove unit reductions, remove unused states, and reorder by
+descending size; the local summary now exposes the surfaces needed to detect
+drift in those phases. Full algorithm parity remains open for unit-reduction
+removal and state reorder behavior.
 
 ## Phase 4 — Lexer and Regex Parity
 
