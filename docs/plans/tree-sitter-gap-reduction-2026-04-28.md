@@ -371,9 +371,9 @@ evidence; direct upstream item-set comparison remains open.
 - [x] Write local conflict summary artifacts with declared expected-conflict
   counts, unused expected-conflict indexes, and unresolved reason counts.
 - [ ] Add differential fixtures for:
-  - shift/reduce resolved by static precedence,
-  - shift/reduce resolved by associativity,
-  - reduce/reduce resolved by precedence,
+  - [x] shift/reduce resolved by static precedence,
+  - [x] shift/reduce resolved by associativity,
+  - [x] reduce/reduce resolved by precedence,
   - dynamic precedence preserved as unresolved runtime choice,
   - [x] expected conflict allowed,
   - [x] unexpected conflict rejected.
@@ -406,6 +406,12 @@ Batch 58 note: `conflict-summary.json` now records chosen candidate shapes:
 shift/reduce, reduce/reduce, single-action, and other. This keeps static
 precedence, associativity, and reduce/reduce fixture coverage visible in the
 comparison artifact without depending on parser-state text dumps.
+
+Batch 69 note: focused conflict-summary tests now cover static-precedence
+shift/reduce, associativity-driven shift/reduce, and precedence-driven
+reduce/reduce decisions. These checks keep the comparison artifact surface tied
+to the existing resolved-action fixtures instead of only testing parser-table
+text dumps.
 
 ### 3.3 Token Conflicts and Lexical Precedence
 

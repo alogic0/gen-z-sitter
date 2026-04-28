@@ -2856,6 +2856,46 @@ test "generateLocalConflictSummaryJsonAlloc writes resolved precedence decisions
     try std.testing.expect(std.mem.indexOf(u8, json, "\"max_candidate_count\": 2") != null);
 }
 
+test "generateLocalConflictSummaryJsonAlloc writes associativity decisions" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.parseTableRightAssociativityGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalConflictSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 1") != null);
+}
+
+test "generateLocalConflictSummaryJsonAlloc writes reduce reduce precedence decisions" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.parseTableReduceReduceGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalConflictSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"reduce\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"reduce_reduce\"") != null);
+}
+
 test "generateLocalConflictSummaryJsonAlloc distinguishes expected shift reduce conflicts" {
     const json = try generateLocalConflictSummaryJsonAlloc(
         std.testing.allocator,
