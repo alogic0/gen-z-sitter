@@ -238,6 +238,11 @@ fn parseConstructProfileSnapshot(
         .item_set_hash_entries = profile.item_set_hash_entries,
         .item_set_eql_calls = profile.item_set_eql_calls,
         .item_set_eql_entries = profile.item_set_eql_entries,
+        .symbol_set_init_empty_count = profile.symbol_set_init_empty_count,
+        .symbol_set_clone_count = profile.symbol_set_clone_count,
+        .symbol_set_free_count = profile.symbol_set_free_count,
+        .symbol_set_alloc_bytes = profile.symbol_set_alloc_bytes,
+        .symbol_set_free_bytes = profile.symbol_set_free_bytes,
         .collect_transitions_ns = profile.collect_transitions_ns,
         .extra_transitions_ns = profile.extra_transitions_ns,
         .reserved_word_ns = profile.reserved_word_ns,
@@ -261,6 +266,22 @@ fn lexEmissionSnapshot(stats: parser_c_emit.LexEmissionStats) result_model.LexEm
         .keyword_transition_count = stats.keyword_transition_count,
         .keyword_range_count = stats.keyword_range_count,
     };
+}
+
+test "parseConstructProfileSnapshot carries SymbolSet allocation counters" {
+    const snapshot = parseConstructProfileSnapshot(.{
+        .symbol_set_init_empty_count = 2,
+        .symbol_set_clone_count = 3,
+        .symbol_set_free_count = 4,
+        .symbol_set_alloc_bytes = 512,
+        .symbol_set_free_bytes = 256,
+    });
+
+    try std.testing.expectEqual(@as(usize, 2), snapshot.symbol_set_init_empty_count);
+    try std.testing.expectEqual(@as(usize, 3), snapshot.symbol_set_clone_count);
+    try std.testing.expectEqual(@as(usize, 4), snapshot.symbol_set_free_count);
+    try std.testing.expectEqual(@as(usize, 512), snapshot.symbol_set_alloc_bytes);
+    try std.testing.expectEqual(@as(usize, 256), snapshot.symbol_set_free_bytes);
 }
 
 fn functionSpanBytes(source: []const u8, start_marker: []const u8, end_marker: []const u8) usize {
@@ -1728,6 +1749,7 @@ test "runStagedTargetsAlloc can be rendered to a deterministic JSON report" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"hidden_external_fields_json\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"hidden_external_fields_js\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"blocked_targets\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"symbol_set_alloc_bytes\"") != null);
 }
 
 test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entries" {

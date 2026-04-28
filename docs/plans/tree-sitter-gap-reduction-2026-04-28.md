@@ -802,13 +802,22 @@ Goal: keep correctness work practical for large grammars.
 
 - [x] Keep per-stage construction profiling enabled for real grammar targets.
 - [ ] Finish SymbolSet bitset compression if allocation churn remains visible.
+  - [x] Capture SymbolSet allocation counts and packed-bit bytes in promotion
+    artifacts so the remaining compression decision is measurement-based.
 - [ ] Compact closure and item-set keys if cache misses dominate.
 - [x] Add state-interning metrics to promotion artifacts.
 
 Gate:
 
 - Large real grammar profiling identifies the current bottleneck before any
-  structural optimization lands.
+structural optimization lands.
+
+Batch 67 note: parse construction profiles now carry SymbolSet init/clone/free
+counts and packed-bit allocation/free byte totals into compatibility emission
+snapshots. The debug compatibility runner prints the allocated packed-bit volume
+next to state-intern and closure-cache counters, so a future SymbolSet
+compression pass can be justified from checked artifacts instead of stderr-only
+profile logs.
 
 Batch 48 note: compatibility emission snapshots now carry a structured
 `parse_construct_profile` captured directly from parse-table construction. The

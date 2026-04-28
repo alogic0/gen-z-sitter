@@ -63,6 +63,11 @@ pub const ConstructProfile = struct {
     item_set_hash_entries: usize = 0,
     item_set_eql_calls: usize = 0,
     item_set_eql_entries: usize = 0,
+    symbol_set_init_empty_count: usize = 0,
+    symbol_set_clone_count: usize = 0,
+    symbol_set_free_count: usize = 0,
+    symbol_set_alloc_bytes: usize = 0,
+    symbol_set_free_bytes: usize = 0,
     collect_transitions_ns: u64 = 0,
     extra_transitions_ns: u64 = 0,
     reserved_word_ns: u64 = 0,
@@ -195,7 +200,7 @@ fn addProfileDuration(accumulator: *u64, timer: ?std.Io.Timestamp) void {
 fn logSymbolSetProfile() void {
     const profile = item.symbolSetProfile();
     std.debug.print(
-        "[parse_table_profile] symbol_sets init_empty={d} clone={d} free={d} bool_alloc_mb={d:.2} bool_free_mb={d:.2}\n",
+        "[parse_table_profile] symbol_sets init_empty={d} clone={d} free={d} bit_alloc_mb={d:.2} bit_free_mb={d:.2}\n",
         .{
             profile.init_empty_count,
             profile.clone_count,
@@ -1625,6 +1630,12 @@ pub fn buildStatesWithOptions(
             logConstructProfile();
         }
         if (options.construct_profile) |profile| {
+            const symbol_set_profile = item.symbolSetProfile();
+            construct_profile.symbol_set_init_empty_count = symbol_set_profile.init_empty_count;
+            construct_profile.symbol_set_clone_count = symbol_set_profile.clone_count;
+            construct_profile.symbol_set_free_count = symbol_set_profile.free_count;
+            construct_profile.symbol_set_alloc_bytes = symbol_set_profile.bool_alloc_bytes;
+            construct_profile.symbol_set_free_bytes = symbol_set_profile.bool_free_bytes;
             profile.* = construct_profile;
         }
         item.setSymbolSetProfileEnabled(false);

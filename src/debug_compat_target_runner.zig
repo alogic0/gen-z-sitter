@@ -75,12 +75,13 @@ fn printRunSummary(run: result_model.TargetRunResult) void {
         }
         if (emission.parse_construct_profile) |profile| {
             std.debug.print(
-                " state_intern={d}/{d} closure_cache={d}/{d}",
+                " state_intern={d}/{d} closure_cache={d}/{d} symbol_set_alloc_kb={d}",
                 .{
                     profile.state_intern_reused,
                     profile.state_intern_calls,
                     profile.closure_cache_hits,
                     profile.closure_cache_hits + profile.closure_cache_misses,
+                    profile.symbol_set_alloc_bytes / 1024,
                 },
             );
         }
