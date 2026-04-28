@@ -3801,6 +3801,7 @@ fn directGeneratedParseDriverSourceAlloc(
         \\  uint16_t root_node;
         \\  uint16_t node_count;
         \\  uint32_t error_count;
+        \\  uint32_t error_cost;
         \\  uint32_t recovery_attempts;
         \\  uint32_t stack_recoveries;
         \\  uint32_t skipped_tokens;

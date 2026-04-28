@@ -799,6 +799,8 @@ the higher dynamic precedence, and over-cap version sets are trimmed to
 - [x] Audit emitted recovery against upstream `parser.c` recovery behavior.
 - [ ] Add error-cost accounting, recovery token insertion/deletion surfaces,
   and bounded retry reporting.
+  - [x] Rank generated GLR versions by weighted error cost instead of raw
+    error count.
   - [x] Expose behavioral recovery attempts, stack recoveries, skipped tokens,
     and skipped bytes in accepted simulation results.
   - [x] Expose generated parser recovery attempts, stack recoveries, skipped
@@ -855,6 +857,13 @@ Ziggy invalid runtime-link samples are back in the bounded default
 `test-link-runtime` filter list; the Ziggy invalid sample now uses `#` because
 `@` is a valid `tag_string` prefix and upstream-style recovery shifts it before
 failing at EOF.
+
+Batch 105 note: generated GLR parse versions now carry `error_cost` alongside
+`error_count`, and version condensation ranks/prunes by weighted error cost.
+Stack recovery costs 1, skipped recognized tokens cost their byte length, and
+single-byte deletion costs 1. `TSGeneratedParseResult` exposes the final
+`error_cost` so runtime-link probes can distinguish cost ranking from raw
+recovery event counts.
 
 ### 5.3 Incremental Parsing and Reuse
 
