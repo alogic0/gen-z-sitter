@@ -409,6 +409,37 @@ pub fn generateLocalRegexSurfaceSummaryJsonAlloc(
     return try out.toOwnedSlice();
 }
 
+pub fn generateLocalLexTableSummaryJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena_allocator, &loaded.json.grammar);
+    const serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+        arena_allocator,
+        prepared,
+        .diagnostic,
+        .{
+            .minimize_states = options.minimize_states,
+            .strict_expected_conflicts = false,
+        },
+    );
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeLexTableSummaryJson(&out.writer, serialized);
+    return try out.toOwnedSlice();
+}
+
 pub fn parseUpstreamParserCSummaryAlloc(
     allocator: std.mem.Allocator,
     grammar_name: []const u8,
@@ -1305,6 +1336,100 @@ fn lexicalVariableKindName(kind: lexical_ir.VariableKind) []const u8 {
         .anonymous => "anonymous",
         .auxiliary => "auxiliary",
     };
+}
+
+const LexTableCounts = struct {
+    table_count: usize = 0,
+    state_count: usize = 0,
+    transition_count: usize = 0,
+    range_count: usize = 0,
+    accept_state_count: usize = 0,
+    eof_target_count: usize = 0,
+    skip_transition_count: usize = 0,
+    large_range_transition_count: usize = 0,
+    max_transition_range_count: usize = 0,
+};
+
+fn writeLexTableSummaryJson(
+    writer: anytype,
+    serialized: parse_table_serialize.SerializedTable,
+) !void {
+    const counts = countLexTables(serialized.lex_tables);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, 2, "table_count", counts.table_count, true);
+    try writeUsizeField(writer, 2, "state_count", counts.state_count, true);
+    try writeUsizeField(writer, 2, "transition_count", counts.transition_count, true);
+    try writeUsizeField(writer, 2, "range_count", counts.range_count, true);
+    try writeUsizeField(writer, 2, "accept_state_count", counts.accept_state_count, true);
+    try writeUsizeField(writer, 2, "eof_target_count", counts.eof_target_count, true);
+    try writeUsizeField(writer, 2, "skip_transition_count", counts.skip_transition_count, true);
+    try writeUsizeField(writer, 2, "large_range_transition_count", counts.large_range_transition_count, true);
+    try writeUsizeField(writer, 2, "max_transition_range_count", counts.max_transition_range_count, true);
+    try writer.writeAll("  \"tables\": [\n");
+    for (serialized.lex_tables, 0..) |table, index| {
+        const table_counts = countLexTable(table);
+        try writeIndent(writer, 4);
+        try writer.writeAll("{ \"index\": ");
+        try writer.print("{d}", .{index});
+        try writer.writeAll(", \"start_state_id\": ");
+        try writer.print("{d}", .{table.start_state_id});
+        try writer.writeAll(", \"state_count\": ");
+        try writer.print("{d}", .{table_counts.state_count});
+        try writer.writeAll(", \"transition_count\": ");
+        try writer.print("{d}", .{table_counts.transition_count});
+        try writer.writeAll(", \"range_count\": ");
+        try writer.print("{d}", .{table_counts.range_count});
+        try writer.writeAll(", \"accept_state_count\": ");
+        try writer.print("{d}", .{table_counts.accept_state_count});
+        try writer.writeAll(", \"eof_target_count\": ");
+        try writer.print("{d}", .{table_counts.eof_target_count});
+        try writer.writeAll(", \"skip_transition_count\": ");
+        try writer.print("{d}", .{table_counts.skip_transition_count});
+        try writer.writeAll(", \"large_range_transition_count\": ");
+        try writer.print("{d}", .{table_counts.large_range_transition_count});
+        try writer.writeAll(", \"max_transition_range_count\": ");
+        try writer.print("{d}", .{table_counts.max_transition_range_count});
+        try writer.writeAll(" }");
+        if (index + 1 != serialized.lex_tables.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    try writer.writeAll("  ]\n");
+    try writer.writeAll("}\n");
+}
+
+fn countLexTables(tables: []const @import("../lexer/serialize.zig").SerializedLexTable) LexTableCounts {
+    var result = LexTableCounts{ .table_count = tables.len };
+    for (tables) |table| {
+        const table_counts = countLexTable(table);
+        result.state_count += table_counts.state_count;
+        result.transition_count += table_counts.transition_count;
+        result.range_count += table_counts.range_count;
+        result.accept_state_count += table_counts.accept_state_count;
+        result.eof_target_count += table_counts.eof_target_count;
+        result.skip_transition_count += table_counts.skip_transition_count;
+        result.large_range_transition_count += table_counts.large_range_transition_count;
+        result.max_transition_range_count = @max(result.max_transition_range_count, table_counts.max_transition_range_count);
+    }
+    return result;
+}
+
+fn countLexTable(table: @import("../lexer/serialize.zig").SerializedLexTable) LexTableCounts {
+    var result = LexTableCounts{
+        .table_count = 1,
+        .state_count = table.states.len,
+    };
+    for (table.states) |state_value| {
+        if (state_value.accept_symbol != null) result.accept_state_count += 1;
+        if (state_value.eof_target != null) result.eof_target_count += 1;
+        for (state_value.transitions) |transition| {
+            result.transition_count += 1;
+            result.range_count += transition.ranges.len;
+            result.max_transition_range_count = @max(result.max_transition_range_count, transition.ranges.len);
+            if (transition.skip) result.skip_transition_count += 1;
+            if (transition.ranges.len > 8) result.large_range_transition_count += 1;
+        }
+    }
+    return result;
 }
 
 fn countProductions(variables: []const syntax_ir.SyntaxVariable) usize {
@@ -2356,4 +2481,25 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries
     try std.testing.expect(std.mem.indexOf(u8, json, "\"unicode_property\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"bounded_repeat\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"flags\": \"i\"") != null);
+}
+
+test "generateLocalLexTableSummaryJsonAlloc writes lexer table counts" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validBlankGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalLexTableSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"table_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"state_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"max_transition_range_count\"") != null);
 }

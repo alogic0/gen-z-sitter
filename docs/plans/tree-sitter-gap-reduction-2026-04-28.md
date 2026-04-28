@@ -454,6 +454,8 @@ behavior.
 
 - [ ] Audit local NFA/DFA construction against upstream `nfa.rs` and
   `build_lex_table.rs`.
+- [x] Add local lex-table summaries for lex-state counts, accept states,
+  transitions, skip transitions, ranges, and large range-set indicators.
 - [ ] Compare lex-state counts, accept token priorities, advance actions,
   skip actions, and large character set decisions.
 - [ ] Reproduce upstream keyword lexer behavior for real word-token grammars.
@@ -463,6 +465,12 @@ Gate:
 
 - Local and upstream lex summaries match or are classified for JSON, C, Zig,
   Bash, and Haskell.
+
+Batch 23 note: local comparison artifacts now include
+`lex-table-summary.json`, recording aggregate and per-table lexer state counts,
+transition counts, serialized range counts, accept-state counts, EOF-target
+counts, skip-transition counts, max transition range counts, and large
+range-set transition counts.
 
 ### 4.3 Emitted Lexer C Parity
 
