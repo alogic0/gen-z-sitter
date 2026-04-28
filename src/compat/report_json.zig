@@ -50,6 +50,39 @@ pub const FamilyAggregate = struct {
     blocked_count: usize,
 };
 
+pub const AuditGapStatus = struct {
+    source_audit: []const u8 = "docs/audits/gap-report-260428.md",
+    closed: ClosedAuditGaps = .{},
+    active: ActiveAuditGaps = .{},
+    deferred_measurement_gated: DeferredAuditGaps = .{},
+};
+
+pub const ClosedAuditGaps = struct {
+    primary_state_ids_emitted: bool = true,
+    emitted_error_cost_pruning: bool = true,
+    per_target_build_config_loaded: bool = true,
+    haskell_closure_pressure_configured: bool = true,
+    scanner_state_glr_condensation: bool = true,
+    scanner_aware_incremental_sample: bool = true,
+};
+
+pub const ActiveAuditGaps = struct {
+    behavioral_error_cost_parity: bool = true,
+    max_version_count_overflow: bool = true,
+    recovery_skip_and_relex: bool = true,
+    recovery_extend_error_span: bool = true,
+    incremental_reuse_guards: bool = true,
+    expected_conflict_equivalence: bool = true,
+    generic_runtime_proof_config: bool = true,
+    complex_scanner_promotion: bool = true,
+};
+
+pub const DeferredAuditGaps = struct {
+    dag_stack_replacement: bool = true,
+    symbol_set_key_compression: bool = true,
+    emitted_c_shape_tuning: bool = true,
+};
+
 pub fn renderRunReportAlloc(
     allocator: std.mem.Allocator,
     results: []const result_model.TargetRunResult,
@@ -60,6 +93,7 @@ pub fn renderRunReportAlloc(
     return try json_support.stringifyAlloc(allocator, .{
         .schema_version = 1,
         .aggregate = aggregate,
+        .audit_gap_status = AuditGapStatus{},
         .family_coverage = family_coverage,
         .results = results,
     });
@@ -267,6 +301,10 @@ test "renderRunReportAlloc emits deterministic structured JSON" {
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"schema_version\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"family_coverage\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"audit_gap_status\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"primary_state_ids_emitted\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"emitted_error_cost_pruning\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"incremental_reuse_guards\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"results\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"mismatch_categories\"") != null);
 }

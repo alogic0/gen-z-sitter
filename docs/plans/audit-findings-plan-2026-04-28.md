@@ -54,12 +54,18 @@ Deferred unless measurements demand them:
 
 Goal: keep future work pointed at live gaps only.
 
-- [ ] Add a small status addendum for `gap-report-260428.md` that records which
+- [x] Add a small status addendum for `gap-report-260428.md` that records which
   audit items are now closed or superseded.
-- [ ] Add tests or artifact checks that prove `primary_state_ids` and emitted
+- [x] Add tests or artifact checks that prove `primary_state_ids` and emitted
   `error_cost` stay wired, because those were high-priority audit findings.
-- [ ] Make compatibility reports include a compact "audit gap status" section
+- [x] Make compatibility reports include a compact "audit gap status" section
   for the still-open runtime and incremental gaps.
+
+Batch 1 note: `docs/audits/gap-report-260428-status.md` now corrects stale
+audit findings. `shortlist_report.json` includes an `audit_gap_status` block
+with closed, active, and measurement-gated findings. The report renderer test
+asserts that the closed `primary_state_ids` and emitted `error_cost` findings,
+plus the active incremental guard gap, remain visible in the generated report.
 
 Gate:
 
