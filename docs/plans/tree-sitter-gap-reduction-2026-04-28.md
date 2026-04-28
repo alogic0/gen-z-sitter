@@ -476,13 +476,21 @@ range-set transition counts.
 
 - [ ] Compare generated lex function structure at the summary level, not by
   exact text.
-- [ ] Keep compiler-pragmas and large-character-set output measured.
-- [ ] Add compile-time profiling for large lexers and keep regression limits in
+- [x] Keep compiler-pragmas and large-character-set output measured.
+- [x] Add compile-time profiling for large lexers and keep regression limits in
   the heavy suite.
 
 Gate:
 
 - Large lexer targets compile under the accepted bounded heavy budget.
+
+Batch 51 note: large lexer compile behavior is now measured in the bounded
+compatibility artifacts. The generated C already emits compiler optimization
+pragmas for large lexer tables and TSCharacterRange tables for large character
+sets; shortlist reports now store `lex_function_bytes`,
+`keyword_lex_function_bytes`, `emit_parser_c_ms`, `compile_smoke_ms`, and
+`compile_smoke_max_rss_bytes` for promoted large targets under the accepted
+bounded refresh timeout.
 
 ## Phase 5 — Runtime Parser Behavior Parity
 
@@ -576,7 +584,7 @@ Use this order unless profiling shows a clear reason to change it:
 ### 6.3 Promotion Artifact Discipline
 
 - [x] Every promotion updates `compat_targets/shortlist_report.json`.
-- [ ] Every deferred target records the exact blocker and next proof.
+- [x] Every deferred target records the exact blocker and next proof.
 - [x] Heavy timings are stored in `docs/plans` or compat artifacts.
 - [x] No target enters the default bounded suite without clear headroom.
 
@@ -719,6 +727,13 @@ Batch 49 note: the compatibility artifact refresh now enables timing capture
 for parser C emission and compile-smoke stages. Checked-in shortlist reports
 therefore keep size, MaxRSS, construction counters, and bounded wall-clock
 timings together for large parser targets.
+
+Batch 50 note: deferred-target discipline is satisfied by existing artifacts.
+`compat_targets/deferred_real_grammar_classification.json` records blockers and
+next scanner/runtime proof actions for JavaScript, Python, TypeScript, and Rust,
+while `compat_targets/coverage_decision.json` and shortlist inventory identify
+the only remaining deferred parser-only target as the intentional upstream-
+rejected conflict control fixture.
 
 ### 7.2 Runtime Table Capacity
 
