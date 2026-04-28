@@ -77,9 +77,9 @@ phase.
 
 ### 1.1 Upstream Snapshot Driver
 
-- [ ] Add a bounded tool or build step that runs upstream Tree-sitter generation
+- [x] Add a bounded tool or build step that runs upstream Tree-sitter generation
   for one selected compat target from `../tree-sitter`.
-- [ ] Capture upstream `parser.c`, `node-types.json`, generated symbol metadata,
+- [x] Capture upstream `parser.c`, `node-types.json`, generated symbol metadata,
   parse-state count, lex-state count, external token count, and parse-action
   table sizes into `.zig-cache/` artifacts.
 - [x] Keep generated upstream artifacts out of source control.
@@ -87,9 +87,13 @@ phase.
 
 Batch 1 note: `gen-z-sitter compare-upstream` and `zig build
 run-compare-upstream` now write a local/upstream summary envelope under
-`.zig-cache/upstream-compare` by default. The upstream side currently records
-reference-checkout availability and `snapshot_status = "not_run"`; actual
-upstream `tree-sitter generate` execution remains the next open item.
+`.zig-cache/upstream-compare` by default.
+
+Batch 2 note: when a `tree-sitter` executable is available, the command now
+runs upstream `tree-sitter generate`, stores upstream `parser.c` and
+`node-types.json` under `.zig-cache/upstream-compare/upstream`, and parses the
+generated C for the first stable summary fields. Missing checkout/tool cases
+remain explicit skip statuses instead of hard failures.
 
 Gate:
 
@@ -99,10 +103,10 @@ Gate:
 ### 1.2 Local-vs-Upstream Summary Diff
 
 - [x] Add a compact JSON diff format for generator-level differences.
-- [ ] Compare grammar name, ABI metadata, symbol count/order, field names,
+- [x] Compare grammar name, ABI metadata, symbol count/order, field names,
   alias rows, lex modes, external scanner states, parse-state count, large-state
   count, parse-action list width, and small-table size.
-- [ ] Classify each diff as:
+- [x] Classify each diff as:
   - [x] expected local extension,
   - [x] known unsupported surface,
   - [x] suspected algorithm gap,
@@ -116,12 +120,22 @@ Gate:
 
 ### 1.3 Corpus Sample Harness
 
-- [ ] Add a bounded corpus sample runner that can parse a small list of input
+- [x] Add a bounded corpus sample runner that can parse a small list of input
   files with both upstream-generated parser/runtime and local-generated parser.
-- [ ] Compare accepted/error status, consumed bytes, and root tree string.
-- [ ] Store target sample lists in compat metadata, not as broad filesystem
+- [x] Compare accepted/error status, consumed bytes, and root tree string.
+- [x] Store target sample lists in compat metadata, not as broad filesystem
   crawls.
-- [ ] Keep full corpus runs outside default tests.
+- [x] Keep full corpus runs outside default tests.
+
+Batch 2 note: the first corpus comparison is intentionally bounded through the
+explicit `run-compare-upstream` command. For JSON, upstream parses `{}` and `x`
+and records the expected tree/error strings. The local generated parser runner
+currently times out on those samples, so the report records
+`corpus_samples.status = "runner_failed"` instead of hanging. That is now a
+machine-readable Phase 2/5 input, not hidden test-suite behavior. The same
+bounded command was also run against Ziggy as the first non-JSON promoted
+grammar probe; it records the same local-runner timeout boundary while upstream
+produces `(document)` for the empty sample.
 
 Gate:
 
