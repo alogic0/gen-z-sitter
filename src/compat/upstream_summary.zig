@@ -1583,6 +1583,9 @@ const LexTableCounts = struct {
     skip_transition_count: usize = 0,
     large_range_transition_count: usize = 0,
     max_transition_range_count: usize = 0,
+    accept_symbol_hash: u64 = 0,
+    transition_target_hash: u64 = 0,
+    range_hash: u64 = 0,
 };
 
 fn writeLexTableSummaryJson(
@@ -1600,6 +1603,9 @@ fn writeLexTableSummaryJson(
     try writeUsizeField(writer, 2, "skip_transition_count", counts.skip_transition_count, true);
     try writeUsizeField(writer, 2, "large_range_transition_count", counts.large_range_transition_count, true);
     try writeUsizeField(writer, 2, "max_transition_range_count", counts.max_transition_range_count, true);
+    try writeU64HexField(writer, 2, "accept_symbol_hash", counts.accept_symbol_hash, true);
+    try writeU64HexField(writer, 2, "transition_target_hash", counts.transition_target_hash, true);
+    try writeU64HexField(writer, 2, "range_hash", counts.range_hash, true);
     try writer.writeAll("  \"tables\": [\n");
     for (serialized.lex_tables, 0..) |table, index| {
         const table_counts = countLexTable(table);
@@ -1624,6 +1630,12 @@ fn writeLexTableSummaryJson(
         try writer.print("{d}", .{table_counts.large_range_transition_count});
         try writer.writeAll(", \"max_transition_range_count\": ");
         try writer.print("{d}", .{table_counts.max_transition_range_count});
+        try writer.writeAll(", \"accept_symbol_hash\": ");
+        try writeJsonHexU64(writer, table_counts.accept_symbol_hash);
+        try writer.writeAll(", \"transition_target_hash\": ");
+        try writeJsonHexU64(writer, table_counts.transition_target_hash);
+        try writer.writeAll(", \"range_hash\": ");
+        try writeJsonHexU64(writer, table_counts.range_hash);
         try writer.writeAll(" }");
         if (index + 1 != serialized.lex_tables.len) try writer.writeByte(',');
         try writer.writeByte('\n');
@@ -1634,8 +1646,14 @@ fn writeLexTableSummaryJson(
 
 fn countLexTables(tables: []const @import("../lexer/serialize.zig").SerializedLexTable) LexTableCounts {
     var result = LexTableCounts{ .table_count = tables.len };
+    var accept_hasher = std.hash.Wyhash.init(0);
+    var transition_hasher = std.hash.Wyhash.init(0);
+    var range_hasher = std.hash.Wyhash.init(0);
     for (tables) |table| {
         const table_counts = countLexTable(table);
+        hashU64(&accept_hasher, table_counts.accept_symbol_hash);
+        hashU64(&transition_hasher, table_counts.transition_target_hash);
+        hashU64(&range_hasher, table_counts.range_hash);
         result.state_count += table_counts.state_count;
         result.transition_count += table_counts.transition_count;
         result.range_count += table_counts.range_count;
@@ -1645,6 +1663,9 @@ fn countLexTables(tables: []const @import("../lexer/serialize.zig").SerializedLe
         result.large_range_transition_count += table_counts.large_range_transition_count;
         result.max_transition_range_count = @max(result.max_transition_range_count, table_counts.max_transition_range_count);
     }
+    result.accept_symbol_hash = accept_hasher.final();
+    result.transition_target_hash = transition_hasher.final();
+    result.range_hash = range_hasher.final();
     return result;
 }
 
@@ -1653,8 +1674,18 @@ fn countLexTable(table: @import("../lexer/serialize.zig").SerializedLexTable) Le
         .table_count = 1,
         .state_count = table.states.len,
     };
-    for (table.states) |state_value| {
-        if (state_value.accept_symbol != null) result.accept_state_count += 1;
+    var accept_hasher = std.hash.Wyhash.init(0);
+    var transition_hasher = std.hash.Wyhash.init(0);
+    var range_hasher = std.hash.Wyhash.init(0);
+    for (table.states, 0..) |state_value, state_index| {
+        hashUsize(&accept_hasher, state_index);
+        if (state_value.accept_symbol) |symbol| {
+            result.accept_state_count += 1;
+            hashBool(&accept_hasher, true);
+            hashSymbolRef(&accept_hasher, symbol);
+        } else {
+            hashBool(&accept_hasher, false);
+        }
         if (state_value.eof_target != null) result.eof_target_count += 1;
         for (state_value.transitions) |transition| {
             result.transition_count += 1;
@@ -1662,8 +1693,20 @@ fn countLexTable(table: @import("../lexer/serialize.zig").SerializedLexTable) Le
             result.max_transition_range_count = @max(result.max_transition_range_count, transition.ranges.len);
             if (transition.skip) result.skip_transition_count += 1;
             if (transition.ranges.len > 8) result.large_range_transition_count += 1;
+            hashUsize(&transition_hasher, state_index);
+            hashU32(&transition_hasher, transition.next_state_id);
+            hashBool(&transition_hasher, transition.skip);
+            hashUsize(&range_hasher, state_index);
+            hashU32(&range_hasher, transition.next_state_id);
+            for (transition.ranges) |range| {
+                hashU32(&range_hasher, range.start);
+                hashU32(&range_hasher, range.end_inclusive);
+            }
         }
     }
+    result.accept_symbol_hash = accept_hasher.final();
+    result.transition_target_hash = transition_hasher.final();
+    result.range_hash = range_hasher.final();
     return result;
 }
 
@@ -1814,6 +1857,12 @@ fn hashUsize(hasher: *std.hash.Wyhash, value: usize) void {
 fn hashU32(hasher: *std.hash.Wyhash, value: u32) void {
     var buffer: [@sizeOf(u32)]u8 = undefined;
     std.mem.writeInt(u32, &buffer, value, .little);
+    hasher.update(&buffer);
+}
+
+fn hashU64(hasher: *std.hash.Wyhash, value: u64) void {
+    var buffer: [@sizeOf(u64)]u8 = undefined;
+    std.mem.writeInt(u64, &buffer, value, .little);
     hasher.update(&buffer);
 }
 
@@ -2299,9 +2348,13 @@ fn writeUsizeField(writer: anytype, indent: usize, name: []const u8, value: usiz
 
 fn writeU64HexField(writer: anytype, indent: usize, name: []const u8, value: u64, comma: bool) !void {
     try writeFieldPrefix(writer, indent, name);
-    try writer.print("\"0x{x}\"", .{value});
+    try writeJsonHexU64(writer, value);
     if (comma) try writer.writeByte(',');
     try writer.writeByte('\n');
+}
+
+fn writeJsonHexU64(writer: anytype, value: u64) !void {
+    try writer.print("\"0x{x}\"", .{value});
 }
 
 fn writeFieldPrefix(writer: anytype, indent: usize, name: []const u8) !void {
@@ -2813,4 +2866,7 @@ test "generateLocalLexTableSummaryJsonAlloc writes lexer table counts" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"state_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"max_transition_range_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"accept_symbol_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_target_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"range_hash\"") != null);
 }

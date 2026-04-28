@@ -492,6 +492,11 @@ transition counts, serialized range counts, accept-state counts, EOF-target
 counts, skip-transition counts, max transition range counts, and large
 range-set transition counts.
 
+Batch 57 note: `lex-table-summary.json` now includes aggregate and per-table
+hashes for accept symbols, transition targets, and serialized ranges. This
+makes accept-token and advance-shape changes visible without depending on exact
+generated C text.
+
 ### 4.3 Emitted Lexer C Parity
 
 - [x] Compare generated lex function structure at the summary level, not by
