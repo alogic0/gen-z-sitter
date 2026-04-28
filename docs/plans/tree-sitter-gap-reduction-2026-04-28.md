@@ -609,8 +609,15 @@ input keeps recovery attempts at zero.
   `get_changed_ranges.c`, and stack scanner-state handling.
 - [ ] Compare changed ranges, reused bytes, and final tree strings for edit
   samples.
+  - [x] Expose edit-range metadata in local incremental results.
 - [ ] Add scanner-aware incremental samples for Bash or Haskell after external
   scanner state snapshots are stable.
+
+Batch 65 note: behavioral incremental results now carry edit-range metadata:
+changed start byte, old end byte, and new end byte. Scanner-free incremental
+tests assert those offsets alongside reused nodes, reused bytes, shifted-token
+counts, and final tree equivalence, giving future upstream comparison work a
+stable local changed-range surface.
 
 Gate:
 

@@ -56,6 +56,10 @@ pub const Edit = struct {
 const terminal_node_production_id = std.math.maxInt(u32);
 
 pub const IncrementalStats = struct {
+    has_edit: bool = false,
+    changed_start_byte: u32 = 0,
+    old_end_byte: u32 = 0,
+    new_end_byte: u32 = 0,
     reused_nodes: usize = 0,
     reused_bytes: usize = 0,
     fresh_shifted_tokens: usize = 0,
@@ -459,6 +463,7 @@ const ParseVersion = struct {
     dynamic_precedence: i32,
     error_count: u32,
     recovery: RecoveryStats,
+    edit: ?Edit,
 
     fn initFirst(allocator: std.mem.Allocator) !ParseVersion {
         var s = std.ArrayListUnmanaged(u32).empty;
@@ -473,6 +478,7 @@ const ParseVersion = struct {
             .dynamic_precedence = 0,
             .error_count = 0,
             .recovery = .{},
+            .edit = null,
         };
     }
 
@@ -500,6 +506,7 @@ const ParseVersion = struct {
             .dynamic_precedence = self.dynamic_precedence,
             .error_count = self.error_count,
             .recovery = self.recovery,
+            .edit = self.edit,
         };
     }
 
@@ -516,6 +523,12 @@ const ParseVersion = struct {
 fn acceptedResult(version: ParseVersion) SimulationResult {
     const tree = version.root();
     const reuse = if (tree) |root| summarizeIncrementalStats(root) else IncrementalStats{};
+    const edit_stats = if (version.edit) |edit| IncrementalStats{
+        .has_edit = true,
+        .changed_start_byte = edit.start_byte,
+        .old_end_byte = edit.old_end_byte,
+        .new_end_byte = edit.new_end_byte,
+    } else IncrementalStats{};
     return .{ .accepted = .{
         .consumed_bytes = version.cursor,
         .shifted_tokens = version.shifted_tokens,
@@ -524,6 +537,10 @@ fn acceptedResult(version: ParseVersion) SimulationResult {
         .recovery = version.recovery,
         .tree = tree,
         .incremental = .{
+            .has_edit = edit_stats.has_edit,
+            .changed_start_byte = edit_stats.changed_start_byte,
+            .old_end_byte = edit_stats.old_end_byte,
+            .new_end_byte = edit_stats.new_end_byte,
             .reused_nodes = reuse.reused_nodes,
             .reused_bytes = reuse.reused_bytes,
             .fresh_shifted_tokens = version.shifted_tokens,
@@ -816,6 +833,7 @@ fn simulateBuiltScannerFreeWithIncremental(
     }
     try versions.ensureTotalCapacity(allocator, MAX_PARSE_VERSIONS);
     versions.appendAssumeCapacity(try ParseVersion.initFirst(allocator));
+    versions.items[0].edit = incremental.edit;
 
     var best_cursor: usize = 0;
     var best_shifted: usize = 0;
@@ -3081,6 +3099,10 @@ test "simulatePreparedScannerFreeIncremental reuses prefix nodes after append ed
     try std.testing.expect(incremental_result.accepted.shifted_tokens < fresh_result.accepted.shifted_tokens);
     try std.testing.expect(try incrementalTreesEquivalentAlloc(arena.allocator(), fresh_tree, incremental_tree));
     try std.testing.expect(countReusedNodes(incremental_tree) > 0);
+    try std.testing.expect(incremental_result.accepted.incremental.has_edit);
+    try std.testing.expectEqual(@as(u32, 5), incremental_result.accepted.incremental.changed_start_byte);
+    try std.testing.expectEqual(@as(u32, 5), incremental_result.accepted.incremental.old_end_byte);
+    try std.testing.expectEqual(@as(u32, 7), incremental_result.accepted.incremental.new_end_byte);
     try std.testing.expect(incremental_result.accepted.incremental.reused_nodes > 0);
     try std.testing.expect(incremental_result.accepted.incremental.reused_bytes > 0);
     try std.testing.expect(incremental_result.accepted.incremental.fresh_shifted_tokens < fresh_result.accepted.shifted_tokens);
@@ -3260,6 +3282,10 @@ fn expectScannerFreeIncrementalEdit(
     const incremental_tree = incremental_result.accepted.tree orelse return error.TestUnexpectedResult;
     try std.testing.expectEqual(fresh_result.accepted.consumed_bytes, incremental_result.accepted.consumed_bytes);
     try std.testing.expect(parseTreesEquivalent(fresh_tree, incremental_tree));
+    try std.testing.expect(incremental_result.accepted.incremental.has_edit);
+    try std.testing.expectEqual(edit.start_byte, incremental_result.accepted.incremental.changed_start_byte);
+    try std.testing.expectEqual(edit.old_end_byte, incremental_result.accepted.incremental.old_end_byte);
+    try std.testing.expectEqual(edit.new_end_byte, incremental_result.accepted.incremental.new_end_byte);
     if (expect_prefix_reuse) {
         try std.testing.expect(incremental_result.accepted.incremental.reused_nodes > 0);
         try std.testing.expect(incremental_result.accepted.incremental.reused_bytes > 0);
@@ -3278,6 +3304,10 @@ fn expectSameSimulationResult(expected: SimulationResult, actual: SimulationResu
             try std.testing.expectEqual(left.consumed_bytes, right.consumed_bytes);
             try std.testing.expectEqual(left.shifted_tokens, right.shifted_tokens);
             try std.testing.expectEqual(left.error_count, right.error_count);
+            try std.testing.expectEqual(left.incremental.has_edit, right.incremental.has_edit);
+            try std.testing.expectEqual(left.incremental.changed_start_byte, right.incremental.changed_start_byte);
+            try std.testing.expectEqual(left.incremental.old_end_byte, right.incremental.old_end_byte);
+            try std.testing.expectEqual(left.incremental.new_end_byte, right.incremental.new_end_byte);
             try std.testing.expectEqual(left.recovery.attempts, right.recovery.attempts);
             try std.testing.expectEqual(left.recovery.stack_recoveries, right.recovery.stack_recoveries);
             try std.testing.expectEqual(left.recovery.skipped_tokens, right.recovery.skipped_tokens);
