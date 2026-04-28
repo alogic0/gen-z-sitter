@@ -1,0 +1,12 @@
+{
+  "proof_level": "full_runtime_link",
+  "proof_id": "bracket_lang_staged_scanner",
+  "external_scanner_source": "compat_targets/bracket_lang/scanner.c",
+  "external_scanner_include_dir": "compat_targets/bracket_lang",
+  "sample_files": ["compat_targets/bracket_lang/valid.txt"],
+  "compile": {
+    "links_external_scanner": true
+  },
+  "known_blocked_surfaces": [],
+  "custom_adapter": "staged recursive scanner fixture"
+}

@@ -124,29 +124,34 @@ fn shouldLogDetailProgress(options: RunOptions) bool {
     return true;
 }
 
-fn runScannerRuntimeLinkProof(allocator: std.mem.Allocator, target_id: []const u8) !void {
-    if (std.mem.eql(u8, target_id, "bracket_lang_json")) {
-        return try runtime_link.linkAndRunBracketLangParser(allocator);
+fn runScannerRuntimeLinkProofAlloc(allocator: std.mem.Allocator, target_id: []const u8) ![]const u8 {
+    var config = try loadRuntimeProofConfigAlloc(allocator, target_id);
+    defer config.deinit(allocator);
+
+    try executeRuntimeProofConfig(allocator, config);
+    return try std.fmt.allocPrint(
+        allocator,
+        "runtime proof config={s} proof_id={s} proof_level={s} sample_files={d} blocked_surfaces={d}",
+        .{
+            config.config_path orelse "<none>",
+            @tagName(config.proof_id),
+            @tagName(config.proof_level),
+            config.sample_file_count,
+            config.known_blocked_surface_count,
+        },
+    );
+}
+
+fn executeRuntimeProofConfig(allocator: std.mem.Allocator, config: RuntimeProofConfig) !void {
+    switch (config.proof_id) {
+        .bracket_lang_staged_scanner => return try runtime_link.linkAndRunBracketLangParser(allocator),
+        .haskell_real_external_scanner => return try runtime_link.linkAndRunHaskellParserWithRealExternalScanner(allocator),
+        .bash_real_external_scanner => return try runtime_link.linkAndRunBashParserWithRealExternalScanner(allocator),
+        .javascript_ternary_real_external_scanner => return try runtime_link.linkAndRunJavascriptTernaryParserWithRealExternalScanner(allocator),
+        .typescript_ternary_real_external_scanner => return try runtime_link.linkAndRunTypescriptTernaryParserWithRealExternalScanner(allocator),
+        .python_newline_real_external_scanner => return try runtime_link.linkAndRunPythonNewlineParserWithRealExternalScanner(allocator),
+        .rust_float_literal_real_external_scanner => return try runtime_link.linkAndRunRustFloatLiteralParserWithRealExternalScanner(allocator),
     }
-    if (std.mem.eql(u8, target_id, "tree_sitter_haskell_json")) {
-        return try runtime_link.linkAndRunHaskellParserWithRealExternalScanner(allocator);
-    }
-    if (std.mem.eql(u8, target_id, "tree_sitter_bash_json")) {
-        return try runtime_link.linkAndRunBashParserWithRealExternalScanner(allocator);
-    }
-    if (std.mem.eql(u8, target_id, "tree_sitter_javascript_scanner_json")) {
-        return try runtime_link.linkAndRunJavascriptTernaryParserWithRealExternalScanner(allocator);
-    }
-    if (std.mem.eql(u8, target_id, "tree_sitter_typescript_scanner_json")) {
-        return try runtime_link.linkAndRunTypescriptTernaryParserWithRealExternalScanner(allocator);
-    }
-    if (std.mem.eql(u8, target_id, "tree_sitter_python_scanner_json")) {
-        return try runtime_link.linkAndRunPythonNewlineParserWithRealExternalScanner(allocator);
-    }
-    if (std.mem.eql(u8, target_id, "tree_sitter_rust_scanner_json")) {
-        return try runtime_link.linkAndRunRustFloatLiteralParserWithRealExternalScanner(allocator);
-    }
-    return error.UnsupportedRuntimeLinkTarget;
 }
 
 fn shouldStopAfter(options: RunOptions, stage: result_model.StepName) bool {
@@ -319,6 +324,32 @@ test "targetBuildConfigPathAlloc uses target id directory" {
     try std.testing.expectEqualStrings("compat_targets/tree_sitter_haskell_json/build_config.json", path);
 }
 
+test "parseRuntimeProofConfig records generic proof metadata" {
+    var config = try parseRuntimeProofConfig(std.testing.allocator,
+        \\{
+        \\  "proof_level": "full_runtime_link",
+        \\  "proof_id": "bash_real_external_scanner",
+        \\  "external_scanner_source": "../tree-sitter-grammars/tree-sitter-bash/src/scanner.c",
+        \\  "sample_files": ["compat_targets/tree_sitter_bash/valid.txt"],
+        \\  "known_blocked_surfaces": []
+        \\}
+    );
+    defer config.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(RuntimeProofLevel.full_runtime_link, config.proof_level);
+    try std.testing.expectEqual(RuntimeProofId.bash_real_external_scanner, config.proof_id);
+    try std.testing.expectEqual(@as(usize, 1), config.sample_file_count);
+    try std.testing.expectEqual(@as(usize, 0), config.known_blocked_surface_count);
+    try std.testing.expectEqualStrings("../tree-sitter-grammars/tree-sitter-bash/src/scanner.c", config.external_scanner_source.?);
+}
+
+test "runtimeProofConfigPathAlloc uses target id directory" {
+    const path = try runtimeProofConfigPathAlloc(std.testing.allocator, "tree_sitter_bash_json");
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expectEqualStrings("compat_targets/tree_sitter_bash_json/runtime_proof_config.json", path);
+}
+
 fn functionSpanBytes(source: []const u8, start_marker: []const u8, end_marker: []const u8) usize {
     const start = std.mem.indexOf(u8, source, start_marker) orelse return 0;
     const end = std.mem.indexOfPos(u8, source, start + start_marker.len, end_marker) orelse return source.len - start;
@@ -377,6 +408,37 @@ const TargetBuildConfig = struct {
     }
 };
 
+const RuntimeProofLevel = enum {
+    full_runtime_link,
+};
+
+const RuntimeProofId = enum {
+    bracket_lang_staged_scanner,
+    haskell_real_external_scanner,
+    bash_real_external_scanner,
+    javascript_ternary_real_external_scanner,
+    typescript_ternary_real_external_scanner,
+    python_newline_real_external_scanner,
+    rust_float_literal_real_external_scanner,
+};
+
+const RuntimeProofConfig = struct {
+    config_path: ?[]const u8 = null,
+    proof_level: RuntimeProofLevel = .full_runtime_link,
+    proof_id: RuntimeProofId,
+    external_scanner_source: ?[]const u8 = null,
+    external_scanner_include_dir: ?[]const u8 = null,
+    sample_file_count: usize = 0,
+    known_blocked_surface_count: usize = 0,
+
+    fn deinit(self: *RuntimeProofConfig, allocator: std.mem.Allocator) void {
+        if (self.config_path) |value| allocator.free(value);
+        if (self.external_scanner_source) |value| allocator.free(value);
+        if (self.external_scanner_include_dir) |value| allocator.free(value);
+        self.* = undefined;
+    }
+};
+
 fn loadTargetBuildConfigAlloc(allocator: std.mem.Allocator, target: targets.Target) !TargetBuildConfig {
     const config_path = try targetBuildConfigPathAlloc(allocator, target.id);
     errdefer allocator.free(config_path);
@@ -397,6 +459,88 @@ fn loadTargetBuildConfigAlloc(allocator: std.mem.Allocator, target: targets.Targ
 
 fn targetBuildConfigPathAlloc(allocator: std.mem.Allocator, target_id: []const u8) ![]const u8 {
     return try std.fs.path.join(allocator, &.{ "compat_targets", target_id, "build_config.json" });
+}
+
+fn loadRuntimeProofConfigAlloc(allocator: std.mem.Allocator, target_id: []const u8) !RuntimeProofConfig {
+    const config_path = try runtimeProofConfigPathAlloc(allocator, target_id);
+    errdefer allocator.free(config_path);
+
+    const contents = std.Io.Dir.cwd().readFileAlloc(runtime_io.get(), config_path, allocator, .limited(16 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => return error.MissingRuntimeProofConfig,
+        else => return err,
+    };
+    defer allocator.free(contents);
+
+    var config = try parseRuntimeProofConfig(allocator, contents);
+    config.config_path = config_path;
+    return config;
+}
+
+fn runtimeProofConfigPathAlloc(allocator: std.mem.Allocator, target_id: []const u8) ![]const u8 {
+    return try std.fs.path.join(allocator, &.{ "compat_targets", target_id, "runtime_proof_config.json" });
+}
+
+fn parseRuntimeProofConfig(allocator: std.mem.Allocator, contents: []const u8) !RuntimeProofConfig {
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, contents, .{});
+    defer parsed.deinit();
+
+    const root = switch (parsed.value) {
+        .object => |object| object,
+        else => return error.InvalidRuntimeProofConfig,
+    };
+
+    const proof_level = try parseRuntimeProofLevel(requiredStringField(root, "proof_level") orelse return error.InvalidRuntimeProofConfig);
+    const proof_id = try parseRuntimeProofId(requiredStringField(root, "proof_id") orelse return error.InvalidRuntimeProofConfig);
+
+    return .{
+        .proof_level = proof_level,
+        .proof_id = proof_id,
+        .external_scanner_source = try optionalStringFieldAlloc(allocator, root, "external_scanner_source"),
+        .external_scanner_include_dir = try optionalStringFieldAlloc(allocator, root, "external_scanner_include_dir"),
+        .sample_file_count = optionalArrayFieldLen(root, "sample_files"),
+        .known_blocked_surface_count = optionalArrayFieldLen(root, "known_blocked_surfaces"),
+    };
+}
+
+fn parseRuntimeProofLevel(value: []const u8) !RuntimeProofLevel {
+    if (std.mem.eql(u8, value, "full_runtime_link")) return .full_runtime_link;
+    return error.InvalidRuntimeProofConfig;
+}
+
+fn parseRuntimeProofId(value: []const u8) !RuntimeProofId {
+    inline for (@typeInfo(RuntimeProofId).@"enum".fields) |field| {
+        if (std.mem.eql(u8, value, field.name)) return @field(RuntimeProofId, field.name);
+    }
+    return error.InvalidRuntimeProofConfig;
+}
+
+fn requiredStringField(root: std.json.ObjectMap, name: []const u8) ?[]const u8 {
+    const value = root.get(name) orelse return null;
+    return switch (value) {
+        .string => |text| text,
+        else => null,
+    };
+}
+
+fn optionalStringFieldAlloc(
+    allocator: std.mem.Allocator,
+    root: std.json.ObjectMap,
+    name: []const u8,
+) !?[]const u8 {
+    const value = root.get(name) orelse return null;
+    const text = switch (value) {
+        .string => |string_value| string_value,
+        else => return error.InvalidRuntimeProofConfig,
+    };
+    return try allocator.dupe(u8, text);
+}
+
+fn optionalArrayFieldLen(root: std.json.ObjectMap, name: []const u8) usize {
+    const value = root.get(name) orelse return 0;
+    return switch (value) {
+        .array => |array| array.items.len,
+        else => 0,
+    };
 }
 
 fn parseTargetBuildConfig(allocator: std.mem.Allocator, contents: []const u8) !TargetBuildConfig {
@@ -732,7 +876,7 @@ pub fn runTarget(
         if (target.scanner_boundary_check_mode == .full_runtime_link) {
             const runtime_link_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
             if (detail_progress) logDetailStart(target.id, "scanner_runtime_link");
-            runScannerRuntimeLinkProof(allocator, target.id) catch |err| {
+            const proof_detail = runScannerRuntimeLinkProofAlloc(allocator, target.id) catch |err| {
                 return failRun(
                     &run,
                     .scanner_boundary_check,
@@ -743,6 +887,7 @@ pub fn runTarget(
             };
             if (detail_progress) logDetailDone(target.id, "scanner_runtime_link", runtime_link_timer);
             run.scanner_boundary_check.status = .passed;
+            run.scanner_boundary_check.detail = proof_detail;
             return run;
         }
 

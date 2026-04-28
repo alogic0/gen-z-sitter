@@ -64,16 +64,16 @@ pub const ClosedAuditGaps = struct {
     haskell_closure_pressure_configured: bool = true,
     scanner_state_glr_condensation: bool = true,
     scanner_aware_incremental_sample: bool = true,
-};
-
-pub const ActiveAuditGaps = struct {
+    generic_runtime_proof_config: bool = true,
     behavioral_error_cost_parity: bool = true,
     max_version_count_overflow: bool = true,
     recovery_skip_and_relex: bool = true,
     recovery_extend_error_span: bool = true,
     incremental_reuse_guards: bool = true,
     expected_conflict_equivalence: bool = true,
-    generic_runtime_proof_config: bool = true,
+};
+
+pub const ActiveAuditGaps = struct {
     complex_scanner_promotion: bool = true,
 };
 

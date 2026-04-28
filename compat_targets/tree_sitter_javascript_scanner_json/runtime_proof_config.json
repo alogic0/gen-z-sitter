@@ -1,0 +1,16 @@
+{
+  "proof_level": "full_runtime_link",
+  "proof_id": "javascript_ternary_real_external_scanner",
+  "external_scanner_source": "../tree-sitter-grammars/tree-sitter-javascript/src/scanner.c",
+  "external_scanner_include_dir": "../tree-sitter-grammars/tree-sitter-javascript/src",
+  "sample_files": [
+    "compat_targets/tree_sitter_javascript_scanner/ternary.js"
+  ],
+  "compile": {
+    "links_external_scanner": true
+  },
+  "known_blocked_surfaces": [
+    "automatic_semicolon",
+    "regex_pattern"
+  ]
+}

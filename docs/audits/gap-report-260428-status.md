@@ -26,22 +26,23 @@ implementation plan for remaining work is
 - Scanner-aware incremental local coverage now exists through a sampled
   Haskell-layout fixture that blocks unsafe subtree reuse when scanner-owned
   state would be required.
+- Runtime recovery strategies 2 and 3 now have focused behavioral coverage for
+  skip-and-relex and consecutive unrecognized-byte span accounting.
+- Version pruning now carries `MAX_VERSION_COUNT_OVERFLOW`-style overflow
+  behavior and prunes by weighted error cost before dynamic precedence.
+- Incremental reuse guards now reject first-leaf lookahead mismatches, changed
+  subtrees, fragile subtrees, error subtrees, and nested unsafe children.
+- Expected-conflict equivalence now has positive and negative multi-conflict
+  fixtures checked against upstream `tree-sitter generate` behavior.
+- Generic runtime proof configuration is closed for the promoted runtime-link
+  targets: full-link proofs now load `runtime_proof_config.json` and dispatch
+  by configured proof id instead of target id.
 
 ## Still Open
 
-- Behavioral harness error-cost parity: some local harness decisions still use
-  simple error counts or approximations where upstream uses subtree error cost.
-- `MAX_VERSION_COUNT_OVERFLOW`: not yet modeled as a separate constant/surface.
-- Recovery strategies 2 and 3: skip-and-relex and extend-error-span need
-  focused behavioral and emitted parser parity work.
-- Incremental reuse guards: first-leaf lookahead, changed, fragile, and error
-  subtree guards need explicit local metadata and tests.
-- Expected-conflict equivalence: local summaries exist, but a direct
-  multi-conflict upstream parity proof is still missing.
-- Generic runtime proof configuration: target-name dispatch still exists for
-  scanner runtime-link proofs.
 - Complex scanner promotion: JavaScript, Python, TypeScript, and Rust should
-  advance only after the runtime and proof-config gaps above are smaller.
+  advance one boundary at a time using the stronger runtime and proof-config
+  evidence.
 
 ## Measurement-Gated
 

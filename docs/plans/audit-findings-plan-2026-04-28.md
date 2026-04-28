@@ -25,24 +25,21 @@ Closed since the audit:
   versions with different serialized external scanner payloads.
 - Scanner-aware local incremental sample: a sampled Haskell-layout fixture now
   blocks unsafe scanner-state reuse.
+- Runtime recovery strategies 2 and 3 now have focused skip-and-relex and
+  extend-error-span coverage.
+- Version pruning now carries weighted `error_cost` and an overflow-gated
+  `MAX_VERSION_COUNT_OVERFLOW`-style threshold.
+- Incremental reuse guards now cover first-leaf lookahead, changed, fragile,
+  error, and nested unsafe subtree rejection.
+- Expected-conflict equivalence now has upstream-checked positive and negative
+  multi-conflict fixtures.
+- Runtime-link dispatch now loads per-target `runtime_proof_config.json` files
+  and dispatches by configured proof id instead of target id.
 
 Still active from the audit:
 
-- Behavioral harness uses error-count and simple cost approximations in places
-  where upstream relies on subtree error cost.
-- Behavioral harness does not model `MAX_VERSION_COUNT_OVERFLOW`.
-- Behavioral and emitted GLR stacks still use array-based version storage
-  instead of upstream DAG-level `ts_stack_merge` semantics.
-- Recovery strategies 2 and 3 remain incomplete: skip-and-relex and
-  extend-error-span behavior need focused parity work.
-- Incremental reuse guards are incomplete: first-leaf lookahead, changed,
-  fragile, and error subtree guards are missing.
-- Expected-conflict equivalence is covered by local summaries but not by a
-  direct multi-conflict upstream comparison proof.
-- Complex scanner grammars remain intentionally gated until the GLR/runtime
-  evidence is stronger.
-- Runtime-link dispatch still uses target-name branches; the next cleanup is a
-  generic per-target runtime proof config.
+- Complex scanner grammars remain intentionally gated until Phase 7 promotes
+  them one boundary at a time.
 
 Deferred unless measurements demand them:
 
@@ -193,17 +190,26 @@ Gate:
 Goal: remove target-name dispatch from the compatibility harness before adding
 more real grammars.
 
-- [ ] Design a JSON runtime-proof config that can name sample files, expected
+- [x] Design a JSON runtime-proof config that can name sample files, expected
   proof level, external scanner source, compile/link requirements, and known
   blocked surfaces.
-- [ ] Move Bash, Haskell, JavaScript, TypeScript, Python, and Rust scanner proof
+- [x] Move Bash, Haskell, JavaScript, TypeScript, Python, and Rust scanner proof
   metadata into per-target config files.
-- [ ] Replace `runScannerRuntimeLinkProof` target-name branching with a generic
+- [x] Replace `runScannerRuntimeLinkProof` target-name branching with a generic
   config-driven dispatcher where possible.
-- [ ] Keep custom Zig functions only for fixtures whose scanner ABI needs a
+- [x] Keep custom Zig functions only for fixtures whose scanner ABI needs a
   real adapter, and identify those explicitly in config.
-- [ ] Update compatibility reports to show which proof config drove each
+- [x] Update compatibility reports to show which proof config drove each
   target.
+
+Batch 7 note: full runtime-link scanner targets now load
+`compat_targets/<target>/runtime_proof_config.json`. The config records proof
+level, proof id, external scanner source/include directory, sample files,
+compile/link intent, and known blocked surfaces. The harness dispatches by
+configured proof id instead of target id; the existing Zig proof functions
+remain as named adapters for scanner ABI specifics. Passed scanner steps now
+include the runtime proof config path and proof id in report detail, and
+`shortlist_report.json` was refreshed with that evidence.
 
 Gate:
 
