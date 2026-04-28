@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "total_external_scanner_targets": 5,
-  "passed_external_scanner_targets": 5,
+  "total_external_scanner_targets": 6,
+  "passed_external_scanner_targets": 6,
   "proof_scope_coverage": [
     {
       "proof_scope": "full_runtime_link",
-      "target_count": 5,
-      "passed_count": 5
+      "target_count": 6,
+      "passed_count": 6
     }
   ],
   "current_limitations": [
@@ -71,6 +71,20 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real Python external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow _newline token path"
+    },
+    {
+      "id": "tree_sitter_typescript_scanner_json",
+      "family": "typescript",
+      "display_name": "tree-sitter-typescript scanner (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_typescript/grammar.json",
+      "source_kind": "grammar_json",
+      "proof_scope": "full_runtime_link",
+      "upstream_repository": "tree-sitter-typescript",
+      "upstream_revision": "75b3874edb2dc714fb1fd77a32013d0f8699989f",
+      "upstream_grammar_path": "typescript/src/grammar.json",
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real TypeScript external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow _ternary_qmark token path"
     },
     {
       "id": "tree_sitter_rust_scanner_json",

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "total_external_repo_targets": 14,
-  "passed_external_repo_targets": 14,
+  "total_external_repo_targets": 15,
+  "passed_external_repo_targets": 15,
   "standalone_parser_proof_targets": 6,
   "family_coverage": [
     {
@@ -61,8 +61,8 @@
     {
       "family": "typescript",
       "boundary_kind": "parser_only",
-      "target_count": 1,
-      "passed_count": 1
+      "target_count": 2,
+      "passed_count": 2
     },
     {
       "family": "rust",
@@ -79,8 +79,8 @@
     },
     {
       "boundary_kind": "scanner_external_scanner",
-      "target_count": 5,
-      "passed_count": 5
+      "target_count": 6,
+      "passed_count": 6
     }
   ],
   "current_limitations": [
@@ -280,6 +280,22 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real TypeScript grammar snapshot from the local tree-sitter-typescript repo, now promoted to the bounded coarse serialize-only parser proof while full parser-table and runtime-link proofs remain deferred"
+    },
+    {
+      "id": "tree_sitter_typescript_scanner_json",
+      "family": "typescript",
+      "display_name": "tree-sitter-typescript scanner (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_typescript/grammar.json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "scanner_external_scanner",
+      "proof_scope": "full_runtime_link",
+      "standalone_parser_proof_scope": "none",
+      "upstream_repository": "tree-sitter-typescript",
+      "upstream_revision": "75b3874edb2dc714fb1fd77a32013d0f8699989f",
+      "upstream_grammar_path": "typescript/src/grammar.json",
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real TypeScript external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow _ternary_qmark token path"
     },
     {
       "id": "tree_sitter_rust_json",

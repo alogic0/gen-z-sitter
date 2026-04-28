@@ -24,6 +24,9 @@ const bash_bare_dollar_external_id = 15;
 const javascript_scanner_path = "../tree-sitter-grammars/tree-sitter-javascript/src/scanner.c";
 const javascript_scanner_include_dir = "../tree-sitter-grammars/tree-sitter-javascript/src";
 const javascript_ternary_qmark_external_id = 2;
+const typescript_scanner_path = "../tree-sitter-grammars/tree-sitter-typescript/typescript/src/scanner.c";
+const typescript_scanner_include_dir = "../tree-sitter-grammars/tree-sitter-typescript/typescript/src";
+const typescript_ternary_qmark_external_id = 2;
 const python_scanner_path = "../tree-sitter-grammars/tree-sitter-python/src/scanner.c";
 const python_scanner_include_dir = "../tree-sitter-grammars/tree-sitter-python/src";
 const python_newline_external_id = 0;
@@ -625,6 +628,29 @@ pub fn linkAndRunJavascriptTernaryGeneratedGlrParserWithRealExternalScanner(allo
         .input = "?",
         .direct_generated_parse = true,
         .expected_consumed_bytes = 1,
+    });
+}
+
+pub fn linkAndRunTypescriptTernaryParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(typescript_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitTypescriptTernaryParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        typescript_scanner_path,
+        arena.allocator(),
+        .limited(512 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{typescript_scanner_include_dir},
+        .input = "?",
+        .expected_root_type = "program",
     });
 }
 
@@ -1282,6 +1308,13 @@ fn emitJavascriptTernaryGlrParserC(allocator: std.mem.Allocator) RuntimeLinkErro
     });
 }
 
+fn emitTypescriptTernaryParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitTypescriptTernaryParserCWithOptions(allocator, .{
+        .offset_start_state = true,
+        .glr_loop = false,
+    });
+}
+
 fn emitPythonNewlineParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
     return try emitPythonNewlineParserCWithOptions(allocator, .{
         .offset_start_state = true,
@@ -1411,6 +1444,118 @@ fn emitJavascriptTernaryParserCWithOptions(
     const serialized = serialize.SerializedTable{
         .blocked = false,
         .grammar_name = "javascript",
+        .symbols = symbols,
+        .large_state_count = states.len,
+        .productions = productions,
+        .lex_modes = lex_modes,
+        .lex_tables = lex_tables,
+        .external_scanner = .{
+            .symbols = external_symbols,
+            .states = external_states,
+        },
+        .primary_state_ids = primary_state_ids,
+        .states = states,
+    };
+
+    return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = options.glr_loop,
+    });
+}
+
+fn emitTypescriptTernaryParserCWithOptions(
+    allocator: std.mem.Allocator,
+    options: TinyParserOptions,
+) RuntimeLinkError![]const u8 {
+    const external_names = [_][]const u8{
+        "_automatic_semicolon",
+        "_template_chars",
+        "_ternary_qmark",
+        "html_comment",
+        "||",
+        "escape_sequence",
+        "regex_pattern",
+        "jsx_text",
+        "_function_signature_automatic_semicolon",
+        "__error_recovery",
+    };
+
+    var symbols = try allocator.alloc(serialize.SerializedSymbolInfo, external_names.len + 2);
+    symbols[0] = .{ .ref = .{ .terminal = 0 }, .name = "end", .named = false, .visible = false, .supertype = false, .public_symbol = 0 };
+    for (external_names, 0..) |name, index| {
+        symbols[index + 1] = .{
+            .ref = .{ .external = @intCast(index) },
+            .name = name,
+            .named = index == typescript_ternary_qmark_external_id,
+            .visible = index == typescript_ternary_qmark_external_id,
+            .supertype = false,
+            .public_symbol = @intCast(index + 1),
+        };
+    }
+    symbols[symbols.len - 1] = .{
+        .ref = .{ .non_terminal = 0 },
+        .name = "program",
+        .named = true,
+        .visible = true,
+        .supertype = false,
+        .public_symbol = @intCast(symbols.len - 1),
+    };
+
+    const productions = try allocator.dupe(serialize.SerializedProductionInfo, &.{
+        .{ .lhs = 0, .child_count = 1, .dynamic_precedence = 0 },
+    });
+    const start_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .external = typescript_ternary_qmark_external_id }, .action = .{ .shift = 2 } },
+    });
+    const start_gotos = try allocator.dupe(serialize.SerializedGotoEntry, &.{
+        .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
+    });
+    const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+    });
+    const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
+    });
+    const runtime_states = try allocator.dupe(serialize.SerializedState, &.{
+        .{ .id = 0, .lex_state_id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 1, .lex_state_id = 0, .actions = start_actions, .gotos = start_gotos, .unresolved = &.{} },
+        .{ .id = 2, .lex_state_id = 0, .actions = reduce_actions, .gotos = &.{}, .unresolved = &.{} },
+        .{ .id = 3, .lex_state_id = 0, .actions = accept_actions, .gotos = &.{}, .unresolved = &.{} },
+    });
+    const states = runtime_states;
+    const lex_states = try allocator.dupe(lexer_serialize.SerializedLexState, &.{
+        .{ .accept_symbol = .{ .terminal = 0 }, .transitions = &.{} },
+    });
+    const lex_tables = try allocator.dupe(lexer_serialize.SerializedLexTable, &.{
+        .{ .start_state_id = 0, .states = lex_states },
+    });
+    const runtime_lex_modes = try allocator.dupe(lexer_serialize.SerializedLexMode, &.{
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 1 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+        .{ .lex_state = 0, .external_lex_state = 0 },
+    });
+    const lex_modes = runtime_lex_modes;
+    const runtime_primary_state_ids = try allocator.dupe(u32, &.{ 0, 1, 2, 3 });
+    const primary_state_ids = runtime_primary_state_ids;
+
+    const external_symbols = try allocator.alloc(syntax_grammar.SymbolRef, external_names.len);
+    for (external_symbols, 0..) |*symbol, index| {
+        symbol.* = .{ .external = @intCast(index) };
+    }
+    const external_state_0 = try allocator.alloc(bool, external_names.len);
+    const external_state_1 = try allocator.alloc(bool, external_names.len);
+    @memset(external_state_0, false);
+    @memset(external_state_1, false);
+    external_state_1[typescript_ternary_qmark_external_id] = true;
+    const external_states = try allocator.dupe([]const bool, &.{
+        external_state_0,
+        external_state_1,
+    });
+
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .grammar_name = "typescript",
         .symbols = symbols,
         .large_state_count = states.len,
         .productions = productions,
@@ -3203,6 +3348,10 @@ test "linkAndRunJavascriptTernaryParserWithRealExternalScanner links generated J
 
 test "linkAndRunJavascriptTernaryGeneratedGlrParserWithRealExternalScanner calls generated GLR JavaScript scanner path" {
     try linkAndRunJavascriptTernaryGeneratedGlrParserWithRealExternalScanner(std.testing.allocator);
+}
+
+test "linkAndRunTypescriptTernaryParserWithRealExternalScanner links generated TypeScript parser with upstream scanner" {
+    try linkAndRunTypescriptTernaryParserWithRealExternalScanner(std.testing.allocator);
 }
 
 test "linkAndRunPythonNewlineParserWithRealExternalScanner links generated Python parser with upstream scanner" {

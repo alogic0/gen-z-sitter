@@ -392,6 +392,24 @@
       "success_means": "load, prepare, and complete the bounded coarse serialize-only parser step while keeping full parser-table and runtime-link proofs deferred until bounded measurements are available"
     },
     {
+      "id": "tree_sitter_typescript_scanner_json",
+      "family": "typescript",
+      "boundary_kind": "scanner_external_scanner",
+      "parser_boundary_check_mode": "full_pipeline",
+      "scanner_boundary_check_mode": "full_runtime_link",
+      "real_external_scanner_proof_scope": "full_runtime_link",
+      "standalone_parser_proof_scope": "none",
+      "status": "intended_scanner_wave",
+      "source_kind": "grammar_json",
+      "origin_kind": "external_repo_snapshot",
+      "grammar_path": "compat_targets/tree_sitter_typescript/grammar.json",
+      "upstream_repository": "tree-sitter-typescript",
+      "upstream_revision": "75b3874edb2dc714fb1fd77a32013d0f8699989f",
+      "upstream_grammar_path": "typescript/src/grammar.json",
+      "why": "real TypeScript external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow _ternary_qmark token path",
+      "success_means": "load the snapshotted upstream grammar.json, extract the external-scanner boundary, and keep a focused TypeScript _ternary_qmark runtime-link fixture passing against the real scanner.c"
+    },
+    {
       "id": "tree_sitter_rust_json",
       "family": "rust",
       "boundary_kind": "parser_only",

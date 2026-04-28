@@ -655,6 +655,15 @@ upstream `scanner.c` from `../tree-sitter-grammars`, and exercises the shallow
 `float_literal` scanner path. This does not yet claim raw-string or
 block-comment scanner-state coverage.
 
+Batch 41 note: TypeScript now has a focused real external-scanner runtime-link
+proof in the bounded compatibility shortlist. The new
+`tree_sitter_typescript_scanner_json` target loads the TypeScript grammar
+snapshot, extracts the 10-token external scanner boundary, links generated
+parser C against the upstream `typescript/src/scanner.c` from
+`../tree-sitter-grammars`, and exercises the shallow `_ternary_qmark` scanner
+path through the upstream shared scanner header. This does not yet claim
+regex-pattern or JSX text scanner-path coverage.
+
 ## Phase 7 — Performance and Capacity
 
 Goal: keep correctness work practical for large grammars.
