@@ -128,6 +128,8 @@ pub fn computeNodeTypes(
         });
     }
 
+    try appendProductionAliasNodes(&nodes, syntax);
+
     for (lexical.variables, 0..) |variable, index| {
         const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
         const alias = defaults.findForSymbol(symbol);
@@ -180,6 +182,25 @@ pub fn computeNodeTypes(
     const merged = try mergeDuplicateNodeTypes(allocator, nodes.items);
     try pruneSubtypeRefsFromNodes(allocator, @constCast(merged));
     return merged;
+}
+
+fn appendProductionAliasNodes(
+    nodes: *std.array_list.Managed(NodeType),
+    syntax: syntax_ir.SyntaxGrammar,
+) ComputeNodeTypesError!void {
+    for (syntax.variables) |variable| {
+        for (variable.productions) |production| {
+            for (production.steps) |step| {
+                const alias = step.alias orelse continue;
+                if (alias.named) continue;
+                if (findNodeIndex(nodes.items, alias.value, alias.named) != null) continue;
+                try nodes.append(.{
+                    .kind = alias.value,
+                    .named = alias.named,
+                });
+            }
+        }
+    }
 }
 
 fn referencedTerminalsAlloc(

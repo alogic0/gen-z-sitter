@@ -201,7 +201,11 @@ Gate:
     upstream, including blank alternatives and self-recursive repeat helpers.
   - [x] Match Ziggy empty `fields: {}` emission and node-type ordering for
     named syntax leaves that lower through lexical/repeat-token paths.
+  - [x] Apply field metadata to every lowered child of a wrapped sequence or
+    choice, matching Ziggy Schema field `multiple` and type aggregation.
 - [ ] Fix alias visibility/namedness mismatches.
+  - [x] Materialize anonymous per-step aliases as top-level node-types entries,
+    matching Ziggy Schema `_tag_name`.
 - [ ] Fix supertype and subtype ordering mismatches.
   - [x] Treat hidden supertypes as visible named child/field entries in
     node-types computation.
@@ -238,6 +242,12 @@ preserving the JSON hash match. The fix distinguishes string, pattern,
 composite, and token lexical sources, keeps anonymous regex/token helpers out
 of public node-types, and models upstream's empty `fields: {}` presence rule
 for syntax leaves that still carry syntax shape.
+
+Batch 7 note: Ziggy Schema `node-types.json` now hashes exactly with upstream.
+The fix materializes anonymous step aliases and applies field metadata across
+all children lowered from a field-wrapped sequence/choice. With JSON, Ziggy,
+and Ziggy Schema matching upstream by node-types hash, the Phase 2.3 gate is
+satisfied for one simple real target and two non-JSON promoted targets.
 
 ## Phase 3 — Parse Table Algorithm Parity
 

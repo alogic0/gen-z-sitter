@@ -440,8 +440,12 @@ const Extractor = struct {
         _ = self;
         for (productions) |*production| {
             if (production.steps.len == 0) continue;
+            if (metadata.field_name) |field_name| {
+                for (production.steps) |*field_step| {
+                    field_step.field_name = field_name;
+                }
+            }
             var step = &production.steps[0];
-            if (metadata.field_name) |field_name| step.field_name = field_name;
             if (metadata.alias) |alias| step.alias = alias;
             if (metadata.precedence != .none) step.precedence = metadata.precedence;
             if (metadata.associativity != .none) step.associativity = metadata.associativity;
