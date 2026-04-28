@@ -419,17 +419,7 @@ const ParseItemSliceContext = struct {
             construct_profile.item_set_hash_calls += 1;
             construct_profile.item_set_hash_entries += values.len;
         }
-        var hasher = std.hash.Wyhash.init(0);
-        for (values) |value| {
-            hasher.update(std.mem.asBytes(&value.item.production_id));
-            hasher.update(std.mem.asBytes(&value.item.step_index));
-            hasher.update(std.mem.asBytes(&value.following_reserved_word_set_id));
-            hasher.update(value.lookaheads.terminals.maskBytes());
-            hasher.update(value.lookaheads.externals.maskBytes());
-            hasher.update(std.mem.asBytes(&value.lookaheads.includes_end));
-            hasher.update(std.mem.asBytes(&value.lookaheads.includes_epsilon));
-        }
-        return hasher.final();
+        return hashParseItemSetEntries(values);
     }
 
     pub fn eql(_: @This(), a: []const item.ParseItemSetEntry, b: []const item.ParseItemSetEntry) bool {
@@ -441,12 +431,57 @@ const ParseItemSliceContext = struct {
     }
 };
 
+fn hashParseItemSetEntries(values: []const item.ParseItemSetEntry) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (values) |value| {
+        hasher.update(std.mem.asBytes(&value.item.production_id));
+        hasher.update(std.mem.asBytes(&value.item.step_index));
+        hasher.update(std.mem.asBytes(&value.following_reserved_word_set_id));
+        hasher.update(value.lookaheads.terminals.maskBytes());
+        hasher.update(value.lookaheads.externals.maskBytes());
+        hasher.update(std.mem.asBytes(&value.lookaheads.includes_end));
+        hasher.update(std.mem.asBytes(&value.lookaheads.includes_epsilon));
+    }
+    return hasher.final();
+}
+
+const ParseItemSetKey = struct {
+    entries: []const item.ParseItemSetEntry,
+    hash: u64,
+
+    fn fromEntries(entries: []const item.ParseItemSetEntry) ParseItemSetKey {
+        return .{
+            .entries = entries,
+            .hash = ParseItemSliceContext.hash(ParseItemSliceContext{}, entries),
+        };
+    }
+};
+
+const ParseItemSetKeyContext = struct {
+    pub fn hash(_: @This(), value: ParseItemSetKey) u64 {
+        return value.hash;
+    }
+
+    pub fn eql(_: @This(), a: ParseItemSetKey, b: ParseItemSetKey) bool {
+        if (construct_profile_enabled) {
+            construct_profile.item_set_eql_calls += 1;
+            construct_profile.item_set_eql_entries += @max(a.entries.len, b.entries.len);
+        }
+        if (a.hash != b.hash) return false;
+        return itemsEql(a.entries, b.entries);
+    }
+};
+
 const ParseItemSetContext = struct {
     pub fn hash(_: @This(), value: item.ParseItemSet) u64 {
         return ParseItemSliceContext.hash(ParseItemSliceContext{}, value.entries);
     }
 
     pub fn eql(_: @This(), a: item.ParseItemSet, b: item.ParseItemSet) bool {
+        if (construct_profile_enabled) {
+            construct_profile.item_set_eql_calls += 1;
+            construct_profile.item_set_eql_entries += @max(a.entries.len, b.entries.len);
+        }
         return itemsEql(a.entries, b.entries);
     }
 };
@@ -478,7 +513,7 @@ const BoolSliceContext = struct {
     }
 };
 
-const StateIdByItemSet = std.HashMap(item.ParseItemSet, state.StateId, ParseItemSetContext, std.hash_map.default_max_load_percentage);
+const StateIdByItemSet = std.HashMap(ParseItemSetKey, state.StateId, ParseItemSetKeyContext, std.hash_map.default_max_load_percentage);
 const CoreIdByItemSetCore = std.HashMap(item.ParseItemSetCore, usize, ParseItemSetCoreContext, std.hash_map.default_max_load_percentage);
 const SymbolIndexMap = std.HashMap(syntax_ir.SymbolRef, usize, SymbolRefContext, std.hash_map.default_max_load_percentage);
 const ClosureItemIndexMap = std.HashMap(item.ParseItem, usize, ParseItemCoreContext, std.hash_map.default_max_load_percentage);
@@ -1848,12 +1883,13 @@ const StateRegistry = struct {
             .transitions = &.{},
             .conflicts = &.{},
         });
-        try self.state_ids_by_item_set.put(item_set, 0);
+        try self.state_ids_by_item_set.put(ParseItemSetKey.fromEntries(item_set.entries), 0);
     }
 
     fn intern(self: *@This(), item_set: item.ParseItemSet) !InternResult {
         if (construct_profile_enabled) construct_profile.state_intern_calls += 1;
-        if (self.state_ids_by_item_set.get(item_set)) |existing_id| {
+        const key = ParseItemSetKey.fromEntries(item_set.entries);
+        if (self.state_ids_by_item_set.get(key)) |existing_id| {
             if (construct_profile_enabled) construct_profile.state_intern_reused += 1;
             return .{
                 .state_id = existing_id,
@@ -1870,7 +1906,7 @@ const StateRegistry = struct {
             .transitions = &.{},
             .conflicts = &.{},
         });
-        try self.state_ids_by_item_set.put(item_set, new_id);
+        try self.state_ids_by_item_set.put(key, new_id);
         if (construct_profile_enabled) {
             construct_profile.state_intern_new += 1;
             construct_profile.state_items_stored += item_set.entries.len;
@@ -2402,13 +2438,13 @@ const StateConstructionEngine = struct {
 const SuccessorSeedStateCache = struct {
     allocator: std.mem.Allocator,
     state_ids_by_seed: StateIdByItemSet,
-    keys: std.array_list.Managed(item.ParseItemSet),
+    keys: std.array_list.Managed(ParseItemSetKey),
 
     fn init(allocator: std.mem.Allocator) @This() {
         return .{
             .allocator = allocator,
             .state_ids_by_seed = StateIdByItemSet.init(allocator),
-            .keys = std.array_list.Managed(item.ParseItemSet).init(allocator),
+            .keys = std.array_list.Managed(ParseItemSetKey).init(allocator),
         };
     }
 
@@ -2421,7 +2457,7 @@ const SuccessorSeedStateCache = struct {
     }
 
     fn get(self: @This(), seed_items: []const item.ParseItemSetEntry) ?state.StateId {
-        if (self.state_ids_by_seed.get(.{ .entries = seed_items })) |state_id| {
+        if (self.state_ids_by_seed.get(ParseItemSetKey.fromEntries(seed_items))) |state_id| {
             if (construct_profile_enabled) construct_profile.successor_seed_cache_hits += 1;
             return state_id;
         }
@@ -2436,7 +2472,7 @@ const SuccessorSeedStateCache = struct {
     ) !void {
         const seed_copy = try cloneParseItemSetEntries(self.allocator, seed_items);
         errdefer freeParseItemSetEntries(self.allocator, seed_copy);
-        const key = item.ParseItemSet{ .entries = seed_copy };
+        const key = ParseItemSetKey.fromEntries(seed_copy);
         try self.state_ids_by_seed.put(key, state_id);
         try self.keys.append(key);
         if (construct_profile_enabled) construct_profile.successor_seed_cache_entries = self.keys.items.len;

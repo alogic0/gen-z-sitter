@@ -805,6 +805,7 @@ Goal: keep correctness work practical for large grammars.
   - [x] Capture SymbolSet allocation counts and packed-bit bytes in promotion
     artifacts so the remaining compression decision is measurement-based.
 - [ ] Compact closure and item-set keys if cache misses dominate.
+  - [x] Cache item-set hashes for state-interning and successor-seed map keys.
 - [x] Add state-interning metrics to promotion artifacts.
 
 Gate:
@@ -818,6 +819,12 @@ snapshots. The debug compatibility runner prints the allocated packed-bit volume
 next to state-intern and closure-cache counters, so a future SymbolSet
 compression pass can be justified from checked artifacts instead of stderr-only
 profile logs.
+
+Batch 68 note: state-interning and successor-seed caches now use item-set keys
+with a precomputed hash. Hash-map lookups still validate entries for collision
+safety, but stored keys no longer need to rescan full item sets just to compute
+their hash. Closure output caching remains separate and should be driven by the
+closure expansion cache counters.
 
 Batch 48 note: compatibility emission snapshots now carry a structured
 `parse_construct_profile` captured directly from parse-table construction. The
