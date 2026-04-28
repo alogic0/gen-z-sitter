@@ -432,7 +432,8 @@ evidence; direct upstream item-set comparison remains open.
   - [x] shift/reduce resolved by static precedence,
   - [x] shift/reduce resolved by associativity,
   - [x] reduce/reduce resolved by precedence,
-  - dynamic precedence preserved as unresolved runtime choice,
+  - [x] dynamic precedence applied during conflict resolution and preserved in
+    conflict-summary artifacts,
   - [x] expected conflict allowed,
   - [x] unexpected conflict rejected.
 - [ ] Ensure error messages identify the same useful parent rules that upstream
@@ -477,6 +478,12 @@ Batch 78 note: `conflict-summary.json` now includes sampled unresolved entries
 with state ID, lookahead, unresolved reason, candidate shape, and reduce parent
 rule names. This gives local diagnostics a parent-rule surface comparable to
 the useful parent-rule hints in upstream conflict errors.
+
+Batch 102 note: `conflict-summary.json` now records a
+`chosen_actions.dynamic_precedence` count for chosen conflict decisions whose
+candidate reduce actions carry dynamic precedence. The focused dynamic
+precedence fixture asserts that the resolved shift/reduce decision remains
+visible in the conflict artifact instead of only in resolved-action dumps.
 
 ### 3.3 Token Conflicts and Lexical Precedence
 

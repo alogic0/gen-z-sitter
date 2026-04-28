@@ -1307,7 +1307,7 @@ fn writeConflictSummaryJson(
     result: parse_table_build.BuildResult,
     flattened: syntax_ir.SyntaxGrammar,
 ) !void {
-    const chosen_counts = chosenDecisionCounts(chosen);
+    const chosen_counts = chosenDecisionCounts(chosen, result.productions);
     const counts = conflictReasonCounts(unresolved);
     try writer.writeAll("{\n");
     try writeUsizeField(writer, 2, "declared_expected_conflict_count", declared_expected_count, true);
@@ -1323,6 +1323,7 @@ fn writeConflictSummaryJson(
     try writeUsizeField(writer, 4, "shift", chosen_counts.shift, true);
     try writeUsizeField(writer, 4, "reduce", chosen_counts.reduce, true);
     try writeUsizeField(writer, 4, "accept", chosen_counts.accept, true);
+    try writeUsizeField(writer, 4, "dynamic_precedence", chosen_counts.dynamic_precedence, true);
     try writeUsizeField(writer, 4, "max_candidate_count", chosen_counts.max_candidate_count, false);
     try writer.writeAll("  },\n");
     try writer.writeAll("  \"chosen_candidate_shapes\": {\n");
@@ -1389,6 +1390,7 @@ const ChosenDecisionCounts = struct {
     shift: usize = 0,
     reduce: usize = 0,
     accept: usize = 0,
+    dynamic_precedence: usize = 0,
     max_candidate_count: usize = 0,
     shift_reduce: usize = 0,
     reduce_reduce: usize = 0,
@@ -1396,10 +1398,14 @@ const ChosenDecisionCounts = struct {
     other: usize = 0,
 };
 
-fn chosenDecisionCounts(chosen: []const @import("../parse_table/resolution.zig").ChosenDecisionRef) ChosenDecisionCounts {
+fn chosenDecisionCounts(
+    chosen: []const @import("../parse_table/resolution.zig").ChosenDecisionRef,
+    productions: []const parse_table_build.ProductionInfo,
+) ChosenDecisionCounts {
     var counts = ChosenDecisionCounts{};
     for (chosen) |decision| {
         counts.max_candidate_count = @max(counts.max_candidate_count, decision.candidate_actions.len);
+        if (decisionUsesDynamicPrecedence(decision.candidate_actions, productions)) counts.dynamic_precedence += 1;
         switch (candidateShape(decision.candidate_actions)) {
             .shift_reduce => counts.shift_reduce += 1,
             .reduce_reduce => counts.reduce_reduce += 1,
@@ -1413,6 +1419,21 @@ fn chosenDecisionCounts(chosen: []const @import("../parse_table/resolution.zig")
         }
     }
     return counts;
+}
+
+fn decisionUsesDynamicPrecedence(
+    candidate_actions: []const @import("../parse_table/actions.zig").ParseAction,
+    productions: []const parse_table_build.ProductionInfo,
+) bool {
+    if (candidate_actions.len <= 1) return false;
+    for (candidate_actions) |action| {
+        const production_id = switch (action) {
+            .reduce => |id| id,
+            else => continue,
+        };
+        if (production_id < productions.len and productions[production_id].dynamic_precedence != 0) return true;
+    }
+    return false;
 }
 
 const CandidateShape = enum {
@@ -3764,6 +3785,26 @@ test "generateLocalConflictSummaryJsonAlloc writes reduce reduce precedence deci
     try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"reduce\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"reduce_reduce\"") != null);
+}
+
+test "generateLocalConflictSummaryJsonAlloc writes dynamic precedence decisions" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.parseTableDynamicPrecedenceGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalConflictSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"dynamic_precedence\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 1") != null);
 }
 
 test "generateLocalConflictSummaryJsonAlloc distinguishes expected shift reduce conflicts" {
