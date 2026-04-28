@@ -15,7 +15,15 @@ pub const LoadedGrammar = struct {
     }
 };
 
+pub const LoadOptions = struct {
+    js_runtime: []const u8 = "node",
+};
+
 pub fn loadGrammarFile(allocator: std.mem.Allocator, path: []const u8) LoaderError!LoadedGrammar {
+    return loadGrammarFileWithOptions(allocator, path, .{});
+}
+
+pub fn loadGrammarFileWithOptions(allocator: std.mem.Allocator, path: []const u8, options: LoadOptions) LoaderError!LoadedGrammar {
     if (std.mem.endsWith(u8, path, ".json")) {
         var loaded = try json_loader.loadGrammarJson(allocator, path);
         errdefer loaded.deinit();
@@ -25,7 +33,7 @@ pub fn loadGrammarFile(allocator: std.mem.Allocator, path: []const u8) LoaderErr
     }
 
     if (std.mem.endsWith(u8, path, ".js")) {
-        var loaded = try js_loader.loadGrammarJs(allocator, path);
+        var loaded = try js_loader.loadGrammarJsWithRuntime(allocator, path, options.js_runtime);
         errdefer loaded.deinit();
         try validate.validateRawGrammar(&loaded.grammar);
 
@@ -68,6 +76,25 @@ test "loadGrammarFile loads grammar.js through node" {
     defer std.testing.allocator.free(path);
 
     var loaded = try loadGrammarFile(std.testing.allocator, path);
+    defer loaded.deinit();
+
+    try std.testing.expectEqualStrings("basic", loaded.json.grammar.name);
+    try std.testing.expectEqual(@as(usize, 3), loaded.json.grammar.ruleCount());
+}
+
+test "loadGrammarFileWithOptions honors js runtime" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.js",
+        .data = fixtures.validResolvedGrammarJs().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.js", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    var loaded = try loadGrammarFileWithOptions(std.testing.allocator, path, .{ .js_runtime = "node" });
     defer loaded.deinit();
 
     try std.testing.expectEqualStrings("basic", loaded.json.grammar.name);

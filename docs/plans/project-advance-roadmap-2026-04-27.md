@@ -478,7 +478,9 @@ Phase 7 note: the CLI now documents `gen-z-sitter` consistently and exposes
 opt-in `parser.c` output with `--emit-parser-c`. Experimental generated GLR
 parser output is enabled with `--glr-loop`. README examples cover summary JSON,
 `--minimize`, bounded compatibility checks, known limits, and artifact update
-commands.
+commands. Follow-up cleanup made `--js-runtime` functional for `grammar.js`
+loading and made unsupported `--abi` values fail explicitly instead of being
+silently ignored.
 
 Gate:
 

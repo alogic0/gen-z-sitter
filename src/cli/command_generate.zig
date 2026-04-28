@@ -12,6 +12,7 @@ const node_type_pipeline = @import("../node_types/pipeline.zig");
 const parse_table_build = @import("../parse_table/build.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
+const parser_compat = @import("../parser_emit/compat.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const emit_optimize = @import("../parser_emit/optimize.zig");
 const fixtures = @import("../tests/fixtures.zig");
@@ -42,6 +43,16 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
     if (opts.grammar_path.len == 0) {
         return error.InvalidArguments;
     }
+    if (opts.abi_version != parser_compat.language_version) {
+        var note_buffer: [96]u8 = undefined;
+        const note = try std.fmt.bufPrint(&note_buffer, "only ABI {d} is currently supported", .{parser_compat.language_version});
+        try diag.printStderr(io, .{
+            .kind = .usage,
+            .message = "unsupported ABI version",
+            .note = note,
+        });
+        return error.InvalidArguments;
+    }
     if (opts.emit_parser_c and opts.no_parser) {
         try diag.printStderr(io, .{
             .kind = .usage,
@@ -57,7 +68,9 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
         return error.InvalidArguments;
     }
 
-    var loaded = grammar_loader.loadGrammarFile(allocator, opts.grammar_path) catch |err| {
+    var loaded = grammar_loader.loadGrammarFileWithOptions(allocator, opts.grammar_path, .{
+        .js_runtime = opts.js_runtime orelse "node",
+    }) catch |err| {
         switch (err) {
             error.OutOfMemory => {
                 try diag.printStderr(io, .{
@@ -530,6 +543,24 @@ test "runGenerate succeeds for a valid grammar.json file" {
     try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = path,
     });
+}
+
+test "runGenerate rejects unsupported ABI versions" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validBlankGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expectError(error.InvalidArguments, runGenerate(std.testing.allocator, std.testing.io, .{
+        .grammar_path = path,
+        .abi_version = parser_compat.language_version + 1,
+    }));
 }
 
 test "generateJsonSummaryAlloc reports parser row-sharing stats" {
@@ -1073,6 +1104,7 @@ test "runGenerate succeeds for a valid grammar.js file" {
 
     try runGenerate(std.testing.allocator, std.testing.io, .{
         .grammar_path = path,
+        .js_runtime = "node",
     });
 }
 

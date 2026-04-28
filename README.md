@@ -71,6 +71,7 @@ zig build run -- generate --output out --emit-parser-c path/to/grammar.json
 zig build run -- generate --json-summary path/to/grammar.json
 zig build run -- generate --json-summary --minimize path/to/grammar.json
 zig build run -- generate --output out --emit-parser-c --glr-loop path/to/grammar.json
+zig build run -- generate --js-runtime node path/to/grammar.js
 ```
 
 Bounded test commands:
@@ -98,6 +99,7 @@ Expected current behavior:
 - `generate --output <dir> --emit-parser-c --glr-loop` writes parser C with the experimental generated GLR loop enabled
 - `generate --json-summary` prints emitted-surface and optimization statistics for the current parser-emission pipeline
 - `generate --json-summary --minimize` includes minimized parse-table counts in the summary path
+- `generate --js-runtime <runtime> path/to/grammar.js` chooses the runtime command used to load `grammar.js`
 - `zig build run-minimize-report` prints a deterministic JSON report for the bounded parse-table minimization probe
 
 ## CLI
@@ -126,6 +128,8 @@ Supported generate options:
 - `--no-optimize-merge-states`
 - `--minimize`
 - `--strict-expected-conflicts`
+
+`--abi` currently accepts only ABI 15. `--js-runtime` defaults to `node`.
 
 Not every flag currently maps to a fully surfaced end-user feature. The most directly exercised user-facing paths today are grammar loading, preparation, debug dumps, `node-types.json`, opt-in `parser.c`, and `--json-summary`. Some options exist to preserve the eventual generator contract or to drive lower-level emitter and compatibility paths that are more heavily exercised in tests than in the top-level CLI.
 

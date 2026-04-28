@@ -9,6 +9,10 @@ pub const LoadError = json_loader.LoadError || error{
 };
 
 pub fn emitGrammarJsonFromJsAlloc(gpa: std.mem.Allocator, path: []const u8) LoadError![]u8 {
+    return emitGrammarJsonFromJsAllocWithRuntime(gpa, path, "node");
+}
+
+pub fn emitGrammarJsonFromJsAllocWithRuntime(gpa: std.mem.Allocator, path: []const u8, runtime: []const u8) LoadError![]u8 {
     if (isDirectory(path)) {
         return error.InvalidPath;
     }
@@ -20,7 +24,7 @@ pub fn emitGrammarJsonFromJsAlloc(gpa: std.mem.Allocator, path: []const u8) Load
     }
 
     var result = process_support.runCapture(gpa, &.{
-        "node",
+        runtime,
         "-e",
         "const path = require('path'); const grammarPath = path.resolve(process.argv[1]); const loaded = require(grammarPath); const grammar = loaded && typeof loaded === 'object' && 'default' in loaded ? loaded.default : loaded; process.stdout.write(JSON.stringify(grammar));",
         path,
@@ -38,7 +42,11 @@ pub fn emitGrammarJsonFromJsAlloc(gpa: std.mem.Allocator, path: []const u8) Load
 }
 
 pub fn loadGrammarJs(gpa: std.mem.Allocator, path: []const u8) LoadError!json_loader.LoadedJsonGrammar {
-    const contents = try emitGrammarJsonFromJsAlloc(gpa, path);
+    return loadGrammarJsWithRuntime(gpa, path, "node");
+}
+
+pub fn loadGrammarJsWithRuntime(gpa: std.mem.Allocator, path: []const u8, runtime: []const u8) LoadError!json_loader.LoadedJsonGrammar {
+    const contents = try emitGrammarJsonFromJsAllocWithRuntime(gpa, path, runtime);
     defer gpa.free(contents);
     return json_loader.loadGrammarJsonFromSlice(gpa, contents);
 }

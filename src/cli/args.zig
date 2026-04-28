@@ -151,7 +151,7 @@ pub fn helpText() []const u8 {
     \\
     \\Generate options:
     \\  --output <dir>                 Write generated artifacts into <dir>.
-    \\  --abi <version>                Select the target ABI version placeholder.
+    \\  --abi <version>                Select the target ABI version; currently only 15 is supported.
     \\  --no-parser                    Skip parser.c output when generating artifacts.
     \\  --emit-parser-c                Write parser.c into --output <dir>.
     \\  --glr-loop                     Enable the experimental generated GLR loop in parser.c.
@@ -159,7 +159,7 @@ pub fn helpText() []const u8 {
     \\  --debug-prepared               Print prepared grammar IR.
     \\  --debug-node-types             Print node-types.json.
     \\  --report-states-for-rule <rule> Reserved parser-table diagnostic flag.
-    \\  --js-runtime <runtime>         Runtime command used for grammar.js loading.
+    \\  --js-runtime <runtime>         Runtime command used for grammar.js loading, default: node.
     \\  --no-optimize-merge-states     Disable emitted duplicate-state compaction in summary paths.
     \\  --minimize                     Enable parse-table minimization for summary paths.
     \\  --strict-expected-conflicts    Fail when declared conflicts are unused.
