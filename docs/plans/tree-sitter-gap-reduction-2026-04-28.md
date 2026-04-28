@@ -470,7 +470,7 @@ before downstream parser emission.
     the minimization summary.
 - [x] Add a local minimization summary artifact for selected comparison
   grammars.
-- [ ] Add a minimization diff report for large real grammars.
+- [x] Add a minimization diff report for large real grammars.
 
 Gate:
 
@@ -487,6 +487,12 @@ Batch 60 note: `minimization-summary.json` now also records lex-mode,
 primary-state-id, and production-metadata hashes for both default and minimized
 serialized tables. This makes metadata drift visible when minimization changes
 state layout without changing simple counts.
+
+Batch 85 note: `minimization-summary.json` now includes an explicit `diff`
+section with change booleans for state counts, large-state counts,
+parse-action-list length, small parse rows, lex modes, primary state IDs, and
+production metadata. This makes minimization drift machine-readable without
+comparing hashes by hand.
 
 ## Phase 4 — Lexer and Regex Parity
 

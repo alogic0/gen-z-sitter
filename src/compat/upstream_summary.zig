@@ -1421,7 +1421,16 @@ fn writeMinimizationSummaryJson(
     try writer.writeAll("  },\n");
     try writeUsizeField(writer, 2, "merged_state_count", default_serialized.states.len -| minimized_serialized.states.len, true);
     try writeUsizeField(writer, 2, "removed_action_entry_count", countSerializedActionEntries(default_serialized.states) -| countSerializedActionEntries(minimized_serialized.states), true);
-    try writeUsizeField(writer, 2, "removed_goto_entry_count", countSerializedGotoEntries(default_serialized.states) -| countSerializedGotoEntries(minimized_serialized.states), false);
+    try writeUsizeField(writer, 2, "removed_goto_entry_count", countSerializedGotoEntries(default_serialized.states) -| countSerializedGotoEntries(minimized_serialized.states), true);
+    try writer.writeAll("  \"diff\": {\n");
+    try writeBoolField(writer, 4, "state_count_changed", default_serialized.states.len != minimized_serialized.states.len, true);
+    try writeBoolField(writer, 4, "large_state_count_changed", default_serialized.large_state_count != minimized_serialized.large_state_count, true);
+    try writeBoolField(writer, 4, "parse_action_list_changed", default_serialized.parse_action_list.len != minimized_serialized.parse_action_list.len, true);
+    try writeBoolField(writer, 4, "small_parse_rows_changed", default_serialized.small_parse_table.rows.len != minimized_serialized.small_parse_table.rows.len, true);
+    try writeBoolField(writer, 4, "lex_mode_changed", hashSerializedLexModes(default_serialized.lex_modes) != hashSerializedLexModes(minimized_serialized.lex_modes), true);
+    try writeBoolField(writer, 4, "primary_state_id_changed", hashPrimaryStateIds(default_serialized.primary_state_ids) != hashPrimaryStateIds(minimized_serialized.primary_state_ids), true);
+    try writeBoolField(writer, 4, "production_metadata_changed", hashSerializedProductions(default_serialized.productions) != hashSerializedProductions(minimized_serialized.productions), false);
+    try writer.writeAll("  }\n");
     try writer.writeAll("}\n");
 }
 
@@ -2738,6 +2747,13 @@ fn writeU64HexField(writer: anytype, indent: usize, name: []const u8, value: u64
     try writer.writeByte('\n');
 }
 
+fn writeBoolField(writer: anytype, indent: usize, name: []const u8, value: bool, comma: bool) !void {
+    try writeFieldPrefix(writer, indent, name);
+    try writeBoolJson(writer, value);
+    if (comma) try writer.writeByte(',');
+    try writer.writeByte('\n');
+}
+
 fn writeJsonHexU64(writer: anytype, value: u64) !void {
     try writer.print("\"0x{x}\"", .{value});
 }
@@ -3248,6 +3264,9 @@ test "generateLocalMinimizationSummaryJsonAlloc writes default and minimized cou
     try std.testing.expect(std.mem.indexOf(u8, json, "\"lex_mode_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"primary_state_id_hash\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"production_metadata_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"diff\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"lex_mode_changed\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"production_metadata_changed\"") != null);
 }
 
 test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries" {
