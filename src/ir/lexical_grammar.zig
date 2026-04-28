@@ -21,6 +21,7 @@ pub const SourceKind = enum {
     string,
     pattern,
     composite,
+    token,
 };
 
 pub const LexicalGrammar = struct {

@@ -684,7 +684,10 @@ const Extractor = struct {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
             .string => .string,
             .pattern => .pattern,
-            .metadata => |metadata| self.lexicalSourceKindForRule(metadata.inner),
+            .metadata => |metadata| if (metadata.data.token or metadata.data.immediate_token)
+                .token
+            else
+                self.lexicalSourceKindForRule(metadata.inner),
             else => .composite,
         };
     }

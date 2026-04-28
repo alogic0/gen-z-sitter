@@ -14,6 +14,7 @@ pub const NodeType = struct {
     named: bool,
     root: bool = false,
     extra: bool = false,
+    render_empty_fields: bool = false,
     fields: []const Field = &.{},
     children: ?ChildInfo = null,
     subtypes: []const NodeTypeRef = &.{},
@@ -120,6 +121,7 @@ pub fn computeNodeTypes(
             .named = isNamedSyntaxVariable(variable, defaults.findForSymbol(symbol)),
             .root = index == 0,
             .extra = containsSymbolRef(syntax.extra_symbols, symbol),
+            .render_empty_fields = shouldRenderEmptyFieldsForSyntaxVariable(variable, lexical, containsSymbolRef(syntax.extra_symbols, symbol)),
             .fields = summary.fields,
             .children = summary.children_without_fields,
             .subtypes = subtype_refs,
@@ -130,7 +132,7 @@ pub fn computeNodeTypes(
         const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
         const alias = defaults.findForSymbol(symbol);
         if (!referenced_terminals[index] and alias == null) continue;
-        if (alias == null and variable.kind == .anonymous and variable.source_kind == .pattern) continue;
+        if (alias == null and variable.kind == .anonymous and variable.source_kind != .string) continue;
         if (!isVisibleLexicalVariable(variable, alias)) continue;
         const kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults);
         const named = isNamedLexicalVariable(variable, alias);
@@ -216,6 +218,24 @@ fn markReferencedTerminal(referenced: []bool, symbol: syntax_ir.SymbolRef) void 
         },
         else => {},
     }
+}
+
+fn shouldRenderEmptyFieldsForSyntaxVariable(
+    variable: syntax_ir.SyntaxVariable,
+    lexical: lexical_ir.LexicalGrammar,
+    is_extra: bool,
+) bool {
+    if (is_extra) return false;
+    if (variable.productions.len != 1) return true;
+    const production = variable.productions[0];
+    if (production.steps.len != 1) return true;
+    const terminal_index = switch (production.steps[0].symbol) {
+        .terminal => |index| index,
+        .external => return false,
+        else => return true,
+    };
+    if (terminal_index >= lexical.variables.len) return true;
+    return lexical.variables[terminal_index].source_kind == .composite;
 }
 
 fn computeSupertypeRefs(
@@ -593,6 +613,7 @@ fn mergeNodeType(
         .named = left.named,
         .root = left.root or right.root,
         .extra = left.extra or right.extra,
+        .render_empty_fields = left.render_empty_fields or right.render_empty_fields,
         .fields = try mergeFields(allocator, left.fields, right.fields),
         .children = try mergeChildInfo(allocator, left.children, right.children),
         .subtypes = try mergeNodeTypeRefs(allocator, left.subtypes, right.subtypes),
@@ -894,8 +915,8 @@ fn lessThanNodeType(_: void, a: NodeType, b: NodeType) bool {
     const b_has_subtypes = b.subtypes.len > 0;
     if (a_has_subtypes != b_has_subtypes) return a_has_subtypes;
 
-    const a_is_leaf = a.children == null and a.fields.len == 0;
-    const b_is_leaf = b.children == null and b.fields.len == 0;
+    const a_is_leaf = a.children == null and a.fields.len == 0 and !a.render_empty_fields;
+    const b_is_leaf = b.children == null and b.fields.len == 0 and !b.render_empty_fields;
     if (a_is_leaf != b_is_leaf) return !a_is_leaf;
 
     const kind_order = std.mem.order(u8, a.kind, b.kind);

@@ -199,6 +199,8 @@ Gate:
 - [ ] Fix field `multiple` and `required` classification mismatches.
   - [x] Match JSON `children` and field required/multiple quantities against
     upstream, including blank alternatives and self-recursive repeat helpers.
+  - [x] Match Ziggy empty `fields: {}` emission and node-type ordering for
+    named syntax leaves that lower through lexical/repeat-token paths.
 - [ ] Fix alias visibility/namedness mismatches.
 - [ ] Fix supertype and subtype ordering mismatches.
   - [x] Treat hidden supertypes as visible named child/field entries in
@@ -231,13 +233,11 @@ The Ziggy comparison still reports extra anonymous regex component node types,
 so the next node-types target is distinguishing public token entries from
 lexical helper terminals in composite token extraction.
 
-Batch 6 note: Ziggy top-level node-type identities now match upstream. The
-remaining Ziggy node-types hash difference is narrower: local and upstream
-disagree on empty `fields: {}` emission and ordering for a small set of named
-leaf nodes such as `comment`, `escape_sequence`, `float`, `integer`,
-`line_string`, `struct_name`, `tag`, and `top_comment`. The next node-types
-slice should model upstream's field-section presence rule for syntax variables
-that lower through lexical/repeat-token paths.
+Batch 6 note: Ziggy `node-types.json` now hashes exactly with upstream while
+preserving the JSON hash match. The fix distinguishes string, pattern,
+composite, and token lexical sources, keeps anonymous regex/token helpers out
+of public node-types, and models upstream's empty `fields: {}` presence rule
+for syntax leaves that still carry syntax shape.
 
 ## Phase 3 — Parse Table Algorithm Parity
 

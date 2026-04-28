@@ -26,7 +26,7 @@ pub fn renderNodeTypesJson(
             try writeBoolField(writer, 2, "extra", node.extra, false, false);
         }
 
-        if (hasRenderableFields(node.fields) or node.children != null) {
+        if (hasRenderableFields(node.fields) or node.children != null or node.render_empty_fields) {
             try writer.writeAll(",\n");
             try renderFields(writer, node.fields);
         }
