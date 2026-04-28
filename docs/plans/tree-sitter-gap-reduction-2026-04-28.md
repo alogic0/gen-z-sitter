@@ -617,6 +617,8 @@ the higher dynamic precedence, and over-cap version sets are trimmed to
   and bounded retry reporting.
   - [x] Expose behavioral recovery attempts, stack recoveries, skipped tokens,
     and skipped bytes in accepted simulation results.
+  - [x] Expose generated parser recovery attempts, stack recoveries, skipped
+    tokens, and skipped bytes in `TSGeneratedParseResult`.
 - [ ] Compare invalid sample tree strings for promoted grammars where upstream
   produces a stable error tree.
 
@@ -629,6 +631,11 @@ Batch 64 note: behavioral simulation accepted results now include structured
 recovery stats: attempts, stack recoveries, skipped tokens, and skipped bytes.
 Existing invalid-input recovery tests assert skipped-byte accounting while valid
 input keeps recovery attempts at zero.
+
+Batch 73 note: emitted GLR parser results now carry the same recovery counters
+as the behavioral harness. Generated recovery records each no-action retry,
+stack recovery, token deletion, and byte deletion; recognized skipped tokens
+advance by the full lexed token length instead of a single byte.
 
 ### 5.3 Incremental Parsing and Reuse
 
