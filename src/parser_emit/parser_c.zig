@@ -1895,12 +1895,25 @@ fn appendUniqueEmittedSymbol(
     try appendUniqueEmittedSymbolWithMetadata(allocator, symbols, .{
         .ref = symbol,
         .label = try fallbackSymbolLabelAlloc(allocator, symbol),
-        .named = !symbolKindIsTerminal(symbol),
-        .visible = !symbolKindIsExternal(symbol) and symbol != .end,
+        .named = fallbackSymbolIsNamed(symbol),
+        .visible = fallbackSymbolIsVisible(symbol),
         .supertype = false,
         .public_symbol = @intCast(index),
         .owns_label = true,
     });
+}
+
+fn fallbackSymbolIsNamed(symbol: syntax_grammar.SymbolRef) bool {
+    return switch (symbol) {
+        .terminal, .external, .end, .non_terminal => false,
+    };
+}
+
+fn fallbackSymbolIsVisible(symbol: syntax_grammar.SymbolRef) bool {
+    return switch (symbol) {
+        .terminal => true,
+        .end, .external, .non_terminal => false,
+    };
 }
 
 fn appendUniqueAliasSymbol(

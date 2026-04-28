@@ -57,6 +57,7 @@ pub const SerializedActionEntry = struct {
     candidate_actions: []const actions.ParseAction = &.{},
     extra: bool = false,
     repetition: bool = false,
+    recover: bool = false,
 };
 
 /// A non-terminal transition attached to one serialized state.
@@ -666,23 +667,34 @@ fn buildParseActionListWithOptionsAlloc(
     for (states) |serialized_state| {
         for (serialized_state.actions) |entry| {
             const action_slice = try runtimeActionsFromActionEntryAlloc(allocator, entry, productions);
-            const action_key: ParseActionListSliceKey = .{ .reusable = true, .actions = action_slice };
-            profile.reusable_inputs += 1;
-            if (action_slice.len == 1) {
+            const reusable = actionSliceIsReusable(action_slice);
+            const action_key: ParseActionListSliceKey = .{ .reusable = reusable, .actions = action_slice };
+            if (reusable) {
+                profile.reusable_inputs += 1;
+            } else {
+                profile.unresolved_inputs += 1;
+            }
+            if (action_slice.len == 1 and reusable) {
                 if (single_action_indexes.contains(action_slice[0])) {
                     profile.single_reusable_duplicates += 1;
                     allocator.free(action_slice);
                     continue;
                 }
             } else if (action_slice_indexes.contains(action_key)) {
-                profile.multi_reusable_duplicates += 1;
+                if (reusable) {
+                    profile.multi_reusable_duplicates += 1;
+                } else {
+                    profile.unresolved_duplicates += 1;
+                }
                 allocator.free(action_slice);
                 continue;
             }
 
             const index = checkedParseActionListSpan(next_index, action_slice.len) catch |err| {
-                recordParseActionListEntry(&profile, true, action_slice.len);
-                if (action_slice.len == 1) {
+                recordParseActionListEntry(&profile, reusable, action_slice.len);
+                if (!reusable) {
+                    profile.unresolved_unique += 1;
+                } else if (action_slice.len == 1) {
                     profile.single_reusable_unique += 1;
                 } else {
                     profile.multi_reusable_unique += 1;
@@ -694,17 +706,19 @@ fn buildParseActionListWithOptionsAlloc(
             next_index += action_slice.len + 1;
             try entries.append(.{
                 .index = index,
-                .reusable = true,
+                .reusable = reusable,
                 .actions = action_slice,
             });
-            recordParseActionListEntry(&profile, true, action_slice.len);
-            if (action_slice.len == 1) {
+            recordParseActionListEntry(&profile, reusable, action_slice.len);
+            if (!reusable) {
+                profile.unresolved_unique += 1;
+            } else if (action_slice.len == 1) {
                 profile.single_reusable_unique += 1;
                 try single_action_indexes.put(action_slice[0], index);
             } else {
                 profile.multi_reusable_unique += 1;
             }
-            try action_slice_indexes.put(.{ .reusable = true, .actions = action_slice }, index);
+            try action_slice_indexes.put(.{ .reusable = reusable, .actions = action_slice }, index);
         }
         if (!options.include_unresolved) continue;
 
@@ -739,6 +753,13 @@ fn buildParseActionListWithOptionsAlloc(
 
     logParseActionListProfile(profile, next_index);
     return try entries.toOwnedSlice();
+}
+
+fn actionSliceIsReusable(actions_slice: []const SerializedParseAction) bool {
+    for (actions_slice) |action| {
+        if (action.kind == .recover) return false;
+    }
+    return true;
 }
 
 const ParseActionListProfile = struct {
@@ -1097,8 +1118,10 @@ pub fn parseActionListIndexForActionEntry(
     entry: SerializedActionEntry,
     productions: []const SerializedProductionInfo,
 ) ?u16 {
+    const expected = runtimeActionFromActionEntry(entry, productions);
+    const expected_reusable = expected.kind != .recover;
     for (entries) |candidate| {
-        if (!candidate.reusable) continue;
+        if (candidate.reusable != expected_reusable) continue;
         if (runtimeActionSlicesEql(candidate.actions, entry, productions)) return candidate.index;
     }
     return null;
@@ -1124,7 +1147,9 @@ fn parseActionListIndexForActionEntryWithMap(
 ) ?u16 {
     if (!entry.repetition or entry.candidate_actions.len <= 1) {
         const runtime_action = runtimeActionFromActionEntry(entry, productions);
-        if (single_action_indexes.get(runtime_action)) |index| return index;
+        if (runtime_action.kind != .recover) {
+            if (single_action_indexes.get(runtime_action)) |index| return index;
+        }
     }
     return parseActionListIndexForActionEntry(entries, entry, productions);
 }
@@ -1133,6 +1158,9 @@ pub fn runtimeActionFromActionEntry(
     entry: SerializedActionEntry,
     productions: []const SerializedProductionInfo,
 ) SerializedParseAction {
+    if (entry.recover) {
+        return .{ .kind = .recover };
+    }
     var runtime_action = runtimeActionFromParseAction(entry.action, productions);
     if (runtime_action.kind == .shift) {
         runtime_action.extra = entry.extra;

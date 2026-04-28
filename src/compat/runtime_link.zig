@@ -382,10 +382,10 @@ pub fn linkAndRunTreeSitterZiggyParserInvalidSample(allocator: std.mem.Allocator
     );
     try linkAndRunGeneratedParser(allocator, .{
         .parser_c = parser_c,
-        .input = "@",
+        .input = "#",
         .expected_root_type = "document",
         .expected_has_error = true,
-        .expected_tree_string = "(document (ERROR (UNEXPECTED '@')))",
+        .expected_tree_string = "(document (ERROR (UNEXPECTED '#')))",
     });
 }
 
@@ -1157,10 +1157,11 @@ fn offsetRuntimeStartStateAlloc(
     serialized: serialize.SerializedTable,
 ) RuntimeLinkError!serialize.SerializedTable {
     const states = try allocator.alloc(serialize.SerializedState, serialized.states.len + 1);
+    const error_actions = try runtimeErrorStateActionsAlloc(allocator, serialized.symbols);
     states[0] = .{
         .id = 0,
         .lex_state_id = 0,
-        .actions = &.{},
+        .actions = error_actions,
         .gotos = &.{},
         .unresolved = &.{},
     };
@@ -1209,6 +1210,38 @@ fn offsetRuntimeStartStateAlloc(
         serialized.productions,
     );
     return result;
+}
+
+fn runtimeErrorStateActionsAlloc(
+    allocator: std.mem.Allocator,
+    symbols: []const serialize.SerializedSymbolInfo,
+) RuntimeLinkError![]const serialize.SerializedActionEntry {
+    var entries = std.array_list.Managed(serialize.SerializedActionEntry).init(allocator);
+    defer entries.deinit();
+    try appendRecoverAction(&entries, .end);
+    for (symbols) |symbol| {
+        switch (symbol.ref) {
+            .terminal, .external => try appendRecoverAction(&entries, symbol.ref),
+            .end, .non_terminal => {},
+        }
+    }
+    return try entries.toOwnedSlice();
+}
+
+fn appendRecoverAction(
+    entries: *std.array_list.Managed(serialize.SerializedActionEntry),
+    symbol: syntax_grammar.SymbolRef,
+) RuntimeLinkError!void {
+    for (entries.items) |entry| {
+        if (std.meta.eql(entry.symbol, symbol)) return;
+    }
+    try entries.append(.{
+        .symbol = symbol,
+        .action = .accept,
+        .extra = false,
+        .repetition = false,
+        .recover = true,
+    });
 }
 
 fn emitKeywordReservedParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {

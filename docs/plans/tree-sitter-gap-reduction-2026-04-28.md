@@ -728,14 +728,14 @@ the higher dynamic precedence, and over-cap version sets are trimmed to
 
 ### 5.2 Error Recovery
 
-- [ ] Audit emitted recovery against upstream `parser.c` recovery behavior.
+- [x] Audit emitted recovery against upstream `parser.c` recovery behavior.
 - [ ] Add error-cost accounting, recovery token insertion/deletion surfaces,
   and bounded retry reporting.
   - [x] Expose behavioral recovery attempts, stack recoveries, skipped tokens,
     and skipped bytes in accepted simulation results.
   - [x] Expose generated parser recovery attempts, stack recoveries, skipped
     tokens, and skipped bytes in `TSGeneratedParseResult`.
-- [ ] Compare invalid sample tree strings for promoted grammars where upstream
+- [x] Compare invalid sample tree strings for promoted grammars where upstream
   produces a stable error tree.
 
 Gate:
@@ -776,6 +776,17 @@ expected and actual tree strings. This captured the concrete remaining invalid
 recovery deltas: JSON is missing the `document` wrapper around the recovered
 ERROR node, while Ziggy preserves the wrapper but drops the unexpected-token
 payload inside the ERROR node.
+
+Batch 95 note: emitted runtime-link parsers now populate the inserted
+tree-sitter error state with non-reusable `RECOVER()` actions, matching the
+upstream recovery-state shape needed for EOF recovery after skipped invalid
+input. Fallback non-terminal symbols that are absent from prepared grammar
+metadata are now hidden synthetic auxiliaries instead of visible named nodes,
+which keeps recovered JSON repeat helpers out of public tree strings. JSON and
+Ziggy invalid runtime-link samples are back in the bounded default
+`test-link-runtime` filter list; the Ziggy invalid sample now uses `#` because
+`@` is a valid `tag_string` prefix and upstream-style recovery shifts it before
+failing at EOF.
 
 ### 5.3 Incremental Parsing and Reuse
 
