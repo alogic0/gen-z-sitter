@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "total_external_scanner_targets": 4,
-  "passed_external_scanner_targets": 4,
+  "total_external_scanner_targets": 5,
+  "passed_external_scanner_targets": 5,
   "proof_scope_coverage": [
     {
       "proof_scope": "full_runtime_link",
-      "target_count": 4,
-      "passed_count": 4
+      "target_count": 5,
+      "passed_count": 5
     }
   ],
   "current_limitations": [
@@ -71,6 +71,20 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real Python external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow _newline token path"
+    },
+    {
+      "id": "tree_sitter_rust_scanner_json",
+      "family": "rust",
+      "display_name": "tree-sitter-rust scanner (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_rust/grammar.json",
+      "source_kind": "grammar_json",
+      "proof_scope": "full_runtime_link",
+      "upstream_repository": "tree-sitter-rust",
+      "upstream_revision": "77a3747266f4d621d0757825e6b11edcbf991ca5",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real Rust external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow float_literal token path"
     }
   ]
 }

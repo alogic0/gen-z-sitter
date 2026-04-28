@@ -484,6 +484,26 @@ pub const shortlist_targets = [_]Target{
         .notes = "real Rust grammar snapshot from the local tree-sitter-rust repo, now promoted to the bounded coarse serialize-only parser proof while full lookahead-sensitive parser-table emission remains deferred",
         .success_criteria = "load, prepare, and complete the bounded coarse serialize-only parser step while keeping full parser-table and runtime-link proofs deferred until bounded measurements are available",
     },
+    .{
+        .id = "tree_sitter_rust_scanner_json",
+        .display_name = "tree-sitter-rust scanner (JSON snapshot)",
+        .grammar_path = "compat_targets/tree_sitter_rust/grammar.json",
+        .family = .rust,
+        .source_kind = .grammar_json,
+        .boundary_kind = .scanner_external_scanner,
+        .scanner_boundary_check_mode = .full_runtime_link,
+        .real_external_scanner_proof_scope = .full_runtime_link,
+        .provenance = .{
+            .origin_kind = .external_repo_snapshot,
+            .upstream_repository = "tree-sitter-rust",
+            .upstream_revision = "77a3747266f4d621d0757825e6b11edcbf991ca5",
+            .upstream_grammar_path = "src/grammar.json",
+        },
+        .candidate_status = .intended_scanner_wave,
+        .expected_blocked = false,
+        .notes = "real Rust external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow float_literal token path",
+        .success_criteria = "load the snapshotted upstream grammar.json, extract the external-scanner boundary, and keep a focused Rust float_literal runtime-link fixture passing against the real scanner.c",
+    },
 };
 
 pub fn shortlistTargets() []const Target {
@@ -506,7 +526,7 @@ pub fn firstWaveTargets() []const Target {
 
 test "stagedTargets exposes a small versioned shortlist" {
     const shortlist = shortlistTargets();
-    try std.testing.expectEqual(@as(usize, 22), shortlist.len);
+    try std.testing.expectEqual(@as(usize, 23), shortlist.len);
     try std.testing.expect(shortlist[0].candidate_status == .intended_first_wave);
     try std.testing.expect(shortlist[3].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[3].candidate_status == .intended_first_wave);
@@ -580,6 +600,11 @@ test "stagedTargets exposes a small versioned shortlist" {
     try std.testing.expect(shortlist[21].provenance.origin_kind == .external_repo_snapshot);
     try std.testing.expect(shortlist[21].parser_boundary_check_mode == .serialize_only);
     try std.testing.expect(shortlist[21].standalone_parser_proof_scope == .coarse_serialize_only);
+    try std.testing.expect(shortlist[22].candidate_status == .intended_scanner_wave);
+    try std.testing.expect(shortlist[22].family == .rust);
+    try std.testing.expect(shortlist[22].boundary_kind == .scanner_external_scanner);
+    try std.testing.expect(shortlist[22].scanner_boundary_check_mode == .full_runtime_link);
+    try std.testing.expect(shortlist[22].real_external_scanner_proof_scope == .full_runtime_link);
 }
 
 test "firstWaveTargets returns only the intended first-wave run set" {

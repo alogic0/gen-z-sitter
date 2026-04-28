@@ -10,7 +10,7 @@
   "proven_boundary": [
     "12 intended first-wave parser-only targets are currently in the run set",
     "12 intended first-wave targets currently pass within the staged parser-only boundary",
-    "9 intended scanner-wave targets currently pass within the staged scanner boundary",
+    "10 intended scanner-wave targets currently pass within the staged scanner boundary",
     "0 shortlist target currently carries a passing standalone coarse serialize-only probe outside the routine shortlist boundary",
     "6 shortlist targets currently emit a blocked parser surface while remaining classified outcomes rather than infrastructure failures"
   ],

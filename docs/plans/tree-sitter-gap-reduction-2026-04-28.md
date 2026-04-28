@@ -647,6 +647,14 @@ against the upstream `scanner.c` from `../tree-sitter-grammars`, and exercises
 the shallow `_newline` scanner path. This does not yet claim the layout
 indent/dedent stack path.
 
+Batch 40 note: Rust now has a focused real external-scanner runtime-link proof
+in the bounded compatibility shortlist. The new
+`tree_sitter_rust_scanner_json` target loads the Rust grammar snapshot, extracts
+the 11-token external scanner boundary, links generated parser C against the
+upstream `scanner.c` from `../tree-sitter-grammars`, and exercises the shallow
+`float_literal` scanner path. This does not yet claim raw-string or
+block-comment scanner-state coverage.
+
 ## Phase 7 — Performance and Capacity
 
 Goal: keep correctness work practical for large grammars.

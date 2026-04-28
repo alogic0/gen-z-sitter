@@ -408,6 +408,24 @@
       "upstream_grammar_path": "src/grammar.json",
       "why": "real Rust grammar snapshot from the local tree-sitter-rust repo, now promoted to the bounded coarse serialize-only parser proof while full lookahead-sensitive parser-table emission remains deferred",
       "success_means": "load, prepare, and complete the bounded coarse serialize-only parser step while keeping full parser-table and runtime-link proofs deferred until bounded measurements are available"
+    },
+    {
+      "id": "tree_sitter_rust_scanner_json",
+      "family": "rust",
+      "boundary_kind": "scanner_external_scanner",
+      "parser_boundary_check_mode": "full_pipeline",
+      "scanner_boundary_check_mode": "full_runtime_link",
+      "real_external_scanner_proof_scope": "full_runtime_link",
+      "standalone_parser_proof_scope": "none",
+      "status": "intended_scanner_wave",
+      "source_kind": "grammar_json",
+      "origin_kind": "external_repo_snapshot",
+      "grammar_path": "compat_targets/tree_sitter_rust/grammar.json",
+      "upstream_repository": "tree-sitter-rust",
+      "upstream_revision": "77a3747266f4d621d0757825e6b11edcbf991ca5",
+      "upstream_grammar_path": "src/grammar.json",
+      "why": "real Rust external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow float_literal token path",
+      "success_means": "load the snapshotted upstream grammar.json, extract the external-scanner boundary, and keep a focused Rust float_literal runtime-link fixture passing against the real scanner.c"
     }
   ]
 }

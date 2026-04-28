@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "total_external_repo_targets": 13,
-  "passed_external_repo_targets": 13,
+  "total_external_repo_targets": 14,
+  "passed_external_repo_targets": 14,
   "standalone_parser_proof_targets": 6,
   "family_coverage": [
     {
@@ -67,8 +67,8 @@
     {
       "family": "rust",
       "boundary_kind": "parser_only",
-      "target_count": 1,
-      "passed_count": 1
+      "target_count": 2,
+      "passed_count": 2
     }
   ],
   "boundary_coverage": [
@@ -79,8 +79,8 @@
     },
     {
       "boundary_kind": "scanner_external_scanner",
-      "target_count": 4,
-      "passed_count": 4
+      "target_count": 5,
+      "passed_count": 5
     }
   ],
   "current_limitations": [
@@ -296,6 +296,22 @@
       "final_classification": "passed_within_current_boundary",
       "mismatch_category": "none",
       "notes": "real Rust grammar snapshot from the local tree-sitter-rust repo, now promoted to the bounded coarse serialize-only parser proof while full lookahead-sensitive parser-table emission remains deferred"
+    },
+    {
+      "id": "tree_sitter_rust_scanner_json",
+      "family": "rust",
+      "display_name": "tree-sitter-rust scanner (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_rust/grammar.json",
+      "source_kind": "grammar_json",
+      "boundary_kind": "scanner_external_scanner",
+      "proof_scope": "full_runtime_link",
+      "standalone_parser_proof_scope": "none",
+      "upstream_repository": "tree-sitter-rust",
+      "upstream_revision": "77a3747266f4d621d0757825e6b11edcbf991ca5",
+      "upstream_grammar_path": "src/grammar.json",
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "notes": "real Rust external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow float_literal token path"
     }
   ]
 }

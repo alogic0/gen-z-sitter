@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "boundary": {
-    "total_shortlist_targets": 22,
+    "total_shortlist_targets": 23,
     "first_wave_targets": 12,
     "first_wave_passed": 12,
     "first_wave_non_passing": 0,
-    "scanner_wave_targets": 9,
-    "scanner_wave_passed": 9,
+    "scanner_wave_targets": 10,
+    "scanner_wave_passed": 10,
     "scanner_wave_non_passing": 0,
     "deferred_parser_targets": 0,
     "standalone_parser_proof_targets": 7,
@@ -174,8 +174,8 @@
     {
       "family": "rust",
       "boundary_kind": "parser_only",
-      "target_count": 1,
-      "passed_count": 1,
+      "target_count": 2,
+      "passed_count": 2,
       "control_count": 0,
       "deferred_count": 0,
       "blocked_count": 1
@@ -519,6 +519,22 @@
       "first_failed_stage": null,
       "detail": null,
       "notes": "real Python external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow _newline token path"
+    },
+    {
+      "id": "tree_sitter_rust_scanner_json",
+      "display_name": "tree-sitter-rust scanner (JSON snapshot)",
+      "grammar_path": "compat_targets/tree_sitter_rust/grammar.json",
+      "family": "rust",
+      "boundary_kind": "scanner_external_scanner",
+      "standalone_parser_proof_scope": "none",
+      "candidate_status": "intended_scanner_wave",
+      "expected_blocked": false,
+      "emission_blocked": false,
+      "final_classification": "passed_within_current_boundary",
+      "mismatch_category": "none",
+      "first_failed_stage": null,
+      "detail": null,
+      "notes": "real Rust external scanner proof that links generated parser C against the upstream scanner.c and exercises the shallow float_literal token path"
     }
   ],
   "deferred_parser_targets": [],

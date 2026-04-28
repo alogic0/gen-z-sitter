@@ -140,6 +140,9 @@ fn runScannerRuntimeLinkProof(allocator: std.mem.Allocator, target_id: []const u
     if (std.mem.eql(u8, target_id, "tree_sitter_python_scanner_json")) {
         return try runtime_link.linkAndRunPythonNewlineParserWithRealExternalScanner(allocator);
     }
+    if (std.mem.eql(u8, target_id, "tree_sitter_rust_scanner_json")) {
+        return try runtime_link.linkAndRunRustFloatLiteralParserWithRealExternalScanner(allocator);
+    }
     return error.UnsupportedRuntimeLinkTarget;
 }
 
@@ -1633,7 +1636,7 @@ test "runStagedTargetsAlloc can be rendered to a deterministic JSON report" {
 test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entries" {
     const runs = try cachedShortlistTargetsForTests();
 
-    try std.testing.expectEqual(@as(usize, 22), runs.len);
+    try std.testing.expectEqual(@as(usize, 23), runs.len);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[2].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[3].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[4].final_classification);
@@ -1654,6 +1657,7 @@ test "runShortlistTargetsAlloc includes out-of-scope and deferred shortlist entr
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[19].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[20].final_classification);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[21].final_classification);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[22].final_classification);
 }
 
 test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_c, and keeps only staged blocked controls" {
@@ -1709,6 +1713,7 @@ test "runShortlistTargetsAlloc promotes the external Ziggy targets, tree_sitter_
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[19].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[20].mismatch_category);
     try std.testing.expectEqual(result_model.MismatchCategory.none, runs[21].mismatch_category);
+    try std.testing.expectEqual(result_model.MismatchCategory.none, runs[22].mismatch_category);
 }
 
 test "runShortlistTargetsAlloc promotes tree_sitter_c through compile smoke" {
@@ -1821,4 +1826,13 @@ test "runShortlistTargetsAlloc promotes scanner-wave targets through the staged 
     try std.testing.expectEqual(result_model.StepStatus.passed, runs[15].scanner_boundary_check.status);
     try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[15].final_classification);
     try std.testing.expect(std.mem.indexOf(u8, runs[15].success_criteria, "without depending on extras") != null);
+
+    try std.testing.expectEqualStrings("tree_sitter_rust_scanner_json", runs[22].id);
+    try std.testing.expectEqual(targets.CandidateStatus.intended_scanner_wave, runs[22].candidate_status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[22].load.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[22].prepare.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[22].serialize.status);
+    try std.testing.expectEqual(result_model.StepStatus.passed, runs[22].scanner_boundary_check.status);
+    try std.testing.expectEqual(result_model.FinalClassification.passed_within_current_boundary, runs[22].final_classification);
+    try std.testing.expect(std.mem.indexOf(u8, runs[22].success_criteria, "float_literal") != null);
 }
