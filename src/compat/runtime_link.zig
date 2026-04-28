@@ -28,6 +28,7 @@ const javascript_jsx_text_external_id = 7;
 const typescript_scanner_path = "../tree-sitter-grammars/tree-sitter-typescript/typescript/src/scanner.c";
 const typescript_scanner_include_dir = "../tree-sitter-grammars/tree-sitter-typescript/typescript/src";
 const typescript_ternary_qmark_external_id = 2;
+const typescript_jsx_text_external_id = 7;
 const python_scanner_path = "../tree-sitter-grammars/tree-sitter-python/src/scanner.c";
 const python_scanner_include_dir = "../tree-sitter-grammars/tree-sitter-python/src";
 const python_newline_external_id = 0;
@@ -674,6 +675,29 @@ pub fn linkAndRunTypescriptTernaryParserWithRealExternalScanner(allocator: std.m
         .scanner_c = scanner_c,
         .scanner_include_dirs = &.{typescript_scanner_include_dir},
         .input = "?",
+        .expected_root_type = "program",
+    });
+}
+
+pub fn linkAndRunTypescriptJsxTextParserWithRealExternalScanner(allocator: std.mem.Allocator) RuntimeLinkError!void {
+    try ensureTreeSitterRuntimeAvailable();
+    try ensureFileAvailableOrSkip(typescript_scanner_path);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const parser_c = try emitTypescriptJsxTextParserC(arena.allocator());
+    const scanner_c = try std.Io.Dir.cwd().readFileAlloc(
+        runtime_io.get(),
+        typescript_scanner_path,
+        arena.allocator(),
+        .limited(512 * 1024),
+    );
+    try linkAndRunGeneratedParser(allocator, .{
+        .parser_c = parser_c,
+        .scanner_c = scanner_c,
+        .scanner_include_dirs = &.{typescript_scanner_include_dir},
+        .input = "hello",
         .expected_root_type = "program",
     });
 }
@@ -1392,6 +1416,13 @@ fn emitTypescriptTernaryParserC(allocator: std.mem.Allocator) RuntimeLinkError![
     });
 }
 
+fn emitTypescriptJsxTextParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
+    return try emitTypescriptSingleExternalParserCWithOptions(allocator, .{
+        .offset_start_state = true,
+        .glr_loop = false,
+    }, typescript_jsx_text_external_id);
+}
+
 fn emitPythonNewlineParserC(allocator: std.mem.Allocator) RuntimeLinkError![]const u8 {
     return try emitPythonNewlineParserCWithOptions(allocator, .{
         .offset_start_state = true,
@@ -1566,6 +1597,14 @@ fn emitTypescriptTernaryParserCWithOptions(
     allocator: std.mem.Allocator,
     options: TinyParserOptions,
 ) RuntimeLinkError![]const u8 {
+    return try emitTypescriptSingleExternalParserCWithOptions(allocator, options, typescript_ternary_qmark_external_id);
+}
+
+fn emitTypescriptSingleExternalParserCWithOptions(
+    allocator: std.mem.Allocator,
+    options: TinyParserOptions,
+    active_external_id: usize,
+) RuntimeLinkError![]const u8 {
     const external_names = [_][]const u8{
         "_automatic_semicolon",
         "_template_chars",
@@ -1585,8 +1624,8 @@ fn emitTypescriptTernaryParserCWithOptions(
         symbols[index + 1] = .{
             .ref = .{ .external = @intCast(index) },
             .name = name,
-            .named = index == typescript_ternary_qmark_external_id,
-            .visible = index == typescript_ternary_qmark_external_id,
+            .named = index == active_external_id,
+            .visible = index == active_external_id,
             .supertype = false,
             .public_symbol = @intCast(index + 1),
         };
@@ -1604,7 +1643,7 @@ fn emitTypescriptTernaryParserCWithOptions(
         .{ .lhs = 0, .child_count = 1, .dynamic_precedence = 0 },
     });
     const start_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .external = typescript_ternary_qmark_external_id }, .action = .{ .shift = 2 } },
+        .{ .symbol = .{ .external = @intCast(active_external_id) }, .action = .{ .shift = 2 } },
     });
     const start_gotos = try allocator.dupe(serialize.SerializedGotoEntry, &.{
         .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
@@ -1646,7 +1685,7 @@ fn emitTypescriptTernaryParserCWithOptions(
     const external_state_1 = try allocator.alloc(bool, external_names.len);
     @memset(external_state_0, false);
     @memset(external_state_1, false);
-    external_state_1[typescript_ternary_qmark_external_id] = true;
+    external_state_1[active_external_id] = true;
     const external_states = try allocator.dupe([]const bool, &.{
         external_state_0,
         external_state_1,
@@ -3720,6 +3759,10 @@ test "linkAndRunJavascriptTernaryGeneratedGlrParserWithRealExternalScanner calls
 
 test "linkAndRunTypescriptTernaryParserWithRealExternalScanner links generated TypeScript parser with upstream scanner" {
     try linkAndRunTypescriptTernaryParserWithRealExternalScanner(std.testing.allocator);
+}
+
+test "linkAndRunTypescriptJsxTextParserWithRealExternalScanner links generated TypeScript JSX text parser with upstream scanner" {
+    try linkAndRunTypescriptJsxTextParserWithRealExternalScanner(std.testing.allocator);
 }
 
 test "linkAndRunPythonNewlineParserWithRealExternalScanner links generated Python parser with upstream scanner" {

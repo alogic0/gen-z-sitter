@@ -685,6 +685,12 @@ through the upstream `jsx_text` path, and the JavaScript single-token fixture wa
 generalized so additional shallow external-token paths can reuse the same
 generated parser shape.
 
+Batch 45 note: TypeScript scanner runtime coverage now includes `jsx_text` in
+addition to `_ternary_qmark`. The focused runtime-link fixture scans `hello`
+through the upstream shared scanner header via `typescript/src/scanner.c`, and
+the TypeScript single-token fixture was generalized to match the JavaScript
+coverage shape.
+
 ## Phase 7 — Performance and Capacity
 
 Goal: keep correctness work practical for large grammars.
