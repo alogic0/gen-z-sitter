@@ -10,6 +10,7 @@ const mismatch_inventory = @import("src/compat/mismatch_inventory.zig");
 const parser_boundary_profile = @import("src/compat/parser_boundary_profile.zig");
 const parser_boundary_hypothesis = @import("src/compat/parser_boundary_hypothesis.zig");
 const coverage_decision = @import("src/compat/coverage_decision.zig");
+const deferred_real_grammar_classification = @import("src/compat/deferred_real_grammar_classification.zig");
 const shift_reduce_profile = @import("src/compat/shift_reduce_profile.zig");
 const external_repo_inventory = @import("src/compat/external_repo_inventory.zig");
 const external_scanner_repo_inventory = @import("src/compat/external_scanner_repo_inventory.zig");
@@ -79,6 +80,11 @@ pub fn main(init: std.process.Init) !void {
     logStepDone("coverage_decision");
     defer allocator.free(decision);
 
+    logStepStart("deferred_real_grammar_classification");
+    const deferred_real_grammar = try deferred_real_grammar_classification.renderDeferredRealGrammarClassificationAlloc(allocator);
+    logStepDone("deferred_real_grammar_classification");
+    defer allocator.free(deferred_real_grammar);
+
     logStepStart("shift_reduce_profile");
     const shift_reduce = try shift_reduce_profile.renderShiftReduceProfileAlloc(allocator, runs);
     logStepDone("shift_reduce_profile");
@@ -107,6 +113,7 @@ pub fn main(init: std.process.Init) !void {
     try writeArtifact("compat_targets/parser_boundary_profile.json", parser_boundary);
     try writeArtifact("compat_targets/parser_boundary_hypothesis.json", parser_boundary_hypothesis_json);
     try writeArtifact("compat_targets/coverage_decision.json", decision);
+    try writeArtifact("compat_targets/deferred_real_grammar_classification.json", deferred_real_grammar);
     try writeArtifact("compat_targets/shortlist_shift_reduce_profile.json", shift_reduce);
     try writeArtifact("compat_targets/external_repo_inventory.json", external_repo);
     try writeArtifact("compat_targets/external_scanner_repo_inventory.json", external_scanner_repo);

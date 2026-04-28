@@ -130,47 +130,47 @@ const entries = [_]DeferredRealGrammarEntry{
     .{
         .id = "tree_sitter_python_json",
         .family = .python,
-        .current_parser_boundary_check_mode = .prepare_only,
+        .current_parser_boundary_check_mode = .serialize_only,
         .standalone_probe_status = "passed_coarse_serialize_only",
-        .serialized_state_count = 1038,
+        .serialized_state_count = 1034,
         .serialized_blocked = true,
         .blocked_surface = "external_scanner_symbols_only",
         .external_scanner_symbol_count = python_tokens.len,
         .external_tokens = python_tokens[0..],
-        .bounded_coarse_proof = "completed by parser_boundary_probe.json; blocked=true because indentation scanner state is not yet proven against generated GLR",
+        .bounded_coarse_proof = "promoted to the bounded routine coarse serialize-only parser proof; blocked=true because indentation scanner state is not yet proven against generated GLR",
         .scanner_runtime_plan = python_samples[0..],
-        .routine_boundary_decision = "keep prepare_only until both shallow newline and layout indent/dedent samples pass a real scanner proof",
+        .routine_boundary_decision = "keep full parser-table parity and runtime-link proof deferred until both shallow newline and layout indent/dedent samples pass a real scanner proof",
         .next_action = "use shallow_assignment and layout_if_block as the first Python scanner samples",
     },
     .{
         .id = "tree_sitter_typescript_json",
         .family = .typescript,
-        .current_parser_boundary_check_mode = .prepare_only,
+        .current_parser_boundary_check_mode = .serialize_only,
         .standalone_probe_status = "passed_coarse_serialize_only",
-        .serialized_state_count = 5359,
+        .serialized_state_count = 5388,
         .serialized_blocked = true,
         .blocked_surface = "external_scanner_symbols_only",
         .external_scanner_symbol_count = typescript_tokens.len,
         .external_tokens = typescript_tokens[0..],
-        .bounded_coarse_proof = "completed by parser_boundary_probe.json; blocked=true because JavaScript-family scanner symbols are not yet target-classified for runtime proof",
+        .bounded_coarse_proof = "promoted to the bounded routine coarse serialize-only parser proof; blocked=true because JavaScript-family scanner symbols are not yet target-classified for runtime proof",
         .scanner_runtime_plan = typescript_samples[0..],
-        .routine_boundary_decision = "keep prepare_only despite the bounded coarse probe until the scanner boundary is represented",
-        .next_action = "reuse JavaScript scanner classification, then add a bounded TypeScript proof before promotion",
+        .routine_boundary_decision = "keep full parser-table parity and runtime-link proof deferred until the scanner boundary is represented",
+        .next_action = "reuse JavaScript scanner classification, then add a bounded TypeScript scanner-runtime proof",
     },
     .{
         .id = "tree_sitter_rust_json",
         .family = .rust,
-        .current_parser_boundary_check_mode = .prepare_only,
+        .current_parser_boundary_check_mode = .serialize_only,
         .standalone_probe_status = "passed_coarse_serialize_only",
-        .serialized_state_count = 2659,
+        .serialized_state_count = 2660,
         .serialized_blocked = true,
         .blocked_surface = "external_scanner_symbols_only",
         .external_scanner_symbol_count = rust_tokens.len,
         .external_tokens = rust_tokens[0..],
-        .bounded_coarse_proof = "completed by parser_boundary_probe.json; blocked=true because string/comment external scanner state is not runtime-linked yet",
+        .bounded_coarse_proof = "promoted to the bounded routine coarse serialize-only parser proof; blocked=true because string/comment external scanner state is not runtime-linked yet",
         .scanner_runtime_plan = rust_samples[0..],
-        .routine_boundary_decision = "keep prepare_only until string/comment scanner samples have a bounded runtime proof",
-        .next_action = "start with function_item for coarse parser coverage, then add raw_string for scanner coverage",
+        .routine_boundary_decision = "keep full parser-table parity and runtime-link proof deferred until string/comment scanner samples have a bounded runtime proof",
+        .next_action = "add raw_string for scanner coverage after the current coarse parser proof",
     },
 };
 
@@ -179,7 +179,7 @@ pub fn buildDeferredRealGrammarClassification() DeferredRealGrammarClassificatio
         .schema_version = 1,
         .source_probe = "compat_targets/parser_boundary_probe.json",
         .target_count = entries.len,
-        .gate = "all four deferred targets remain at prepare_only because the bounded coarse serialize-only probe is still blocked by external scanner symbols",
+        .gate = "JavaScript remains prepare-only while Python, TypeScript, and Rust have bounded routine coarse serialize-only parser proofs; all four still defer full parser-table parity and external-scanner runtime proof",
         .entries = entries[0..],
     };
 }
@@ -198,7 +198,6 @@ fn targetById(id: []const u8) ?targets.Target {
 test "deferred real grammar classification keeps routine parser boundaries conservative" {
     for (entries) |entry| {
         const target = targetById(entry.id) orelse return error.MissingTarget;
-        try std.testing.expectEqual(targets.ParserBoundaryCheckMode.prepare_only, target.parser_boundary_check_mode);
         try std.testing.expectEqual(entry.current_parser_boundary_check_mode, target.parser_boundary_check_mode);
         try std.testing.expect(entry.serialized_blocked);
         try std.testing.expectEqualStrings("external_scanner_symbols_only", entry.blocked_surface);
