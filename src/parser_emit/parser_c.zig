@@ -135,10 +135,12 @@ pub fn writeParserCWithOptions(
     const has_external_scanner = compacted.external_scanner.symbols.len != 0 and compacted.external_scanner.states.len != 0;
     const emitted_symbols = try collectEmittedSymbols(allocator, compacted);
     defer deinitEmittedSymbols(allocator, emitted_symbols);
-    const parse_action_list = if (compacted.parse_action_list.len > 0)
+    const parse_action_list = if (options.glr_loop and compacted.parse_action_list.len > 0)
         compacted.parse_action_list
+    else if (options.glr_loop)
+        try serialize.buildParseActionListAlloc(arena.allocator(), compacted.states, compacted.productions)
     else
-        try serialize.buildParseActionListAlloc(arena.allocator(), compacted.states, compacted.productions);
+        try serialize.buildRuntimeParseActionListAlloc(arena.allocator(), compacted.states, compacted.productions);
     try validateRuntimeTableLimits(compacted, emitted_symbols, parse_action_list);
     const unresolved_owners = try collectStateArrayOwners(arena.allocator(), serialize.SerializedUnresolvedEntry, compacted.states, stateUnresolved);
     const small_parse_table = if (compacted.small_parse_table.rows.len > 0 or compacted.small_parse_table.map.len > 0)
@@ -774,10 +776,11 @@ fn writeUnresolvedEntry(
     entry: serialize.SerializedUnresolvedEntry,
 ) !void {
     const symbol_id = symbolIdForRef(symbols, entry.symbol) orelse return error.OutOfMemory;
-    const action_index = serialize.parseActionListIndexForUnresolvedEntry(parse_action_list, entry, productions) orelse return error.OutOfMemory;
+    const action_index = serialize.parseActionListIndexForUnresolvedEntry(parse_action_list, entry, productions) orelse 0;
+    const action_count: usize = if (action_index == 0) 0 else entry.candidate_actions.len;
     try writer.print(
         "  {{ .symbol_id = {d}, .reason = {d}, .action_index = {d}, .action_count = {d} }},\n",
-        .{ symbol_id, unresolvedReasonCode(entry.reason), action_index, entry.candidate_actions.len },
+        .{ symbol_id, unresolvedReasonCode(entry.reason), action_index, action_count },
     );
 }
 
@@ -2176,6 +2179,8 @@ test "emitParserCAlloc compacts identical serialized states before row sharing" 
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSUnresolvedEntry ts_state_0_unresolved[] = {\n"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "static const TSParseActionEntry ts_parse_actions[] = {\n"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, emitted, "[1] = { .entry = { .count = 1, .reusable = true } }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".action_index = 0, .action_count = 0"));
+    try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, emitted, ".reusable = false } }, { .action"));
 }
 
 test "emitParserCAlloc emits prepared symbol metadata and grammar name" {
@@ -3201,7 +3206,10 @@ test "emitParserCAlloc emits full runtime parse action fields" {
         },
     };
 
-    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{
+        .compact_duplicate_states = false,
+        .glr_loop = true,
+    });
     defer allocator.free(emitted);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSParseActionTypeShift"));

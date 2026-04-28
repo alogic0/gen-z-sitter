@@ -620,6 +620,27 @@ pub fn buildParseActionListAlloc(
     states: []const SerializedState,
     productions: []const SerializedProductionInfo,
 ) ParseActionListError![]const SerializedParseActionListEntry {
+    return try buildParseActionListWithOptionsAlloc(allocator, states, productions, .{ .include_unresolved = true });
+}
+
+pub fn buildRuntimeParseActionListAlloc(
+    allocator: std.mem.Allocator,
+    states: []const SerializedState,
+    productions: []const SerializedProductionInfo,
+) ParseActionListError![]const SerializedParseActionListEntry {
+    return try buildParseActionListWithOptionsAlloc(allocator, states, productions, .{ .include_unresolved = false });
+}
+
+const ParseActionListBuildOptions = struct {
+    include_unresolved: bool = true,
+};
+
+fn buildParseActionListWithOptionsAlloc(
+    allocator: std.mem.Allocator,
+    states: []const SerializedState,
+    productions: []const SerializedProductionInfo,
+    options: ParseActionListBuildOptions,
+) ParseActionListError![]const SerializedParseActionListEntry {
     var entries = std.array_list.Managed(SerializedParseActionListEntry).init(allocator);
     defer entries.deinit();
     var single_action_indexes = ParseActionListIndexMap.init(allocator);
@@ -679,6 +700,8 @@ pub fn buildParseActionListAlloc(
             }
             try action_slice_indexes.put(.{ .reusable = true, .actions = action_slice }, index);
         }
+        if (!options.include_unresolved) continue;
+
         for (serialized_state.unresolved) |entry| {
             const action_slice = try runtimeActionsFromParseActionSliceAlloc(allocator, entry.candidate_actions, productions);
             const action_key: ParseActionListSliceKey = .{ .reusable = false, .actions = action_slice };
@@ -3034,6 +3057,40 @@ test "buildParseActionListAlloc indexes rows by flattened action width" {
         @as(u16, 3),
         parseActionListIndexForUnresolvedEntry(list, states[0].unresolved[0], productions[0..]).?,
     );
+}
+
+test "buildRuntimeParseActionListAlloc excludes unresolved diagnostic actions" {
+    const allocator = std.testing.allocator;
+    const productions = [_]SerializedProductionInfo{
+        .{ .lhs = 0, .child_count = 1, .dynamic_precedence = 0 },
+    };
+    const candidates = [_]actions.ParseAction{
+        .{ .shift = 2 },
+        .{ .reduce = 0 },
+    };
+    const states = [_]SerializedState{
+        .{
+            .id = 0,
+            .actions = &[_]SerializedActionEntry{
+                .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
+            },
+            .gotos = &.{},
+            .unresolved = &[_]SerializedUnresolvedEntry{
+                .{
+                    .symbol = .{ .terminal = 1 },
+                    .reason = .shift_reduce,
+                    .candidate_actions = candidates[0..],
+                },
+            },
+        },
+    };
+
+    const list = try buildRuntimeParseActionListAlloc(allocator, states[0..], productions[0..]);
+    defer deinitParseActionList(allocator, list);
+
+    try std.testing.expectEqual(@as(usize, 2), list.len);
+    try std.testing.expectEqual(@as(u16, 1), parseActionListIndexForParseAction(list, .{ .shift = 1 }, productions[0..]).?);
+    try std.testing.expect(parseActionListIndexForUnresolvedEntry(list, states[0].unresolved[0], productions[0..]) == null);
 }
 
 test "computeLargeStateCountAlloc follows tree-sitter threshold prefix rule" {

@@ -1630,11 +1630,10 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  [7] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 4, .extra = false, .repetition = false } } },
         \\  [9] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 1, .symbol = 4, .dynamic_precedence = 0, .production_id = 3 } } },
         \\  [11] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 3, .symbol = 4, .dynamic_precedence = 0, .production_id = 2 } } },
-        \\  [13] = { .entry = { .count = 2, .reusable = false } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 4, .extra = false, .repetition = false } } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 3, .symbol = 4, .dynamic_precedence = 0, .production_id = 2 } } },
         \\};
         \\
         \\static const TSUnresolvedEntry ts_state_5_unresolved[] = {
-        \\  { .symbol_id = 1, .reason = 1, .action_index = 13, .action_count = 2 },
+        \\  { .symbol_id = 1, .reason = 1, .action_index = 0, .action_count = 0 },
         \\};
         \\
         \\static const TSLexerMode ts_lex_modes[STATE_COUNT] = {
