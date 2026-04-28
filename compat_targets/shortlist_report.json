@@ -264,6 +264,8 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 232,
         "parser_c_bytes": 11351,
+        "lex_function_bytes": 2702,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -334,6 +336,8 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 3651,
         "parser_c_bytes": 32920,
+        "lex_function_bytes": 20414,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -404,6 +408,8 @@
         "unresolved_entry_count": 2,
         "parser_tables_bytes": 1781,
         "parser_c_bytes": 19856,
+        "lex_function_bytes": 8696,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -518,6 +524,8 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 85882,
         "parser_c_bytes": 289858,
+        "lex_function_bytes": 236214,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -588,6 +596,8 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 28803,
         "parser_c_bytes": 139548,
+        "lex_function_bytes": 115222,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -658,6 +668,8 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 531599,
         "parser_c_bytes": 5091498,
+        "lex_function_bytes": 5021029,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -728,6 +740,8 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 1696891,
         "parser_c_bytes": 3018009,
+        "lex_function_bytes": 2938015,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -798,6 +812,8 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 14800,
         "parser_c_bytes": 62535,
+        "lex_function_bytes": 45839,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -984,6 +1000,8 @@
         "unresolved_entry_count": 1,
         "parser_tables_bytes": 438,
         "parser_c_bytes": 13866,
+        "lex_function_bytes": 3654,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -1373,6 +1391,8 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 676638,
         "parser_c_bytes": 3129407,
+        "lex_function_bytes": 3057734,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -1501,6 +1521,8 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 460459,
         "parser_c_bytes": 1685082,
+        "lex_function_bytes": 1630591,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -1629,6 +1651,8 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 1802406,
         "parser_c_bytes": 10452477,
+        "lex_function_bytes": 10183811,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },
@@ -1757,6 +1781,8 @@
         "unresolved_entry_count": 0,
         "parser_tables_bytes": 1168141,
         "parser_c_bytes": 4792247,
+        "lex_function_bytes": 4679244,
+        "keyword_lex_function_bytes": 0,
         "emit_parser_c_ms": null,
         "compile_smoke_ms": null
       },

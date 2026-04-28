@@ -754,6 +754,14 @@ Gate:
 - Heavy compile-smoke failures say whether generation, C compile, or linked
   runtime execution exceeded the budget.
 
+Batch 46 note: compatibility emission snapshots now include structured
+`lex_function_bytes` and `keyword_lex_function_bytes` alongside existing
+`parser_c_bytes`, parser table bytes, and optional compile-smoke timings. The
+debug compatibility runner prints the same fields, and refreshed shortlist
+artifacts include them for promoted large grammars. MaxRSS remains separate
+because the current compile-smoke runner does not yet collect child-process
+resource usage.
+
 ## Phase 8 — User-Facing Compatibility Contracts
 
 Goal: make compatibility claims precise and useful.

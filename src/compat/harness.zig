@@ -215,6 +215,23 @@ fn elapsedMs(start_ts: std.Io.Timestamp) f64 {
     return @as(f64, @floatFromInt(elapsed.nanoseconds)) / @as(f64, std.time.ns_per_ms);
 }
 
+fn functionSpanBytes(source: []const u8, start_marker: []const u8, end_marker: []const u8) usize {
+    const start = std.mem.indexOf(u8, source, start_marker) orelse return 0;
+    const end = std.mem.indexOfPos(u8, source, start + start_marker.len, end_marker) orelse return source.len - start;
+    return end - start;
+}
+
+fn mainLexFunctionBytes(source: []const u8) usize {
+    const start_marker = "static bool ts_lex(TSLexer *lexer, TSStateId state)";
+    const keyword_marker = "static bool ts_lex_keywords(TSLexer *lexer, TSStateId state)";
+    const modes_marker = "static const TSLexerMode ts_lex_modes";
+    const start = std.mem.indexOf(u8, source, start_marker) orelse return 0;
+    const keyword_start = std.mem.indexOfPos(u8, source, start + start_marker.len, keyword_marker);
+    const modes_start = std.mem.indexOfPos(u8, source, start + start_marker.len, modes_marker);
+    const end = keyword_start orelse modes_start orelse source.len;
+    return end - start;
+}
+
 fn logDetailSummary(comptime format: []const u8, args: anytype) void {
     std.debug.print("[compat_harness_detail] " ++ format ++ "\n", args);
 }
@@ -540,6 +557,12 @@ pub fn runTarget(
                     .unresolved_entry_count = 0,
                     .parser_tables_bytes = parser_tables.len,
                     .parser_c_bytes = parser_c.len,
+                    .lex_function_bytes = mainLexFunctionBytes(parser_c),
+                    .keyword_lex_function_bytes = functionSpanBytes(
+                        parser_c,
+                        "static bool ts_lex_keywords(TSLexer *lexer, TSStateId state)",
+                        "static const TSLexerMode ts_lex_modes",
+                    ),
                     .emit_parser_c_ms = if (options.profile_timings) parser_c_ms else null,
                     .compile_smoke_ms = if (options.profile_timings) compile_smoke_ms else null,
                 };
@@ -1074,6 +1097,12 @@ pub fn runTarget(
         .unresolved_entry_count = emission_stats.unresolved_entry_count,
         .parser_tables_bytes = parser_tables.len,
         .parser_c_bytes = parser_c.len,
+        .lex_function_bytes = mainLexFunctionBytes(parser_c),
+        .keyword_lex_function_bytes = functionSpanBytes(
+            parser_c,
+            "static bool ts_lex_keywords(TSLexer *lexer, TSStateId state)",
+            "static const TSLexerMode ts_lex_modes",
+        ),
         .emit_parser_c_ms = if (options.profile_timings) parser_c_ms else null,
     };
     if (emission_stats.blocked) {

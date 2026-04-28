@@ -39,7 +39,7 @@ fn printRunSummary(run: result_model.TargetRunResult) void {
 
     if (run.emission) |emission| {
         std.debug.print(
-            "[compat_target_runner] emission blocked={} serialized_states={d} emitted_states={d} merged_states={d} unresolved_entries={d} parser_tables_bytes={d} parser_c_bytes={d}",
+            "[compat_target_runner] emission blocked={} serialized_states={d} emitted_states={d} merged_states={d} unresolved_entries={d} parser_tables_bytes={d} parser_c_bytes={d} lex_function_bytes={d} keyword_lex_function_bytes={d}",
             .{
                 emission.blocked,
                 emission.serialized_state_count,
@@ -48,6 +48,8 @@ fn printRunSummary(run: result_model.TargetRunResult) void {
                 emission.unresolved_entry_count,
                 emission.parser_tables_bytes,
                 emission.parser_c_bytes,
+                emission.lex_function_bytes,
+                emission.keyword_lex_function_bytes,
             },
         );
         if (emission.emit_parser_c_ms) |value| {
