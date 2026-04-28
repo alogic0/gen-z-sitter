@@ -263,6 +263,28 @@ pub fn generateLocalParseStateDumpAlloc(
     return try allocator.dupe(u8, dump);
 }
 
+pub fn generateLocalParseStateSummaryJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+    const result = try parse_table_pipeline.buildStatesFromPrepared(arena.allocator(), prepared);
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeParseStateSummaryJson(&out.writer, result);
+    return try out.toOwnedSlice();
+}
+
 pub fn parseUpstreamParserCSummaryAlloc(
     allocator: std.mem.Allocator,
     grammar_name: []const u8,
@@ -585,6 +607,114 @@ fn writeRawReservedSetsJson(writer: anytype, sets: []const raw_grammar.RawReserv
         try writer.writeAll(" }");
     }
     try writer.writeByte(']');
+}
+
+fn writeParseStateSummaryJson(
+    writer: anytype,
+    result: @import("../parse_table/build.zig").BuildResult,
+) !void {
+    const summary = parseStateSummary(result);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, 2, "state_count", summary.state_count, true);
+    try writeUsizeField(writer, 2, "production_count", summary.production_count, true);
+    try writeUsizeField(writer, 2, "item_count", summary.item_count, true);
+    try writeUsizeField(writer, 2, "transition_count", summary.transition_count, true);
+    try writeUsizeField(writer, 2, "conflict_count", summary.conflict_count, true);
+    try writeUsizeField(writer, 2, "max_items_per_state", summary.max_items_per_state, true);
+    try writeUsizeField(writer, 2, "max_transitions_per_state", summary.max_transitions_per_state, true);
+    try writeU64HexField(writer, 2, "core_hash", summary.core_hash, true);
+    try writeU64HexField(writer, 2, "lookahead_hash", summary.lookahead_hash, true);
+    try writeU64HexField(writer, 2, "transition_hash", summary.transition_hash, true);
+    try writeU64HexField(writer, 2, "conflict_hash", summary.conflict_hash, false);
+    try writer.writeAll("}\n");
+}
+
+const ParseStateSummary = struct {
+    state_count: usize,
+    production_count: usize,
+    item_count: usize,
+    transition_count: usize,
+    conflict_count: usize,
+    max_items_per_state: usize,
+    max_transitions_per_state: usize,
+    core_hash: u64,
+    lookahead_hash: u64,
+    transition_hash: u64,
+    conflict_hash: u64,
+};
+
+fn parseStateSummary(result: @import("../parse_table/build.zig").BuildResult) ParseStateSummary {
+    var core_hasher = std.hash.Wyhash.init(0);
+    var lookahead_hasher = std.hash.Wyhash.init(0);
+    var transition_hasher = std.hash.Wyhash.init(0);
+    var conflict_hasher = std.hash.Wyhash.init(0);
+    var item_count: usize = 0;
+    var transition_count: usize = 0;
+    var conflict_count: usize = 0;
+    var max_items: usize = 0;
+    var max_transitions: usize = 0;
+
+    for (result.states) |parse_state| {
+        hashU32(&core_hasher, parse_state.id);
+        hashU32(&lookahead_hasher, parse_state.id);
+        hashU32(&transition_hasher, parse_state.id);
+        hashU32(&conflict_hasher, parse_state.id);
+        item_count += parse_state.items.len;
+        transition_count += parse_state.transitions.len;
+        conflict_count += parse_state.conflicts.len;
+        max_items = @max(max_items, parse_state.items.len);
+        max_transitions = @max(max_transitions, parse_state.transitions.len);
+
+        for (parse_state.items) |entry| {
+            hashU32(&core_hasher, entry.item.production_id);
+            hashU32(&core_hasher, entry.item.step_index);
+            hashU32(&lookahead_hasher, entry.item.production_id);
+            hashU32(&lookahead_hasher, entry.item.step_index);
+            hashSymbolSet(&lookahead_hasher, entry.lookaheads);
+            hashU32(&lookahead_hasher, entry.following_reserved_word_set_id);
+        }
+        for (parse_state.transitions) |transition| {
+            hashSymbolRef(&transition_hasher, transition.symbol);
+            hashU32(&transition_hasher, transition.state);
+            hashBool(&transition_hasher, transition.extra);
+        }
+        for (parse_state.conflicts) |conflict| {
+            hashTag(&conflict_hasher, @tagName(conflict.kind));
+            if (conflict.symbol) |symbol| {
+                hashBool(&conflict_hasher, true);
+                hashSymbolRef(&conflict_hasher, symbol);
+            } else {
+                hashBool(&conflict_hasher, false);
+            }
+            for (conflict.items) |conflict_item| {
+                hashU32(&conflict_hasher, conflict_item.production_id);
+                hashU32(&conflict_hasher, conflict_item.step_index);
+            }
+        }
+    }
+
+    return .{
+        .state_count = result.states.len,
+        .production_count = result.productions.len,
+        .item_count = item_count,
+        .transition_count = transition_count,
+        .conflict_count = conflict_count,
+        .max_items_per_state = max_items,
+        .max_transitions_per_state = max_transitions,
+        .core_hash = core_hasher.final(),
+        .lookahead_hash = lookahead_hasher.final(),
+        .transition_hash = transition_hasher.final(),
+        .conflict_hash = conflict_hasher.final(),
+    };
+}
+
+fn hashSymbolSet(hasher: *std.hash.Wyhash, set: @import("../parse_table/first.zig").SymbolSet) void {
+    hashUsize(hasher, set.terminals.len());
+    hasher.update(set.terminals.maskBytes());
+    hashUsize(hasher, set.externals.len());
+    hasher.update(set.externals.maskBytes());
+    hashBool(hasher, set.includes_end);
+    hashBool(hasher, set.includes_epsilon);
 }
 
 fn countProductions(variables: []const syntax_ir.SyntaxVariable) usize {
@@ -1472,4 +1602,25 @@ test "generateLocalParseStateDumpAlloc supports selected rule snapshots" {
 
     try std.testing.expect(std.mem.indexOf(u8, dump, "rule expr") != null);
     try std.testing.expect(std.mem.indexOf(u8, dump, "actions:") != null);
+}
+
+test "generateLocalParseStateSummaryJsonAlloc writes item-set summary hashes" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validBlankGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const json = try generateLocalParseStateSummaryJsonAlloc(std.testing.allocator, path, .{});
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"state_count\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"core_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"lookahead_hash\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"transition_hash\"") != null);
 }

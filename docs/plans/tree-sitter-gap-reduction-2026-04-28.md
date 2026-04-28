@@ -318,6 +318,8 @@ lookahead, conflict, and minimization gaps.
   - [x] Write local `parse-states.txt` item-set dumps into comparison
     artifacts.
   - [x] Add selected-state filtering for local comparison artifacts.
+  - [x] Write compact local item-set summary hashes for cores, lookaheads,
+    transitions, and conflicts.
   - [ ] Add upstream-shaped item-set comparison.
 - [ ] Compare kernel items, closure additions, lookaheads, reserved lookaheads,
   and propagation flags against upstream concepts from `item_set_builder.rs`.
@@ -341,6 +343,11 @@ Batch 16 note: `compare-upstream` now accepts `--report-states-for-rule`, and
 `-Dupstream-compare-report-states-for-rule=<rule>`. When set, local
 `parse-states.txt` is limited to states referencing that rule and includes the
 same selected-state action context used by the generate debug path.
+
+Batch 17 note: local comparison artifacts now include
+`parse-states-summary.json`, a compact machine-readable item-set summary with
+state, production, item, transition, and conflict counts plus stable hashes for
+cores, lookaheads, transitions, and conflicts.
 
 ### 3.2 Conflict Resolution and Expected Conflicts
 
