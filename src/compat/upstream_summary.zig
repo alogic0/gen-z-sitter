@@ -1,10 +1,16 @@
 const std = @import("std");
+const extract_default_aliases = @import("../grammar/prepare/extract_default_aliases.zig");
+const extract_tokens = @import("../grammar/prepare/extract_tokens.zig");
+const flatten_grammar = @import("../grammar/prepare/flatten_grammar.zig");
 const grammar_loader = @import("../grammar/loader.zig");
+const grammar_ir = @import("../ir/grammar_ir.zig");
+const lexical_ir = @import("../ir/lexical_grammar.zig");
 const node_type_pipeline = @import("../node_types/pipeline.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const parser_compat = @import("../parser_emit/compat.zig");
+const syntax_ir = @import("../ir/syntax_grammar.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
 pub const LocalSummaryOptions = struct {
@@ -52,6 +58,31 @@ pub const SummaryDiff = struct {
     classification: DiffClassification,
 };
 
+pub const PreparedIrSummary = struct {
+    variable_count: usize,
+    rule_count: usize,
+    symbol_count: usize,
+    external_token_count: usize,
+    extra_rule_count: usize,
+    conflict_count: usize,
+    precedence_order_count: usize,
+    inline_count: usize,
+    supertype_count: usize,
+    reserved_word_set_count: usize,
+    prepared_variable_hash: u64,
+    prepared_symbol_hash: u64,
+    extracted_syntax_variable_count: usize,
+    extracted_syntax_production_count: usize,
+    extracted_syntax_step_count: usize,
+    extracted_lexical_variable_count: usize,
+    extracted_lexical_separator_count: usize,
+    extracted_lexical_hash: u64,
+    flattened_syntax_variable_count: usize,
+    flattened_syntax_production_count: usize,
+    flattened_syntax_step_count: usize,
+    flattened_syntax_hash: u64,
+};
+
 pub fn generateLocalSummaryAlloc(
     allocator: std.mem.Allocator,
     grammar_path: []const u8,
@@ -91,6 +122,27 @@ pub fn generateLocalSummaryAlloc(
     summary.serialized_state_count = serialized.states.len;
     summary.emitted_state_count = emission_stats.state_count;
     return summary;
+}
+
+pub fn generateLocalPreparedIrSummaryAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) !PreparedIrSummary {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
+    const extracted = try extract_tokens.extractTokens(arena.allocator(), prepared);
+    const default_aliases = try extract_default_aliases.extractDefaultAliases(arena.allocator(), extracted.syntax, extracted.lexical);
+    const flattened = try flatten_grammar.flattenGrammar(arena.allocator(), default_aliases.syntax);
+
+    return preparedIrSummary(prepared, extracted, flattened);
 }
 
 pub fn generateLocalNodeTypesJsonAlloc(
@@ -278,11 +330,227 @@ fn externalScannerStateCount(source: []const u8) usize {
     return std.fmt.parseUnsigned(usize, source[value_start..end], 10) catch 0;
 }
 
+fn countProductions(variables: []const syntax_ir.SyntaxVariable) usize {
+    var count: usize = 0;
+    for (variables) |variable| count += variable.productions.len;
+    return count;
+}
+
+fn countSteps(variables: []const syntax_ir.SyntaxVariable) usize {
+    var count: usize = 0;
+    for (variables) |variable| {
+        for (variable.productions) |production| count += production.steps.len;
+    }
+    return count;
+}
+
+fn hashPreparedVariables(prepared: grammar_ir.PreparedGrammar) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (prepared.variables) |variable| {
+        hashString(&hasher, variable.name);
+        hashTag(&hasher, @tagName(variable.kind));
+        hashU32(&hasher, variable.symbol.index);
+        hashTag(&hasher, @tagName(variable.symbol.kind));
+        hashU32(&hasher, variable.rule);
+    }
+    return hasher.final();
+}
+
+fn hashPreparedSymbols(prepared: grammar_ir.PreparedGrammar) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (prepared.symbols) |symbol| {
+        hashString(&hasher, symbol.name);
+        hashTag(&hasher, @tagName(symbol.id.kind));
+        hashU32(&hasher, symbol.id.index);
+        hashBool(&hasher, symbol.named);
+        hashBool(&hasher, symbol.visible);
+        hashBool(&hasher, symbol.supertype);
+    }
+    return hasher.final();
+}
+
+fn hashLexicalGrammar(grammar: lexical_ir.LexicalGrammar) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (grammar.variables) |variable| {
+        hashString(&hasher, variable.name);
+        hashTag(&hasher, @tagName(variable.kind));
+        hashU32(&hasher, variable.rule);
+        hashI32(&hasher, variable.implicit_precedence);
+        hashU32(&hasher, variable.start_state);
+        hashTag(&hasher, @tagName(variable.source_kind));
+    }
+    for (grammar.separators) |separator| hashU32(&hasher, separator);
+    return hasher.final();
+}
+
+fn hashSyntaxGrammar(grammar: syntax_ir.SyntaxGrammar) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (grammar.variables) |variable| {
+        hashString(&hasher, variable.name);
+        hashTag(&hasher, @tagName(variable.kind));
+        for (variable.productions) |production| {
+            hashI32(&hasher, production.dynamic_precedence);
+            for (production.steps) |step| hashProductionStep(&hasher, step);
+            hashTag(&hasher, "production_end");
+        }
+    }
+    return hasher.final();
+}
+
+fn hashProductionStep(hasher: *std.hash.Wyhash, step: syntax_ir.ProductionStep) void {
+    hashSymbolRef(hasher, step.symbol);
+    if (step.alias) |alias| {
+        hashBool(hasher, true);
+        hashString(hasher, alias.value);
+        hashBool(hasher, alias.named);
+    } else {
+        hashBool(hasher, false);
+    }
+    if (step.field_name) |field_name| {
+        hashBool(hasher, true);
+        hashString(hasher, field_name);
+    } else {
+        hashBool(hasher, false);
+    }
+    hashBool(hasher, step.field_inherited);
+    hashPrecedenceValue(hasher, step.precedence);
+    hashTag(hasher, @tagName(step.associativity));
+    if (step.reserved_context_name) |context_name| {
+        hashBool(hasher, true);
+        hashString(hasher, context_name);
+    } else {
+        hashBool(hasher, false);
+    }
+}
+
+fn hashSymbolRef(hasher: *std.hash.Wyhash, symbol: syntax_ir.SymbolRef) void {
+    switch (symbol) {
+        .end => hashTag(hasher, "end"),
+        .non_terminal => |index| {
+            hashTag(hasher, "non_terminal");
+            hashU32(hasher, index);
+        },
+        .terminal => |index| {
+            hashTag(hasher, "terminal");
+            hashU32(hasher, index);
+        },
+        .external => |index| {
+            hashTag(hasher, "external");
+            hashU32(hasher, index);
+        },
+    }
+}
+
+fn hashPrecedenceValue(hasher: *std.hash.Wyhash, value: @import("../ir/rules.zig").PrecedenceValue) void {
+    switch (value) {
+        .none => hashTag(hasher, "none"),
+        .integer => |integer| {
+            hashTag(hasher, "integer");
+            hashI32(hasher, integer);
+        },
+        .name => |name| {
+            hashTag(hasher, "name");
+            hashString(hasher, name);
+        },
+    }
+}
+
+fn hashString(hasher: *std.hash.Wyhash, value: []const u8) void {
+    hashUsize(hasher, value.len);
+    hasher.update(value);
+}
+
+fn hashTag(hasher: *std.hash.Wyhash, value: []const u8) void {
+    hashString(hasher, value);
+}
+
+fn hashBool(hasher: *std.hash.Wyhash, value: bool) void {
+    hasher.update(&.{if (value) @as(u8, 1) else 0});
+}
+
+fn hashUsize(hasher: *std.hash.Wyhash, value: usize) void {
+    var buffer: [@sizeOf(usize)]u8 = undefined;
+    std.mem.writeInt(usize, &buffer, value, .little);
+    hasher.update(&buffer);
+}
+
+fn hashU32(hasher: *std.hash.Wyhash, value: u32) void {
+    var buffer: [@sizeOf(u32)]u8 = undefined;
+    std.mem.writeInt(u32, &buffer, value, .little);
+    hasher.update(&buffer);
+}
+
+fn hashI32(hasher: *std.hash.Wyhash, value: i32) void {
+    var buffer: [@sizeOf(i32)]u8 = undefined;
+    std.mem.writeInt(i32, &buffer, value, .little);
+    hasher.update(&buffer);
+}
+
 pub fn renderSummaryJsonAlloc(allocator: std.mem.Allocator, summary: Summary) ![]const u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     try writeSummaryJson(&out.writer, summary, 0);
     return try out.toOwnedSlice();
+}
+
+pub fn writePreparedIrSummaryJson(writer: anytype, summary: PreparedIrSummary, indent: usize) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, indent + 2, "variable_count", summary.variable_count, true);
+    try writeUsizeField(writer, indent + 2, "rule_count", summary.rule_count, true);
+    try writeUsizeField(writer, indent + 2, "symbol_count", summary.symbol_count, true);
+    try writeUsizeField(writer, indent + 2, "external_token_count", summary.external_token_count, true);
+    try writeUsizeField(writer, indent + 2, "extra_rule_count", summary.extra_rule_count, true);
+    try writeUsizeField(writer, indent + 2, "conflict_count", summary.conflict_count, true);
+    try writeUsizeField(writer, indent + 2, "precedence_order_count", summary.precedence_order_count, true);
+    try writeUsizeField(writer, indent + 2, "inline_count", summary.inline_count, true);
+    try writeUsizeField(writer, indent + 2, "supertype_count", summary.supertype_count, true);
+    try writeUsizeField(writer, indent + 2, "reserved_word_set_count", summary.reserved_word_set_count, true);
+    try writeU64HexField(writer, indent + 2, "prepared_variable_hash", summary.prepared_variable_hash, true);
+    try writeU64HexField(writer, indent + 2, "prepared_symbol_hash", summary.prepared_symbol_hash, true);
+    try writeUsizeField(writer, indent + 2, "extracted_syntax_variable_count", summary.extracted_syntax_variable_count, true);
+    try writeUsizeField(writer, indent + 2, "extracted_syntax_production_count", summary.extracted_syntax_production_count, true);
+    try writeUsizeField(writer, indent + 2, "extracted_syntax_step_count", summary.extracted_syntax_step_count, true);
+    try writeUsizeField(writer, indent + 2, "extracted_lexical_variable_count", summary.extracted_lexical_variable_count, true);
+    try writeUsizeField(writer, indent + 2, "extracted_lexical_separator_count", summary.extracted_lexical_separator_count, true);
+    try writeU64HexField(writer, indent + 2, "extracted_lexical_hash", summary.extracted_lexical_hash, true);
+    try writeUsizeField(writer, indent + 2, "flattened_syntax_variable_count", summary.flattened_syntax_variable_count, true);
+    try writeUsizeField(writer, indent + 2, "flattened_syntax_production_count", summary.flattened_syntax_production_count, true);
+    try writeUsizeField(writer, indent + 2, "flattened_syntax_step_count", summary.flattened_syntax_step_count, true);
+    try writeU64HexField(writer, indent + 2, "flattened_syntax_hash", summary.flattened_syntax_hash, false);
+    try writeIndent(writer, indent);
+    try writer.writeByte('}');
+}
+
+fn preparedIrSummary(
+    prepared: grammar_ir.PreparedGrammar,
+    extracted: extract_tokens.ExtractedGrammars,
+    flattened: syntax_ir.SyntaxGrammar,
+) PreparedIrSummary {
+    return .{
+        .variable_count = prepared.variables.len,
+        .rule_count = prepared.rules.len,
+        .symbol_count = prepared.symbols.len,
+        .external_token_count = prepared.external_tokens.len,
+        .extra_rule_count = prepared.extra_rules.len,
+        .conflict_count = prepared.expected_conflicts.len,
+        .precedence_order_count = prepared.precedence_orderings.len,
+        .inline_count = prepared.variables_to_inline.len,
+        .supertype_count = prepared.supertype_symbols.len,
+        .reserved_word_set_count = prepared.reserved_word_sets.len,
+        .prepared_variable_hash = hashPreparedVariables(prepared),
+        .prepared_symbol_hash = hashPreparedSymbols(prepared),
+        .extracted_syntax_variable_count = extracted.syntax.variables.len,
+        .extracted_syntax_production_count = countProductions(extracted.syntax.variables),
+        .extracted_syntax_step_count = countSteps(extracted.syntax.variables),
+        .extracted_lexical_variable_count = extracted.lexical.variables.len,
+        .extracted_lexical_separator_count = extracted.lexical.separators.len,
+        .extracted_lexical_hash = hashLexicalGrammar(extracted.lexical),
+        .flattened_syntax_variable_count = flattened.variables.len,
+        .flattened_syntax_production_count = countProductions(flattened.variables),
+        .flattened_syntax_step_count = countSteps(flattened.variables),
+        .flattened_syntax_hash = hashSyntaxGrammar(flattened),
+    };
 }
 
 pub fn writeSummaryJson(writer: anytype, summary: Summary, indent: usize) !void {
@@ -618,4 +886,25 @@ test "generateLocalSummaryAlloc summarizes a tiny grammar" {
     try std.testing.expectEqualStrings("basic", summary.grammar_name);
     try std.testing.expect(summary.rule_count > 0);
     try std.testing.expect(summary.serialized_state_count > 0);
+}
+
+test "generateLocalPreparedIrSummaryAlloc summarizes preparation stages" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "grammar.json",
+        .data = fixtures.validBlankGrammarJson().contents,
+    });
+
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "grammar.json", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+
+    const summary = try generateLocalPreparedIrSummaryAlloc(std.testing.allocator, path, .{});
+
+    try std.testing.expect(summary.variable_count > 0);
+    try std.testing.expect(summary.rule_count > 0);
+    try std.testing.expect(summary.prepared_variable_hash != 0);
+    try std.testing.expect(summary.extracted_syntax_variable_count > 0);
+    try std.testing.expect(summary.flattened_syntax_hash != 0);
 }

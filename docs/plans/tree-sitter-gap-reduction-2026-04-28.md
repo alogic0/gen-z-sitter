@@ -177,6 +177,8 @@ Gate:
 - [ ] Add a prepared-IR diff for variables, hidden rules, inlined rules,
   auxiliary rules, lexical variables, external tokens, conflicts, and
   precedence ordering.
+  - [x] Add deterministic local prepared/extracted/flattened IR summary
+    counts and hashes to the upstream comparison report.
 - [ ] Reproduce upstream repeat expansion and dedup behavior where local names
   or rule shapes still differ.
 - [ ] Reproduce upstream token extraction behavior for hidden terminals,
@@ -192,6 +194,12 @@ Gate:
 
 - JSON, Ziggy, Zig, C, Bash, and Haskell prepared summaries are diffable with
   no unclassified preparation gaps.
+
+Batch 8 note: `compare-upstream` now emits a `local_prepared_ir` section with
+prepared variable/symbol hashes plus extracted lexical and flattened syntax
+counts/hashes. This is intentionally local-only until an upstream prepared-IR
+oracle is added, but it gives future preparation changes a stable artifact and
+keeps pass-order work separate from parse-table construction.
 
 ### 2.3 Node Types, Fields, Aliases, and Supertypes
 

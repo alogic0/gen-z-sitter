@@ -17,6 +17,10 @@ pub fn runCompareUpstream(allocator: std.mem.Allocator, io: std.Io, opts: args.C
         .minimize_states = opts.minimize_states,
     });
     defer upstream_summary.deinitSummary(allocator, local);
+    const local_prepared = try upstream_summary.generateLocalPreparedIrSummaryAlloc(allocator, opts.grammar_path, .{
+        .js_runtime = opts.js_runtime orelse "node",
+        .minimize_states = opts.minimize_states,
+    });
 
     const output_root = opts.output_dir orelse ".zig-cache/upstream-compare";
     const snapshot = try runUpstreamSnapshotAlloc(allocator, opts, output_root, local.grammar_name);
@@ -34,7 +38,7 @@ pub fn runCompareUpstream(allocator: std.mem.Allocator, io: std.Io, opts: args.C
         &.{};
     defer if (snapshot.summary != null) upstream_summary.deinitDiffs(allocator, diffs);
 
-    const report = try renderReportAlloc(allocator, local, local_artifacts, snapshot, diffs, corpus, node_types);
+    const report = try renderReportAlloc(allocator, local, local_prepared, local_artifacts, snapshot, diffs, corpus, node_types);
     defer allocator.free(report);
 
     if (opts.output_dir) |output_dir| {
@@ -490,6 +494,7 @@ fn treeSitterFunctionNameAlloc(allocator: std.mem.Allocator, grammar_name: []con
 fn renderReportAlloc(
     allocator: std.mem.Allocator,
     local: upstream_summary.Summary,
+    local_prepared: upstream_summary.PreparedIrSummary,
     local_artifacts: LocalArtifacts,
     reference: ReferenceStatus,
     diffs: []const upstream_summary.SummaryDiff,
@@ -503,6 +508,9 @@ fn renderReportAlloc(
     try writer.writeAll("{\n");
     try writer.writeAll("  \"local\":\n");
     try upstream_summary.writeSummaryJson(writer, local, 2);
+    try writer.writeAll(",\n");
+    try writer.writeAll("  \"local_prepared_ir\":\n");
+    try upstream_summary.writePreparedIrSummaryJson(writer, local_prepared, 2);
     try writer.writeAll(",\n");
     try writer.writeAll("  \"local_artifacts\": {\n");
     try writer.writeAll("    \"output_dir\": ");
@@ -657,6 +665,7 @@ test "runCompareUpstream writes local summary report" {
     const report = try output_tmp.dir.readFileAlloc(std.testing.io, "local-upstream-summary.json", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(report);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"local\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report, "\"local_prepared_ir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"upstream\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"available\": false") != null);
 }
