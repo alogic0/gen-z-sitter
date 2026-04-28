@@ -30,7 +30,7 @@ Zig uses two relevant output locations:
   steps.
 - `zig-out/` is the default install prefix for the command line binary.
 
-`zig build` compiles `gen-z-sitter` through Zig's build cache and copies the
+`zig build` compiles `gen-z-sitter` in Zig's build cache and copies the
 installed binary into:
 
 ```bash
@@ -66,9 +66,16 @@ Use `zig build install -p` to install into another directory. The executable is
 placed under that directory's `bin/` folder:
 
 ```bash
-zig build install -p /tmp/gen-z-sitter-install
-/tmp/gen-z-sitter-install/bin/gen-z-sitter help
+zig build install -p /usr/local
 ```
+
+Then run:
+
+```bash
+gen-z-sitter help
+```
+
+if `/usr/local/bin/` is in your `$PATH`.
 
 The generated CLI binary is self-contained for this project. It does not need
 supplemental project data files next to it. Runtime notes:
@@ -105,32 +112,38 @@ compatibility suite, so it takes longer than the fast local gates.
 Validate and summarize a grammar:
 
 ```bash
-zig build run -- generate path/to/grammar.json
+gen-z-sitter generate path/to/grammar.json
+```
+
+Or use Zig's run step while developing:
+
+```bash
+gen-z-sitter generate path/to/grammar.json
 ```
 
 Load a JavaScript grammar through Node:
 
 ```bash
-zig build run -- generate --js-runtime node path/to/grammar.js
+gen-z-sitter generate --js-runtime node path/to/grammar.js
 ```
 
 Print prepared grammar IR:
 
 ```bash
-zig build run -- generate --debug-prepared path/to/grammar.json
+gen-z-sitter generate --debug-prepared path/to/grammar.json
 ```
 
 Print parser states that reference a rule:
 
 ```bash
-zig build run -- generate --report-states-for-rule expression path/to/grammar.json
+gen-z-sitter generate --report-states-for-rule expression path/to/grammar.json
 ```
 
 Print parser emission and optimization statistics:
 
 ```bash
-zig build run -- generate --json-summary path/to/grammar.json
-zig build run -- generate --json-summary --minimize path/to/grammar.json
+gen-z-sitter generate --json-summary path/to/grammar.json
+gen-z-sitter generate --json-summary --minimize path/to/grammar.json
 ```
 
 ## Generate `node-types.json`
@@ -139,7 +152,7 @@ To write `node-types.json`:
 
 ```bash
 mkdir -p out
-zig build run -- generate --output out path/to/grammar.json
+gen-z-sitter generate --output out path/to/grammar.json
 ```
 
 The output file is:
@@ -158,7 +171,7 @@ To emit parser C:
 
 ```bash
 mkdir -p out
-zig build run -- generate --output out --emit-parser-c path/to/grammar.json
+gen-z-sitter generate --output out --emit-parser-c path/to/grammar.json
 ```
 
 The output files are:
@@ -171,7 +184,7 @@ out/parser.c
 To enable the experimental generated GLR loop and temporary result API:
 
 ```bash
-zig build run -- generate --output out --emit-parser-c --glr-loop path/to/grammar.json
+gen-z-sitter generate --output out --emit-parser-c --glr-loop path/to/grammar.json
 ```
 
 When `--glr-loop` is enabled, generated C exposes:
@@ -224,7 +237,7 @@ compile generated C to WebAssembly yourself.
 
 ```bash
 mkdir -p out
-zig build run -- generate --output out path/to/grammar.json
+gen-z-sitter generate --output out path/to/grammar.json
 ```
 
 Use `out/node-types.json` to understand named nodes and fields. A highlighter
@@ -234,7 +247,7 @@ can use this metadata to decide which node types should receive classes such as
 ### Step 2: Generate Experimental Parser C
 
 ```bash
-zig build run -- generate --output out --emit-parser-c --glr-loop path/to/grammar.json
+gen-z-sitter generate --output out --emit-parser-c --glr-loop path/to/grammar.json
 ```
 
 This writes `out/parser.c`. For a browser experiment, compile that parser with a
