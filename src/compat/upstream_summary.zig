@@ -1618,6 +1618,12 @@ fn writeRegexVariableSurfaceJson(
     try writeJsonString(writer, variable.name);
     try writer.writeAll(", \"kind\": ");
     try writeJsonString(writer, lexicalVariableKindName(variable.kind));
+    try writer.writeAll(", \"source_kind\": ");
+    try writeJsonString(writer, lexicalSourceKindName(variable.source_kind));
+    try writer.writeAll(", \"implicit_precedence\": ");
+    try writer.print("{d}", .{variable.implicit_precedence});
+    try writer.writeAll(", \"start_state\": ");
+    try writer.print("{d}", .{variable.start_state});
     try writer.writeAll(", \"pattern_count\": ");
     try writer.print("{d}", .{patterns.len});
     try writer.writeAll(", \"patterns\": [");
@@ -1871,6 +1877,15 @@ fn lexicalVariableKindName(kind: lexical_ir.VariableKind) []const u8 {
         .hidden => "hidden",
         .anonymous => "anonymous",
         .auxiliary => "auxiliary",
+    };
+}
+
+fn lexicalSourceKindName(kind: lexical_ir.SourceKind) []const u8 {
+    return switch (kind) {
+        .string => "string",
+        .pattern => "pattern",
+        .composite => "composite",
+        .token => "token",
     };
 }
 
@@ -3299,6 +3314,9 @@ test "generateLocalRegexSurfaceSummaryJsonAlloc writes pattern feature summaries
     defer std.testing.allocator.free(json);
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"pattern_count\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"source_kind\": \"pattern\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"implicit_precedence\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"start_state\": 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"class_range\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"shorthand_escape\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"hex_escape\": 1") != null);

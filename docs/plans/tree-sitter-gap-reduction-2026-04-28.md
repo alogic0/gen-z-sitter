@@ -513,6 +513,8 @@ Goal: close the scanner-free lexical gap enough for larger real grammars.
     lazy quantifiers in regex-surface artifacts.
   - [x] Expose class-range, negated-class, escape-kind, and repetition-kind
     diagnostics in regex-surface artifacts.
+  - [x] Expose lexical source kind, implicit precedence, and start state in
+    regex-surface artifacts so token/immediate boundaries are visible.
 - [ ] Add grammar-level tests where regex support affects accepted input, not
   just regex unit tests.
   - [x] Cover scanner-free accepted input for character classes, escapes, and
@@ -556,6 +558,11 @@ serialized keyword lexer, matching the ordinary lex-table `accepts` surface.
 This makes reserved-word keyword terminal mapping inspectable in comparison
 artifacts. The batch also tightened regex-surface coverage around the
 per-pattern `alternation` JSON field.
+
+Batch 86 note: regex-surface variable entries now include lexical source kind,
+implicit precedence, and start state. This makes token and immediate-token
+boundaries visible in regex audit artifacts instead of requiring a separate
+prepared-IR dump lookup.
 
 ### 4.2 Lex Table Construction
 
