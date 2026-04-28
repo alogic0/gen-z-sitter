@@ -185,6 +185,8 @@ Gate:
     top-level lexical rules named after their grammar variable.
   - [x] Keep nested composite token extraction from crashing when no literal
     terminal name exists.
+  - [x] Extract public all-pattern composite lexical rules as named terminals
+    while preserving syntax-side repeat auxiliaries and hidden extras.
 
 Gate:
 
@@ -228,6 +230,14 @@ repeat multiplicity, and empty `fields: {}` emission for non-leaf syntax nodes.
 The Ziggy comparison still reports extra anonymous regex component node types,
 so the next node-types target is distinguishing public token entries from
 lexical helper terminals in composite token extraction.
+
+Batch 6 note: Ziggy top-level node-type identities now match upstream. The
+remaining Ziggy node-types hash difference is narrower: local and upstream
+disagree on empty `fields: {}` emission and ordering for a small set of named
+leaf nodes such as `comment`, `escape_sequence`, `float`, `integer`,
+`line_string`, `struct_name`, `tag`, and `top_comment`. The next node-types
+slice should model upstream's field-section presence rule for syntax variables
+that lower through lexical/repeat-token paths.
 
 ## Phase 3 — Parse Table Algorithm Parity
 

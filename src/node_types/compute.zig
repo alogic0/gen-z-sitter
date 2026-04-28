@@ -130,6 +130,7 @@ pub fn computeNodeTypes(
         const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
         const alias = defaults.findForSymbol(symbol);
         if (!referenced_terminals[index] and alias == null) continue;
+        if (alias == null and variable.kind == .anonymous and variable.source_kind == .pattern) continue;
         if (!isVisibleLexicalVariable(variable, alias)) continue;
         const kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults);
         const named = isNamedLexicalVariable(variable, alias);

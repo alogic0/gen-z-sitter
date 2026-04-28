@@ -7,6 +7,7 @@ pub const LexicalVariable = struct {
     rule: rules.RuleId,
     implicit_precedence: i32 = 0,
     start_state: u32 = 0,
+    source_kind: SourceKind = .string,
 };
 
 pub const VariableKind = enum {
@@ -14,6 +15,12 @@ pub const VariableKind = enum {
     anonymous,
     hidden,
     auxiliary,
+};
+
+pub const SourceKind = enum {
+    string,
+    pattern,
+    composite,
 };
 
 pub const LexicalGrammar = struct {

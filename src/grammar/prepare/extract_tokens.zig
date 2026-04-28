@@ -108,7 +108,7 @@ const Extractor = struct {
         switch (word.kind) {
             .non_terminal => {
                 const variable = self.prepared.variables[word.index];
-                if (self.tryEnsureLexicalVariable(variable.name, variable.rule)) |terminal_index| {
+                if (self.tryEnsureLexicalVariable(variable.name, variable.rule, variable.name)) |terminal_index| {
                     return .{ .terminal = terminal_index };
                 }
                 return error.InvalidWordToken;
@@ -356,7 +356,7 @@ const Extractor = struct {
         lexical_preferred_name: ?[]const u8,
     ) ExtractTokensError![]syntax_ir.Production {
         const lexical_name = lexical_preferred_name orelse if (self.lexicalRuleHasDirectLiteralName(rule_id)) null else variable_name;
-        if (self.tryEnsureLexicalVariable(lexical_name, rule_id)) |terminal_index| {
+        if (self.tryEnsureLexicalVariable(lexical_name, rule_id, lexical_preferred_name)) |terminal_index| {
             return try self.singleStepProductions(.{
                 .symbol = .{ .terminal = terminal_index },
             });
@@ -422,7 +422,7 @@ const Extractor = struct {
         lexical_preferred_name: ?[]const u8,
     ) ExtractTokensError![]syntax_ir.Production {
         if (metadata.data.token or metadata.data.immediate_token) {
-            if (self.tryEnsureLexicalVariable(lexical_preferred_name, @intCast(metadata.inner))) |terminal_index| {
+            if (self.tryEnsureLexicalVariable(lexical_preferred_name, @intCast(metadata.inner), lexical_preferred_name)) |terminal_index| {
                 const productions = try self.singleStepProductions(.{
                     .symbol = .{ .terminal = terminal_index },
                 });
@@ -450,8 +450,13 @@ const Extractor = struct {
         }
     }
 
-    fn tryEnsureLexicalVariable(self: *Extractor, preferred_name: ?[]const u8, rule_id: ir_rules.RuleId) ?u32 {
-        if (!self.isLexicalRule(rule_id)) return null;
+    fn tryEnsureLexicalVariable(
+        self: *Extractor,
+        preferred_name: ?[]const u8,
+        rule_id: ir_rules.RuleId,
+        lexical_boundary_name: ?[]const u8,
+    ) ?u32 {
+        if (!self.isLexicalRule(rule_id, lexical_boundary_name)) return null;
 
         if (self.findLexicalVariable(rule_id)) |index| return index;
 
@@ -462,6 +467,7 @@ const Extractor = struct {
             .name = name,
             .kind = kind,
             .rule = rule_id,
+            .source_kind = self.lexicalSourceKindForRule(rule_id),
         }) catch return null;
         return @intCast(self.lexical_variables.items.len - 1);
     }
@@ -571,10 +577,19 @@ const Extractor = struct {
         return try result.toOwnedSlice();
     }
 
-    fn isLexicalRule(self: *Extractor, rule_id: ir_rules.RuleId) bool {
+    fn isLexicalRule(self: *Extractor, rule_id: ir_rules.RuleId, lexical_boundary_name: ?[]const u8) bool {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
             .string, .pattern => true,
+            .blank => false,
             .metadata => |metadata| (metadata.data.token or metadata.data.immediate_token) and self.isTokenContentRule(metadata.inner),
+            .seq, .choice => if (lexical_boundary_name) |name|
+                !std.mem.eql(u8, name, "source_file") and
+                    !isHiddenName(name) and
+                    self.isTokenContentRule(rule_id) and
+                    self.tokenContentContainsPattern(rule_id) and
+                    !self.tokenContentContainsString(rule_id)
+            else
+                false,
             else => false,
         };
     }
@@ -609,6 +624,36 @@ const Extractor = struct {
         };
     }
 
+    fn tokenContentContainsPattern(self: *Extractor, rule_id: ir_rules.RuleId) bool {
+        return switch (self.prepared.rules[@intCast(rule_id)]) {
+            .pattern => true,
+            .choice, .seq => |members| blk: {
+                for (members) |member| {
+                    if (self.tokenContentContainsPattern(member)) break :blk true;
+                }
+                break :blk false;
+            },
+            .repeat, .repeat1 => |inner| self.tokenContentContainsPattern(inner),
+            .metadata => |metadata| self.tokenContentContainsPattern(metadata.inner),
+            else => false,
+        };
+    }
+
+    fn tokenContentContainsString(self: *Extractor, rule_id: ir_rules.RuleId) bool {
+        return switch (self.prepared.rules[@intCast(rule_id)]) {
+            .string => true,
+            .choice, .seq => |members| blk: {
+                for (members) |member| {
+                    if (self.tokenContentContainsString(member)) break :blk true;
+                }
+                break :blk false;
+            },
+            .repeat, .repeat1 => |inner| self.tokenContentContainsString(inner),
+            .metadata => |metadata| self.tokenContentContainsString(metadata.inner),
+            else => false,
+        };
+    }
+
     fn lexicalNameForRule(self: *Extractor, rule_id: ir_rules.RuleId, preferred_name: ?[]const u8) []const u8 {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
             .string => |value| if (preferred_name) |name|
@@ -634,11 +679,23 @@ const Extractor = struct {
             else => .named,
         };
     }
+
+    fn lexicalSourceKindForRule(self: *Extractor, rule_id: ir_rules.RuleId) lexical_ir.SourceKind {
+        return switch (self.prepared.rules[@intCast(rule_id)]) {
+            .string => .string,
+            .pattern => .pattern,
+            .metadata => |metadata| self.lexicalSourceKindForRule(metadata.inner),
+            else => .composite,
+        };
+    }
 };
 
 fn shouldUseLiteralLexicalName(preferred_name: []const u8) bool {
-    return std.mem.eql(u8, preferred_name, "source_file") or
-        (preferred_name.len > 0 and preferred_name[0] == '_');
+    return std.mem.eql(u8, preferred_name, "source_file") or isHiddenName(preferred_name);
+}
+
+fn isHiddenName(name: []const u8) bool {
+    return name.len > 0 and name[0] == '_';
 }
 
 const RepeatKey = struct {
