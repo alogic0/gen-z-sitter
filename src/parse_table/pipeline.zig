@@ -336,9 +336,7 @@ fn lexStateTerminalConflictMapAlloc(
             if (index >= lexical.variables.len) continue;
             if (lexical.variables[index].source_kind != .string) continue;
             const left_status = conflict_map.status(index, word_index);
-            const right_status = conflict_map.status(word_index, index);
-            keyword_tokens[index] = left_status.matches_same_string or
-                right_status.matches_same_string;
+            keyword_tokens[index] = tokenStatusMarksKeyword(left_status);
         }
     }
 
@@ -369,6 +367,10 @@ fn lexStateTerminalConflictMapAlloc(
         .keyword_tokens = keyword_tokens,
         .external_internal_tokens = external_internal_tokens,
     };
+}
+
+fn tokenStatusMarksKeyword(status: lexer_model.TokenConflictStatus) bool {
+    return status.matches_same_string and !status.matches_different_string;
 }
 
 pub fn generateStateActionDumpFromPrepared(
@@ -2003,6 +2005,15 @@ test "attachKeywordLexTableAlloc maps real reserved-word strings" {
 
     try std.testing.expect(serialized.keyword_lex_table != null);
     try std.testing.expectEqual(@as(usize, 0), serialized.keyword_unmapped_reserved_word_count);
+}
+
+test "lexStateTerminalConflictMapAlloc only marks exact word-token strings as keywords" {
+    try std.testing.expect(tokenStatusMarksKeyword(.{ .matches_same_string = true }));
+    try std.testing.expect(!tokenStatusMarksKeyword(.{
+        .matches_same_string = true,
+        .matches_different_string = true,
+    }));
+    try std.testing.expect(!tokenStatusMarksKeyword(.{}));
 }
 
 test "serializeTableFromPrepared carries promoted default aliases into alias sequences" {

@@ -103,7 +103,7 @@ Batch order:
 - [x] Identify whether the blocker is grammar preparation, item-set closure,
   conflict resolution, minimization, serialization, lexing, or C emission.
 - [x] Add or refine comparison keys where the current artifacts are too coarse.
-- [ ] Add a focused regression fixture for the smallest discovered algorithm
+- [x] Add a focused regression fixture for the smallest discovered algorithm
   difference.
 - [x] Implement the first focused upstream-aligned parser-table fixes.
 - [ ] Replace the partial inline expansion with upstream-style extracted-symbol
@@ -117,6 +117,9 @@ Batch order:
 - [ ] Reduce or explain the surviving JavaScript `shift_reduce_expected` rows,
   starting with the `primary_expression` / `lexical_declaration` samples on
   lookahead terminal 41.
+- [ ] Promote the next state-count mover from symbol/token parity: local
+  JavaScript currently exposes 92 lexical tokens versus upstream's 134, so
+  some upstream-distinct lookahead rows cannot split local states yet.
 
 Batch 2 note: JavaScript comparison now writes
 `.zig-cache/upstream-compare-javascript/local-upstream-summary.json`. Two
@@ -201,6 +204,21 @@ remaining concrete surface is the 14 default / 7 minimized
 `shift_reduce_expected` rows, especially the repeated
 `primary_expression`/`lexical_declaration` samples, rather than a generic
 minimizer grouping condition.
+
+Batch 8 note: the `primary_expression`/`lexical_declaration` samples were
+reduced enough to rule out the stale inline-cursor explanation: both the current
+and prior JavaScript artifacts have zero finalized items whose cursor is on one
+of JavaScript's inline variables. The visible lookahead terminal 41 is `[`, and
+the extra `lexical_declaration` member comes from declaration items whose next
+symbol can begin with an array pattern. One small upstream minimizer mismatch
+was fixed: keyword-token classification now follows upstream's one-way
+`does_match_same_string && !does_match_different_string` rule instead of local's
+broader symmetric same-string check, with a focused parser-table regression.
+The bounded JavaScript comparison still reports 1,626 minimized states, 14
+default unresolved expected-conflict rows, and 7 minimized unresolved
+expected-conflict rows. The next state-count mover is therefore likely earlier
+symbol/token parity, not another generic compatible-minimizer split: local
+JavaScript exposes 92 lexical tokens while upstream exposes 134.
 
 Gate:
 
