@@ -1418,6 +1418,7 @@ pub const BuildOptions = struct {
     lex_state_terminal_conflicts: ?LexStateTerminalConflictMap = null,
     minimize_states: bool = false,
     strict_expected_conflicts: bool = false,
+    include_unresolved_parse_actions: bool = true,
     construct_profile: ?*ConstructProfile = null,
 };
 

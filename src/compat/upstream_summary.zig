@@ -135,6 +135,7 @@ pub fn generateLocalSummaryAlloc(
         .{
             .minimize_states = options.minimize_states,
             .strict_expected_conflicts = false,
+            .include_unresolved_parse_actions = false,
         },
     );
     const emission_stats = try parser_c_emit.collectEmissionStatsWithOptions(arena.allocator(), serialized, .{
@@ -255,6 +256,7 @@ pub fn generateLocalParserCAlloc(
         .{
             .minimize_states = options.minimize_states,
             .strict_expected_conflicts = false,
+            .include_unresolved_parse_actions = false,
         },
     );
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
@@ -418,6 +420,7 @@ pub fn generateLocalMinimizationSummaryJsonAlloc(
         .{
             .minimize_states = false,
             .strict_expected_conflicts = false,
+            .include_unresolved_parse_actions = false,
         },
     );
     const minimized_serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
@@ -427,6 +430,7 @@ pub fn generateLocalMinimizationSummaryJsonAlloc(
         .{
             .minimize_states = true,
             .strict_expected_conflicts = false,
+            .include_unresolved_parse_actions = false,
         },
     );
 
@@ -481,6 +485,7 @@ pub fn generateLocalLexTableSummaryJsonAlloc(
         .{
             .minimize_states = options.minimize_states,
             .strict_expected_conflicts = false,
+            .include_unresolved_parse_actions = false,
         },
     );
 

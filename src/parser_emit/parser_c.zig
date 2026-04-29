@@ -198,7 +198,7 @@ pub fn writeParserCWithOptions(
     const has_external_scanner = compacted.external_scanner.symbols.len != 0 and compacted.external_scanner.states.len != 0;
     const emitted_symbols = try collectEmittedSymbols(allocator, compacted);
     defer deinitEmittedSymbols(allocator, emitted_symbols);
-    const parse_action_list = if (options.glr_loop and compacted.parse_action_list.len > 0)
+    const parse_action_list = if (options.glr_loop and compacted.parse_action_list.len > 0 and !has_unresolved)
         compacted.parse_action_list
     else if (options.glr_loop)
         try serialize.buildParseActionListAlloc(arena.allocator(), compacted.states, compacted.productions)

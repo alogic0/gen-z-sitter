@@ -433,7 +433,7 @@ pub fn generateSerializedTableDumpFromPrepared(
     mode: serialize.SerializeMode,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode);
+    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode, true);
     return try debug_dump.dumpSerializedTableAlloc(allocator, serialized);
 }
 
@@ -452,7 +452,7 @@ pub fn generateParserTableEmitterDumpFromPreparedWithOptions(
     options: emit_optimize.Options,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode);
+    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode, true);
     return try parser_tables_emit.emitSerializedTableAllocWithOptions(allocator, serialized, options);
 }
 
@@ -471,7 +471,7 @@ pub fn generateParserCEmitterDumpFromPreparedWithOptions(
     options: emit_optimize.Options,
 ) PipelineError![]const u8 {
     const result = try buildStatesFromPrepared(allocator, prepared);
-    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode);
+    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode, true);
     return try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, options);
 }
 
@@ -622,7 +622,7 @@ pub fn serializeTableFromPreparedWithBuildOptions(
     const timer = maybeStartTimer(progress_log);
     const stage_profile_timer = profileTimer(profile_log);
     if (progress_log) logPipelineStart("serialize_build_result");
-    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode);
+    const serialized = try serializePreparedBuildResultAlloc(allocator, prepared, result, mode, build_options.include_unresolved_parse_actions);
     logProfileDone("serialize_build_result", stage_profile_timer);
     if (progress_log) {
         maybeLogPipelineDone("serialize_build_result", timer);
@@ -639,6 +639,7 @@ fn serializePreparedBuildResultAlloc(
     prepared: grammar_ir.PreparedGrammar,
     result: build.BuildResult,
     mode: serialize.SerializeMode,
+    include_unresolved_parse_actions: bool,
 ) PipelineError!serialize.SerializedTable {
     const profile_log = shouldProfilePipeline();
     var stage_profile_timer = profileTimer(profile_log);
@@ -657,24 +658,28 @@ fn serializePreparedBuildResultAlloc(
     stage_profile_timer = profileTimer(profile_log);
     var serialized = try serialize.attachPreparedMetadataAlloc(
         allocator,
-        try serialize.serializeBuildResult(allocator, result, mode),
+        try serialize.serializeBuildResultWithOptions(allocator, result, mode, .{
+            .include_unresolved_parse_actions = include_unresolved_parse_actions,
+        }),
         prepared,
     );
     logProfileDone("serialize.build_result_and_metadata", stage_profile_timer);
     stage_profile_timer = profileTimer(profile_log);
-    serialized = try serialize.attachExtraShiftMetadataAlloc(
+    serialized = try serialize.attachExtraShiftMetadataWithOptionsAlloc(
         allocator,
         serialized,
         extracted.syntax.extra_symbols,
+        .{ .include_unresolved_parse_actions = include_unresolved_parse_actions },
     );
     logProfileDone("serialize.extra_shift_metadata", stage_profile_timer);
     stage_profile_timer = profileTimer(profile_log);
-    serialized = try serialize.attachRepetitionShiftMetadataWithFirstSetsAlloc(
+    serialized = try serialize.attachRepetitionShiftMetadataWithFirstSetsAndOptionsAlloc(
         allocator,
         serialized,
         result.states,
         result.productions,
         first_sets,
+        .{ .include_unresolved_parse_actions = include_unresolved_parse_actions },
     );
     logProfileDone("serialize.repetition_shift_metadata", stage_profile_timer);
     stage_profile_timer = profileTimer(profile_log);

@@ -57,7 +57,7 @@ pub fn compactSerializedTableAlloc(
     }
 
     const large_state_count = try serialize.computeLargeStateCountAlloc(allocator, compacted_states, serialized.productions);
-    const parse_action_list = try serialize.buildParseActionListAlloc(allocator, compacted_states, serialized.productions);
+    const parse_action_list = try serialize.buildRuntimeParseActionListAlloc(allocator, compacted_states, serialized.productions);
     const lex_modes = try lexer_serialize.buildLexModesAlloc(allocator, compacted_states);
     compactLexModeExternalStates(@constCast(lex_modes), serialized.lex_modes, serialized.states, state_owners);
     const primary_state_ids = try serialize.buildPrimaryStateIdsAlloc(allocator, compacted_states);

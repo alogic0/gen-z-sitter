@@ -296,8 +296,18 @@ fn runCorpusComparisonAlloc(
     defer allocator.free(local_exe);
     const upstream_exe = try std.fs.path.join(allocator, &.{ output_root, "upstream-parser-runner" });
     defer allocator.free(upstream_exe);
-    try compileParserRunner(allocator, local_parser_path, output_root, driver_path, local_exe);
-    try compileParserRunner(allocator, snapshot.parser_c_path.?, snapshot.output_dir.?, driver_path, upstream_exe);
+    compileParserRunner(allocator, local_parser_path, output_root, driver_path, local_exe) catch |err| {
+        return .{
+            .status = try allocator.dupe(u8, "runner_compile_failed"),
+            .note = try std.fmt.allocPrint(allocator, "local corpus runner failed to compile: {s}", .{@errorName(err)}),
+        };
+    };
+    compileParserRunner(allocator, snapshot.parser_c_path.?, snapshot.output_dir.?, driver_path, upstream_exe) catch |err| {
+        return .{
+            .status = try allocator.dupe(u8, "runner_compile_failed"),
+            .note = try std.fmt.allocPrint(allocator, "upstream corpus runner failed to compile: {s}", .{@errorName(err)}),
+        };
+    };
 
     const samples = try loadCorpusSamplesAlloc(allocator, opts.grammar_path, grammar_name);
     defer {

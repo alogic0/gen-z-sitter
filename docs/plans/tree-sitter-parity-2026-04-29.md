@@ -77,27 +77,40 @@ zig build run-compare-upstream -Dupstream-compare-grammar=compat_targets/tree_si
 
 Batch order:
 
-- [ ] Run the JavaScript local/upstream comparison command and inspect
+- [x] Run the JavaScript local/upstream comparison command and inspect
   `.zig-cache/upstream-compare-javascript/local-upstream-summary.json`.
-- [ ] Record the first concrete JavaScript parser-table parity gap in this
+- [x] Record the first concrete JavaScript parser-table parity gap in this
   plan.
-- [ ] Add or refine comparison artifacts only if the current summary is too
+- [x] Add or refine comparison artifacts only if the current summary is too
   coarse to classify the gap.
 - [ ] Add the smallest focused fixture that reproduces the discovered gap.
 - [ ] Implement the smallest upstream-aligned fix.
 - [ ] Re-run the JavaScript comparison and refresh only affected checked-in
   artifacts.
 
-- [ ] Run local parser-state, item-set, conflict, minimization, lex-table, and
+- [x] Run local parser-state, item-set, conflict, minimization, lex-table, and
   parser-C summaries for the primary grammar.
-- [ ] Run bounded upstream comparison for the same grammar using `../tree-sitter`.
-- [ ] Identify whether the blocker is grammar preparation, item-set closure,
+- [x] Run bounded upstream comparison for the same grammar using `../tree-sitter`.
+- [x] Identify whether the blocker is grammar preparation, item-set closure,
   conflict resolution, minimization, serialization, lexing, or C emission.
-- [ ] Add or refine comparison keys where the current artifacts are too coarse.
+- [x] Add or refine comparison keys where the current artifacts are too coarse.
 - [ ] Add a focused regression fixture for the smallest discovered algorithm
   difference.
 - [ ] Implement the smallest upstream-aligned parser-table fix.
 - [ ] Refresh only the affected golden/report artifacts.
+
+Batch 2 note: JavaScript comparison now writes
+`.zig-cache/upstream-compare-javascript/local-upstream-summary.json`. Two
+comparison infrastructure gaps were fixed first: runtime-only parse-action lists
+can now omit unresolved diagnostic candidate rows for bounded comparison and
+state compaction, and corpus runner compile failure is recorded in the corpus
+section instead of aborting parser-table comparison. The first concrete
+JavaScript parser-table gap is conflict/parse-table construction: local
+JavaScript is still `blocked=true`, has 11,157 serialized states, and reports
+24,976 unresolved decisions; upstream emits an unblocked parser with 1,870
+states. The smallest visible surface to reduce next is expected-conflict and
+reserved-identifier conflict handling, starting from the unresolved samples in
+the generated `local/conflict-summary.json`.
 
 Gate:
 

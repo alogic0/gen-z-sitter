@@ -755,6 +755,7 @@ pub fn runTarget(
             .diagnostic,
             .{
                 .closure_lookahead_mode = .none,
+                .include_unresolved_parse_actions = false,
                 .construct_profile = &parse_construct_profile,
             },
         ) catch |err| {

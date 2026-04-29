@@ -320,6 +320,23 @@ pub fn serializeBuildResult(
     result: build.BuildResult,
     mode: SerializeMode,
 ) SerializeError!SerializedTable {
+    return try serializeBuildResultWithOptions(allocator, result, mode, .{});
+}
+
+pub const BuildResultSerializeOptions = struct {
+    include_unresolved_parse_actions: bool = true,
+};
+
+pub const ParseActionTableOptions = struct {
+    include_unresolved_parse_actions: bool = true,
+};
+
+pub fn serializeBuildResultWithOptions(
+    allocator: std.mem.Allocator,
+    result: build.BuildResult,
+    mode: SerializeMode,
+    options: BuildResultSerializeOptions,
+) SerializeError!SerializedTable {
     if (mode == .strict) try result.validateBlockingConflictPolicy();
 
     const snapshot = try result.decisionSnapshotAlloc(allocator);
@@ -366,7 +383,10 @@ pub fn serializeBuildResult(
 
     const blocked = result.hasBlockingUnresolvedDecisions();
     const large_state_count = try computeLargeStateCountAlloc(allocator, serialized_states, productions);
-    const parse_action_list = try buildParseActionListAlloc(allocator, serialized_states, productions);
+    const parse_action_list = if (options.include_unresolved_parse_actions)
+        try buildParseActionListAlloc(allocator, serialized_states, productions)
+    else
+        try buildRuntimeParseActionListAlloc(allocator, serialized_states, productions);
     const field_map = try buildFieldMapAlloc(allocator, result.productions);
     const lex_modes = try lexer_serialize.buildLexModesAlloc(allocator, serialized_states);
     const lex_state_terminal_sets = try buildLexStateTerminalSetsAlloc(allocator, result.lex_state_terminal_sets);
@@ -472,6 +492,15 @@ pub fn attachExtraShiftMetadataAlloc(
     serialized: SerializedTable,
     extra_symbols: []const syntax_ir.SymbolRef,
 ) ParseActionListError!SerializedTable {
+    return try attachExtraShiftMetadataWithOptionsAlloc(allocator, serialized, extra_symbols, .{});
+}
+
+pub fn attachExtraShiftMetadataWithOptionsAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    extra_symbols: []const syntax_ir.SymbolRef,
+    options: ParseActionTableOptions,
+) ParseActionListError!SerializedTable {
     if (extra_symbols.len == 0) return serialized;
 
     const states = try allocator.alloc(SerializedState, serialized.states.len);
@@ -491,14 +520,7 @@ pub fn attachExtraShiftMetadataAlloc(
         states[state_index].actions = entries;
     }
 
-    result.parse_action_list = try buildParseActionListAlloc(allocator, states, serialized.productions);
-    result.small_parse_table = try buildSmallParseTableAlloc(
-        allocator,
-        states,
-        serialized.large_state_count,
-        result.parse_action_list,
-        serialized.productions,
-    );
+    try rebuildParseActionTables(allocator, &result, options);
     return result;
 }
 
@@ -524,6 +546,24 @@ pub fn attachRepetitionShiftMetadataWithFirstSetsAlloc(
     productions: []const build.ProductionInfo,
     first_sets: ?first.FirstSets,
 ) ParseActionListError!SerializedTable {
+    return try attachRepetitionShiftMetadataWithFirstSetsAndOptionsAlloc(
+        allocator,
+        serialized,
+        parse_states,
+        productions,
+        first_sets,
+        .{},
+    );
+}
+
+pub fn attachRepetitionShiftMetadataWithFirstSetsAndOptionsAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    parse_states: []const state.ParseState,
+    productions: []const build.ProductionInfo,
+    first_sets: ?first.FirstSets,
+    options: ParseActionTableOptions,
+) ParseActionListError!SerializedTable {
     if (!hasRepetitionShift(serialized.states, parse_states, productions, first_sets)) return serialized;
 
     const states = try allocator.alloc(SerializedState, serialized.states.len);
@@ -544,15 +584,26 @@ pub fn attachRepetitionShiftMetadataWithFirstSetsAlloc(
         states[state_index].actions = entries;
     }
 
-    result.parse_action_list = try buildParseActionListAlloc(allocator, states, serialized.productions);
-    result.small_parse_table = try buildSmallParseTableAlloc(
+    try rebuildParseActionTables(allocator, &result, options);
+    return result;
+}
+
+fn rebuildParseActionTables(
+    allocator: std.mem.Allocator,
+    serialized: *SerializedTable,
+    options: ParseActionTableOptions,
+) ParseActionListError!void {
+    serialized.parse_action_list = if (options.include_unresolved_parse_actions)
+        try buildParseActionListAlloc(allocator, serialized.states, serialized.productions)
+    else
+        try buildRuntimeParseActionListAlloc(allocator, serialized.states, serialized.productions);
+    serialized.small_parse_table = try buildSmallParseTableAlloc(
         allocator,
-        states,
+        serialized.states,
         serialized.large_state_count,
-        result.parse_action_list,
+        serialized.parse_action_list,
         serialized.productions,
     );
-    return result;
 }
 
 fn attachExternalScannerAlloc(
@@ -3160,6 +3211,43 @@ test "buildParseActionListAlloc deduplicates runtime actions" {
     try std.testing.expectEqual(@as(u8, 3), list[2].actions[0].child_count);
     try std.testing.expectEqual(@as(i16, 4), list[2].actions[0].dynamic_precedence);
     try std.testing.expectEqual(@as(u32, 2), list[2].actions[0].symbol.non_terminal);
+}
+
+test "buildRuntimeParseActionListAlloc omits unresolved candidates" {
+    const allocator = std.testing.allocator;
+    const productions = [_]SerializedProductionInfo{
+        .{ .lhs = 2, .child_count = 1, .dynamic_precedence = 0 },
+    };
+    const unresolved_candidates = [_]actions.ParseAction{
+        .{ .shift = 9 },
+        .{ .reduce = 0 },
+    };
+    const states = [_]SerializedState{
+        .{
+            .id = 0,
+            .actions = &[_]SerializedActionEntry{
+                .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+            },
+            .gotos = &.{},
+            .unresolved = &[_]SerializedUnresolvedEntry{
+                .{
+                    .symbol = .{ .terminal = 1 },
+                    .reason = .multiple_candidates,
+                    .candidate_actions = unresolved_candidates[0..],
+                },
+            },
+        },
+    };
+
+    const diagnostic_list = try buildParseActionListAlloc(allocator, states[0..], productions[0..]);
+    defer deinitParseActionList(allocator, diagnostic_list);
+    const runtime_list = try buildRuntimeParseActionListAlloc(allocator, states[0..], productions[0..]);
+    defer deinitParseActionList(allocator, runtime_list);
+
+    try std.testing.expectEqual(@as(usize, 3), diagnostic_list.len);
+    try std.testing.expectEqual(@as(usize, 2), runtime_list.len);
+    try std.testing.expect(parseActionListIndexForUnresolvedEntry(runtime_list, states[0].unresolved[0], productions[0..]) == null);
+    try std.testing.expect(parseActionListIndexForParseAction(runtime_list, .{ .shift = 7 }, productions[0..]) != null);
 }
 
 test "buildParseActionListAlloc keeps reductions before repetition shifts" {
