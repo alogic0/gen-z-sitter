@@ -96,7 +96,10 @@ Batch order:
 - [x] Add or refine comparison keys where the current artifacts are too coarse.
 - [ ] Add a focused regression fixture for the smallest discovered algorithm
   difference.
-- [ ] Implement the smallest upstream-aligned parser-table fix.
+- [x] Implement the first focused upstream-aligned parser-table fixes.
+- [ ] Replace the partial inline expansion with upstream-style extracted-symbol
+  replacement/removal so inlined/tokenized syntax variables do not remain as
+  parser variables.
 - [ ] Refresh only the affected golden/report artifacts.
 
 Batch 2 note: JavaScript comparison now writes
@@ -111,6 +114,20 @@ JavaScript is still `blocked=true`, has 11,157 serialized states, and reports
 states. The smallest visible surface to reduce next is expected-conflict and
 reserved-identifier conflict handling, starting from the unresolved samples in
 the generated `local/conflict-summary.json`.
+
+Batch 3 note: two focused parser-table fixes landed locally and pass the fast
+unit suite: reserved-word FIRST propagation through nested symbols, and
+expected-conflict candidate expansion through auxiliary parent symbols. The
+JavaScript comparison showed that these are correct local pieces but not enough
+to unblock JavaScript. A bounded token-like inline expansion then moved the
+first visible conflict sample from `_reserved_identifier` to `primary_expression`,
+which confirms that inline declarations are part of the active gap, but the
+partial implementation is not a valid promotion boundary: JavaScript grew from
+11,157 to 12,618 states and from 24,976 to 31,339 unresolved decisions. The next
+required parser-table step is not broader conflict resolution; it is
+upstream-style symbol replacement/removal during token extraction/inlining, so
+extracted inline variables like `_reserved_identifier`, `_identifier`, and
+`_semicolon` do not remain as independent parser variables.
 
 Gate:
 

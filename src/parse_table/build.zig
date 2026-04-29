@@ -708,6 +708,7 @@ const ParseItemSetBuilder = struct {
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
+    reserved_first_set_ids: []const u16,
     additions_per_non_terminal: [][]const TransitiveClosureAddition,
     reserved_word_context_names: []const []const u8,
     word_token: ?syntax_ir.SymbolRef,
@@ -720,8 +721,22 @@ const ParseItemSetBuilder = struct {
         word_token: ?syntax_ir.SymbolRef,
     ) !@This() {
         const variable_count = variableCountFromProductions(productions);
+        const reserved_first_set_ids = try computeReservedFirstSetIdsAlloc(
+            allocator,
+            productions,
+            reserved_word_context_names,
+            variable_count,
+        );
+        errdefer allocator.free(reserved_first_set_ids);
         const additions_per_non_terminal = try allocator.alloc([]const TransitiveClosureAddition, variable_count);
-        errdefer allocator.free(additions_per_non_terminal);
+        var additions_count: usize = 0;
+        errdefer {
+            for (additions_per_non_terminal[0..additions_count]) |items| {
+                for (items) |addition| freeSymbolSet(allocator, addition.info.lookaheads);
+                allocator.free(items);
+            }
+            allocator.free(additions_per_non_terminal);
+        }
 
         for (0..variable_count) |non_terminal| {
             additions_per_non_terminal[non_terminal] = try computeTransitiveClosureAdditionsAlloc(
@@ -729,14 +744,17 @@ const ParseItemSetBuilder = struct {
                 productions,
                 first_sets,
                 reserved_word_context_names,
+                reserved_first_set_ids,
                 @intCast(non_terminal),
             );
+            additions_count += 1;
         }
 
         return .{
             .allocator = allocator,
             .productions = productions,
             .first_sets = first_sets,
+            .reserved_first_set_ids = reserved_first_set_ids,
             .additions_per_non_terminal = additions_per_non_terminal,
             .reserved_word_context_names = reserved_word_context_names,
             .word_token = word_token,
@@ -751,10 +769,15 @@ const ParseItemSetBuilder = struct {
             self.allocator.free(items);
         }
         self.allocator.free(self.additions_per_non_terminal);
+        self.allocator.free(self.reserved_first_set_ids);
     }
 
     fn additionsForNonTerminal(self: @This(), non_terminal: u32) []const TransitiveClosureAddition {
         return self.additions_per_non_terminal[non_terminal];
+    }
+
+    fn reservedFirstSetIdForSymbol(self: @This(), symbol: syntax_ir.SymbolRef) u16 {
+        return reservedFirstSetIdForSymbolRef(symbol, self.reserved_first_set_ids);
     }
 
     fn transitiveClosure(
@@ -1145,6 +1168,7 @@ fn computeTransitiveClosureAdditionsAlloc(
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
     reserved_word_context_names: []const []const u8,
+    reserved_first_set_ids: []const u16,
     root_non_terminal: u32,
 ) ![]const TransitiveClosureAddition {
     const variable_count = variableCountFromProductions(productions);
@@ -1200,7 +1224,10 @@ fn computeTransitiveClosureAdditionsAlloc(
                         try stack.append(.{
                             .non_terminal = next_non_terminal,
                             .lookaheads = try first_sets.firstOfSequence(allocator, remainder[0..1]),
-                            .reserved_lookaheads = reservedWordSetIdForStep(remainder[0], reserved_word_context_names),
+                            .reserved_lookaheads = @max(
+                                reservedWordSetIdForStep(remainder[0], reserved_word_context_names),
+                                reservedFirstSetIdForSymbolRef(remainder[0].symbol, reserved_first_set_ids),
+                            ),
                             .propagates_lookaheads = false,
                         });
                     }
@@ -1467,6 +1494,61 @@ fn reservedWordSetIdForStep(step: syntax_ir.ProductionStep, names: []const []con
     const context_name = step.reserved_context_name orelse return 0;
     const index = reservedContextIndex(names, context_name) orelse return 0;
     return @intCast(@min(index + 1, std.math.maxInt(u16)));
+}
+
+fn reservedFirstSetIdForSymbolRef(symbol: syntax_ir.SymbolRef, ids: []const u16) u16 {
+    return switch (symbol) {
+        .non_terminal => |index| if (index < ids.len) ids[index] else 0,
+        else => 0,
+    };
+}
+
+fn computeReservedFirstSetIdsAlloc(
+    allocator: std.mem.Allocator,
+    productions: []const ProductionInfo,
+    reserved_word_context_names: []const []const u8,
+    variable_count: usize,
+) ![]const u16 {
+    const result = try allocator.alloc(u16, variable_count);
+    @memset(result, 0);
+
+    var processed = try allocator.alloc(bool, variable_count);
+    defer allocator.free(processed);
+    var stack = std.array_list.Managed(u32).init(allocator);
+    defer stack.deinit();
+
+    for (0..variable_count) |root_index| {
+        @memset(processed, false);
+        stack.clearRetainingCapacity();
+        try stack.append(@intCast(root_index));
+        while (stack.items.len > 0) {
+            const current = stack.pop().?;
+            if (current >= variable_count) continue;
+
+            for (productions) |production| {
+                if (production.augmented) continue;
+                if (production.lhs != current) continue;
+                if (production.steps.len == 0) continue;
+
+                const step = production.steps[0];
+                result[root_index] = @max(
+                    result[root_index],
+                    reservedWordSetIdForStep(step, reserved_word_context_names),
+                );
+                switch (step.symbol) {
+                    .non_terminal => |next| {
+                        if (next >= variable_count) continue;
+                        if (processed[next]) continue;
+                        processed[next] = true;
+                        try stack.append(next);
+                    },
+                    else => {},
+                }
+            }
+        }
+    }
+
+    return result;
 }
 
 fn reservedWordSetIdForParseState(
@@ -2798,7 +2880,10 @@ const ClosureRun = struct {
                 const suffix_reserved_word_set_id = if (suffix.len == 0)
                     0
                 else
-                    reservedWordSetIdForStep(suffix[0], self.item_set_builder.reserved_word_context_names);
+                    @max(
+                        reservedWordSetIdForStep(suffix[0], self.item_set_builder.reserved_word_context_names),
+                        self.item_set_builder.reservedFirstSetIdForSymbol(suffix[0].symbol),
+                    );
                 const context = try ClosureContext.init(
                     self.allocator,
                     suffix_first,
@@ -4384,6 +4469,60 @@ test "buildStates propagates following reserved-word set through nullable closur
     var saw_propagated = false;
     for (result.states[0].items) |entry| {
         if (entry.item.production_id == 3 and
+            item.containsLookahead(entry.lookaheads, .{ .terminal = 0 }) and
+            entry.following_reserved_word_set_id == 1)
+        {
+            saw_propagated = true;
+        }
+    }
+
+    try std.testing.expect(saw_propagated);
+}
+
+test "buildStates propagates following reserved-word set through nested first symbol" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+        .{ .symbol = .{ .non_terminal = 2 } },
+    };
+    var target_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+    var reserved_wrapper_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 3 } },
+    };
+    var reserved_leaf_steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .terminal = 0 },
+            .reserved_context_name = "global",
+        },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "target", .kind = .named, .productions = &.{.{ .steps = target_steps[0..] }} },
+            .{ .name = "reserved_wrapper", .kind = .named, .productions = &.{.{ .steps = reserved_wrapper_steps[0..] }} },
+            .{ .name = "reserved_leaf", .kind = .named, .productions = &.{.{ .steps = reserved_leaf_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = .{ .terminal = 0 },
+    };
+
+    const result = try buildStatesWithOptions(arena.allocator(), grammar, .{
+        .reserved_word_context_names = &.{"global"},
+    });
+
+    var saw_propagated = false;
+    for (result.states[0].items) |entry| {
+        if (entry.item.production_id == 2 and
             item.containsLookahead(entry.lookaheads, .{ .terminal = 0 }) and
             entry.following_reserved_word_set_id == 1)
         {
