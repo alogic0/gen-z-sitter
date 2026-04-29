@@ -22,6 +22,11 @@ pub const Conflict = struct {
     items: []const item.ParseItem,
 };
 
+pub const AuxiliarySymbolInfo = struct {
+    auxiliary_symbol: syntax_ir.SymbolRef,
+    parent_symbols: []const syntax_ir.SymbolRef,
+};
+
 pub const ParseState = struct {
     id: StateId,
     core_id: u32 = 0,
@@ -30,6 +35,7 @@ pub const ParseState = struct {
     items: []const item.ParseItemSetEntry,
     transitions: []const Transition,
     conflicts: []const Conflict = &.{},
+    auxiliary_symbols: []const AuxiliarySymbolInfo = &.{},
 
     pub fn lessThan(_: void, a: ParseState, b: ParseState) bool {
         return a.id < b.id;

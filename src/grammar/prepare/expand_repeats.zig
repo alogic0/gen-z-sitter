@@ -19,15 +19,12 @@ pub fn createRepeatProductions(
         try productions.append(.{ .steps = try allocator.dupe(syntax_ir.ProductionStep, &.{}) });
     }
 
-    for (inner_productions) |production| {
-        var recursive_steps = try allocator.alloc(syntax_ir.ProductionStep, production.steps.len + 1);
-        recursive_steps[0] = .{ .symbol = .{ .non_terminal = symbol_index } };
-        @memcpy(recursive_steps[1..], production.steps);
-        try productions.append(.{
-            .steps = recursive_steps,
-            .dynamic_precedence = production.dynamic_precedence,
-        });
+    const recursive_steps = try allocator.alloc(syntax_ir.ProductionStep, 2);
+    recursive_steps[0] = .{ .symbol = .{ .non_terminal = symbol_index } };
+    recursive_steps[1] = .{ .symbol = .{ .non_terminal = symbol_index } };
+    try productions.append(.{ .steps = recursive_steps });
 
+    for (inner_productions) |production| {
         const steps = try allocator.dupe(syntax_ir.ProductionStep, production.steps);
         try productions.append(.{
             .steps = steps,
@@ -78,7 +75,8 @@ test "createRepeatAuxiliary builds zero-or-more auxiliary productions" {
     try std.testing.expectEqual(@as(usize, 0), expansion.variable.productions[0].steps.len);
     try std.testing.expectEqual(@as(usize, 2), expansion.variable.productions[1].steps.len);
     try std.testing.expectEqual(@as(u32, 7), expansion.variable.productions[1].steps[0].symbol.non_terminal);
-    try std.testing.expectEqual(@as(u32, 4), expansion.variable.productions[1].steps[1].symbol.terminal);
+    try std.testing.expectEqual(@as(u32, 7), expansion.variable.productions[1].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 4), expansion.variable.productions[2].steps[0].symbol.terminal);
 }
 
 test "createRepeatAuxiliary builds one-or-more auxiliary productions" {
@@ -92,7 +90,8 @@ test "createRepeatAuxiliary builds one-or-more auxiliary productions" {
     try std.testing.expectEqual(@as(usize, 2), expansion.variable.productions.len);
     try std.testing.expectEqual(@as(usize, 2), expansion.variable.productions[0].steps.len);
     try std.testing.expectEqual(@as(u32, 5), expansion.variable.productions[0].steps[0].symbol.non_terminal);
-    try std.testing.expectEqual(@as(u32, 2), expansion.variable.productions[0].steps[1].symbol.terminal);
+    try std.testing.expectEqual(@as(u32, 5), expansion.variable.productions[0].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 2), expansion.variable.productions[1].steps[0].symbol.terminal);
 }
 
 test "createRepeatProductions can build in-place repeat expansions" {
@@ -111,5 +110,6 @@ test "createRepeatProductions can build in-place repeat expansions" {
     try std.testing.expectEqual(@as(usize, 3), productions.len);
     try std.testing.expectEqual(@as(usize, 0), productions[0].steps.len);
     try std.testing.expectEqual(@as(u32, 3), productions[1].steps[0].symbol.non_terminal);
-    try std.testing.expectEqual(@as(u32, 9), productions[1].steps[1].symbol.terminal);
+    try std.testing.expectEqual(@as(u32, 3), productions[1].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 9), productions[2].steps[0].symbol.terminal);
 }

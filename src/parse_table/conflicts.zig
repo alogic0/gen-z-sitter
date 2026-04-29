@@ -153,9 +153,7 @@ fn appendUniqueCoreItem(
     candidate: item.ParseItem,
 ) std.mem.Allocator.Error!void {
     for (result.items) |existing| {
-        if (existing.production_id == candidate.production_id and existing.step_index == candidate.step_index) {
-            return;
-        }
+        if (item.ParseItem.eql(existing, candidate)) return;
     }
     try result.append(candidate);
 }

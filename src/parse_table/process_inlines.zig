@@ -24,12 +24,12 @@ pub const InlinedProduction = struct {
 
 fn productionStepEql(a: syntax_ir.ProductionStep, b: syntax_ir.ProductionStep) bool {
     if (!symbolRefEql(a.symbol, b.symbol)) return false;
-    if (a.field_name == null) {
-        if (b.field_name != null) return false;
-    } else {
-        if (b.field_name == null) return false;
-        if (!std.mem.eql(u8, a.field_name.?, b.field_name.?)) return false;
-    }
+    if (!aliasEql(a.alias, b.alias)) return false;
+    if (!optionalStringEql(a.field_name, b.field_name)) return false;
+    if (a.field_inherited != b.field_inherited) return false;
+    if (!precedenceValueEql(a.precedence, b.precedence)) return false;
+    if (a.associativity != b.associativity) return false;
+    if (!optionalStringEql(a.reserved_context_name, b.reserved_context_name)) return false;
     return true;
 }
 
@@ -49,6 +49,36 @@ fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
             else => false,
         },
     };
+}
+
+fn precedenceValueEql(left: @import("../ir/rules.zig").PrecedenceValue, right: @import("../ir/rules.zig").PrecedenceValue) bool {
+    return switch (left) {
+        .none => right == .none,
+        .integer => |left_value| switch (right) {
+            .integer => |right_value| left_value == right_value,
+            else => false,
+        },
+        .name => |left_name| switch (right) {
+            .name => |right_name| std.mem.eql(u8, left_name, right_name),
+            else => false,
+        },
+    };
+}
+
+fn aliasEql(left: ?@import("../ir/rules.zig").Alias, right: ?@import("../ir/rules.zig").Alias) bool {
+    if (left) |left_value| {
+        const right_value = right orelse return false;
+        return left_value.named == right_value.named and std.mem.eql(u8, left_value.value, right_value.value);
+    }
+    return right == null;
+}
+
+fn optionalStringEql(left: ?[]const u8, right: ?[]const u8) bool {
+    if (left) |left_value| {
+        const right_value = right orelse return false;
+        return std.mem.eql(u8, left_value, right_value);
+    }
+    return right == null;
 }
 
 /// Maps (production_id, step_index) → []production_id where the inline variable at that
@@ -230,14 +260,10 @@ const Builder = struct {
         // Inline alternative steps with metadata propagation.
         for (inline_alt.steps, 0..) |alt_step, i| {
             var new_step = alt_step;
-            // Propagate alias from the removed step to all inserted steps.
-            if (removed_step.alias != null and new_step.alias == null) {
-                new_step.alias = removed_step.alias;
-            }
-            // Propagate field_name from removed step to all inserted steps.
-            if (removed_step.field_name != null and new_step.field_name == null) {
-                new_step.field_name = removed_step.field_name;
-            }
+            // Match upstream: aliases/fields on the inlined step apply to every
+            // inserted step, even if the inserted production carried its own.
+            if (removed_step.alias != null) new_step.alias = removed_step.alias;
+            if (removed_step.field_name != null) new_step.field_name = removed_step.field_name;
             owned_steps[prefix_len + i] = new_step;
         }
         // On the last inserted step, inherit precedence/associativity from removed step
@@ -273,12 +299,64 @@ const Builder = struct {
         return self.internExtra(candidate, owned_steps);
     }
 
+    fn appendUniqueProductionId(list: *std.array_list.Managed(u32), production_id: u32) !void {
+        for (list.items) |existing| {
+            if (existing == production_id) return;
+        }
+        try list.append(production_id);
+    }
+
+    fn inlineProductionsAtStepFully(
+        self: *@This(),
+        source_prod_id: u32,
+        step_index: u16,
+    ) !std.array_list.Managed(u32) {
+        var current = std.array_list.Managed(u32).init(self.allocator);
+        errdefer current.deinit();
+        try current.append(source_prod_id);
+
+        while (true) {
+            var next = std.array_list.Managed(u32).init(self.allocator);
+            errdefer next.deinit();
+            var changed = false;
+
+            for (current.items) |prod_id| {
+                const maybe_step = self.stepAt(prod_id, step_index);
+                const step = maybe_step orelse {
+                    try appendUniqueProductionId(&next, prod_id);
+                    continue;
+                };
+                if (!self.isInline(step.symbol)) {
+                    try appendUniqueProductionId(&next, prod_id);
+                    continue;
+                }
+
+                changed = true;
+                const var_index = step.symbol.non_terminal;
+                if (var_index >= self.variables.len) continue;
+                const inline_var = self.variables[var_index];
+                for (inline_var.productions) |alt| {
+                    const new_id = try self.inlineOneAlternative(prod_id, step_index, alt);
+                    try appendUniqueProductionId(&next, new_id);
+                }
+            }
+
+            current.deinit();
+            current = next;
+            if (!changed) break;
+        }
+
+        return current;
+    }
+
     /// Process work queue starting from every original production.
     fn process(self: *@This()) !void {
         // Work item: (production_id, step_index) — we need to check this step for inline.
         const WorkItem = struct { production_id: u32, step_index: u16 };
         var queue = std.array_list.Managed(WorkItem).init(self.allocator);
         defer queue.deinit();
+        var processed = std.HashMap(InlinedProductionMap.Key, void, InlinedProductionMap.KeyContext, std.hash_map.default_max_load_percentage).init(self.allocator);
+        defer processed.deinit();
 
         // Seed with all original productions at step 0.
         for (0..self.original.len) |i| {
@@ -292,6 +370,13 @@ const Builder = struct {
             const work = queue.items[qi];
             qi += 1;
 
+            const key = InlinedProductionMap.Key{
+                .production_id = work.production_id,
+                .step_index = work.step_index,
+            };
+            const processed_entry = try processed.getOrPut(key);
+            if (processed_entry.found_existing) continue;
+
             const maybe_step = self.stepAt(work.production_id, work.step_index);
             const step = maybe_step orelse {
                 // Past end or augmented: nothing to do.
@@ -299,15 +384,12 @@ const Builder = struct {
             };
 
             if (self.isInline(step.symbol)) {
-                // The symbol at this step is an inline variable — substitute.
-                const var_index = step.symbol.non_terminal;
-                if (var_index >= self.variables.len) continue;
-                const inline_var = self.variables[var_index];
-
-                for (inline_var.productions) |alt| {
-                    const new_id = try self.inlineOneAlternative(work.production_id, work.step_index, alt);
-                    try self.recordExpansion(.{ .production_id = work.production_id, .step_index = work.step_index }, new_id);
-                    // Queue the new production at the SAME step to handle nested inline.
+                // Upstream fully expands nested inline symbols at this same step
+                // before caching the map entry.
+                var expanded = try self.inlineProductionsAtStepFully(work.production_id, work.step_index);
+                defer expanded.deinit();
+                for (expanded.items) |new_id| {
+                    try self.recordExpansion(key, new_id);
                     try queue.append(.{ .production_id = new_id, .step_index = work.step_index });
                 }
             } else {
@@ -526,4 +608,42 @@ test "nested inline substitution" {
     // A→xa at step 1: x is terminal → no inline
     const axa_id = exp1[0];
     try std.testing.expectEqual(@as(?[]const u32, null), ipm.inlinedProductions(axa_id, 1));
+}
+
+test "nested inline substitution fully expands the same step" {
+    const allocator = std.testing.allocator;
+
+    // Grammar: A -> V B, V -> X, X -> x. Both V and X are inline.
+    const x_steps = [_]syntax_ir.ProductionStep{.{ .symbol = .{ .terminal = 10 } }};
+    const v_steps = [_]syntax_ir.ProductionStep{.{ .symbol = .{ .non_terminal = 2 } }};
+    const a_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+        .{ .symbol = .{ .terminal = 11 } },
+    };
+    const original = [_]InlinedProduction{
+        .{ .lhs = 0, .steps = &a_steps },
+        .{ .lhs = 1, .steps = &v_steps },
+        .{ .lhs = 2, .steps = &x_steps },
+    };
+    const variables = [_]syntax_ir.SyntaxVariable{
+        .{ .name = "A", .kind = .named, .productions = &.{.{ .steps = @constCast(&a_steps) }} },
+        .{ .name = "V", .kind = .hidden, .productions = &.{.{ .steps = @constCast(&v_steps) }} },
+        .{ .name = "X", .kind = .hidden, .productions = &.{.{ .steps = @constCast(&x_steps) }} },
+    };
+    const variables_to_inline = [_]syntax_ir.SymbolRef{
+        .{ .non_terminal = 1 },
+        .{ .non_terminal = 2 },
+    };
+
+    var ipm = try buildInlinedProductionMapAlloc(allocator, &original, &variables_to_inline, &variables);
+    defer ipm.deinit();
+
+    const expanded = ipm.inlinedProductions(0, 0).?;
+    try std.testing.expectEqual(@as(usize, 1), expanded.len);
+    const inlined_id = expanded[0];
+    try std.testing.expect(inlined_id >= ipm.original_count);
+    const inlined_prod = ipm.extra_productions[inlined_id - ipm.original_count];
+    try std.testing.expectEqual(@as(usize, 2), inlined_prod.steps.len);
+    try std.testing.expectEqual(@as(u32, 10), inlined_prod.steps[0].symbol.terminal);
+    try std.testing.expectEqual(@as(u32, 11), inlined_prod.steps[1].symbol.terminal);
 }

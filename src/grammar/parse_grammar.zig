@@ -461,7 +461,7 @@ const Builder = struct {
             .symbol => |name| self.appendRule(.{ .symbol = self.resolveName(name) orelse return self.failUndefinedSymbol(name) }),
             .choice => |members| self.appendRule(.{ .choice = try self.lowerRuleList(members) }),
             .seq => |members| self.appendRule(.{ .seq = try self.lowerRuleList(members) }),
-            .repeat => |inner| self.appendRule(.{ .repeat = try self.lowerRule(inner) }),
+            .repeat => |inner| self.lowerZeroOrMoreRepeat(inner),
             .repeat1 => |inner| self.appendRule(.{ .repeat1 = try self.lowerRule(inner) }),
             .alias => |alias| self.applyMetadata(try self.lowerRule(alias.content), .{
                 .alias = .{
@@ -497,6 +497,16 @@ const Builder = struct {
                 .reserved_context_name = reserved.context_name,
             }),
         };
+    }
+
+    fn lowerZeroOrMoreRepeat(self: *Builder, inner: *const raw.RawRule) ParseGrammarError!ir_rules.RuleId {
+        const lowered_inner = try self.lowerRule(inner);
+        const repeat_rule = try self.appendRule(.{ .repeat1 = lowered_inner });
+        const blank_rule = try self.appendRule(.blank);
+        const members = try self.allocator.alloc(ir_rules.RuleId, 2);
+        members[0] = repeat_rule;
+        members[1] = blank_rule;
+        return self.appendRule(.{ .choice = members });
     }
 
     fn applyMetadata(self: *Builder, inner: ir_rules.RuleId, patch: ir_rules.Metadata) ParseGrammarError!ir_rules.RuleId {

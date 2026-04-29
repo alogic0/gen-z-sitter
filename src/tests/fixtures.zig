@@ -539,11 +539,11 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         \\    non_terminal:0 -> 1
         \\    non_terminal:1 -> 2
         \\    non_terminal:2 -> 3
-        \\    non_terminal:3 -> 4
-        \\    non_terminal:4 -> 5
-        \\    terminal:1 -> 6
+        \\    non_terminal:3 -> 3
+        \\    non_terminal:4 -> 4
+        \\    terminal:1 -> 5
         \\  actions:
-        \\    terminal:1 => shift 6
+        \\    terminal:1 => shift 5
         \\
         \\state 1
         \\  items:
@@ -556,9 +556,9 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         \\  items:
         \\    #1@1 [end]
         \\  transitions:
-        \\    terminal:0 -> 7
+        \\    terminal:0 -> 6
         \\  actions:
-        \\    terminal:0 => shift 7
+        \\    terminal:0 => shift 6
         \\
         \\state 3
         \\  items:
@@ -568,13 +568,6 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         \\    terminal:0 => reduce 2
         \\
         \\state 4
-        \\  items:
-        \\    #3@1 [terminal:0]
-        \\  transitions:
-        \\  actions:
-        \\    terminal:0 => reduce 3
-        \\
-        \\state 5
         \\  items:
         \\    #4@1 [terminal:0]
         \\    #5@1 [terminal:0]
@@ -587,14 +580,14 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         \\      #4@1
         \\      #5@1
         \\
-        \\state 6
+        \\state 5
         \\  items:
         \\    #6@1 [terminal:0]
         \\  transitions:
         \\  actions:
         \\    terminal:0 => reduce 6
         \\
-        \\state 7
+        \\state 6
         \\  items:
         \\    #1@2 [end]
         \\  transitions:
@@ -1875,7 +1868,7 @@ pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
         \\state 0
         \\  actions:
         \\    terminal:1:
-        \\      shift 6
+        \\      shift 5
         \\
         \\state 1
         \\  actions:
@@ -1885,7 +1878,7 @@ pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
         \\state 2
         \\  actions:
         \\    terminal:0:
-        \\      shift 7
+        \\      shift 6
         \\
         \\state 3
         \\  actions:
@@ -1895,11 +1888,6 @@ pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
         \\state 4
         \\  actions:
         \\    terminal:0:
-        \\      reduce 3
-        \\
-        \\state 5
-        \\  actions:
-        \\    terminal:0:
         \\      reduce 4
         \\      reduce 5
         \\  conflicts:
@@ -1907,12 +1895,12 @@ pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
         \\      #4@1
         \\      #5@1
         \\
-        \\state 6
+        \\state 5
         \\  actions:
         \\    terminal:0:
         \\      reduce 6
         \\
-        \\state 7
+        \\state 6
         \\  actions:
         \\    end:
         \\      reduce 1
@@ -1927,7 +1915,7 @@ pub fn parseTableReduceReduceActionTableDump() Fixture {
         .contents =
         \\state 0
         \\  actions:
-        \\    terminal:1 => shift 6
+        \\    terminal:1 => shift 5
         \\
         \\state 1
         \\  actions:
@@ -1935,17 +1923,13 @@ pub fn parseTableReduceReduceActionTableDump() Fixture {
         \\
         \\state 2
         \\  actions:
-        \\    terminal:0 => shift 7
+        \\    terminal:0 => shift 6
         \\
         \\state 3
         \\  actions:
         \\    terminal:0 => reduce 2
         \\
         \\state 4
-        \\  actions:
-        \\    terminal:0 => reduce 3
-        \\
-        \\state 5
         \\  actions:
         \\    terminal:0 => reduce 4
         \\    terminal:0 => reduce 5
@@ -1954,11 +1938,11 @@ pub fn parseTableReduceReduceActionTableDump() Fixture {
         \\      #4@1
         \\      #5@1
         \\
-        \\state 6
+        \\state 5
         \\  actions:
         \\    terminal:0 => reduce 6
         \\
-        \\state 7
+        \\state 6
         \\  actions:
         \\    end => reduce 1
         \\
@@ -2385,7 +2369,7 @@ pub fn parseTableNamedPrecedenceShiftGrammarJson() Fixture {
         \\      "type": "CHOICE",
         \\      "members": [
         \\        {
-        \\          "type": "PREC_LEFT",
+        \\          "type": "PREC_RIGHT",
         \\          "value": "sum",
         \\          "content": {
         \\            "type": "SEQ",
@@ -2994,7 +2978,7 @@ pub fn parseTableReduceReduceResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:1: shift 6
+        \\    terminal:1: shift 5
         \\
         \\state 1
         \\  resolved_actions:
@@ -3002,7 +2986,7 @@ pub fn parseTableReduceReduceResolvedActionDump() Fixture {
         \\
         \\state 2
         \\  resolved_actions:
-        \\    terminal:0: shift 7
+        \\    terminal:0: shift 6
         \\
         \\state 3
         \\  resolved_actions:
@@ -3010,19 +2994,15 @@ pub fn parseTableReduceReduceResolvedActionDump() Fixture {
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:0: reduce 3
-        \\
-        \\state 5
-        \\  resolved_actions:
         \\    terminal:0: unresolved (reduce_reduce_deferred)
         \\      candidate reduce 4
         \\      candidate reduce 5
         \\
-        \\state 6
+        \\state 5
         \\  resolved_actions:
         \\    terminal:0: reduce 6
         \\
-        \\state 7
+        \\state 6
         \\  resolved_actions:
         \\    end: reduce 1
         \\
@@ -3487,7 +3467,7 @@ pub fn repeatChoiceSeqNodeTypesJson() Fixture {
         \\    "fields": {},
         \\    "children": {
         \\      "multiple": true,
-        \\      "required": true,
+        \\      "required": false,
         \\      "types": [
         \\        {
         \\          "type": "identifier",

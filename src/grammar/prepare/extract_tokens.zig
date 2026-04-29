@@ -39,7 +39,7 @@ const Extractor = struct {
     lexical_variables: std.array_list.Managed(lexical_ir.LexicalVariable),
     separators: std.array_list.Managed(ir_rules.RuleId),
     auxiliary_variables: std.array_list.Managed(syntax_ir.SyntaxVariable),
-    repeat_cache: std.AutoHashMap(RepeatKey, u32),
+    repeat_cache: std.array_list.Managed(RepeatCacheEntry),
     promoted_top_level_repeat_variables: std.array_list.Managed(u32),
 
     fn init(allocator: std.mem.Allocator, prepared: prepared_ir.PreparedGrammar) Extractor {
@@ -49,7 +49,7 @@ const Extractor = struct {
             .lexical_variables = std.array_list.Managed(lexical_ir.LexicalVariable).init(allocator),
             .separators = std.array_list.Managed(ir_rules.RuleId).init(allocator),
             .auxiliary_variables = std.array_list.Managed(syntax_ir.SyntaxVariable).init(allocator),
-            .repeat_cache = std.AutoHashMap(RepeatKey, u32).init(allocator),
+            .repeat_cache = std.array_list.Managed(RepeatCacheEntry).init(allocator),
             .promoted_top_level_repeat_variables = std.array_list.Managed(u32).init(allocator),
         };
     }
@@ -516,14 +516,50 @@ const Extractor = struct {
         return std.mem.eql(u8, lhs.?, rhs.?);
     }
 
+    fn metadataEql(lhs: ir_rules.Metadata, rhs: ir_rules.Metadata) bool {
+        return optionalStringsEqual(lhs.field_name, rhs.field_name) and
+            aliasEql(lhs.alias, rhs.alias) and
+            precedenceEql(lhs.precedence, rhs.precedence) and
+            lhs.associativity == rhs.associativity and
+            lhs.dynamic_precedence == rhs.dynamic_precedence and
+            lhs.token == rhs.token and
+            lhs.immediate_token == rhs.immediate_token and
+            optionalStringsEqual(lhs.reserved_context_name, rhs.reserved_context_name);
+    }
+
+    fn aliasEql(lhs: ?ir_rules.Alias, rhs: ?ir_rules.Alias) bool {
+        if (lhs) |left| {
+            const right = rhs orelse return false;
+            return left.named == right.named and std.mem.eql(u8, left.value, right.value);
+        }
+        return rhs == null;
+    }
+
+    fn precedenceEql(lhs: ir_rules.PrecedenceValue, rhs: ir_rules.PrecedenceValue) bool {
+        return switch (lhs) {
+            .none => rhs == .none,
+            .integer => |left| switch (rhs) {
+                .integer => |right| left == right,
+                else => false,
+            },
+            .name => |left| switch (rhs) {
+                .name => |right| std.mem.eql(u8, left, right),
+                else => false,
+            },
+        };
+    }
+
     fn ensureRepeatAuxiliary(
         self: *Extractor,
         variable_name: []const u8,
         inner: ir_rules.RuleId,
         at_least_one: bool,
     ) ExtractTokensError!u32 {
-        const key = RepeatKey{ .rule_id = inner, .at_least_one = at_least_one };
-        if (self.repeat_cache.get(key)) |symbol_index| return symbol_index;
+        for (self.repeat_cache.items) |entry| {
+            if (entry.at_least_one == at_least_one and self.rulesEquivalent(entry.rule_id, inner)) {
+                return entry.symbol_index;
+            }
+        }
 
         const auxiliary_index = self.auxiliary_variables.items.len;
         const symbol_index: u32 = @intCast(self.prepared.variables.len + auxiliary_index);
@@ -533,8 +569,12 @@ const Extractor = struct {
             .productions = &.{},
         });
         errdefer _ = self.auxiliary_variables.pop();
-        try self.repeat_cache.put(key, symbol_index);
-        errdefer _ = self.repeat_cache.remove(key);
+        try self.repeat_cache.append(.{
+            .rule_id = inner,
+            .at_least_one = at_least_one,
+            .symbol_index = symbol_index,
+        });
+        errdefer _ = self.repeat_cache.pop();
 
         const inner_productions = try self.extractNestedProductions(variable_name, inner);
         const expansion = try expand_repeats.createRepeatAuxiliary(
@@ -546,6 +586,55 @@ const Extractor = struct {
         );
         self.auxiliary_variables.items[auxiliary_index] = expansion.variable;
         return symbol_index;
+    }
+
+    fn rulesEquivalent(self: *Extractor, lhs_id: ir_rules.RuleId, rhs_id: ir_rules.RuleId) bool {
+        if (lhs_id == rhs_id) return true;
+        const lhs = self.prepared.rules[@intCast(lhs_id)];
+        const rhs = self.prepared.rules[@intCast(rhs_id)];
+        return switch (lhs) {
+            .blank => rhs == .blank,
+            .string => |left| switch (rhs) {
+                .string => |right| std.mem.eql(u8, left, right),
+                else => false,
+            },
+            .pattern => |left| switch (rhs) {
+                .pattern => |right| std.mem.eql(u8, left.value, right.value) and optionalStringsEqual(left.flags, right.flags),
+                else => false,
+            },
+            .symbol => |left| switch (rhs) {
+                .symbol => |right| left.kind == right.kind and left.index == right.index,
+                else => false,
+            },
+            .choice => |left| switch (rhs) {
+                .choice => |right| self.ruleListsEquivalent(left, right),
+                else => false,
+            },
+            .seq => |left| switch (rhs) {
+                .seq => |right| self.ruleListsEquivalent(left, right),
+                else => false,
+            },
+            .repeat => |left| switch (rhs) {
+                .repeat => |right| self.rulesEquivalent(left, right),
+                else => false,
+            },
+            .repeat1 => |left| switch (rhs) {
+                .repeat1 => |right| self.rulesEquivalent(left, right),
+                else => false,
+            },
+            .metadata => |left| switch (rhs) {
+                .metadata => |right| self.rulesEquivalent(left.inner, right.inner) and metadataEql(left.data, right.data),
+                else => false,
+            },
+        };
+    }
+
+    fn ruleListsEquivalent(self: *Extractor, lhs: []const ir_rules.RuleId, rhs: []const ir_rules.RuleId) bool {
+        if (lhs.len != rhs.len) return false;
+        for (lhs, rhs) |left_id, right_id| {
+            if (!self.rulesEquivalent(left_id, right_id)) return false;
+        }
+        return true;
     }
 
     fn singleStepProductions(self: *Extractor, step: syntax_ir.ProductionStep) ExtractTokensError![]syntax_ir.Production {
@@ -705,9 +794,10 @@ fn isHiddenName(name: []const u8) bool {
     return name.len > 0 and name[0] == '_';
 }
 
-const RepeatKey = struct {
+const RepeatCacheEntry = struct {
     rule_id: ir_rules.RuleId,
     at_least_one: bool,
+    symbol_index: u32,
 };
 
 const TopLevelRepeatInfo = struct {
@@ -1433,9 +1523,10 @@ test "extractTokens promotes hidden top-level repeats in place and removes them 
 
 test "extractTokens reuses one auxiliary variable for duplicated repeat content" {
     const terminal_rule = ir_rules.Rule{ .string = "item" };
-    const repeat_rule = ir_rules.Rule{ .repeat = 0 };
+    const repeat_rule_one = ir_rules.Rule{ .repeat1 = 0 };
+    const repeat_rule_two = ir_rules.Rule{ .repeat1 = 0 };
     const seq_one = ir_rules.Rule{ .seq = &.{ 0, 1 } };
-    const seq_two = ir_rules.Rule{ .seq = &.{ 0, 1 } };
+    const seq_two = ir_rules.Rule{ .seq = &.{ 0, 2 } };
     const prepared = prepared_ir.PreparedGrammar{
         .grammar_name = "dedup-repeat",
         .variables = &.{
@@ -1443,17 +1534,17 @@ test "extractTokens reuses one auxiliary variable for duplicated repeat content"
                 .name = "left",
                 .symbol = ir_symbols.SymbolId.nonTerminal(0),
                 .kind = .named,
-                .rule = 2,
+                .rule = 3,
             },
             .{
                 .name = "right",
                 .symbol = ir_symbols.SymbolId.nonTerminal(1),
                 .kind = .named,
-                .rule = 3,
+                .rule = 4,
             },
         },
         .external_tokens = &.{},
-        .rules = &.{ terminal_rule, repeat_rule, seq_one, seq_two },
+        .rules = &.{ terminal_rule, repeat_rule_one, repeat_rule_two, seq_one, seq_two },
         .symbols = &.{
             .{
                 .id = ir_symbols.SymbolId.nonTerminal(0),
@@ -1564,9 +1655,10 @@ test "extractTokens keeps deterministic auxiliary naming for mixed repeat choice
 
     try std.testing.expectEqual(@as(u32, 4), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
     try std.testing.expectEqual(@as(u32, 5), extracted.syntax.variables[1].productions[0].steps[1].symbol.non_terminal);
-    try std.testing.expectEqual(@as(u32, 6), extracted.syntax.variables[1].productions[1].steps[1].symbol.non_terminal);
-    try std.testing.expectEqual(@as(u32, 3), extracted.syntax.variables[5].productions[1].steps[1].symbol.non_terminal);
-    try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[6].productions[0].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables[1].productions[1].steps.len);
+    try std.testing.expectEqual(@as(u32, 6), extracted.syntax.variables[1].productions[2].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 5), extracted.syntax.variables[5].productions[0].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 6), extracted.syntax.variables[6].productions[0].steps[1].symbol.non_terminal);
 }
 
 test "extractTokens rewrites tokenized inline symbols to extracted terminals" {

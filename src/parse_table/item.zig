@@ -3,6 +3,7 @@ const first = @import("first.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const ProductionId = u32;
+pub const unset_structural_identity = std.math.maxInt(u32);
 
 pub const SymbolSetProfile = struct {
     init_empty_count: usize = 0,
@@ -51,19 +52,32 @@ fn packedSymbolBitsBytes(bit_count: usize) usize {
 pub const ParseItem = struct {
     production_id: ProductionId,
     step_index: u16,
+    structural_identity: u32 = unset_structural_identity,
 
     pub fn init(production_id: ProductionId, step_index: u16) ParseItem {
         return .{
             .production_id = production_id,
             .step_index = step_index,
+            .structural_identity = unset_structural_identity,
         };
     }
 
     pub fn eql(a: ParseItem, b: ParseItem) bool {
+        if (a.structural_identity != unset_structural_identity and
+            b.structural_identity != unset_structural_identity)
+        {
+            return a.structural_identity == b.structural_identity;
+        }
         return a.production_id == b.production_id and a.step_index == b.step_index;
     }
 
     pub fn lessThan(_: void, a: ParseItem, b: ParseItem) bool {
+        if (a.structural_identity != unset_structural_identity and
+            b.structural_identity != unset_structural_identity and
+            a.structural_identity != b.structural_identity)
+        {
+            return a.structural_identity < b.structural_identity;
+        }
         if (a.production_id != b.production_id) return a.production_id < b.production_id;
         return a.step_index < b.step_index;
     }

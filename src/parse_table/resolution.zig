@@ -251,13 +251,23 @@ pub const ResolvedActionTable = struct {
                     .chosen => {},
                     .unresolved => |reason| switch (reason) {
                         .reduce_reduce_deferred, .reduce_reduce_expected => {
-                            const candidate = try conflict_resolution.reduceConflictCandidateAlloc(
-                                allocator,
-                                resolved.state_id,
-                                group.symbol,
-                                productions,
-                                group.candidate_actions,
-                            );
+                            const candidate = if (findState(parse_states, resolved.state_id)) |parse_state|
+                                try reduceConflictCandidateAlloc(
+                                    allocator,
+                                    resolved.state_id,
+                                    group.symbol,
+                                    productions,
+                                    parse_state,
+                                    group.candidate_actions,
+                                )
+                            else
+                                try conflict_resolution.reduceConflictCandidateAlloc(
+                                    allocator,
+                                    resolved.state_id,
+                                    group.symbol,
+                                    productions,
+                                    group.candidate_actions,
+                                );
                             if (candidate) |value| try result.append(value);
                         },
                         .shift_reduce, .shift_reduce_expected => {
@@ -513,14 +523,94 @@ fn reduceReduceIsExpected(
     symbol: syntax_ir.SymbolRef,
     candidates: []const actions.ParseAction,
 ) bool {
-    const state_id = if (parse_state) |value| value.id else 0;
-    return conflict_resolution.reduceConflictIsExpected(
-        expected_conflicts,
+    if (parse_state) |resolved_state| {
+        var members_buffer: [256]syntax_ir.SymbolRef = undefined;
+        const candidate = reduceConflictCandidate(
+            &members_buffer,
+            resolved_state.id,
+            symbol,
+            productions,
+            resolved_state,
+            candidates,
+        ) orelse return false;
+        const policy = conflict_resolution.ExpectedConflictPolicy{ .expected_conflicts = expected_conflicts };
+        return policy.isExpected(candidate);
+    } else {
+        return conflict_resolution.reduceConflictIsExpected(
+            expected_conflicts,
+            0,
+            symbol,
+            productions,
+            candidates,
+        );
+    }
+}
+
+fn reduceConflictCandidateAlloc(
+    allocator: std.mem.Allocator,
+    state_id: state.StateId,
+    lookahead: syntax_ir.SymbolRef,
+    productions: anytype,
+    parse_state: state.ParseState,
+    candidate_actions: []const actions.ParseAction,
+) std.mem.Allocator.Error!?conflict_resolution.ConflictCandidate {
+    const members = try allocator.alloc(syntax_ir.SymbolRef, candidate_actions.len + parse_state.items.len * 2);
+    errdefer allocator.free(members);
+
+    const candidate = reduceConflictCandidate(
+        members,
         state_id,
-        symbol,
+        lookahead,
         productions,
-        candidates,
-    );
+        parse_state,
+        candidate_actions,
+    ) orelse {
+        allocator.free(members);
+        return null;
+    };
+
+    const owned_members = try allocator.dupe(syntax_ir.SymbolRef, candidate.members);
+    allocator.free(members);
+    return .{
+        .state_id = candidate.state_id,
+        .lookahead = candidate.lookahead,
+        .members = owned_members,
+    };
+}
+
+fn reduceConflictCandidate(
+    members_buffer: []syntax_ir.SymbolRef,
+    state_id: state.StateId,
+    lookahead: syntax_ir.SymbolRef,
+    productions: anytype,
+    parse_state: state.ParseState,
+    candidate_actions: []const actions.ParseAction,
+) ?conflict_resolution.ConflictCandidate {
+    if (candidate_actions.len == 0) return null;
+
+    var member_count: usize = 0;
+    for (candidate_actions) |action| {
+        const production_id = switch (action) {
+            .reduce => |id| id,
+            else => return null,
+        };
+        if (production_id >= productions.len) return null;
+        member_count = appendConflictMemberExpanded(
+            members_buffer,
+            member_count,
+            .{ .non_terminal = productions[production_id].lhs },
+            productions,
+            parse_state,
+            0,
+        ) orelse return null;
+    }
+
+    if (member_count == 0) return null;
+    return .{
+        .state_id = state_id,
+        .lookahead = lookahead,
+        .members = members_buffer[0..member_count],
+    };
 }
 
 fn shiftReduceIsExpected(
@@ -543,7 +633,16 @@ fn shiftReduceIsExpected(
         candidates,
     ) orelse return false;
     const policy = conflict_resolution.ExpectedConflictPolicy{ .expected_conflicts = expected_conflicts };
-    return policy.isExpected(candidate);
+    if (policy.isExpected(candidate)) return true;
+    const reduce_only_candidate = shiftReduceReduceOnlyCandidate(
+        &members_buffer,
+        resolved_state.id,
+        symbol,
+        productions,
+        resolved_state,
+        candidates,
+    ) orelse return false;
+    return policy.isExpectedSubset(reduce_only_candidate);
 }
 
 fn shiftReduceConflictCandidateAlloc(
@@ -577,6 +676,43 @@ fn shiftReduceConflictCandidateAlloc(
         .state_id = candidate.state_id,
         .lookahead = candidate.lookahead,
         .members = owned_members,
+    };
+}
+
+fn shiftReduceReduceOnlyCandidate(
+    members_buffer: []syntax_ir.SymbolRef,
+    state_id: state.StateId,
+    lookahead: syntax_ir.SymbolRef,
+    productions: anytype,
+    parse_state: state.ParseState,
+    candidate_actions: []const actions.ParseAction,
+) ?conflict_resolution.ConflictCandidate {
+    var saw_shift = false;
+    var member_count: usize = 0;
+
+    for (candidate_actions) |action| {
+        switch (action) {
+            .shift => saw_shift = true,
+            .reduce => |production_id| {
+                if (production_id >= productions.len) return null;
+                member_count = appendConflictMemberExpanded(
+                    members_buffer,
+                    member_count,
+                    .{ .non_terminal = productions[production_id].lhs },
+                    productions,
+                    parse_state,
+                    0,
+                ) orelse return null;
+            },
+            else => return null,
+        }
+    }
+
+    if (!saw_shift or member_count == 0) return null;
+    return .{
+        .state_id = state_id,
+        .lookahead = lookahead,
+        .members = members_buffer[0..member_count],
     };
 }
 
@@ -614,34 +750,40 @@ fn shiftReduceConflictCandidate(
     }
     if (!saw_shift or !saw_reduce) return null;
 
-    if (findShiftReduceConflict(parse_state, lookahead)) |conflict| {
-        for (conflict.items) |parse_item| {
-            if (parse_item.production_id >= productions.len) continue;
-            const production = productions[parse_item.production_id];
-            member_count = appendConflictMemberExpanded(
-                members_buffer,
-                member_count,
-                .{ .non_terminal = production.lhs },
-                productions,
-                parse_state,
-                0,
-            ) orelse return null;
-        }
-        if (member_count > 0) {
-            return .{
-                .state_id = state_id,
-                .lookahead = lookahead,
-                .members = members_buffer[0..member_count],
-            };
+    if (first_sets == null) {
+        if (findShiftReduceConflict(parse_state, lookahead)) |conflict| {
+            for (conflict.items) |parse_item| {
+                if (parse_item.production_id >= productions.len) continue;
+                const production = productions[parse_item.production_id];
+                member_count = appendConflictMemberExpanded(
+                    members_buffer,
+                    member_count,
+                    .{ .non_terminal = production.lhs },
+                    productions,
+                    parse_state,
+                    0,
+                ) orelse return null;
+            }
+            if (member_count > 0) {
+                return .{
+                    .state_id = state_id,
+                    .lookahead = lookahead,
+                    .members = members_buffer[0..member_count],
+                };
+            }
         }
     }
 
     for (parse_state.items) |entry| {
         if (entry.item.production_id >= productions.len) continue;
         const production = productions[entry.item.production_id];
-        if (entry.item.step_index >= production.steps.len) continue;
-        const step = production.steps[entry.item.step_index];
-        if (!symbolCanStartLookahead(first_sets, step.symbol, lookahead)) continue;
+        if (entry.item.step_index < production.steps.len) {
+            if (entry.item.step_index == 0) continue;
+            const step = production.steps[entry.item.step_index];
+            if (!symbolCanStartLookahead(first_sets, step.symbol, lookahead)) continue;
+        } else if (!item.containsLookahead(entry.lookaheads, lookahead)) {
+            continue;
+        }
         member_count = appendConflictMemberExpanded(
             members_buffer,
             member_count,
@@ -685,6 +827,21 @@ fn appendConflictMemberExpanded(
         return appendUniqueConflictMember(members, member_count, symbol);
     }
 
+    if (auxiliaryParentsForSymbol(parse_state, symbol)) |parents| {
+        var next_count = member_count;
+        for (parents) |parent| {
+            next_count = appendConflictMemberExpanded(
+                members,
+                next_count,
+                parent,
+                productions,
+                parse_state,
+                depth + 1,
+            ) orelse return null;
+        }
+        return next_count;
+    }
+
     var next_count = member_count;
     var found_parent = false;
     for (parse_state.items) |entry| {
@@ -706,6 +863,19 @@ fn appendConflictMemberExpanded(
 
     if (found_parent) return next_count;
     return appendUniqueConflictMember(members, member_count, symbol);
+}
+
+fn auxiliaryParentsForSymbol(
+    parse_state: state.ParseState,
+    symbol: syntax_ir.SymbolRef,
+) ?[]const syntax_ir.SymbolRef {
+    var index = parse_state.auxiliary_symbols.len;
+    while (index > 0) {
+        index -= 1;
+        const info = parse_state.auxiliary_symbols[index];
+        if (symbolRefEql(info.auxiliary_symbol, symbol)) return info.parent_symbols;
+    }
+    return null;
 }
 
 fn symbolIsAuxiliaryLhs(productions: anytype, non_terminal: u32) bool {
@@ -782,11 +952,11 @@ fn compareReducePrecedence(
         var saw_right = false;
         for (ordering) |entry| {
             if (precedenceEntryMatchesProduction(entry, left_metadata, left.lhs)) {
+                if (saw_right) return .less;
                 saw_left = true;
-                if (saw_right) return .greater;
             } else if (precedenceEntryMatchesProduction(entry, right_metadata, right.lhs)) {
+                if (saw_left) return .greater;
                 saw_right = true;
-                if (saw_left) return .less;
             }
         }
     }
@@ -832,7 +1002,7 @@ fn resolveShiftReduce(
     }
     const metadata = extractResolutionMetadata(production);
     const shift_metadata = if (parse_state) |resolved_state|
-        extractShiftResolutionMetadata(productions, resolved_state, shift_symbol)
+        extractShiftResolutionMetadata(productions, resolved_state, first_sets, shift_symbol)
     else
         null;
 
@@ -844,11 +1014,15 @@ fn resolveShiftReduce(
             if (shift.resolution.max_integer_precedence) |shift_value| {
                 if (reduce_value > shift_value) return reduce_action;
                 if (reduce_value < shift_value) return shift_action;
+                if (resolveEqualPrecedenceByAssociativity(metadata, reduce_action, shift_action)) |action| return action;
             }
         }
 
         if (metadata.named_precedence) |reduce_name| {
             if (shift.resolution.named_precedence) |shift_name| {
+                if (std.mem.eql(u8, reduce_name, shift_name)) {
+                    return resolveEqualPrecedenceByAssociativity(metadata, reduce_action, shift_action);
+                }
                 if (comparePrecedenceEntries(
                     precedence_orderings,
                     .{ .name = reduce_name },
@@ -856,6 +1030,16 @@ fn resolveShiftReduce(
                 )) |reduce_wins| {
                     return if (reduce_wins) reduce_action else shift_action;
                 }
+            }
+        }
+
+        if (shift.resolution.named_precedence) |shift_name| {
+            if (comparePrecedenceEntries(
+                precedence_orderings,
+                .{ .name = shift_name },
+                .{ .symbol = .{ .non_terminal = production.lhs } },
+            )) |shift_wins| {
+                return if (shift_wins) shift_action else reduce_action;
             }
         }
     }
@@ -1014,16 +1198,31 @@ fn comparePrecedenceEntries(
         }
 
         if (left_index != null and right_index != null) {
-            return right_index.? < left_index.?;
+            if (left_index.? == right_index.?) return null;
+            return left_index.? > right_index.?;
         }
     }
 
     return null;
 }
 
+fn resolveEqualPrecedenceByAssociativity(
+    metadata: ProductionResolutionMetadata,
+    reduce_action: actions.ParseAction,
+    shift_action: actions.ParseAction,
+) ?actions.ParseAction {
+    if (metadata.associativity) |assoc| switch (assoc) {
+        .left => return reduce_action,
+        .right => return shift_action,
+        .none => {},
+    };
+    return null;
+}
+
 fn extractShiftResolutionMetadata(
     productions: anytype,
     parse_state: state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
     shift_symbol: syntax_ir.SymbolRef,
 ) ?ShiftResolutionMetadata {
     var metadata = ShiftResolutionMetadata{};
@@ -1034,17 +1233,35 @@ fn extractShiftResolutionMetadata(
         if (parse_item.production_id >= productions.len) continue;
         const production = productions[parse_item.production_id];
         if (parse_item.step_index >= production.steps.len) continue;
+        if (parse_item.step_index == 0) continue;
         const step = production.steps[parse_item.step_index];
-        if (!symbolRefEql(step.symbol, shift_symbol)) continue;
+        if (!symbolCanStartLookahead(first_sets, step.symbol, shift_symbol)) continue;
 
         saw_match = true;
-        metadata.resolution = mergeResolutionMetadata(metadata.resolution, extractResolutionMetadata(production));
+        metadata.resolution = mergeResolutionMetadata(
+            metadata.resolution,
+            extractShiftItemResolutionMetadata(production, parse_item.step_index),
+        );
         if (productionIsRepeatAuxiliary(production)) {
             metadata.has_repeat_auxiliary_candidate = true;
         }
     }
 
     return if (saw_match) metadata else null;
+}
+
+fn extractShiftItemResolutionMetadata(production: anytype, step_index: u16) ProductionResolutionMetadata {
+    var metadata = ProductionResolutionMetadata{};
+    if (step_index == 0 or step_index > production.steps.len) return metadata;
+
+    const step = production.steps[step_index - 1];
+    switch (step.precedence) {
+        .integer => |value| metadata.max_integer_precedence = value,
+        .name => |value| metadata.named_precedence = value,
+        .none => {},
+    }
+    if (step.associativity != .none) metadata.associativity = step.associativity;
+    return metadata;
 }
 
 fn mergeResolutionMetadata(
@@ -1796,8 +2013,8 @@ test "resolveActionTable chooses ordered named precedence reduce/reduce action" 
         },
     };
     const ordering = [_]syntax_ir.PrecedenceEntry{
-        .{ .name = "low" },
         .{ .name = "high" },
+        .{ .name = "low" },
     };
     const precedence_orderings = [_][]const syntax_ir.PrecedenceEntry{ordering[0..]};
 
@@ -2415,10 +2632,12 @@ test "resolveActionTable uses shift-side integer precedence from the current sta
         },
     };
     const shift_steps = [_]syntax_ir.ProductionStep{
-        .{ .symbol = .{ .non_terminal = 1 } },
+        .{
+            .symbol = .{ .non_terminal = 1 },
+            .precedence = .{ .integer = 2 },
+        },
         .{
             .symbol = .{ .terminal = 0 },
-            .precedence = .{ .integer = 2 },
         },
         .{ .symbol = .{ .non_terminal = 1 } },
     };
@@ -2489,10 +2708,12 @@ test "resolveActionTable uses shift-side named precedence from the current state
         },
     };
     const shift_steps = [_]syntax_ir.ProductionStep{
-        .{ .symbol = .{ .non_terminal = 1 } },
+        .{
+            .symbol = .{ .non_terminal = 1 },
+            .precedence = .{ .name = "product" },
+        },
         .{
             .symbol = .{ .terminal = 0 },
-            .precedence = .{ .name = "product" },
         },
         .{ .symbol = .{ .non_terminal = 1 } },
     };

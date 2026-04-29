@@ -12,6 +12,7 @@ const node_type_pipeline = @import("../node_types/pipeline.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const raw_grammar = @import("../grammar/raw_grammar.zig");
 const parse_table_build = @import("../parse_table/build.zig");
+const parse_table_conflict_resolution = @import("../parse_table/conflict_resolution.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parse_table_serialize = @import("../parse_table/serialize.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
@@ -148,12 +149,21 @@ pub fn generateLocalSummaryAlloc(
 
     var summary = try parseUpstreamParserCSummaryAlloc(allocator, loaded.json.grammar.name, parser_c, node_types_json);
     summary.language_version = parser_compat.language_version;
-    summary.blocked = serialized.blocked or emission_stats.blocked;
+    summary.blocked = hasBlockingSerializedUnresolved(serialized);
     summary.rule_count = loaded.json.grammar.ruleCount();
     summary.extra_count = loaded.json.grammar.extras.len;
     summary.serialized_state_count = serialized.states.len;
     summary.emitted_state_count = emission_stats.state_count;
     return summary;
+}
+
+fn hasBlockingSerializedUnresolved(serialized: parse_table_serialize.SerializedTable) bool {
+    for (serialized.states) |parse_state| {
+        for (parse_state.unresolved) |entry| {
+            if (entry.reason != .shift_reduce_expected and entry.reason != .reduce_reduce_expected) return true;
+        }
+    }
+    return false;
 }
 
 pub fn generateLocalPreparedIrSummaryAlloc(
@@ -349,6 +359,7 @@ pub fn generateLocalConflictSummaryJsonAlloc(
     const unresolved = try result.unresolvedDecisionsAlloc(arena.allocator());
     const chosen = try result.chosenDecisionsAlloc(arena.allocator());
     const expected_report = try parse_table_pipeline.expectedConflictReportFromBuildResultAlloc(arena.allocator(), result);
+    const conflict_candidates = try result.expectedConflictCandidatesAlloc(arena.allocator());
 
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
@@ -358,6 +369,7 @@ pub fn generateLocalConflictSummaryJsonAlloc(
         expected_report.unused_expected_conflict_indexes,
         chosen,
         unresolved,
+        conflict_candidates,
         result,
         flattened,
     );
@@ -1250,6 +1262,12 @@ fn writeItemSetEntryJson(
         try writer.print("{d}", .{production.steps.len});
         try writer.writeAll(", \"at_end\": ");
         try writeBoolJson(writer, entry.item.step_index >= production.steps.len);
+        if (entry.item.step_index < production.steps.len) {
+            try writer.writeAll(", \"next_symbol\": ");
+            try writeSymbolRef(writer, production.steps[entry.item.step_index].symbol);
+        }
+        try writer.writeAll(", \"production_steps\": ");
+        try writeProductionStepSymbols(writer, production.steps);
     }
     try writer.writeAll(", \"origin\": ");
     try writeJsonString(writer, itemOrigin(result, entry));
@@ -1258,6 +1276,18 @@ fn writeItemSetEntryJson(
     try writer.writeAll(", \"lookaheads\": ");
     try writeSymbolSetJson(writer, entry.lookaheads);
     try writer.writeAll(" }");
+}
+
+fn writeProductionStepSymbols(
+    writer: anytype,
+    steps: []const syntax_ir.ProductionStep,
+) !void {
+    try writer.writeByte('[');
+    for (steps, 0..) |step, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writeSymbolRef(writer, step.symbol);
+    }
+    try writer.writeByte(']');
 }
 
 fn itemOrigin(
@@ -1309,6 +1339,7 @@ fn writeConflictSummaryJson(
     unused_expected_indexes: []const usize,
     chosen: []const @import("../parse_table/resolution.zig").ChosenDecisionRef,
     unresolved: []const @import("../parse_table/resolution.zig").UnresolvedDecisionRef,
+    conflict_candidates: []const parse_table_conflict_resolution.ConflictCandidate,
     result: parse_table_build.BuildResult,
     flattened: syntax_ir.SyntaxGrammar,
 ) !void {
@@ -1368,6 +1399,12 @@ fn writeConflictSummaryJson(
         try writeJsonString(writer, @tagName(candidateShape(decision.candidate_actions)));
         try writer.writeAll(", \"reduce_parent_rules\": ");
         try writeReduceParentRuleNames(writer, result, flattened, decision.candidate_actions);
+        if (findConflictCandidate(conflict_candidates, decision.state_id, decision.symbol)) |candidate| {
+            try writer.writeAll(", \"actual_conflict_members\": ");
+            try writeSymbolRefArray(writer, candidate.members);
+            try writer.writeAll(", \"actual_conflict_rule_names\": ");
+            try writeConflictMemberRuleNames(writer, flattened, candidate.members);
+        }
         try writer.writeAll(" }");
         if (index + 1 != @min(unresolved.len, 16)) try writer.writeByte(',');
         try writer.writeByte('\n');
@@ -1444,6 +1481,58 @@ fn writeReduceParentRuleNames(
         written += 1;
     }
     try writer.writeByte(']');
+}
+
+fn findConflictCandidate(
+    candidates: []const parse_table_conflict_resolution.ConflictCandidate,
+    state_id: @import("../parse_table/state.zig").StateId,
+    lookahead: syntax_ir.SymbolRef,
+) ?parse_table_conflict_resolution.ConflictCandidate {
+    for (candidates) |candidate| {
+        if (candidate.state_id == state_id and symbolRefEql(candidate.lookahead, lookahead)) return candidate;
+    }
+    return null;
+}
+
+fn writeConflictMemberRuleNames(
+    writer: anytype,
+    flattened: syntax_ir.SyntaxGrammar,
+    members: []const syntax_ir.SymbolRef,
+) !void {
+    try writer.writeByte('[');
+    var written: usize = 0;
+    for (members) |member| {
+        const index = switch (member) {
+            .non_terminal => |value| value,
+            else => continue,
+        };
+        if (index >= flattened.variables.len) continue;
+        if (written != 0) try writer.writeAll(", ");
+        try writeJsonString(writer, flattened.variables[index].name);
+        written += 1;
+    }
+    try writer.writeByte(']');
+}
+
+fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
+    return switch (a) {
+        .end => switch (b) {
+            .end => true,
+            else => false,
+        },
+        .non_terminal => |left| switch (b) {
+            .non_terminal => |right| left == right,
+            else => false,
+        },
+        .terminal => |left| switch (b) {
+            .terminal => |right| left == right,
+            else => false,
+        },
+        .external => |left| switch (b) {
+            .external => |right| left == right,
+            else => false,
+        },
+    };
 }
 
 const ChosenDecisionCounts = struct {

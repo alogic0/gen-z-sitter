@@ -31,6 +31,20 @@ pub const ExpectedConflictPolicy = struct {
         return self.findExpectedConflict(candidate) != null;
     }
 
+    pub fn findExpectedConflictContaining(
+        self: ExpectedConflictPolicy,
+        candidate: ConflictCandidate,
+    ) ?usize {
+        for (self.expected_conflicts, 0..) |expected, index| {
+            if (conflictSetContainsAll(expected, candidate.members)) return index;
+        }
+        return null;
+    }
+
+    pub fn isExpectedSubset(self: ExpectedConflictPolicy, candidate: ConflictCandidate) bool {
+        return self.findExpectedConflictContaining(candidate) != null;
+    }
+
     pub fn matchesAlloc(
         self: ExpectedConflictPolicy,
         allocator: std.mem.Allocator,
@@ -83,6 +97,17 @@ pub fn conflictSetsMatch(
     for (expected) |symbol| {
         if (!containsSymbol(candidate, symbol)) return false;
     }
+    for (candidate) |symbol| {
+        if (!containsSymbol(expected, symbol)) return false;
+    }
+    return true;
+}
+
+pub fn conflictSetContainsAll(
+    expected: []const syntax_ir.SymbolRef,
+    candidate: []const syntax_ir.SymbolRef,
+) bool {
+    if (candidate.len == 0 or candidate.len > expected.len) return false;
     for (candidate) |symbol| {
         if (!containsSymbol(expected, symbol)) return false;
     }

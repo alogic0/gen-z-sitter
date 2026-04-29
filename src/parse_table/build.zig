@@ -380,8 +380,12 @@ const AppendStats = struct {
 const ParseItemCoreContext = struct {
     pub fn hash(_: @This(), value: item.ParseItem) u64 {
         var hasher = std.hash.Wyhash.init(0);
-        hasher.update(std.mem.asBytes(&value.production_id));
-        hasher.update(std.mem.asBytes(&value.step_index));
+        if (value.structural_identity != item.unset_structural_identity) {
+            hasher.update(std.mem.asBytes(&value.structural_identity));
+        } else {
+            hasher.update(std.mem.asBytes(&value.production_id));
+            hasher.update(std.mem.asBytes(&value.step_index));
+        }
         return hasher.final();
     }
 
@@ -435,8 +439,12 @@ const ParseItemSliceContext = struct {
 fn hashParseItemSetEntries(values: []const item.ParseItemSetEntry) u64 {
     var hasher = std.hash.Wyhash.init(0);
     for (values) |value| {
-        hasher.update(std.mem.asBytes(&value.item.production_id));
-        hasher.update(std.mem.asBytes(&value.item.step_index));
+        if (value.item.structural_identity != item.unset_structural_identity) {
+            hasher.update(std.mem.asBytes(&value.item.structural_identity));
+        } else {
+            hasher.update(std.mem.asBytes(&value.item.production_id));
+            hasher.update(std.mem.asBytes(&value.item.step_index));
+        }
         hasher.update(std.mem.asBytes(&value.following_reserved_word_set_id));
         hasher.update(value.lookaheads.terminals.maskBytes());
         hasher.update(value.lookaheads.externals.maskBytes());
@@ -491,8 +499,12 @@ const ParseItemSetCoreContext = struct {
     pub fn hash(_: @This(), value: item.ParseItemSetCore) u64 {
         var hasher = std.hash.Wyhash.init(0);
         for (value.items) |core_item| {
-            hasher.update(std.mem.asBytes(&core_item.production_id));
-            hasher.update(std.mem.asBytes(&core_item.step_index));
+            if (core_item.structural_identity != item.unset_structural_identity) {
+                hasher.update(std.mem.asBytes(&core_item.structural_identity));
+            } else {
+                hasher.update(std.mem.asBytes(&core_item.production_id));
+                hasher.update(std.mem.asBytes(&core_item.step_index));
+            }
         }
         return hasher.final();
     }
@@ -566,6 +578,7 @@ const SuccessorGroups = struct {
         self: *@This(),
         state_items: []const item.ParseItemSetEntry,
         productions: []const ProductionInfo,
+        item_identity_ids: []const []const u32,
     ) !void {
         for (state_items) |entry| {
             const parse_item = entry.item;
@@ -586,6 +599,11 @@ const SuccessorGroups = struct {
                 .item = .{
                     .production_id = parse_item.production_id,
                     .step_index = parse_item.step_index + 1,
+                    .structural_identity = itemIdentityId(
+                        item_identity_ids,
+                        parse_item.production_id,
+                        parse_item.step_index + 1,
+                    ),
                 },
                 .lookaheads = try cloneSymbolSet(self.allocator, entry.lookaheads),
                 .following_reserved_word_set_id = entry.following_reserved_word_set_id,
@@ -716,6 +734,7 @@ const ParseItemSetBuilder = struct {
     variables_to_inline: []const syntax_ir.SymbolRef,
     inline_map: process_inlines.InlinedProductionMap,
     original_productions_len: u32,
+    item_identity_ids: []const []const u32,
 
     fn init(
         allocator: std.mem.Allocator,
@@ -775,6 +794,8 @@ const ParseItemSetBuilder = struct {
         } else productions;
 
         const variable_count = variableCountFromProductions(extended_productions);
+        const item_identity_ids = try computeItemIdentityIdsAlloc(allocator, extended_productions);
+        errdefer freeItemIdentityIds(allocator, item_identity_ids);
         const reserved_first_set_ids = try computeReservedFirstSetIdsAlloc(
             allocator,
             extended_productions,
@@ -818,6 +839,7 @@ const ParseItemSetBuilder = struct {
             .variables_to_inline = variables_to_inline,
             .inline_map = inline_map,
             .original_productions_len = original_productions_len,
+            .item_identity_ids = item_identity_ids,
         };
     }
 
@@ -830,6 +852,7 @@ const ParseItemSetBuilder = struct {
         }
         self.allocator.free(self.additions_per_non_terminal);
         self.allocator.free(self.reserved_first_set_ids);
+        freeItemIdentityIds(self.allocator, self.item_identity_ids);
         // The extended productions slice (and its cloned steps) are returned as
         // BuildResult.productions and owned by the caller — do not free them here.
         self.inline_map.deinit();
@@ -841,6 +864,14 @@ const ParseItemSetBuilder = struct {
 
     fn reservedFirstSetIdForSymbol(self: @This(), symbol: syntax_ir.SymbolRef) u16 {
         return reservedFirstSetIdForSymbolRef(symbol, self.reserved_first_set_ids);
+    }
+
+    fn makeParseItem(self: @This(), production_id: item.ProductionId, step_index: u16) item.ParseItem {
+        return .{
+            .production_id = production_id,
+            .step_index = step_index,
+            .structural_identity = itemIdentityId(self.item_identity_ids, production_id, step_index),
+        };
     }
 
     fn transitiveClosure(
@@ -883,6 +914,149 @@ fn variableCountFromProductions(productions: []const ProductionInfo) usize {
         if (lhs > max_lhs) max_lhs = lhs;
     }
     return if (saw_any) max_lhs + 1 else 0;
+}
+
+fn itemIdentityId(identity_ids: []const []const u32, production_id: item.ProductionId, step_index: u16) u32 {
+    if (production_id >= identity_ids.len) return item.unset_structural_identity;
+    const steps = identity_ids[production_id];
+    if (step_index >= steps.len) return item.unset_structural_identity;
+    return steps[step_index];
+}
+
+fn freeItemIdentityIds(allocator: std.mem.Allocator, identity_ids: []const []const u32) void {
+    for (identity_ids) |ids| allocator.free(ids);
+    allocator.free(identity_ids);
+}
+
+fn computeItemIdentityIdsAlloc(
+    allocator: std.mem.Allocator,
+    productions: []const ProductionInfo,
+) ![]const []const u32 {
+    const ids = try allocator.alloc([]const u32, productions.len);
+    errdefer allocator.free(ids);
+
+    var initialized: usize = 0;
+    errdefer {
+        for (ids[0..initialized]) |slice| allocator.free(slice);
+    }
+
+    var next_identity: u32 = 0;
+    for (productions, 0..) |production, production_id| {
+        const per_step = try allocator.alloc(u32, production.steps.len + 1);
+        ids[production_id] = per_step;
+        initialized += 1;
+
+        for (per_step, 0..) |*slot, step_index| {
+            var identity: ?u32 = null;
+            var prior_production_id: usize = 0;
+            while (prior_production_id <= production_id and identity == null) : (prior_production_id += 1) {
+                const prior_limit = if (prior_production_id == production_id) step_index else ids[prior_production_id].len;
+                var prior_step_index: usize = 0;
+                while (prior_step_index < prior_limit) : (prior_step_index += 1) {
+                    if (parseItemStructuralEql(
+                        productions,
+                        @intCast(production_id),
+                        @intCast(step_index),
+                        @intCast(prior_production_id),
+                        @intCast(prior_step_index),
+                    )) {
+                        identity = ids[prior_production_id][prior_step_index];
+                        break;
+                    }
+                }
+            }
+
+            if (identity) |value| {
+                slot.* = value;
+            } else {
+                slot.* = next_identity;
+                next_identity += 1;
+            }
+        }
+    }
+
+    return ids;
+}
+
+fn parseItemStructuralEql(
+    productions: []const ProductionInfo,
+    left_id: item.ProductionId,
+    left_step_index: u16,
+    right_id: item.ProductionId,
+    right_step_index: u16,
+) bool {
+    if (left_id >= productions.len or right_id >= productions.len) return false;
+    const left = productions[left_id];
+    const right = productions[right_id];
+    if (left.lhs != right.lhs) return false;
+    if (left_step_index != right_step_index) return false;
+    if (left.dynamic_precedence != right.dynamic_precedence) return false;
+    if (left.steps.len != right.steps.len) return false;
+    if (left.augmented != right.augmented) return false;
+
+    const step_index: usize = left_step_index;
+    if (!precedenceValueEql(prevStepPrecedence(left.steps, step_index), prevStepPrecedence(right.steps, step_index))) return false;
+    if (prevStepAssociativity(left.steps, step_index) != prevStepAssociativity(right.steps, step_index)) return false;
+
+    for (left.steps, right.steps, 0..) |left_step, right_step, index| {
+        if (index < step_index) {
+            if (!aliasEql(left_step.alias, right_step.alias)) return false;
+            if (!optionalStringEql(left_step.field_name, right_step.field_name)) return false;
+        } else if (!productionStepEqlForItemIdentity(left_step, right_step)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn prevStepPrecedence(steps: []const syntax_ir.ProductionStep, step_index: usize) rules.PrecedenceValue {
+    if (step_index == 0 or step_index > steps.len) return .none;
+    return steps[step_index - 1].precedence;
+}
+
+fn prevStepAssociativity(steps: []const syntax_ir.ProductionStep, step_index: usize) rules.Assoc {
+    if (step_index == 0 or step_index > steps.len) return .none;
+    return steps[step_index - 1].associativity;
+}
+
+fn productionStepEqlForItemIdentity(left: syntax_ir.ProductionStep, right: syntax_ir.ProductionStep) bool {
+    return symbolRefEql(left.symbol, right.symbol) and
+        aliasEql(left.alias, right.alias) and
+        optionalStringEql(left.field_name, right.field_name) and
+        left.field_inherited == right.field_inherited and
+        precedenceValueEql(left.precedence, right.precedence) and
+        left.associativity == right.associativity and
+        optionalStringEql(left.reserved_context_name, right.reserved_context_name);
+}
+
+fn precedenceValueEql(left: rules.PrecedenceValue, right: rules.PrecedenceValue) bool {
+    return switch (left) {
+        .none => right == .none,
+        .integer => |left_value| switch (right) {
+            .integer => |right_value| left_value == right_value,
+            else => false,
+        },
+        .name => |left_name| switch (right) {
+            .name => |right_name| std.mem.eql(u8, left_name, right_name),
+            else => false,
+        },
+    };
+}
+
+fn aliasEql(left: ?rules.Alias, right: ?rules.Alias) bool {
+    if (left) |left_value| {
+        const right_value = right orelse return false;
+        return left_value.named == right_value.named and std.mem.eql(u8, left_value.value, right_value.value);
+    }
+    return right == null;
+}
+
+fn optionalStringEql(left: ?[]const u8, right: ?[]const u8) bool {
+    if (left) |left_value| {
+        const right_value = right orelse return false;
+        return std.mem.eql(u8, left_value, right_value);
+    }
+    return right == null;
 }
 
 fn productionCountsFromProductions(
@@ -1384,6 +1558,7 @@ fn buildClosureExpansionItemsAlloc(
             &generated,
             &item_indexes,
             addition.production_id,
+            item_set_builder.item_identity_ids,
             addition.info.lookaheads,
             addition.info.reserved_lookaheads,
             addition.info.propagates_lookaheads,
@@ -1402,6 +1577,7 @@ fn appendGeneratedItems(
     generated: *std.array_list.Managed(item.ParseItemSetEntry),
     item_indexes: *ClosureItemIndexMap,
     production_id: item.ProductionId,
+    item_identity_ids: []const []const u32,
     lookaheads: first.SymbolSet,
     reserved_lookaheads: u16,
     propagates_lookaheads: bool,
@@ -1424,7 +1600,11 @@ fn appendGeneratedItems(
                     allocator,
                     first_sets.terminals_len,
                     first_sets.externals_len,
-                    item.ParseItem.init(production_id, 0),
+                    .{
+                        .production_id = production_id,
+                        .step_index = 0,
+                        .structural_identity = itemIdentityId(item_identity_ids, production_id, 0),
+                    },
                 ),
                 true,
             );
@@ -1436,7 +1616,11 @@ fn appendGeneratedItems(
         allocator,
         first_sets.terminals_len,
         first_sets.externals_len,
-        item.ParseItem.init(production_id, 0),
+        .{
+            .production_id = production_id,
+            .step_index = 0,
+            .structural_identity = itemIdentityId(item_identity_ids, production_id, 0),
+        },
     );
     var has_any_signal = propagates_lookaheads or lookaheads.includes_end;
 
@@ -2146,11 +2330,16 @@ const StateRegistry = struct {
             .items = item_set.entries,
             .transitions = &.{},
             .conflicts = &.{},
+            .auxiliary_symbols = &.{},
         });
         try self.state_ids_by_item_set.put(ParseItemSetKey.fromEntries(item_set.entries), 0);
     }
 
-    fn intern(self: *@This(), item_set: item.ParseItemSet) !InternResult {
+    fn intern(
+        self: *@This(),
+        item_set: item.ParseItemSet,
+        auxiliary_symbols: []const state.AuxiliarySymbolInfo,
+    ) !InternResult {
         if (construct_profile_enabled) construct_profile.state_intern_calls += 1;
         const key = ParseItemSetKey.fromEntries(item_set.entries);
         if (self.state_ids_by_item_set.get(key)) |existing_id| {
@@ -2169,6 +2358,7 @@ const StateRegistry = struct {
             .items = item_set.entries,
             .transitions = &.{},
             .conflicts = &.{},
+            .auxiliary_symbols = try cloneAuxiliarySymbolInfos(self.allocator, auxiliary_symbols),
         });
         try self.state_ids_by_item_set.put(key, new_id);
         if (construct_profile_enabled) {
@@ -2202,6 +2392,148 @@ const SuccessorDiagnostic = struct {
     item_count: usize,
     reused: bool,
 };
+
+fn cloneAuxiliarySymbolInfos(
+    allocator: std.mem.Allocator,
+    infos: []const state.AuxiliarySymbolInfo,
+) ![]const state.AuxiliarySymbolInfo {
+    if (infos.len == 0) return &.{};
+    const cloned = try allocator.alloc(state.AuxiliarySymbolInfo, infos.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (cloned[0..initialized]) |info| allocator.free(info.parent_symbols);
+        allocator.free(cloned);
+    }
+
+    for (infos, 0..) |info, index| {
+        cloned[index] = .{
+            .auxiliary_symbol = info.auxiliary_symbol,
+            .parent_symbols = try allocator.dupe(syntax_ir.SymbolRef, info.parent_symbols),
+        };
+        initialized += 1;
+    }
+    return cloned;
+}
+
+fn freeAuxiliarySymbolInfos(
+    allocator: std.mem.Allocator,
+    infos: []const state.AuxiliarySymbolInfo,
+) void {
+    for (infos) |info| allocator.free(info.parent_symbols);
+    if (infos.len != 0) allocator.free(infos);
+}
+
+fn auxiliarySymbolSequenceForSuccessorsAlloc(
+    allocator: std.mem.Allocator,
+    existing: []const state.AuxiliarySymbolInfo,
+    state_items: []const item.ParseItemSetEntry,
+    productions: []const ProductionInfo,
+) ![]const state.AuxiliarySymbolInfo {
+    var result = std.array_list.Managed(state.AuxiliarySymbolInfo).init(allocator);
+    defer result.deinit();
+    errdefer {
+        for (result.items) |info| allocator.free(info.parent_symbols);
+    }
+
+    for (existing) |info| {
+        try appendAuxiliaryInfoDedup(
+            allocator,
+            &result,
+            .{
+                .auxiliary_symbol = info.auxiliary_symbol,
+                .parent_symbols = try allocator.dupe(syntax_ir.SymbolRef, info.parent_symbols),
+            },
+        );
+    }
+
+    var added_symbols = std.array_list.Managed(syntax_ir.SymbolRef).init(allocator);
+    defer added_symbols.deinit();
+    for (state_items) |entry| {
+        if (entry.item.production_id >= productions.len) continue;
+        const production = productions[entry.item.production_id];
+        if (entry.item.step_index >= production.steps.len) continue;
+        const symbol = production.steps[entry.item.step_index].symbol;
+        const non_terminal = switch (symbol) {
+            .non_terminal => |index| index,
+            else => continue,
+        };
+        if (!symbolIsAuxiliaryLhs(productions, non_terminal)) continue;
+        if (containsSymbolRef(added_symbols.items, symbol)) continue;
+        try added_symbols.append(symbol);
+
+        try appendAuxiliaryInfoDedup(
+            allocator,
+            &result,
+            .{
+                .auxiliary_symbol = symbol,
+                .parent_symbols = try parentSymbolsForAuxiliaryAlloc(
+                    allocator,
+                    state_items,
+                    productions,
+                    symbol,
+                ),
+            },
+        );
+    }
+
+    return try result.toOwnedSlice();
+}
+
+fn appendAuxiliaryInfoDedup(
+    allocator: std.mem.Allocator,
+    result: *std.array_list.Managed(state.AuxiliarySymbolInfo),
+    info: state.AuxiliarySymbolInfo,
+) !void {
+    if (result.items.len != 0 and auxiliaryInfoEql(result.items[result.items.len - 1], info)) {
+        allocator.free(info.parent_symbols);
+        return;
+    }
+    try result.append(info);
+}
+
+fn parentSymbolsForAuxiliaryAlloc(
+    allocator: std.mem.Allocator,
+    state_items: []const item.ParseItemSetEntry,
+    productions: []const ProductionInfo,
+    auxiliary_symbol: syntax_ir.SymbolRef,
+) ![]const syntax_ir.SymbolRef {
+    var parents = std.array_list.Managed(syntax_ir.SymbolRef).init(allocator);
+    defer parents.deinit();
+
+    for (state_items) |entry| {
+        if (entry.item.production_id >= productions.len) continue;
+        const production = productions[entry.item.production_id];
+        if (production.augmented or production.lhs_kind == .auxiliary) continue;
+        if (entry.item.step_index >= production.steps.len) continue;
+        if (!symbolRefEql(production.steps[entry.item.step_index].symbol, auxiliary_symbol)) continue;
+        try parents.append(.{ .non_terminal = production.lhs });
+    }
+
+    return try parents.toOwnedSlice();
+}
+
+fn auxiliaryInfoEql(left: state.AuxiliarySymbolInfo, right: state.AuxiliarySymbolInfo) bool {
+    if (!symbolRefEql(left.auxiliary_symbol, right.auxiliary_symbol)) return false;
+    if (left.parent_symbols.len != right.parent_symbols.len) return false;
+    for (left.parent_symbols, right.parent_symbols) |left_parent, right_parent| {
+        if (!symbolRefEql(left_parent, right_parent)) return false;
+    }
+    return true;
+}
+
+fn containsSymbolRef(values: []const syntax_ir.SymbolRef, needle: syntax_ir.SymbolRef) bool {
+    for (values) |value| {
+        if (symbolRefEql(value, needle)) return true;
+    }
+    return false;
+}
+
+fn symbolIsAuxiliaryLhs(productions: []const ProductionInfo, non_terminal: u32) bool {
+    for (productions) |production| {
+        if (production.lhs == non_terminal and production.lhs_kind == .auxiliary) return true;
+    }
+    return false;
+}
 
 const TransitionReporter = struct {
     variables: []const syntax_ir.SyntaxVariable,
@@ -2555,7 +2887,18 @@ const StateConstructionEngine = struct {
         defer transitions.deinit();
         var successor_groups = SuccessorGroups.init(self.allocator);
         defer successor_groups.deinit();
-        try successor_groups.buildFromStateItems(state_items, self.productions);
+        try successor_groups.buildFromStateItems(
+            state_items,
+            self.productions,
+            self.item_set_builder.item_identity_ids,
+        );
+        const successor_auxiliary_symbols = try auxiliarySymbolSequenceForSuccessorsAlloc(
+            self.allocator,
+            self.state_registry.items()[@intCast(source_state_id)].auxiliary_symbols,
+            state_items,
+            self.productions,
+        );
+        defer freeAuxiliarySymbolInfos(self.allocator, successor_auxiliary_symbols);
         if (construct_profile_enabled) {
             construct_profile.states_processed += 1;
             construct_profile.successor_groups += successor_groups.groups.items.len;
@@ -2649,7 +2992,7 @@ const StateConstructionEngine = struct {
                 advanced_item_set.entries.len,
             );
             stats.transition_count += 1;
-            const interned = try self.state_registry.intern(advanced_item_set);
+            const interned = try self.state_registry.intern(advanced_item_set, successor_auxiliary_symbols);
             if (canUseSuccessorSeedStateCache(self.options)) {
                 try self.successor_seed_state_cache.put(group.items.items, interned.state_id);
             }
@@ -2954,12 +3297,8 @@ const ClosureRun = struct {
     }
 
     fn seed(self: *@This(), seed_items: []const item.ParseItemSetEntry) !void {
-        if (self.item_set_builder.variables_to_inline.len == 0) {
-            _ = try appendGeneratedItemsToClosure(self.allocator, &self.items, &self.item_indexes, seed_items, false);
-            state.sortItems(self.items.items);
-            return;
-        }
-        // Substitute inline variables at the current step of each seed item.
+        // Substitute inline variables at the current step of each seed item and
+        // attach upstream-style structural item identities before insertion.
         var expanded = std.array_list.Managed(item.ParseItemSetEntry).init(self.allocator);
         defer expanded.deinit();
         for (seed_items) |entry| {
@@ -2970,13 +3309,15 @@ const ClosureRun = struct {
                 if (self.item_set_builder.inline_map.inlinedProductions(parse_item.production_id, step_idx)) |inlined_ids| {
                     for (inlined_ids) |inlined_id| {
                         var new_entry = entry;
-                        new_entry.item.production_id = inlined_id;
+                        new_entry.item = self.item_set_builder.makeParseItem(inlined_id, step_idx);
                         try expanded.append(new_entry);
                     }
                     continue;
                 }
             }
-            try expanded.append(entry);
+            var canonical_entry = entry;
+            canonical_entry.item = self.item_set_builder.makeParseItem(parse_item.production_id, step_idx);
+            try expanded.append(canonical_entry);
         }
         _ = try appendGeneratedItemsToClosure(self.allocator, &self.items, &self.item_indexes, expanded.items, false);
         state.sortItems(self.items.items);
@@ -3776,7 +4117,7 @@ fn addNonTerminalExtraStatesAlloc(
             .{ .entries = group.items.items },
             options,
         );
-        const interned = try state_registry.intern(item_set);
+        const interned = try state_registry.intern(item_set, &.{});
         starts[index] = .{
             .symbol = group.symbol,
             .state_id = interned.state_id,
@@ -4377,9 +4718,10 @@ test "buildStates reduces nested JSON-like values before separators" {
         }
     } else return error.TestUnexpectedResult;
 
-    try std.testing.expect(hasReduceAction(result.actions, value_number_production, .{ .terminal = comma }));
-    try std.testing.expect(hasReduceAction(result.actions, value_number_production, .{ .terminal = rbracket }));
-    try std.testing.expect(hasReduceAction(result.actions, value_number_production, .{ .terminal = rbrace }));
+    _ = value_number_production;
+    try std.testing.expect(hasReduceActionForLhs(result, 1, .{ .terminal = comma }));
+    try std.testing.expect(hasReduceActionForLhs(result, 1, .{ .terminal = rbracket }));
+    try std.testing.expect(hasReduceActionForLhs(result, 1, .{ .terminal = rbrace }));
 }
 
 test "buildStates uses SLR follow lookaheads for completed coarse closure items" {
@@ -4468,6 +4810,25 @@ fn hasReduceAction(
             if (!symbolRefEql(entry.symbol, lookahead)) continue;
             switch (entry.action) {
                 .reduce => |reduced| if (reduced == production_id) return true,
+                else => {},
+            }
+        }
+    }
+    return false;
+}
+
+fn hasReduceActionForLhs(
+    result: BuildResult,
+    lhs: u32,
+    lookahead: syntax_ir.SymbolRef,
+) bool {
+    for (result.actions.states) |state_actions| {
+        for (state_actions.entries) |entry| {
+            if (!symbolRefEql(entry.symbol, lookahead)) continue;
+            switch (entry.action) {
+                .reduce => |reduced| {
+                    if (reduced < result.productions.len and result.productions[reduced].lhs == lhs) return true;
+                },
                 else => {},
             }
         }
