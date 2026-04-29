@@ -1772,10 +1772,19 @@ pub const CoarseTransitionSpec = struct {
 pub const LexStateTerminalConflictMap = struct {
     terminal_count: usize,
     conflicts: []const bool,
+    keyword_tokens: []const bool = &.{},
 
     pub fn conflictsWith(self: LexStateTerminalConflictMap, left: usize, right: usize) bool {
         if (left >= self.terminal_count or right >= self.terminal_count) return true;
         return self.conflicts[left * self.terminal_count + right];
+    }
+
+    fn toMinimizeMap(self: LexStateTerminalConflictMap) minimize.TerminalConflictMap {
+        return .{
+            .terminal_count = self.terminal_count,
+            .conflicts = self.conflicts,
+            .keyword_tokens = self.keyword_tokens,
+        };
     }
 };
 
@@ -1805,6 +1814,25 @@ fn shouldUseCoarseTransition(options: BuildOptions, source_state_id: state.State
 
 fn canUseSuccessorSeedStateCache(options: BuildOptions) bool {
     return options.closure_pressure_mode == .none and options.coarse_transitions.len == 0;
+}
+
+pub fn minimizeWordToken(grammar: syntax_ir.SyntaxGrammar) ?syntax_ir.SymbolRef {
+    const word_token = grammar.word_token orelse return null;
+    switch (word_token) {
+        .terminal => return word_token,
+        .non_terminal => |index| {
+            if (index >= grammar.variables.len) return null;
+            const variable = grammar.variables[index];
+            if (variable.productions.len != 1) return null;
+            const steps = variable.productions[0].steps;
+            if (steps.len != 1) return null;
+            return switch (steps[0].symbol) {
+                .terminal => steps[0].symbol,
+                else => null,
+            };
+        },
+        else => return null,
+    }
 }
 
 fn collectReservedWordContextNamesAlloc(
@@ -2243,6 +2271,45 @@ pub fn buildStatesWithOptions(
             .{ resolved_actions.hasUnresolvedDecisions(), resolved_actions.isSerializationReady() },
         );
     }
+    if (options.minimize_states) {
+        timer = maybeStartTimer(progress_log);
+        stage_profile_timer = profileTimer(profile_log);
+        if (progress_log) logBuildStart("minimize_states");
+        const minimized = try minimize.minimizeAlloc(
+            allocator,
+            constructed.states,
+            resolved_actions,
+            if (options.lex_state_terminal_conflicts) |terminal_conflicts| terminal_conflicts.toMinimizeMap() else null,
+            minimizeWordToken(grammar),
+        );
+        logProfileDone("minimize_states", stage_profile_timer);
+        if (progress_log) {
+            maybeLogBuildDone("minimize_states", timer);
+            logBuildSummary(
+                "minimize_states summary states_before={d} states_after={d} merged={d}",
+                .{ constructed.states.len, minimized.states.len, minimized.merged_count },
+            );
+        }
+        stage_profile_timer = profileTimer(profile_log);
+        const minimized_lex_states = try assignLexStateIdsAlloc(
+            allocator,
+            minimized.states,
+            minimized.resolved_actions,
+            options.lex_state_terminal_conflicts,
+        );
+        logProfileDone("assign_lex_state_ids", stage_profile_timer);
+        return .{
+            .productions = item_set_builder.productions,
+            .precedence_orderings = grammar.precedence_orderings,
+            .expected_conflicts = grammar.expected_conflicts,
+            .states = minimized_lex_states.states,
+            .lex_state_count = minimized_lex_states.count,
+            .lex_state_terminal_sets = minimized_lex_states.terminal_sets,
+            .actions = action_projection,
+            .resolved_actions = minimized.resolved_actions,
+        };
+    }
+
     stage_profile_timer = profileTimer(profile_log);
     const lex_states = try assignLexStateIdsAlloc(
         allocator,
@@ -2251,31 +2318,6 @@ pub fn buildStatesWithOptions(
         options.lex_state_terminal_conflicts,
     );
     logProfileDone("assign_lex_state_ids", stage_profile_timer);
-
-    if (options.minimize_states) {
-        timer = maybeStartTimer(progress_log);
-        stage_profile_timer = profileTimer(profile_log);
-        if (progress_log) logBuildStart("minimize_states");
-        const minimized = try minimize.minimizeAlloc(allocator, lex_states.states, resolved_actions);
-        logProfileDone("minimize_states", stage_profile_timer);
-        if (progress_log) {
-            maybeLogBuildDone("minimize_states", timer);
-            logBuildSummary(
-                "minimize_states summary states_before={d} states_after={d} merged={d}",
-                .{ lex_states.states.len, minimized.states.len, minimized.merged_count },
-            );
-        }
-        return .{
-            .productions = item_set_builder.productions,
-            .precedence_orderings = grammar.precedence_orderings,
-            .expected_conflicts = grammar.expected_conflicts,
-            .states = minimized.states,
-            .lex_state_count = lex_states.count,
-            .lex_state_terminal_sets = lex_states.terminal_sets,
-            .actions = action_projection,
-            .resolved_actions = minimized.resolved_actions,
-        };
-    }
 
     return .{
         .productions = item_set_builder.productions,

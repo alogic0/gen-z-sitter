@@ -216,7 +216,10 @@ pub fn buildStatesFromPreparedWithOptions(
     effective_build_options.reserved_word_context_names = try reservedWordContextNamesAlloc(allocator, prepared.reserved_word_sets);
     effective_build_options.non_terminal_extra_symbols = try nonTerminalExtraSymbolsAlloc(allocator, flattened.extra_symbols);
     var owned_lex_conflicts: ?build.LexStateTerminalConflictMap = null;
-    defer if (owned_lex_conflicts) |conflicts| allocator.free(conflicts.conflicts);
+    defer if (owned_lex_conflicts) |conflicts| {
+        allocator.free(conflicts.keyword_tokens);
+        allocator.free(conflicts.conflicts);
+    };
     if (effective_build_options.lex_state_terminal_conflicts == null) {
         owned_lex_conflicts = lexStateTerminalConflictMapAlloc(
             allocator,
@@ -315,25 +318,41 @@ fn lexStateTerminalConflictMapAlloc(
     const conflicts = try allocator.alloc(bool, terminal_count * terminal_count);
     errdefer allocator.free(conflicts);
     @memset(conflicts, false);
+    const keyword_tokens = try allocator.alloc(bool, terminal_count);
+    errdefer allocator.free(keyword_tokens);
+    @memset(keyword_tokens, false);
+
+    const word_token = build.minimizeWordToken(syntax);
+    const word_terminal = switch (word_token orelse .end) {
+        .terminal => |index| index,
+        else => null,
+    };
+    if (word_terminal) |word_index| {
+        for (expanded.variables, 0..) |_, index| {
+            if (index >= lexical.variables.len) continue;
+            if (lexical.variables[index].source_kind != .string) continue;
+            const left_status = conflict_map.status(index, word_index);
+            const right_status = conflict_map.status(word_index, index);
+            keyword_tokens[index] = left_status.matches_same_string or
+                right_status.matches_same_string;
+        }
+    }
 
     for (0..terminal_count) |left| {
         for (0..terminal_count) |right| {
             if (left == right) continue;
             const status = conflict_map.status(left, right);
             conflicts[left * terminal_count + right] =
-                status.matches_prefix or
-                status.does_match_continuation or
                 status.does_match_valid_continuation or
                 status.does_match_separators or
-                status.matches_same_string or
-                status.matches_different_string or
-                status.starting_overlap;
+                status.matches_same_string;
         }
     }
 
     return .{
         .terminal_count = terminal_count,
         .conflicts = conflicts,
+        .keyword_tokens = keyword_tokens,
     };
 }
 
