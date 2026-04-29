@@ -579,53 +579,107 @@ const SuccessorGroups = struct {
         state_items: []const item.ParseItemSetEntry,
         productions: []const ProductionInfo,
         item_identity_ids: []const []const u32,
+        variables_to_inline: []const syntax_ir.SymbolRef,
+        inline_map: process_inlines.InlinedProductionMap,
     ) !void {
         for (state_items) |entry| {
-            const parse_item = entry.item;
-            const production = productions[parse_item.production_id];
-            if (parse_item.step_index >= production.steps.len) continue;
-            const symbol = production.steps[parse_item.step_index].symbol;
-            const group_index = blk: {
-                const result = try self.group_indexes.getOrPut(symbol);
-                if (result.found_existing) break :blk result.value_ptr.*;
-                const new_index = self.groups.items.len;
-                try self.groups.append(SuccessorGroup.init(self.allocator, symbol));
-                if (construct_profile_enabled) construct_profile.successor_group_new += 1;
-                result.value_ptr.* = @intCast(new_index);
-                break :blk new_index;
-            };
-
-            const successor_entry = item.ParseItemSetEntry{
-                .item = .{
-                    .production_id = parse_item.production_id,
-                    .step_index = parse_item.step_index + 1,
-                    .structural_identity = itemIdentityId(
-                        item_identity_ids,
-                        parse_item.production_id,
-                        parse_item.step_index + 1,
-                    ),
-                },
-                .lookaheads = try cloneSymbolSet(self.allocator, entry.lookaheads),
-                .following_reserved_word_set_id = entry.following_reserved_word_set_id,
-            };
-
-            const group = &self.groups.items[group_index];
-            if (group.findItemIndex(successor_entry.item)) |item_index| {
-                if (construct_profile_enabled) construct_profile.successor_item_merges += 1;
-                _ = mergeSymbolSetLookaheads(&group.items.items[item_index].lookaheads, successor_entry.lookaheads);
-                group.items.items[item_index].following_reserved_word_set_id = @max(
-                    group.items.items[item_index].following_reserved_word_set_id,
-                    successor_entry.following_reserved_word_set_id,
-                );
-                freeSymbolSet(self.allocator, successor_entry.lookaheads);
-            } else {
-                if (construct_profile_enabled) construct_profile.successor_item_appends += 1;
-                try group.items.append(successor_entry);
-            }
+            try self.appendSuccessorForEntry(
+                entry,
+                productions,
+                item_identity_ids,
+                variables_to_inline,
+                inline_map,
+                0,
+            );
         }
 
         for (self.groups.items) |*group| {
             state.sortItems(group.items.items);
+        }
+    }
+
+    fn appendSuccessorForEntry(
+        self: *@This(),
+        entry: item.ParseItemSetEntry,
+        productions: []const ProductionInfo,
+        item_identity_ids: []const []const u32,
+        variables_to_inline: []const syntax_ir.SymbolRef,
+        inline_map: process_inlines.InlinedProductionMap,
+        depth: usize,
+    ) !void {
+        const parse_item = entry.item;
+        const production = productions[parse_item.production_id];
+        if (parse_item.step_index >= production.steps.len) return;
+        const symbol = production.steps[parse_item.step_index].symbol;
+
+        switch (symbol) {
+            .non_terminal => |non_terminal| {
+                if (isNonTerminalInline(variables_to_inline, non_terminal)) {
+                    if (depth > productions.len) return;
+                    if (inline_map.inlinedProductions(parse_item.production_id, parse_item.step_index)) |inlined_ids| {
+                        for (inlined_ids) |inlined_id| {
+                            var expanded_entry = entry;
+                            expanded_entry.item = .{
+                                .production_id = inlined_id,
+                                .step_index = parse_item.step_index,
+                                .structural_identity = itemIdentityId(
+                                    item_identity_ids,
+                                    inlined_id,
+                                    parse_item.step_index,
+                                ),
+                            };
+                            try self.appendSuccessorForEntry(
+                                expanded_entry,
+                                productions,
+                                item_identity_ids,
+                                variables_to_inline,
+                                inline_map,
+                                depth + 1,
+                            );
+                        }
+                    }
+                    return;
+                }
+            },
+            else => {},
+        }
+
+        const group_index = blk: {
+            const result = try self.group_indexes.getOrPut(symbol);
+            if (result.found_existing) break :blk result.value_ptr.*;
+            const new_index = self.groups.items.len;
+            try self.groups.append(SuccessorGroup.init(self.allocator, symbol));
+            if (construct_profile_enabled) construct_profile.successor_group_new += 1;
+            result.value_ptr.* = @intCast(new_index);
+            break :blk new_index;
+        };
+
+        const successor_entry = item.ParseItemSetEntry{
+            .item = .{
+                .production_id = parse_item.production_id,
+                .step_index = parse_item.step_index + 1,
+                .structural_identity = itemIdentityId(
+                    item_identity_ids,
+                    parse_item.production_id,
+                    parse_item.step_index + 1,
+                ),
+            },
+            .lookaheads = try cloneSymbolSet(self.allocator, entry.lookaheads),
+            .following_reserved_word_set_id = entry.following_reserved_word_set_id,
+        };
+
+        const group = &self.groups.items[group_index];
+        if (group.findItemIndex(successor_entry.item)) |item_index| {
+            if (construct_profile_enabled) construct_profile.successor_item_merges += 1;
+            _ = mergeSymbolSetLookaheads(&group.items.items[item_index].lookaheads, successor_entry.lookaheads);
+            group.items.items[item_index].following_reserved_word_set_id = @max(
+                group.items.items[item_index].following_reserved_word_set_id,
+                successor_entry.following_reserved_word_set_id,
+            );
+            freeSymbolSet(self.allocator, successor_entry.lookaheads);
+        } else {
+            if (construct_profile_enabled) construct_profile.successor_item_appends += 1;
+            try group.items.append(successor_entry);
         }
     }
 };
@@ -2891,6 +2945,8 @@ const StateConstructionEngine = struct {
             state_items,
             self.productions,
             self.item_set_builder.item_identity_ids,
+            self.item_set_builder.variables_to_inline,
+            self.item_set_builder.inline_map,
         );
         const successor_auxiliary_symbols = try auxiliarySymbolSequenceForSuccessorsAlloc(
             self.allocator,
@@ -3603,6 +3659,81 @@ fn collectProductions(
     }
 
     return try productions.toOwnedSlice();
+}
+
+test "SuccessorGroups substitutes inline cursor symbols before grouping transitions" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var wrapper_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+        .{ .symbol = .{ .non_terminal = 2 } },
+        .{ .symbol = .{ .terminal = 2 } },
+    };
+    var inline_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+    };
+
+    const grammar = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "wrapper", .kind = .named, .productions = &.{.{ .steps = wrapper_steps[0..] }} },
+            .{ .name = "inline_part", .kind = .auxiliary, .productions = &.{.{ .steps = inline_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{.{ .non_terminal = 2 }},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+
+    const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
+    const productions = try collectProductions(arena.allocator(), grammar);
+    var item_set_builder = try ParseItemSetBuilder.init(
+        arena.allocator(),
+        productions,
+        first_sets,
+        &.{},
+        null,
+        grammar.variables_to_inline,
+        grammar.variables,
+    );
+    defer item_set_builder.deinit();
+
+    const wrapper_production_id: item.ProductionId = 2;
+    const inline_step: u16 = 1;
+    const inlined_ids = item_set_builder.inline_map.inlinedProductions(wrapper_production_id, inline_step) orelse return error.ExpectedInlineExpansion;
+
+    var successor_groups = SuccessorGroups.init(arena.allocator());
+    defer successor_groups.deinit();
+    const state_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(
+            arena.allocator(),
+            first_sets.terminals_len,
+            first_sets.externals_len,
+            item_set_builder.makeParseItem(wrapper_production_id, inline_step),
+        ),
+    };
+
+    try successor_groups.buildFromStateItems(
+        state_items[0..],
+        item_set_builder.productions,
+        item_set_builder.item_identity_ids,
+        item_set_builder.variables_to_inline,
+        item_set_builder.inline_map,
+    );
+
+    try std.testing.expectEqual(@as(usize, 1), successor_groups.groups.items.len);
+    const group = successor_groups.groups.items[0];
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .terminal = 1 }, group.symbol);
+    try std.testing.expectEqual(@as(usize, 1), group.items.items.len);
+    try std.testing.expectEqual(inlined_ids[0], group.items.items[0].item.production_id);
+    try std.testing.expectEqual(@as(u16, 2), group.items.items[0].item.step_index);
 }
 
 test "ParseItemSetBuilder precomputes transitive closure additions with propagated follow sets" {
