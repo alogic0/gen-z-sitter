@@ -128,13 +128,13 @@ pub fn computeNodeTypes(
         });
     }
 
-    try appendProductionAliasNodes(&nodes, syntax);
+    try appendProductionAliasNodes(&nodes, syntax, lexical, defaults, &summary_context);
 
     for (lexical.variables, 0..) |variable, index| {
         const symbol: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
         const alias = defaults.findForSymbol(symbol);
         if (!referenced_terminals[index] and alias == null) continue;
-        if (alias == null and variable.kind == .anonymous and variable.source_kind != .string) continue;
+        if (alias == null and variable.kind == .anonymous and !isVisibleAnonymousLexicalLeaf(variable)) continue;
         if (!isVisibleLexicalVariable(variable, alias)) continue;
         const kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults);
         const named = isNamedLexicalVariable(variable, alias);
@@ -187,20 +187,54 @@ pub fn computeNodeTypes(
 fn appendProductionAliasNodes(
     nodes: *std.array_list.Managed(NodeType),
     syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    defaults: alias_ir.AliasMap,
+    summary_context: *SummaryContext,
 ) ComputeNodeTypesError!void {
+    for (defaults.entries) |entry| {
+        const symbol = switch (entry.target) {
+            .symbol => |symbol| symbol,
+            .rule => continue,
+        };
+        try appendAliasNodeForSymbol(nodes, syntax, lexical, summary_context, symbol, entry.alias);
+    }
+
     for (syntax.variables) |variable| {
         for (variable.productions) |production| {
             for (production.steps) |step| {
                 const alias = step.alias orelse continue;
-                if (alias.named) continue;
-                if (findNodeIndex(nodes.items, alias.value, alias.named) != null) continue;
-                try nodes.append(.{
-                    .kind = alias.value,
-                    .named = alias.named,
-                });
+                try appendAliasNodeForSymbol(nodes, syntax, lexical, summary_context, step.symbol, alias);
             }
         }
     }
+}
+
+fn appendAliasNodeForSymbol(
+    nodes: *std.array_list.Managed(NodeType),
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    summary_context: *SummaryContext,
+    symbol: syntax_ir.SymbolRef,
+    alias: rules.Alias,
+) ComputeNodeTypesError!void {
+    const aliased_summary = switch (symbol) {
+        .non_terminal => |index| blk: {
+            if (containsSymbolRef(syntax.variables_to_inline, symbol)) break :blk null;
+            if (hasNamedLexicalLeafWithName(lexical, syntax.variables[index].name)) break :blk null;
+            break :blk try summary_context.get(index);
+        },
+        else => null,
+    };
+    try nodes.append(if (aliased_summary) |summary| .{
+        .kind = alias.value,
+        .named = alias.named,
+        .render_empty_fields = summary.fields.len == 0 and summary.children_without_fields == null,
+        .fields = summary.fields,
+        .children = summary.children_without_fields,
+    } else .{
+        .kind = alias.value,
+        .named = alias.named,
+    });
 }
 
 fn referencedTerminalsAlloc(
@@ -247,6 +281,7 @@ fn shouldRenderEmptyFieldsForSyntaxVariable(
     is_extra: bool,
 ) bool {
     if (is_extra) return false;
+    if (!hasNamedLexicalLeafWithName(lexical, variable.name)) return true;
     if (variable.productions.len != 1) return true;
     const production = variable.productions[0];
     if (production.steps.len != 1) return true;
@@ -257,6 +292,13 @@ fn shouldRenderEmptyFieldsForSyntaxVariable(
     };
     if (terminal_index >= lexical.variables.len) return true;
     return lexical.variables[terminal_index].source_kind == .composite;
+}
+
+fn hasNamedLexicalLeafWithName(lexical: lexical_ir.LexicalGrammar, name: []const u8) bool {
+    for (lexical.variables) |variable| {
+        if (variable.kind == .named and std.mem.eql(u8, variable.name, name)) return true;
+    }
+    return false;
 }
 
 fn computeSupertypeRefs(
@@ -355,6 +397,7 @@ const SummaryContext = struct {
         var child_types_without_fields = std.array_list.Managed(NodeTypeRef).init(self.allocator);
         var children_without_fields_quantity: ?ChildQuantity = null;
         var has_multi_step = false;
+        var has_repeat_self_recursion = false;
 
         for (variable.productions, 0..) |production, production_index| {
             var production_field_quantities = std.StringHashMap(ChildQuantity).init(self.allocator);
@@ -362,15 +405,17 @@ const SummaryContext = struct {
             var production_children_quantity = ChildQuantity.zero();
             var production_children_without_fields_quantity = ChildQuantity.zero();
             var production_is_self_recursive = false;
+            var production_self_reference_count: usize = 0;
 
             if (production.steps.len > 1) has_multi_step = true;
 
             for (production.steps) |step| {
                 if (symbolRefEql(step.symbol, .{ .non_terminal = @intCast(index) })) {
                     production_is_self_recursive = true;
+                    production_self_reference_count += 1;
                 }
 
-                const hidden_index = self.hiddenInheritableIndex(step.symbol);
+                const hidden_index = self.hiddenInheritableIndex(step);
                 if (hidden_index) |child_index| {
                     const child_summary = try self.get(child_index);
                     if (child_summary.has_multi_step_production) has_multi_step = true;
@@ -430,8 +475,11 @@ const SummaryContext = struct {
                     production_children_without_fields_quantity.append(ChildQuantity.one());
                 }
             }
+            if (production_self_reference_count > 1 and !isVisibleSyntaxVariable(variable)) {
+                has_repeat_self_recursion = true;
+            }
 
-            if (production_is_self_recursive) {
+            if (production_is_self_recursive and !isVisibleSyntaxVariable(variable)) {
                 if (production_children_quantity.exists) production_children_quantity.multiple = true;
                 if (production_children_without_fields_quantity.exists) production_children_without_fields_quantity.multiple = true;
                 var quantity_iter = production_field_quantities.valueIterator();
@@ -476,6 +524,17 @@ const SummaryContext = struct {
 
         std.mem.sort(NodeTypeRef, child_types.items, {}, lessThanNodeTypeRef);
         std.mem.sort(NodeTypeRef, child_types_without_fields.items, {}, lessThanNodeTypeRef);
+        if (has_repeat_self_recursion) {
+            for (fields.items) |*field| {
+                if (field.info.quantity.exists) field.info.quantity.multiple = true;
+            }
+            if (children_quantity) |*qty| {
+                if (qty.exists) qty.multiple = true;
+            }
+            if (children_without_fields_quantity) |*qty| {
+                if (qty.exists) qty.multiple = true;
+            }
+        }
         self.summaries[index] = .{
             .fields = try fields.toOwnedSlice(),
             .children = if (children_quantity) |qty|
@@ -504,12 +563,13 @@ const SummaryContext = struct {
         return &self.summaries[index];
     }
 
-    fn hiddenInheritableIndex(self: *SummaryContext, symbol: syntax_ir.SymbolRef) ?usize {
-        const index = switch (symbol) {
+    fn hiddenInheritableIndex(self: *SummaryContext, step: syntax_ir.ProductionStep) ?usize {
+        if (isVisibleStep(step, self.syntax, self.lexical, self.defaults)) return null;
+        const index = switch (step.symbol) {
             .non_terminal => |i| i,
             else => return null,
         };
-        if (containsSymbolRef(self.syntax.supertype_symbols, symbol)) return null;
+        if (containsSymbolRef(self.syntax.supertype_symbols, step.symbol)) return null;
         if (isVisibleSyntaxVariable(self.syntax.variables[index])) return null;
         return index;
     }
@@ -554,12 +614,13 @@ fn mergeDuplicateNodeTypes(
     defer merged.deinit();
 
     for (nodes) |node| {
-        if (merged.items.len > 0 and sameNodeTypeKey(merged.items[merged.items.len - 1], node)) {
-            merged.items[merged.items.len - 1] = try mergeNodeType(allocator, merged.items[merged.items.len - 1], node);
+        if (findNodeIndex(merged.items, node.kind, node.named)) |existing_index| {
+            merged.items[existing_index] = try mergeNodeType(allocator, merged.items[existing_index], node);
             continue;
         }
         try merged.append(node);
     }
+    std.mem.sort(NodeType, merged.items, {}, lessThanNodeType);
 
     return try merged.toOwnedSlice();
 }
@@ -876,6 +937,13 @@ fn isNamedLexicalVariable(variable: lexical_ir.LexicalVariable, alias: ?rules.Al
     };
 }
 
+fn isVisibleAnonymousLexicalLeaf(variable: lexical_ir.LexicalVariable) bool {
+    return switch (variable.source_kind) {
+        .string, .token => true,
+        .pattern, .composite => false,
+    };
+}
+
 fn isVisibleExternalToken(token: syntax_ir.ExternalToken, alias: ?rules.Alias) bool {
     if (alias != null) return true;
     return switch (token.kind) {
@@ -1006,6 +1074,42 @@ test "computeNodeTypes includes visible syntax and lexical nodes with default al
     try std.testing.expect(!nodes[2].named);
     try std.testing.expect(nodes[2].extra);
     try std.testing.expectEqualStrings("identifier", nodes[3].kind);
+}
+
+test "computeNodeTypes includes referenced anonymous token leaves" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{
+                .name = "static get",
+                .kind = .anonymous,
+                .rule = 0,
+                .source_kind = .token,
+            },
+        },
+        .separators = &.{},
+    };
+
+    const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
+    const token = findNodeByKind(nodes, "static get") orelse return error.TestUnexpectedResult;
+    try std.testing.expect(!token.named);
 }
 
 test "computeNodeTypes merges duplicate entries with the same effective type name" {
@@ -1383,6 +1487,91 @@ test "computeNodeTypes inherits fields and children through hidden wrappers" {
     try std.testing.expectEqualStrings("expr", source.fields[0].info.types[0].kind);
     try std.testing.expectEqualStrings("right", source.fields[1].name);
     try std.testing.expectEqualStrings("rhs", source.fields[1].info.types[0].kind);
+}
+
+test "computeNodeTypes treats aliased hidden children as visible alias nodes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 }, .field_name = "name", .alias = .{ .value = "identifier", .named = true } },
+    };
+    var hidden_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "_reserved_identifier", .kind = .hidden, .productions = &.{.{ .steps = hidden_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "get", .kind = .anonymous, .rule = 0, .source_kind = .string },
+        },
+        .separators = &.{},
+    };
+
+    const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
+    const source = findNodeByKind(nodes, "source_file").?;
+    try std.testing.expectEqual(@as(usize, 1), source.fields.len);
+    try std.testing.expectEqualStrings("name", source.fields[0].name);
+    try std.testing.expectEqual(@as(usize, 1), source.fields[0].info.types.len);
+    try std.testing.expectEqualStrings("identifier", source.fields[0].info.types[0].kind);
+    try std.testing.expect(source.fields[0].info.types[0].named);
+}
+
+test "computeNodeTypes marks repeat auxiliary inherited fields as multiple" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var source_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var repeat_recursive_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    var repeat_item_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 }, .field_name = "member" },
+    };
+    var member_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{ .name = "source_file", .kind = .named, .productions = &.{.{ .steps = source_steps[0..] }} },
+            .{ .name = "source_file_repeat1", .kind = .auxiliary, .productions = &.{ .{ .steps = &.{} }, .{ .steps = repeat_recursive_steps[0..] }, .{ .steps = repeat_item_steps[0..] } } },
+            .{ .name = "member", .kind = .named, .productions = &.{.{ .steps = member_steps[0..] }} },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "item", .kind = .anonymous, .rule = 0, .source_kind = .string },
+        },
+        .separators = &.{},
+    };
+
+    const nodes = try computeNodeTypes(arena.allocator(), syntax, lexical, .{ .entries = &.{} });
+    const source = findNodeByKind(nodes, "source_file").?;
+    try std.testing.expectEqual(@as(usize, 1), source.fields.len);
+    try std.testing.expectEqualStrings("member", source.fields[0].name);
+    try std.testing.expect(source.fields[0].info.quantity.multiple);
+    try std.testing.expect(!source.fields[0].info.quantity.required);
 }
 
 test "computeNodeTypes emits only named children without fields in children" {

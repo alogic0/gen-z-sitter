@@ -41,6 +41,7 @@ const Extractor = struct {
     auxiliary_variables: std.array_list.Managed(syntax_ir.SyntaxVariable),
     repeat_cache: std.array_list.Managed(RepeatCacheEntry),
     promoted_top_level_repeat_variables: std.array_list.Managed(u32),
+    symbol_replacements: []const SymbolReplacement,
 
     fn init(allocator: std.mem.Allocator, prepared: prepared_ir.PreparedGrammar) Extractor {
         return .{
@@ -51,11 +52,12 @@ const Extractor = struct {
             .auxiliary_variables = std.array_list.Managed(syntax_ir.SyntaxVariable).init(allocator),
             .repeat_cache = std.array_list.Managed(RepeatCacheEntry).init(allocator),
             .promoted_top_level_repeat_variables = std.array_list.Managed(u32).init(allocator),
+            .symbol_replacements = &.{},
         };
     }
 
     fn extract(self: *Extractor) ExtractTokensError!ExtractedGrammars {
-        const variables = try self.extractVariables();
+        const variables = try self.compactExtractedVariables(try self.extractVariables());
         const external_tokens = try self.extractExternalTokens();
         const extra_symbols = try self.extractExtraSymbols();
         const expected_conflicts = try self.convertConflictSets();
@@ -137,12 +139,9 @@ const Extractor = struct {
         const word = self.prepared.word_token orelse return null;
 
         switch (word.kind) {
-            .non_terminal => {
-                const variable = self.prepared.variables[word.index];
-                if (self.tryEnsureLexicalVariable(variable.name, variable.rule, variable.name)) |terminal_index| {
-                    return .{ .terminal = terminal_index };
-                }
-                return error.InvalidWordToken;
+            .non_terminal => return switch (try self.replacePreparedSymbol(word)) {
+                .terminal => |terminal| .{ .terminal = terminal },
+                else => error.InvalidWordToken,
             },
             .external => return error.InvalidWordToken,
         }
@@ -150,13 +149,7 @@ const Extractor = struct {
 
     fn extractPrecedenceSymbol(self: *Extractor, symbol: ir_symbols.SymbolId) ExtractTokensError!syntax_ir.SymbolRef {
         switch (symbol.kind) {
-            .non_terminal => {
-                const variable = self.prepared.variables[symbol.index];
-                if (self.findLexicalVariable(variable.rule)) |terminal_index| {
-                    return .{ .terminal = terminal_index };
-                }
-                return .{ .non_terminal = symbol.index };
-            },
+            .non_terminal => return try self.replacePreparedSymbol(symbol),
             .external => return error.InvalidPrecedenceSymbol,
         }
     }
@@ -185,6 +178,59 @@ const Extractor = struct {
 
         try result.appendSlice(self.auxiliary_variables.items);
         return try result.toOwnedSlice();
+    }
+
+    fn compactExtractedVariables(
+        self: *Extractor,
+        variables: []const syntax_ir.SyntaxVariable,
+    ) ExtractTokensError![]const syntax_ir.SyntaxVariable {
+        const usage_counts = try self.allocator.alloc(usize, self.lexical_variables.items.len);
+        @memset(usage_counts, 0);
+
+        for (variables) |variable| {
+            for (variable.productions) |production| {
+                for (production.steps) |step| {
+                    switch (step.symbol) {
+                        .terminal => |terminal| {
+                            if (terminal < usage_counts.len) usage_counts[terminal] += 1;
+                        },
+                        else => {},
+                    }
+                }
+            }
+        }
+
+        const replacements = try self.allocator.alloc(SymbolReplacement, variables.len);
+        var kept = std.array_list.Managed(syntax_ir.SyntaxVariable).init(self.allocator);
+        defer kept.deinit();
+
+        for (variables, 0..) |variable, index| {
+            if (index > 0) {
+                if (singlePlainTerminalProduction(variable)) |terminal| {
+                    if (terminal < usage_counts.len and usage_counts[terminal] == 1) {
+                        const lexical_variable = &self.lexical_variables.items[terminal];
+                        if (lexical_variable.kind == .auxiliary or variable.kind != .hidden) {
+                            lexical_variable.name = variable.name;
+                            lexical_variable.kind = lexicalKindFromSyntaxKind(variable.kind);
+                            replacements[index] = .{ .terminal = terminal };
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            replacements[index] = .{ .non_terminal = @intCast(kept.items.len) };
+            try kept.append(variable);
+        }
+
+        self.symbol_replacements = replacements;
+
+        const remapped = try self.allocator.alloc(syntax_ir.SyntaxVariable, kept.items.len);
+        for (kept.items, 0..) |variable, index| {
+            remapped[index] = variable;
+            remapped[index].productions = try self.remapProductions(variable.productions);
+        }
+        return remapped;
     }
 
     fn extractPromotedTopLevelRepeatVariable(
@@ -239,13 +285,7 @@ const Extractor = struct {
 
     fn extractExtraSymbol(self: *Extractor, symbol: ir_symbols.SymbolId) ExtractTokensError!syntax_ir.SymbolRef {
         switch (symbol.kind) {
-            .non_terminal => {
-                const variable = self.prepared.variables[symbol.index];
-                if (self.findLexicalVariable(variable.rule)) |terminal_index| {
-                    return .{ .terminal = terminal_index };
-                }
-                return .{ .non_terminal = symbol.index };
-            },
+            .non_terminal => return try self.replacePreparedSymbol(symbol),
             .external => return .{ .external = symbol.index },
         }
     }
@@ -259,8 +299,9 @@ const Extractor = struct {
             defer converted.deinit();
 
             for (conflict_set) |symbol| {
-                try converted.append(try self.extractConflictSymbol(symbol));
+                try appendUniqueSymbolRef(&converted, try self.extractConflictSymbol(symbol));
             }
+            std.mem.sort(syntax_ir.SymbolRef, converted.items, {}, symbolRefLessThan);
 
             try result.append(try converted.toOwnedSlice());
         }
@@ -270,13 +311,7 @@ const Extractor = struct {
 
     fn extractConflictSymbol(self: *Extractor, symbol: ir_symbols.SymbolId) ExtractTokensError!syntax_ir.SymbolRef {
         switch (symbol.kind) {
-            .non_terminal => {
-                const variable = self.prepared.variables[symbol.index];
-                if (self.findLexicalVariable(variable.rule)) |terminal_index| {
-                    return .{ .terminal = terminal_index };
-                }
-                return .{ .non_terminal = symbol.index };
-            },
+            .non_terminal => return try self.replacePreparedSymbol(symbol),
             .external => return error.InvalidConflictSymbol,
         }
     }
@@ -316,13 +351,7 @@ const Extractor = struct {
 
     fn extractInlineSymbol(self: *Extractor, symbol: ir_symbols.SymbolId) ExtractTokensError!syntax_ir.SymbolRef {
         switch (symbol.kind) {
-            .non_terminal => {
-                const variable = self.prepared.variables[symbol.index];
-                if (self.findLexicalVariable(variable.rule)) |terminal_index| {
-                    return .{ .terminal = terminal_index };
-                }
-                return .{ .non_terminal = symbol.index };
-            },
+            .non_terminal => return try self.replacePreparedSymbol(symbol),
             .external => return error.InvalidInlineSymbol,
         }
     }
@@ -333,7 +362,10 @@ const Extractor = struct {
 
         for (self.prepared.supertype_symbols) |symbol| {
             switch (symbol.kind) {
-                .non_terminal => try result.append(.{ .non_terminal = symbol.index }),
+                .non_terminal => switch (try self.replacePreparedSymbol(symbol)) {
+                    .non_terminal => |non_terminal| try result.append(.{ .non_terminal = non_terminal }),
+                    else => return error.InvalidSupertypeSymbol,
+                },
                 .external => return error.InvalidSupertypeSymbol,
             }
         }
@@ -492,24 +524,26 @@ const Extractor = struct {
         lexical_boundary_name: ?[]const u8,
     ) ?u32 {
         if (!self.isLexicalRule(rule_id, lexical_boundary_name)) return null;
+        const identity_rule_id = self.lexicalIdentityRule(rule_id);
 
-        if (self.findLexicalVariable(rule_id)) |index| return index;
+        if (self.findLexicalVariable(identity_rule_id)) |index| return index;
 
-        const name = self.lexicalNameForRule(rule_id, preferred_name);
-        const kind = self.lexicalKindForRule(rule_id, preferred_name);
-        if (self.findEquivalentLexicalVariable(rule_id, kind)) |index| return index;
+        const name = self.lexicalNameForRule(identity_rule_id, preferred_name);
+        const kind = self.lexicalKindForRule(identity_rule_id, preferred_name);
+        if (self.findEquivalentLexicalVariable(identity_rule_id, kind)) |index| return index;
         self.lexical_variables.append(.{
             .name = name,
             .kind = kind,
-            .rule = rule_id,
-            .source_kind = self.lexicalSourceKindForRule(rule_id),
+            .rule = identity_rule_id,
+            .source_kind = self.lexicalSourceKindForRule(identity_rule_id),
         }) catch return null;
         return @intCast(self.lexical_variables.items.len - 1);
     }
 
     fn findLexicalVariable(self: *Extractor, rule_id: ir_rules.RuleId) ?u32 {
+        const identity_rule_id = self.lexicalIdentityRule(rule_id);
         for (self.lexical_variables.items, 0..) |variable, i| {
-            if (variable.rule == rule_id) return @intCast(i);
+            if (variable.rule == identity_rule_id) return @intCast(i);
         }
         return null;
     }
@@ -527,8 +561,8 @@ const Extractor = struct {
     }
 
     fn lexicalRulesEquivalent(self: *Extractor, lhs_id: ir_rules.RuleId, rhs_id: ir_rules.RuleId) bool {
-        const lhs = self.prepared.rules[@intCast(lhs_id)];
-        const rhs = self.prepared.rules[@intCast(rhs_id)];
+        const lhs = self.prepared.rules[@intCast(self.lexicalIdentityRule(lhs_id))];
+        const rhs = self.prepared.rules[@intCast(self.lexicalIdentityRule(rhs_id))];
         return switch (lhs) {
             .string => |left| switch (rhs) {
                 .string => |right| std.mem.eql(u8, left, right),
@@ -701,6 +735,49 @@ const Extractor = struct {
         return try result.toOwnedSlice();
     }
 
+    fn remapProductions(
+        self: *Extractor,
+        productions: []const syntax_ir.Production,
+    ) ExtractTokensError![]syntax_ir.Production {
+        const remapped = try self.allocator.alloc(syntax_ir.Production, productions.len);
+        for (productions, 0..) |production, production_index| {
+            remapped[production_index] = production;
+            const steps = try self.allocator.alloc(syntax_ir.ProductionStep, production.steps.len);
+            for (production.steps, 0..) |step, step_index| {
+                steps[step_index] = step;
+                steps[step_index].symbol = try self.replaceSyntaxSymbol(step.symbol);
+            }
+            remapped[production_index].steps = steps;
+        }
+        return remapped;
+    }
+
+    fn replacePreparedSymbol(
+        self: *Extractor,
+        symbol: ir_symbols.SymbolId,
+    ) ExtractTokensError!syntax_ir.SymbolRef {
+        return try self.replaceSyntaxSymbol(switch (symbol.kind) {
+            .non_terminal => .{ .non_terminal = symbol.index },
+            .external => .{ .external = symbol.index },
+        });
+    }
+
+    fn replaceSyntaxSymbol(
+        self: *Extractor,
+        symbol: syntax_ir.SymbolRef,
+    ) ExtractTokensError!syntax_ir.SymbolRef {
+        switch (symbol) {
+            .non_terminal => |index| {
+                if (index >= self.symbol_replacements.len) return error.UnsupportedRuleShape;
+                return switch (self.symbol_replacements[index]) {
+                    .non_terminal => |replacement| .{ .non_terminal = replacement },
+                    .terminal => |replacement| .{ .terminal = replacement },
+                };
+            },
+            else => return symbol,
+        }
+    }
+
     fn isLexicalRule(self: *Extractor, rule_id: ir_rules.RuleId, lexical_boundary_name: ?[]const u8) bool {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
             .string, .pattern => true,
@@ -780,26 +857,30 @@ const Extractor = struct {
 
     fn lexicalNameForRule(self: *Extractor, rule_id: ir_rules.RuleId, preferred_name: ?[]const u8) []const u8 {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
-            .string => |value| if (preferred_name) |name|
-                if (shouldUseLiteralLexicalName(name)) value else name
-            else
-                value,
+            .string => |value| value,
             .pattern => |pattern| if (preferred_name) |name|
                 if (shouldUseLiteralLexicalName(name)) pattern.value else name
             else
                 pattern.value,
-            .metadata => |metadata| self.lexicalNameForRule(metadata.inner, preferred_name),
+            .metadata => |metadata| if (metadata.data.token or metadata.data.immediate_token)
+                if (metadata.data.alias) |alias| alias.value else self.lexicalNameForRule(metadata.inner, preferred_name)
+            else
+                self.lexicalNameForRule(metadata.inner, preferred_name),
             else => preferred_name.?,
         };
     }
 
     fn lexicalKindForRule(self: *Extractor, rule_id: ir_rules.RuleId, preferred_name: ?[]const u8) lexical_ir.VariableKind {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
-            .string, .pattern => if (preferred_name) |name|
+            .string => .anonymous,
+            .pattern => if (preferred_name) |name|
                 if (shouldUseLiteralLexicalName(name)) .anonymous else .named
             else
                 .anonymous,
-            .metadata => |metadata| self.lexicalKindForRule(metadata.inner, preferred_name),
+            .metadata => |metadata| if (metadata.data.token or metadata.data.immediate_token)
+                if (metadata.data.alias) |alias| lexicalKindFromAlias(alias) else self.lexicalKindForRule(metadata.inner, preferred_name)
+            else
+                self.lexicalKindForRule(metadata.inner, preferred_name),
             else => .named,
         };
     }
@@ -815,7 +896,28 @@ const Extractor = struct {
             else => .composite,
         };
     }
+
+    fn lexicalIdentityRule(self: *Extractor, rule_id: ir_rules.RuleId) ir_rules.RuleId {
+        return switch (self.prepared.rules[@intCast(rule_id)]) {
+            .metadata => |metadata| if (metadata.data.token and metadataCanUseInnerTokenIdentity(metadata.data))
+                self.lexicalIdentityRule(metadata.inner)
+            else
+                rule_id,
+            else => rule_id,
+        };
+    }
 };
+
+fn metadataCanUseInnerTokenIdentity(metadata: ir_rules.Metadata) bool {
+    return metadata.field_name == null and
+        metadata.alias == null and
+        metadata.precedence == .none and
+        metadata.associativity == .none and
+        metadata.dynamic_precedence == 0 and
+        metadata.token and
+        !metadata.immediate_token and
+        metadata.reserved_context_name == null;
+}
 
 fn externalPreferredName(name: []const u8) ?[]const u8 {
     return if (name.len == 0) null else name;
@@ -849,6 +951,83 @@ const TopLevelRepeatInfo = struct {
     at_least_one: bool,
 };
 
+const SymbolReplacement = union(enum) {
+    non_terminal: u32,
+    terminal: u32,
+};
+
+fn lexicalKindFromSyntaxKind(kind: syntax_ir.VariableKind) lexical_ir.VariableKind {
+    return switch (kind) {
+        .named => .named,
+        .hidden => .hidden,
+        .anonymous => .anonymous,
+        .auxiliary => .auxiliary,
+    };
+}
+
+fn lexicalKindFromAlias(alias: ir_rules.Alias) lexical_ir.VariableKind {
+    return if (alias.named) .named else .anonymous;
+}
+
+fn singlePlainTerminalProduction(variable: syntax_ir.SyntaxVariable) ?u32 {
+    if (variable.productions.len != 1) return null;
+    const production = variable.productions[0];
+    if (production.dynamic_precedence != 0) return null;
+    if (production.steps.len != 1) return null;
+    const step = production.steps[0];
+    if (step.alias != null) return null;
+    if (step.field_name != null) return null;
+    if (step.field_inherited) return null;
+    if (step.precedence != .none) return null;
+    if (step.associativity != .none) return null;
+    if (step.reserved_context_name != null) return null;
+    return switch (step.symbol) {
+        .terminal => |terminal| terminal,
+        else => null,
+    };
+}
+
+fn appendUniqueSymbolRef(
+    symbols: *std.array_list.Managed(syntax_ir.SymbolRef),
+    symbol: syntax_ir.SymbolRef,
+) std.mem.Allocator.Error!void {
+    for (symbols.items) |existing| {
+        if (symbolRefEql(existing, symbol)) return;
+    }
+    try symbols.append(symbol);
+}
+
+fn symbolRefEql(left: syntax_ir.SymbolRef, right: syntax_ir.SymbolRef) bool {
+    return switch (left) {
+        .end => right == .end,
+        .non_terminal => |left_index| switch (right) {
+            .non_terminal => |right_index| left_index == right_index,
+            else => false,
+        },
+        .terminal => |left_index| switch (right) {
+            .terminal => |right_index| left_index == right_index,
+            else => false,
+        },
+        .external => |left_index| switch (right) {
+            .external => |right_index| left_index == right_index,
+            else => false,
+        },
+    };
+}
+
+fn symbolRefLessThan(_: void, left: syntax_ir.SymbolRef, right: syntax_ir.SymbolRef) bool {
+    return symbolRefSortKey(left) < symbolRefSortKey(right);
+}
+
+fn symbolRefSortKey(symbol: syntax_ir.SymbolRef) u64 {
+    return switch (symbol) {
+        .end => 0,
+        .terminal => |index| 1_000_000 + index,
+        .external => |index| 2_000_000 + index,
+        .non_terminal => |index| 3_000_000 + index,
+    };
+}
+
 test "extractTokens splits simple prepared grammar into syntax and lexical parts" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
@@ -864,7 +1043,7 @@ test "extractTokens splits simple prepared grammar into syntax and lexical parts
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw_grammar);
     const extracted = try extractTokens(extract_arena.allocator(), prepared);
 
-    try std.testing.expectEqual(@as(usize, 3), extracted.syntax.variables.len);
+    try std.testing.expectEqual(@as(usize, 2), extracted.syntax.variables.len);
     try std.testing.expectEqual(@as(usize, 1), extracted.syntax.external_tokens.len);
     try std.testing.expectEqualStrings("indent", extracted.syntax.external_tokens[0].name);
     try std.testing.expectEqual(syntax_ir.VariableKind.named, extracted.syntax.external_tokens[0].kind);
@@ -878,8 +1057,8 @@ test "extractTokens splits simple prepared grammar into syntax and lexical parts
     try std.testing.expectEqual(@as(u32, 1), extracted.syntax.variables_to_inline[0].terminal);
     try std.testing.expectEqual(@as(usize, 1), extracted.syntax.expected_conflicts.len);
     try std.testing.expectEqual(@as(usize, 2), extracted.syntax.expected_conflicts[0].len);
-    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.expected_conflicts[0][0].non_terminal);
-    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.expected_conflicts[0][1].terminal);
+    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.expected_conflicts[0][0].terminal);
+    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.expected_conflicts[0][1].non_terminal);
     try std.testing.expect(extracted.syntax.word_token != null);
     try std.testing.expectEqual(@as(u32, 1), extracted.syntax.word_token.?.terminal);
 }
@@ -1457,7 +1636,7 @@ test "extractTokens accepts word tokens backed by tokenized composite lexical ru
     try std.testing.expectEqual(@as(u32, 0), extracted.syntax.word_token.?.terminal);
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
     try std.testing.expectEqualStrings("identifier", extracted.lexical.variables[0].name);
-    try std.testing.expectEqual(@as(u32, 6), extracted.lexical.variables[0].rule);
+    try std.testing.expectEqual(@as(u32, 5), extracted.lexical.variables[0].rule);
 }
 
 test "extractTokens accepts blank alternatives inside tokenized lexical rules" {
@@ -1521,10 +1700,10 @@ test "extractTokens accepts blank alternatives inside tokenized lexical rules" {
     const extracted = try extractTokens(arena.allocator(), prepared);
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
     try std.testing.expectEqualStrings("number", extracted.lexical.variables[0].name);
-    try std.testing.expectEqual(@as(u32, 5), extracted.lexical.variables[0].rule);
-    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables[1].productions.len);
-    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables[1].productions[0].steps.len);
-    switch (extracted.syntax.variables[1].productions[0].steps[0].symbol) {
+    try std.testing.expectEqual(@as(u32, 6), extracted.lexical.variables[0].rule);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables.len);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables[0].productions[0].steps.len);
+    switch (extracted.syntax.variables[0].productions[0].steps[0].symbol) {
         .terminal => |terminal| try std.testing.expectEqual(@as(u32, 0), terminal),
         else => return error.TestUnexpectedResult,
     }
@@ -1749,21 +1928,19 @@ test "extractTokens keeps deterministic auxiliary naming for mixed repeat choice
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw_grammar);
     const extracted = try extractTokens(extract_arena.allocator(), prepared);
 
-    try std.testing.expectEqual(@as(usize, 7), extracted.syntax.variables.len);
+    try std.testing.expectEqual(@as(usize, 5), extracted.syntax.variables.len);
     try std.testing.expectEqualStrings("source_file", extracted.syntax.variables[0].name);
     try std.testing.expectEqualStrings("_entry", extracted.syntax.variables[1].name);
-    try std.testing.expectEqualStrings("identifier", extracted.syntax.variables[2].name);
-    try std.testing.expectEqualStrings("number_literal", extracted.syntax.variables[3].name);
-    try std.testing.expectEqualStrings("source_file_repeat4", extracted.syntax.variables[4].name);
-    try std.testing.expectEqualStrings("_entry_repeat5", extracted.syntax.variables[5].name);
-    try std.testing.expectEqualStrings("_entry_repeat6", extracted.syntax.variables[6].name);
+    try std.testing.expectEqualStrings("source_file_repeat4", extracted.syntax.variables[2].name);
+    try std.testing.expectEqualStrings("_entry_repeat5", extracted.syntax.variables[3].name);
+    try std.testing.expectEqualStrings("_entry_repeat6", extracted.syntax.variables[4].name);
 
-    try std.testing.expectEqual(@as(u32, 4), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
-    try std.testing.expectEqual(@as(u32, 5), extracted.syntax.variables[1].productions[0].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 2), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 3), extracted.syntax.variables[1].productions[0].steps[1].symbol.non_terminal);
     try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables[1].productions[1].steps.len);
-    try std.testing.expectEqual(@as(u32, 6), extracted.syntax.variables[1].productions[2].steps[1].symbol.non_terminal);
-    try std.testing.expectEqual(@as(u32, 5), extracted.syntax.variables[5].productions[0].steps[1].symbol.non_terminal);
-    try std.testing.expectEqual(@as(u32, 6), extracted.syntax.variables[6].productions[0].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 4), extracted.syntax.variables[1].productions[2].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 3), extracted.syntax.variables[3].productions[0].steps[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 4), extracted.syntax.variables[4].productions[0].steps[1].symbol.non_terminal);
 }
 
 test "extractTokens rewrites tokenized inline symbols to extracted terminals" {
@@ -1816,7 +1993,7 @@ test "extractTokens rewrites tokenized inline symbols to extracted terminals" {
     try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables_to_inline[0].terminal);
 }
 
-test "extractTokens keeps direct symbol productions syntax-side for tokenized rules" {
+test "extractTokens replaces direct symbol productions for single-use tokenized rules" {
     const prepared = prepared_ir.PreparedGrammar{
         .grammar_name = "direct-symbol-boundary",
         .variables = &.{
@@ -1862,12 +2039,13 @@ test "extractTokens keeps direct symbol productions syntax-side for tokenized ru
     defer arena.deinit();
 
     const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables.len);
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
     try std.testing.expectEqualStrings("term", extracted.lexical.variables[0].name);
-    try std.testing.expectEqual(@as(u32, 1), extracted.syntax.variables[0].productions[0].steps[0].symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables[0].productions[0].steps[0].symbol.terminal);
 }
 
-test "extractTokens keeps aliased tokenized symbol productions syntax-side" {
+test "extractTokens preserves aliases when replacing tokenized symbol productions" {
     const prepared = prepared_ir.PreparedGrammar{
         .grammar_name = "aliased-symbol-boundary",
         .variables = &.{
@@ -1922,10 +2100,67 @@ test "extractTokens keeps aliased tokenized symbol productions syntax-side" {
     defer arena.deinit();
 
     const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.variables.len);
     const step = extracted.syntax.variables[0].productions[0].steps[0];
-    try std.testing.expectEqual(@as(u32, 1), step.symbol.non_terminal);
+    try std.testing.expectEqual(@as(u32, 0), step.symbol.terminal);
     try std.testing.expect(step.alias != null);
     try std.testing.expectEqualStrings("rhs", step.alias.?.value);
+}
+
+test "extractTokens uses token aliases as lexical symbol identity" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "aliased-token-identity",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 7,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{
+            .{ .string = "static" },
+            .{ .pattern = .{ .value = "\\s+", .flags = null } },
+            .{ .string = "get" },
+            .{ .pattern = .{ .value = "\\s*\\n", .flags = null } },
+            .{ .seq = &.{ 0, 1, 2, 3 } },
+            .{ .metadata = .{
+                .inner = 4,
+                .data = .{
+                    .token = true,
+                    .alias = .{ .value = "static get", .named = false },
+                },
+            } },
+            .{ .string = "(" },
+            .{ .seq = &.{ 5, 6 } },
+        },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 2), extracted.lexical.variables.len);
+    try std.testing.expectEqualStrings("static get", extracted.lexical.variables[0].name);
+    try std.testing.expectEqual(lexical_ir.VariableKind.anonymous, extracted.lexical.variables[0].kind);
+    try std.testing.expectEqual(lexical_ir.SourceKind.token, extracted.lexical.variables[0].source_kind);
+    try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables[0].productions[0].steps[0].symbol.terminal);
 }
 
 test "extractTokens rejects external inline symbols" {

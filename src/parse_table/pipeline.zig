@@ -692,12 +692,14 @@ fn serializePreparedBuildResultAlloc(
     logProfileDone("serialize.compute_first_sets", stage_profile_timer);
 
     stage_profile_timer = profileTimer(profile_log);
-    var serialized = try serialize.attachPreparedMetadataAlloc(
+    var serialized = try serialize.attachExtractedMetadataAlloc(
         allocator,
         try serialize.serializeBuildResultWithOptions(allocator, result, mode, .{
             .include_unresolved_parse_actions = include_unresolved_parse_actions,
         }),
         prepared,
+        extracted.syntax,
+        extracted.lexical,
     );
     logProfileDone("serialize.build_result_and_metadata", stage_profile_timer);
     stage_profile_timer = profileTimer(profile_log);

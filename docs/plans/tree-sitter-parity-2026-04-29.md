@@ -117,20 +117,27 @@ Batch order:
 - [ ] Reduce or explain the surviving JavaScript `shift_reduce_expected` rows,
   starting with the `primary_expression` / `lexical_declaration` samples on
   lookahead terminal 41.
-- [ ] Promote the next state-count mover from symbol/token parity: local
+- [x] Promote the next state-count mover from symbol/token parity: local
   JavaScript currently exposes 92 lexical tokens versus upstream's 134, so
   some upstream-distinct lookahead rows cannot split local states yet.
-- [ ] Close JavaScript surface parity before interpreting minimization:
+- [x] Close JavaScript surface parity before interpreting minimization:
   explain local 92 vs upstream 134 tokens, starting with aliased
   identifier-like tokens that appear in upstream node-types but are missing
   locally (`property_identifier`, `statement_identifier`, and
   `shorthand_property_identifier*`).
-- [ ] Treat alias/node-type parity as part of the same surface-parity
+- [x] Treat alias/node-type parity as part of the same surface-parity
   workstream as token extraction; use node-types diff as the user-visible proof
   once token identity converges.
-- [ ] Keep the 1,626 minimized JavaScript count classified as non-actionable
+- [x] Keep the 1,626 minimized JavaScript count classified as non-actionable
   minimizer-quality evidence until token/symbol extraction, alias/node-types,
   and external scanner valid-symbol rows converge.
+- [x] Intern serialized production metadata separately from raw reduce payloads,
+  matching upstream's distinction between reduce symbol/child-count/dynamic
+  precedence and `production_id` alias/field metadata.
+- [ ] Isolate the remaining JavaScript production-info delta: local now emits
+  135 production IDs versus upstream's 121, and the local set is an upstream
+  superset with 14 local-only metadata rows, mostly member-expression aliases
+  and context-inherited `parameters` rows.
 
 Batch 2 note: JavaScript comparison now writes
 `.zig-cache/upstream-compare-javascript/local-upstream-summary.json`. Two
@@ -260,6 +267,20 @@ node-types generation does not enumerate named production aliases through an
 upstream-style aliases-by-symbol map. The next implementation step is therefore
 the upstream `SymbolReplacer`-shaped extraction/remap pass, with node-types
 alias enumeration used as a visible proof surface.
+
+Batch 10 note: the JavaScript surface-parity gate is now mostly closed. The
+bounded upstream comparison reports matching symbol count (261), token count
+(134), external token count (8), alias count (4), and node-types hash
+(`0xd9183da56f875d8c`). A focused precedence fix reduced unresolved expected
+conflicts to 5 non-blocking `shift_reduce_expected` rows. Serialized production
+metadata now follows upstream's two-part model: reduce actions keep their raw
+symbol/child-count/dynamic-precedence payload while `production_id` indexes
+interned alias/field metadata. That moved JavaScript `PRODUCTION_ID_COUNT` from
+1260 to 135. The remaining production-info delta is precise rather than broad:
+upstream has 121 production IDs, and local's metadata set is an upstream
+superset with 14 local-only rows. The next task is to decide whether those rows
+come from default-alias clearing, context-inherited inline fields, or local-only
+inline productions before touching state minimization again.
 
 Gate:
 

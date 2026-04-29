@@ -991,6 +991,38 @@ fn compareReducePrecedence(
     return .equal;
 }
 
+fn compareProductionPrecedence(
+    left_metadata: ProductionResolutionMetadata,
+    left_lhs: u32,
+    right_metadata: ProductionResolutionMetadata,
+    right_lhs: u32,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+) PrecedenceComparison {
+    const left_integer = left_metadata.max_integer_precedence orelse 0;
+    const right_integer = right_metadata.max_integer_precedence orelse 0;
+    if (left_integer != 0 or right_integer != 0) {
+        if (left_integer > right_integer) return .greater;
+        if (left_integer < right_integer) return .less;
+        return .equal;
+    }
+
+    for (precedence_orderings) |ordering| {
+        var saw_left = false;
+        var saw_right = false;
+        for (ordering) |entry| {
+            if (precedenceEntryMatchesProduction(entry, left_metadata, left_lhs)) {
+                if (saw_right) return .less;
+                saw_left = true;
+            } else if (precedenceEntryMatchesProduction(entry, right_metadata, right_lhs)) {
+                if (saw_left) return .greater;
+                saw_right = true;
+            }
+        }
+    }
+
+    return .equal;
+}
+
 fn precedenceEntryMatchesProduction(
     entry: syntax_ir.PrecedenceEntry,
     metadata: ProductionResolutionMetadata,
@@ -1071,6 +1103,19 @@ fn resolveShiftReduce(
         }
     }
 
+    if (parse_state) |resolved_state| {
+        if (compareShiftItemPrecedence(
+            productions,
+            precedence_orderings,
+            resolved_state,
+            first_sets,
+            shift_symbol,
+            production,
+        )) |shift_wins| {
+            return if (shift_wins) shift_action else reduce_action;
+        }
+    }
+
     if (metadata.named_precedence) |name| {
         if (comparePrecedenceEntries(
             precedence_orderings,
@@ -1099,6 +1144,46 @@ fn resolveShiftReduce(
 
     if (productionIsRepeatAuxiliary(production)) return shift_action;
 
+    return null;
+}
+
+fn compareShiftItemPrecedence(
+    productions: anytype,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    parse_state: state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
+    shift_symbol: syntax_ir.SymbolRef,
+    reduce_production: @TypeOf(productions[0]),
+) ?bool {
+    const reduce_metadata = extractResolutionMetadata(reduce_production);
+    var shift_is_less = false;
+    var shift_is_more = false;
+
+    for (parse_state.items) |entry| {
+        const parse_item = entry.item;
+        if (parse_item.production_id >= productions.len) continue;
+        const shift_production = productions[parse_item.production_id];
+        if (parse_item.step_index >= shift_production.steps.len) continue;
+        if (parse_item.step_index == 0) continue;
+        const step = shift_production.steps[parse_item.step_index];
+        if (!symbolCanStartLookahead(first_sets, step.symbol, shift_symbol)) continue;
+
+        const shift_metadata = extractShiftItemResolutionMetadata(shift_production, parse_item.step_index);
+        switch (compareProductionPrecedence(
+            shift_metadata,
+            shift_production.lhs,
+            reduce_metadata,
+            reduce_production.lhs,
+            precedence_orderings,
+        )) {
+            .greater => shift_is_more = true,
+            .less => shift_is_less = true,
+            .equal => {},
+        }
+    }
+
+    if (shift_is_more and !shift_is_less) return true;
+    if (shift_is_less and !shift_is_more) return false;
     return null;
 }
 
@@ -2233,6 +2318,85 @@ test "resolveActionTable chooses shift for named precedence ordered below the co
     };
 
     const resolved = try resolveActionTableWithPrecedence(allocator, productions[0..], precedence_orderings[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectChosenAction(resolved.groupsForState(3)[0], .{ .shift = 4 });
+}
+
+test "resolveActionTable compares shift parent symbols in precedence orderings" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = &.{} },
+        .{
+            .lhs = 2,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .terminal = 1 } },
+                .{ .symbol = .{ .terminal = 0 } },
+            },
+        },
+    };
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 2, 0, item.ParseItem.init(2, 1)),
+        try item.ParseItemSetEntry.withLookahead(allocator, 2, 0, item.ParseItem.init(1, 0), .{ .terminal = 0 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 3,
+            .items = parse_items[0..],
+            .transitions = &.{},
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 3,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const precedence_orderings = [_][]const syntax_ir.PrecedenceEntry{
+        &[_]syntax_ir.PrecedenceEntry{
+            .{ .symbol = .{ .non_terminal = 2 } },
+            .{ .symbol = .{ .non_terminal = 1 } },
+        },
+    };
+
+    const resolved = try resolveActionTableWithContext(
+        allocator,
+        productions[0..],
+        precedence_orderings[0..],
+        &.{},
+        parse_states[0..],
+        grouped,
+    );
     defer {
         for (resolved.states) |resolved_state| {
             for (resolved_state.groups) |group| allocator.free(group.candidate_actions);

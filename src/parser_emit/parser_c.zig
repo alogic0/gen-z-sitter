@@ -225,10 +225,10 @@ pub fn writeParserCWithOptions(
     try writer.print("#define STATE_COUNT {d}\n", .{compacted.states.len});
     const large_state_count_value = serializedLargeStateCount(compacted);
     try writer.print("#define LARGE_STATE_COUNT {d}\n", .{large_state_count_value});
-    try writer.print("#define SYMBOL_COUNT {d}\n", .{emitted_symbols.len});
+    try writer.print("#define SYMBOL_COUNT {d}\n", .{emitted_symbols.len - aliasSymbolCount(emitted_symbols)});
     try writer.print("#define TOKEN_COUNT {d}\n", .{tokenCount(emitted_symbols)});
-    try writer.print("#define EXTERNAL_TOKEN_COUNT {d}\n", .{externalTokenCount(emitted_symbols)});
-    try writer.print("#define PRODUCTION_ID_COUNT {d}\n", .{compacted.productions.len});
+    try writer.print("#define EXTERNAL_TOKEN_COUNT {d}\n", .{compacted.external_scanner.symbols.len});
+    try writer.print("#define PRODUCTION_ID_COUNT {d}\n", .{serializedProductionIdCount(compacted)});
     try writer.print("#define FIELD_COUNT {d}\n", .{compacted.field_map.names.len});
     try writer.print("#define ALIAS_COUNT {d}\n", .{aliasSymbolCount(emitted_symbols)});
     try writer.print("#define MAX_ALIAS_SEQUENCE_LENGTH {d}\n", .{maxAliasSequenceLength(compacted)});
@@ -272,7 +272,7 @@ pub fn writeParserCWithOptions(
             },
         );
     }
-    try writer.writeAll("static const char * const ts_symbol_names[SYMBOL_COUNT] = {\n");
+    try writer.writeAll("static const char * const ts_symbol_names[SYMBOL_COUNT + ALIAS_COUNT] = {\n");
     for (emitted_symbols, 0..) |symbol, index| {
         try writer.print("  [{d}] = \"", .{index});
         try writeCStringLiteralContents(writer, symbol.label);
@@ -280,13 +280,13 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("};\n\n");
 
-    try writer.writeAll("static const TSSymbolMetadata ts_symbol_metadata[SYMBOL_COUNT] = {\n");
+    try writer.writeAll("static const TSSymbolMetadata ts_symbol_metadata[SYMBOL_COUNT + ALIAS_COUNT] = {\n");
     for (emitted_symbols, 0..) |symbol, index| {
         try writer.print("  [{d}] = {{ .visible = {}, .named = {}, .supertype = {} }},\n", .{ index, symbol.visible, symbol.named, symbol.supertype });
     }
     try writer.writeAll("};\n\n");
 
-    try writer.writeAll("static const TSSymbol ts_symbol_map[SYMBOL_COUNT] = {\n");
+    try writer.writeAll("static const TSSymbol ts_symbol_map[SYMBOL_COUNT + ALIAS_COUNT] = {\n");
     for (emitted_symbols, 0..) |symbol, index| {
         try writer.print("  [{d}] = {d},\n", .{ index, symbol.public_symbol });
     }
@@ -324,12 +324,17 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("};\n\n");
 
-    try writeNonTerminalAliasMap(writer, allocator, emitted_symbols, compacted.alias_sequences);
+    const non_terminal_aliases = if (compacted.non_terminal_aliases.len > 0)
+        compacted.non_terminal_aliases
+    else
+        compacted.alias_sequences;
+    try writeNonTerminalAliasMap(writer, allocator, emitted_symbols, non_terminal_aliases);
     try writer.writeAll("static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH > 0 ? MAX_ALIAS_SEQUENCE_LENGTH : 1] = {\n");
-    if (compacted.productions.len == 0) {
+    const production_id_count = serializedProductionIdCount(compacted);
+    if (production_id_count == 0) {
         try writer.writeAll("  { 0 },\n");
     } else {
-        for (compacted.productions, 0..) |_, production_id| {
+        for (0..production_id_count) |production_id| {
             try writer.print("  [{d}] = {{", .{production_id});
             const sequence_len = maxAliasSequenceLength(compacted);
             if (sequence_len == 0) {
@@ -483,7 +488,7 @@ pub fn writeParserCWithOptions(
         try writer.writeAll("  .keyword_lex_fn = NULL,\n");
     }
     try writer.print("  .keyword_capture_token = {d},\n", .{keyword_capture_id});
-    if (externalTokenCount(emitted_symbols) != 0) {
+    if (compacted.external_scanner.symbols.len != 0) {
         try writer.writeAll("  .external_scanner = {\n");
         if (compacted.external_scanner.states.len != 0) {
             try writer.writeAll("    .states = &ts_external_scanner_states[0][0],\n");
@@ -1368,7 +1373,7 @@ fn writeExternalScannerTables(
     try writer.writeAll("};\n\n");
 
     if (external_scanner.states.len != 0) {
-        try writer.writeAll("static const bool ts_external_scanner_states[][EXTERNAL_TOKEN_COUNT] = {\n");
+        try writer.print("static const bool ts_external_scanner_states[{d}][EXTERNAL_TOKEN_COUNT] = {{\n", .{external_scanner.states.len});
         for (external_scanner.states, 0..) |state_set, state_index| {
             try writer.print("  [{d}] = {{", .{state_index});
             for (0..external_scanner.symbols.len) |symbol_index| {
@@ -1546,7 +1551,7 @@ fn validateRuntimeTableLimits(
     if (!fitsRuntimeU16(serialized.states.len)) return error.RuntimeStateCountTooLarge;
     if (!fitsRuntimeU16(serializedLargeStateCount(serialized))) return error.RuntimeLargeStateCountTooLarge;
     if (!fitsRuntimeU16(emitted_symbols.len)) return error.RuntimeSymbolCountTooLarge;
-    if (!fitsRuntimeU16(serialized.productions.len)) return error.RuntimeProductionCountTooLarge;
+    if (!fitsRuntimeU16(serializedProductionIdCount(serialized))) return error.RuntimeProductionCountTooLarge;
     if (!fitsRuntimeU16(serialized.field_map.names.len)) return error.RuntimeFieldCountTooLarge;
     try validateRuntimeLexStateLimit(serialized.lex_tables);
     for (parse_action_list) |entry| {
@@ -1584,15 +1589,6 @@ fn tokenCount(symbols: []const EmittedSymbol) usize {
     return count;
 }
 
-fn externalTokenCount(symbols: []const EmittedSymbol) usize {
-    var count: usize = 0;
-    for (symbols) |symbol| {
-        const ref = symbol.ref orelse continue;
-        if (symbolKindIsExternal(ref)) count += 1;
-    }
-    return count;
-}
-
 fn aliasSymbolCount(symbols: []const EmittedSymbol) usize {
     var count: usize = 0;
     for (symbols) |symbol| {
@@ -1607,6 +1603,11 @@ fn maxAliasSequenceLength(serialized: serialize.SerializedTable) usize {
         max_len = @max(max_len, alias.step_index + 1);
     }
     return max_len;
+}
+
+fn serializedProductionIdCount(serialized: serialize.SerializedTable) usize {
+    if (serialized.production_id_count != 0) return serialized.production_id_count;
+    return serialized.productions.len;
 }
 
 fn aliasSymbolIdForPosition(
@@ -1624,7 +1625,7 @@ fn aliasSymbolIdForPosition(
 
 fn aliasSymbolIdForName(symbols: []const EmittedSymbol, name: []const u8, named: bool) ?u16 {
     for (symbols, 0..) |symbol, index| {
-        if (symbol.ref == null and symbol.named == named and std.mem.eql(u8, symbol.label, name)) return @intCast(index);
+        if (symbol.named == named and std.mem.eql(u8, symbol.label, name)) return @intCast(index);
     }
     return null;
 }
@@ -1855,9 +1856,9 @@ fn collectEmittedSymbols(
     }
 
     for (serialized.alias_sequences) |alias| {
-        if (symbolKindIsNonTerminal(alias.original_symbol)) {
-            try appendUniqueEmittedSymbol(allocator, &symbols, alias.original_symbol);
-        }
+        try appendUniqueAliasSymbol(&symbols, alias.name, alias.named);
+    }
+    for (serialized.non_terminal_aliases) |alias| {
         try appendUniqueAliasSymbol(&symbols, alias.name, alias.named);
     }
 
@@ -1936,7 +1937,7 @@ fn appendUniqueAliasSymbol(
     named: bool,
 ) EmitError!void {
     for (symbols.items) |existing| {
-        if (existing.ref == null and existing.named == named and std.mem.eql(u8, existing.label, name)) return;
+        if (existing.named == named and std.mem.eql(u8, existing.label, name)) return;
     }
 
     try symbols.append(.{
@@ -2522,21 +2523,20 @@ test "emitParserCAlloc emits runtime alias sequences" {
     const emitted = try emitParserCAlloc(allocator, serialized);
     defer allocator.free(emitted);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define ALIAS_COUNT 2\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define ALIAS_COUNT 1\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define MAX_ALIAS_SEQUENCE_LENGTH 3\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const uint16_t ts_non_terminal_alias_map[] = {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  0, 2,\n    0,\n    2,\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  1, 3,\n    1,\n    2,\n    3,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  0, 2,\n    0,\n    1,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  1, 3,\n    1,\n    1,\n    2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH > 0 ? MAX_ALIAS_SEQUENCE_LENGTH : 1] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .alias_count = ALIAS_COUNT,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .max_alias_sequence_length = MAX_ALIAS_SEQUENCE_LENGTH,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .alias_sequences = &ts_alias_sequences[0][0],\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "\"value_alias\""));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "\"anon_alias\""));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { 0, 2, 0 },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 2, 0, 3 },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 1,\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [3] = 3,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { 0, 1, 0 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 1, 0, 2 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
 }
 
 test "emitParserCAlloc keeps emitted GLR loop feature disabled by default" {
@@ -3223,7 +3223,7 @@ test "emitParserCAlloc emits external scanner symbols and declarations" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  ts_external_token_ERROR_SENTINEL_2 = 2,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_external_scanner_symbol_map[EXTERNAL_TOKEN_COUNT] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const bool ts_external_scanner_states[][EXTERNAL_TOKEN_COUNT] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const bool ts_external_scanner_states[3][EXTERNAL_TOKEN_COUNT] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { false, false, false },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { true, false, false },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = { true, true, false },\n"));

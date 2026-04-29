@@ -97,6 +97,7 @@ pub const SerializedProductionInfo = struct {
     lhs: u32,
     child_count: u8,
     dynamic_precedence: i16,
+    production_info_id: ?u16 = null,
 };
 
 /// Runtime parse-action tag used by the generated C table.
@@ -294,10 +295,12 @@ pub const SerializedTable = struct {
     grammar_version: [3]u8 = .{ 0, 0, 0 },
     symbols: []const SerializedSymbolInfo = &.{},
     large_state_count: usize = 0,
+    production_id_count: usize = 0,
     productions: []const SerializedProductionInfo = &.{},
     parse_action_list: []const SerializedParseActionListEntry = &.{},
     small_parse_table: SerializedSmallParseTable = .{},
     alias_sequences: []const SerializedAliasEntry = &.{},
+    non_terminal_aliases: []const SerializedAliasEntry = &.{},
     field_map: SerializedFieldMap = .{},
     supertype_map: SerializedSupertypeMap = .{},
     lex_modes: []const lexer_serialize.SerializedLexMode = &.{},
@@ -331,6 +334,24 @@ pub const ParseActionTableOptions = struct {
     include_unresolved_parse_actions: bool = true,
 };
 
+const ProductionSerialization = struct {
+    productions: []const SerializedProductionInfo,
+    production_id_count: usize,
+    alias_sequences: []const SerializedAliasEntry,
+    non_terminal_aliases: []const SerializedAliasEntry,
+    field_map: SerializedFieldMap,
+};
+
+const ProductionMetadata = struct {
+    aliases: []const SerializedAliasEntry,
+    fields: []const SerializedFieldMapEntry,
+};
+
+const FieldMapRow = struct {
+    index: u16,
+    fields: []const SerializedFieldMapEntry,
+};
+
 pub fn serializeBuildResultWithOptions(
     allocator: std.mem.Allocator,
     result: build.BuildResult,
@@ -345,6 +366,7 @@ pub fn serializeBuildResultWithOptions(
         allocator.free(snapshot.unresolved);
     }
     const serialized_states = try allocator.alloc(SerializedState, result.states.len);
+    const production_serialization = try buildProductionSerializationAlloc(allocator, result.productions);
 
     for (result.states, 0..) |parse_state, index| {
         serialized_states[index] = .{
@@ -360,34 +382,12 @@ pub fn serializeBuildResultWithOptions(
         };
     }
 
-    var alias_list = std.ArrayListUnmanaged(SerializedAliasEntry).empty;
-    const productions = try allocator.alloc(SerializedProductionInfo, result.productions.len);
-    for (result.productions, 0..) |production, production_id| {
-        productions[production_id] = .{
-            .lhs = production.lhs,
-            .child_count = @intCast(@min(production.steps.len, std.math.maxInt(u8))),
-            .dynamic_precedence = @intCast(std.math.clamp(production.dynamic_precedence, std.math.minInt(i16), std.math.maxInt(i16))),
-        };
-        for (production.steps, 0..) |step, step_index| {
-            if (step.alias) |alias| {
-                try alias_list.append(allocator, .{
-                    .production_id = @intCast(production_id),
-                    .step_index = @intCast(step_index),
-                    .original_symbol = step.symbol,
-                    .name = alias.value,
-                    .named = alias.named,
-                });
-            }
-        }
-    }
-
     const blocked = result.hasBlockingUnresolvedDecisions();
-    const large_state_count = try computeLargeStateCountAlloc(allocator, serialized_states, productions);
+    const large_state_count = try computeLargeStateCountAlloc(allocator, serialized_states, production_serialization.productions);
     const parse_action_list = if (options.include_unresolved_parse_actions)
-        try buildParseActionListAlloc(allocator, serialized_states, productions)
+        try buildParseActionListAlloc(allocator, serialized_states, production_serialization.productions)
     else
-        try buildRuntimeParseActionListAlloc(allocator, serialized_states, productions);
-    const field_map = try buildFieldMapAlloc(allocator, result.productions);
+        try buildRuntimeParseActionListAlloc(allocator, serialized_states, production_serialization.productions);
     const lex_modes = try lexer_serialize.buildLexModesAlloc(allocator, serialized_states);
     const lex_state_terminal_sets = try buildLexStateTerminalSetsAlloc(allocator, result.lex_state_terminal_sets);
     const primary_state_ids = try buildPrimaryStateIdsAlloc(allocator, serialized_states);
@@ -395,11 +395,13 @@ pub fn serializeBuildResultWithOptions(
         .states = serialized_states,
         .blocked = blocked,
         .large_state_count = large_state_count,
-        .productions = productions,
+        .production_id_count = production_serialization.production_id_count,
+        .productions = production_serialization.productions,
         .parse_action_list = parse_action_list,
-        .small_parse_table = try buildSmallParseTableAlloc(allocator, serialized_states, large_state_count, parse_action_list, productions),
-        .alias_sequences = try alias_list.toOwnedSlice(allocator),
-        .field_map = field_map,
+        .small_parse_table = try buildSmallParseTableAlloc(allocator, serialized_states, large_state_count, parse_action_list, production_serialization.productions),
+        .alias_sequences = production_serialization.alias_sequences,
+        .non_terminal_aliases = production_serialization.non_terminal_aliases,
+        .field_map = production_serialization.field_map,
         .lex_modes = lex_modes,
         .lex_state_terminal_sets = lex_state_terminal_sets,
         .primary_state_ids = primary_state_ids,
@@ -438,6 +440,70 @@ pub fn attachPreparedMetadataAlloc(
     return result;
 }
 
+pub fn attachExtractedMetadataAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    prepared: grammar_ir.PreparedGrammar,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) std.mem.Allocator.Error!SerializedTable {
+    const external_symbol_count = countExternalOnlyTokens(syntax.external_tokens);
+    const syntax_symbol_count = countSerializedSyntaxVariables(syntax);
+    const symbol_count = lexical.variables.len + external_symbol_count + syntax_symbol_count;
+    const serialized_symbols = try allocator.alloc(SerializedSymbolInfo, symbol_count);
+    var index: usize = 0;
+
+    for (lexical.variables, 0..) |variable, terminal| {
+        serialized_symbols[index] = .{
+            .ref = .{ .terminal = @intCast(terminal) },
+            .name = variable.name,
+            .named = lexicalKindIsNamed(variable.kind),
+            .visible = lexicalKindIsVisible(variable.kind),
+            .supertype = false,
+            .public_symbol = @intCast(index),
+        };
+        index += 1;
+    }
+
+    for (syntax.external_tokens, 0..) |token, external| {
+        if (token.corresponding_internal_token != null) continue;
+        serialized_symbols[index] = .{
+            .ref = .{ .external = @intCast(external) },
+            .name = token.name,
+            .named = syntaxKindIsNamed(token.kind),
+            .visible = syntaxKindIsVisible(token.kind),
+            .supertype = false,
+            .public_symbol = @intCast(index),
+        };
+        index += 1;
+    }
+
+    for (syntax.variables, 0..) |variable, non_terminal| {
+        if (symbolRefIn(syntax.variables_to_inline, .{ .non_terminal = @intCast(non_terminal) })) continue;
+        serialized_symbols[index] = .{
+            .ref = .{ .non_terminal = @intCast(non_terminal) },
+            .name = variable.name,
+            .named = syntaxKindIsNamed(variable.kind),
+            .visible = syntaxKindIsVisible(variable.kind),
+            .supertype = symbolRefIn(syntax.supertype_symbols, .{ .non_terminal = @intCast(non_terminal) }),
+            .public_symbol = @intCast(index),
+        };
+        index += 1;
+    }
+
+    var result = serialized;
+    result.grammar_name = prepared.grammar_name;
+    result.grammar_version = prepared.grammar_version;
+    result.symbols = serialized_symbols;
+    result.supertype_map = try buildExtractedSupertypeMapAlloc(allocator, syntax);
+    result = try attachExtractedExternalScannerAlloc(allocator, result, syntax);
+    if (syntax.external_tokens.len != 0) {
+        result.blocked = true;
+    }
+    result.word_token = syntax.word_token;
+    return result;
+}
+
 pub fn attachReservedWordsAlloc(
     allocator: std.mem.Allocator,
     serialized: SerializedTable,
@@ -447,6 +513,51 @@ pub fn attachReservedWordsAlloc(
     var result = serialized;
     result.reserved_words = try buildReservedWordsAlloc(allocator, prepared, lexical);
     return result;
+}
+
+fn lexicalKindIsNamed(kind: lexical_ir.VariableKind) bool {
+    return switch (kind) {
+        .named => true,
+        .anonymous, .hidden, .auxiliary => false,
+    };
+}
+
+fn lexicalKindIsVisible(kind: lexical_ir.VariableKind) bool {
+    return switch (kind) {
+        .named, .anonymous => true,
+        .hidden, .auxiliary => false,
+    };
+}
+
+fn syntaxKindIsNamed(kind: syntax_ir.VariableKind) bool {
+    return switch (kind) {
+        .named => true,
+        .anonymous, .hidden, .auxiliary => false,
+    };
+}
+
+fn syntaxKindIsVisible(kind: syntax_ir.VariableKind) bool {
+    return switch (kind) {
+        .named, .anonymous => true,
+        .hidden, .auxiliary => false,
+    };
+}
+
+fn countExternalOnlyTokens(tokens: []const syntax_ir.ExternalToken) usize {
+    var count: usize = 0;
+    for (tokens) |token| {
+        if (token.corresponding_internal_token == null) count += 1;
+    }
+    return count;
+}
+
+fn countSerializedSyntaxVariables(syntax: syntax_ir.SyntaxGrammar) usize {
+    var count: usize = 0;
+    for (syntax.variables, 0..) |_, non_terminal| {
+        if (symbolRefIn(syntax.variables_to_inline, .{ .non_terminal = @intCast(non_terminal) })) continue;
+        count += 1;
+    }
+    return count;
 }
 
 pub fn attachReservedWordLexModesAlloc(
@@ -618,6 +729,36 @@ fn attachExternalScannerAlloc(
     errdefer allocator.free(symbols);
     for (prepared.external_tokens, 0..) |token, index| {
         symbols[index] = symbolRefFromPreparedSymbol(token.symbol);
+    }
+
+    const built_states = try buildExternalScannerStatesAlloc(allocator, symbols, serialized.states);
+    errdefer deinitExternalScanner(allocator, .{ .symbols = symbols, .states = built_states.states });
+    errdefer allocator.free(built_states.state_ids);
+    result.external_scanner = .{
+        .symbols = symbols,
+        .states = built_states.states,
+    };
+    result.lex_modes = try buildLexModesWithExternalStatesAlloc(
+        allocator,
+        serialized.lex_modes,
+        built_states.state_ids,
+    );
+    allocator.free(built_states.state_ids);
+    return result;
+}
+
+fn attachExtractedExternalScannerAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    syntax: syntax_ir.SyntaxGrammar,
+) std.mem.Allocator.Error!SerializedTable {
+    if (syntax.external_tokens.len == 0) return serialized;
+
+    var result = serialized;
+    const symbols = try allocator.alloc(syntax_ir.SymbolRef, syntax.external_tokens.len);
+    errdefer allocator.free(symbols);
+    for (symbols, 0..) |*symbol, index| {
+        symbol.* = syntax.external_tokens[index].corresponding_internal_token orelse .{ .external = @intCast(index) };
     }
 
     const built_states = try buildExternalScannerStatesAlloc(allocator, symbols, serialized.states);
@@ -1317,7 +1458,7 @@ pub fn runtimeActionFromParseAction(
                 .child_count = production.child_count,
                 .symbol = .{ .non_terminal = production.lhs },
                 .dynamic_precedence = production.dynamic_precedence,
-                .production_id = @intCast(@min(production_id, std.math.maxInt(u16))),
+                .production_id = production.production_info_id orelse @intCast(@min(production_id, std.math.maxInt(u16))),
             };
         },
         .accept => .{
@@ -1395,6 +1536,283 @@ fn appendUniqueSymbolRef(
         if (symbolRefEql(existing, symbol)) return;
     }
     try symbols.append(symbol);
+}
+
+fn buildProductionSerializationAlloc(
+    allocator: std.mem.Allocator,
+    productions: []const build.ProductionInfo,
+) std.mem.Allocator.Error!ProductionSerialization {
+    return try buildProductionSerializationForUsedAlloc(allocator, productions, null);
+}
+
+fn buildProductionSerializationForUsedAlloc(
+    allocator: std.mem.Allocator,
+    productions: []const build.ProductionInfo,
+    maybe_used_productions: ?[]const bool,
+) std.mem.Allocator.Error!ProductionSerialization {
+    const raw_infos = try allocator.alloc(SerializedProductionInfo, productions.len);
+    var metadata = std.ArrayListUnmanaged(ProductionMetadata).empty;
+    defer {
+        for (metadata.items) |entry| {
+            allocator.free(entry.aliases);
+            allocator.free(entry.fields);
+        }
+        metadata.deinit(allocator);
+    }
+
+    var field_names = std.array_list.Managed(SerializedFieldName).init(allocator);
+    defer field_names.deinit();
+    var non_terminal_aliases = std.ArrayListUnmanaged(SerializedAliasEntry).empty;
+
+    const variable_fields = try buildInheritedFieldNamesAlloc(allocator, productions);
+    defer {
+        for (variable_fields) |fields| allocator.free(fields);
+        allocator.free(variable_fields);
+    }
+    try populateSortedProductionFieldNamesAlloc(allocator, &field_names, productions, variable_fields);
+
+    for (productions, 0..) |production, production_id| {
+        const production_is_used = if (maybe_used_productions) |used_productions|
+            production_id < used_productions.len and used_productions[production_id]
+        else
+            true;
+        if (!production_is_used) {
+            raw_infos[production_id] = .{
+                .lhs = production.lhs,
+                .child_count = @intCast(@min(production.steps.len, std.math.maxInt(u8))),
+                .dynamic_precedence = @intCast(std.math.clamp(production.dynamic_precedence, std.math.minInt(i16), std.math.maxInt(i16))),
+            };
+            continue;
+        }
+
+        const current = try buildProductionMetadataAlloc(allocator, productions, variable_fields, &field_names, production);
+        errdefer {
+            allocator.free(current.aliases);
+            allocator.free(current.fields);
+        }
+        for (current.aliases) |alias| {
+            try non_terminal_aliases.append(allocator, alias);
+        }
+
+        const production_info_id = if (findProductionMetadata(metadata.items, current)) |existing| blk: {
+            allocator.free(current.aliases);
+            allocator.free(current.fields);
+            break :blk existing;
+        } else blk: {
+            const new_id = metadata.items.len;
+            try metadata.append(allocator, current);
+            break :blk new_id;
+        };
+
+        raw_infos[production_id] = .{
+            .lhs = production.lhs,
+            .child_count = @intCast(@min(production.steps.len, std.math.maxInt(u8))),
+            .dynamic_precedence = @intCast(std.math.clamp(production.dynamic_precedence, std.math.minInt(i16), std.math.maxInt(i16))),
+            .production_info_id = @intCast(@min(production_info_id, std.math.maxInt(u16))),
+        };
+    }
+
+    var aliases = std.ArrayListUnmanaged(SerializedAliasEntry).empty;
+    for (metadata.items, 0..) |entry, production_info_id| {
+        for (entry.aliases) |alias| {
+            try aliases.append(allocator, .{
+                .production_id = @intCast(production_info_id),
+                .step_index = alias.step_index,
+                .original_symbol = alias.original_symbol,
+                .name = alias.name,
+                .named = alias.named,
+            });
+        }
+    }
+
+    var field_entries = std.array_list.Managed(SerializedFieldMapEntry).init(allocator);
+    defer field_entries.deinit();
+    var field_slices = std.ArrayListUnmanaged(SerializedFieldMapSlice).empty;
+    var field_rows = std.ArrayListUnmanaged(FieldMapRow).empty;
+    defer {
+        field_slices.deinit(allocator);
+        field_rows.deinit(allocator);
+    }
+
+    for (metadata.items) |entry| {
+        if (entry.fields.len == 0) {
+            try field_slices.append(allocator, .{ .index = 0, .length = 0 });
+            continue;
+        }
+        if (findFieldMapRow(field_rows.items, entry.fields)) |row| {
+            try field_slices.append(allocator, .{
+                .index = row.index,
+                .length = @intCast(@min(entry.fields.len, std.math.maxInt(u16))),
+            });
+            continue;
+        }
+
+        const start = field_entries.items.len;
+        try field_entries.appendSlice(entry.fields);
+        const row = FieldMapRow{
+            .index = @intCast(@min(start, std.math.maxInt(u16))),
+            .fields = entry.fields,
+        };
+        try field_rows.append(allocator, row);
+        try field_slices.append(allocator, .{
+            .index = row.index,
+            .length = @intCast(@min(entry.fields.len, std.math.maxInt(u16))),
+        });
+    }
+
+    return .{
+        .productions = raw_infos,
+        .production_id_count = metadata.items.len,
+        .alias_sequences = try aliases.toOwnedSlice(allocator),
+        .non_terminal_aliases = try non_terminal_aliases.toOwnedSlice(allocator),
+        .field_map = .{
+            .names = try field_names.toOwnedSlice(),
+            .entries = try field_entries.toOwnedSlice(),
+            .slices = try field_slices.toOwnedSlice(allocator),
+        },
+    };
+}
+
+fn buildProductionMetadataAlloc(
+    allocator: std.mem.Allocator,
+    productions: []const build.ProductionInfo,
+    variable_fields: []const []const []const u8,
+    field_names: *std.array_list.Managed(SerializedFieldName),
+    production: build.ProductionInfo,
+) std.mem.Allocator.Error!ProductionMetadata {
+    var aliases = std.ArrayListUnmanaged(SerializedAliasEntry).empty;
+    errdefer aliases.deinit(allocator);
+    var fields = std.array_list.Managed(SerializedFieldMapEntry).init(allocator);
+    defer fields.deinit();
+
+    for (production.steps, 0..) |step, step_index| {
+        if (step.alias) |alias| {
+            try aliases.append(allocator, .{
+                .production_id = 0,
+                .step_index = @intCast(step_index),
+                .original_symbol = step.symbol,
+                .name = alias.value,
+                .named = alias.named,
+            });
+        }
+
+        const child_index: u8 = @intCast(@min(step_index, std.math.maxInt(u8)));
+        if (step.field_name) |field_name| {
+            try appendFieldMapEntry(field_names, &fields, field_name, child_index, false);
+        }
+        switch (step.symbol) {
+            .non_terminal => |variable_index| {
+                if (variable_index >= variable_fields.len) continue;
+                if (variableIsVisible(productions, variable_index)) continue;
+                for (variable_fields[variable_index]) |field_name| {
+                    try appendFieldMapEntry(field_names, &fields, field_name, child_index, true);
+                }
+            },
+            else => {},
+        }
+    }
+
+    std.mem.sort(SerializedFieldMapEntry, fields.items, {}, fieldMapEntryLessThan);
+    const alias_slice = try aliases.toOwnedSlice(allocator);
+    errdefer allocator.free(alias_slice);
+
+    return .{
+        .aliases = alias_slice,
+        .fields = try fields.toOwnedSlice(),
+    };
+}
+
+fn populateSortedProductionFieldNamesAlloc(
+    allocator: std.mem.Allocator,
+    field_names: *std.array_list.Managed(SerializedFieldName),
+    productions: []const build.ProductionInfo,
+    variable_fields: []const []const []const u8,
+) std.mem.Allocator.Error!void {
+    var names = std.ArrayListUnmanaged([]const u8).empty;
+    defer names.deinit(allocator);
+
+    for (productions) |production| {
+        for (production.steps) |step| {
+            if (step.field_name) |field_name| try appendUniqueFieldNameSlice(allocator, &names, field_name);
+            switch (step.symbol) {
+                .non_terminal => |variable_index| {
+                    if (variable_index >= variable_fields.len) continue;
+                    if (variableIsVisible(productions, variable_index)) continue;
+                    for (variable_fields[variable_index]) |field_name| {
+                        try appendUniqueFieldNameSlice(allocator, &names, field_name);
+                    }
+                },
+                else => {},
+            }
+        }
+    }
+
+    std.mem.sort([]const u8, names.items, {}, stringSliceLessThan);
+    for (names.items, 0..) |name, index| {
+        try field_names.append(.{
+            .id = @intCast(@min(index + 1, std.math.maxInt(u16))),
+            .name = name,
+        });
+    }
+}
+
+fn appendUniqueFieldNameSlice(
+    allocator: std.mem.Allocator,
+    names: *std.ArrayListUnmanaged([]const u8),
+    field_name: []const u8,
+) std.mem.Allocator.Error!void {
+    for (names.items) |existing| {
+        if (std.mem.eql(u8, existing, field_name)) return;
+    }
+    try names.append(allocator, field_name);
+}
+
+fn stringSliceLessThan(_: void, left: []const u8, right: []const u8) bool {
+    return std.mem.lessThan(u8, left, right);
+}
+
+fn findProductionMetadata(entries: []const ProductionMetadata, candidate: ProductionMetadata) ?usize {
+    for (entries, 0..) |entry, index| {
+        if (productionMetadataEql(entry, candidate)) return index;
+    }
+    return null;
+}
+
+fn productionMetadataEql(left: ProductionMetadata, right: ProductionMetadata) bool {
+    return aliasEntrySlicesEql(left.aliases, right.aliases) and fieldMapEntrySlicesEql(left.fields, right.fields);
+}
+
+fn aliasEntrySlicesEql(left: []const SerializedAliasEntry, right: []const SerializedAliasEntry) bool {
+    if (left.len != right.len) return false;
+    for (left, right) |left_entry, right_entry| {
+        if (left_entry.step_index != right_entry.step_index) return false;
+        if (left_entry.named != right_entry.named) return false;
+        if (!std.mem.eql(u8, left_entry.name, right_entry.name)) return false;
+    }
+    return true;
+}
+
+fn fieldMapEntrySlicesEql(left: []const SerializedFieldMapEntry, right: []const SerializedFieldMapEntry) bool {
+    if (left.len != right.len) return false;
+    for (left, right) |left_entry, right_entry| {
+        if (left_entry.field_id != right_entry.field_id) return false;
+        if (left_entry.child_index != right_entry.child_index) return false;
+        if (left_entry.inherited != right_entry.inherited) return false;
+    }
+    return true;
+}
+
+fn findFieldMapRow(rows: []const FieldMapRow, fields: []const SerializedFieldMapEntry) ?FieldMapRow {
+    for (rows) |row| {
+        if (fieldMapEntrySlicesEql(row.fields, fields)) return row;
+    }
+    return null;
+}
+
+fn fieldMapEntryLessThan(_: void, left: SerializedFieldMapEntry, right: SerializedFieldMapEntry) bool {
+    if (left.field_id != right.field_id) return left.field_id < right.field_id;
+    if (left.child_index != right.child_index) return left.child_index < right.child_index;
+    return @intFromBool(left.inherited) < @intFromBool(right.inherited);
 }
 
 fn buildFieldMapAlloc(
@@ -1498,7 +1916,9 @@ fn collectInheritedFieldNamesForVariable(
     for (productions) |production| {
         if (production.augmented or production.lhs != variable_index) continue;
         for (production.steps) |step| {
-            if (step.field_name) |field_name| try appendUniqueFieldName(&names, field_name);
+            if (step.field_name) |field_name| {
+                if (!step.field_inherited) try appendUniqueFieldName(&names, field_name);
+            }
             switch (step.symbol) {
                 .non_terminal => |child_index| {
                     if (child_index >= fields.len) continue;
@@ -1601,6 +2021,44 @@ fn buildSupertypeMapAlloc(
     };
 }
 
+fn buildExtractedSupertypeMapAlloc(
+    allocator: std.mem.Allocator,
+    syntax: syntax_ir.SyntaxGrammar,
+) std.mem.Allocator.Error!SerializedSupertypeMap {
+    var symbols = std.array_list.Managed(syntax_ir.SymbolRef).init(allocator);
+    defer symbols.deinit();
+    var entries = std.array_list.Managed(SerializedSupertypeMapEntry).init(allocator);
+    defer entries.deinit();
+
+    const slices = try allocator.alloc(SerializedSupertypeMapSlice, syntax.supertype_symbols.len);
+    for (syntax.supertype_symbols, 0..) |supertype, slice_index| {
+        try symbols.append(supertype);
+        const start = entries.items.len;
+        switch (supertype) {
+            .non_terminal => |index| {
+                if (index < syntax.variables.len) {
+                    try collectSupertypeEntriesFromProductions(&entries, syntax.variables[index].productions, syntax.variables_to_inline);
+                }
+            },
+            else => {},
+        }
+        std.mem.sort(SerializedSupertypeMapEntry, entries.items[start..], {}, supertypeEntryLessThan);
+        slices[slice_index] = .{
+            .supertype = supertype,
+            .index = @intCast(@min(start, std.math.maxInt(u16))),
+            .length = @intCast(@min(entries.items.len - start, std.math.maxInt(u16))),
+        };
+    }
+
+    std.mem.sort(syntax_ir.SymbolRef, symbols.items, {}, symbolRefLessThan);
+    std.mem.sort(SerializedSupertypeMapSlice, slices, {}, supertypeSliceLessThan);
+    return .{
+        .symbols = try symbols.toOwnedSlice(),
+        .entries = try entries.toOwnedSlice(),
+        .slices = slices,
+    };
+}
+
 const PendingSupertypeAlias = struct {
     name: []const u8,
     named: bool,
@@ -1635,6 +2093,23 @@ fn collectSupertypeEntriesFromRule(
             try collectSupertypeEntriesFromRule(allocator, entries, rules, metadata.inner, next_alias);
         },
         else => {},
+    }
+}
+
+fn collectSupertypeEntriesFromProductions(
+    entries: *std.array_list.Managed(SerializedSupertypeMapEntry),
+    productions: []const syntax_ir.Production,
+    variables_to_inline: []const syntax_ir.SymbolRef,
+) std.mem.Allocator.Error!void {
+    for (productions) |production| {
+        if (production.steps.len != 1) continue;
+        const step = production.steps[0];
+        if (symbolRefIn(variables_to_inline, step.symbol)) continue;
+        try appendUniqueSupertypeEntry(entries, .{
+            .symbol = step.symbol,
+            .alias_name = if (step.alias) |alias| alias.value else null,
+            .alias_named = if (step.alias) |alias| alias.named else false,
+        });
     }
 }
 
@@ -2972,6 +3447,49 @@ test "buildFieldMapAlloc marks fields inherited from hidden child variables" {
     try std.testing.expectEqual(SerializedFieldMapSlice{ .index = 1, .length = 1 }, field_map.slices[1]);
 }
 
+test "buildProductionSerializationAlloc interns production ids separately from reduce payloads" {
+    const allocator = std.testing.allocator;
+    const first_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    const second_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+        .{ .symbol = .{ .terminal = 2 } },
+    };
+    const field_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 3 }, .field_name = "name" },
+    };
+    const productions = [_]build.ProductionInfo{
+        .{ .lhs = 10, .steps = first_steps[0..] },
+        .{ .lhs = 11, .steps = second_steps[0..] },
+        .{ .lhs = 12, .steps = field_steps[0..] },
+    };
+
+    const serialized = try buildProductionSerializationAlloc(allocator, productions[0..]);
+    defer allocator.free(serialized.productions);
+    defer allocator.free(serialized.alias_sequences);
+    defer allocator.free(serialized.non_terminal_aliases);
+    defer deinitFieldMap(allocator, serialized.field_map);
+
+    try std.testing.expectEqual(@as(usize, 2), serialized.production_id_count);
+    try std.testing.expectEqual(@as(?u16, 0), serialized.productions[0].production_info_id);
+    try std.testing.expectEqual(@as(?u16, 0), serialized.productions[1].production_info_id);
+    try std.testing.expectEqual(@as(?u16, 1), serialized.productions[2].production_info_id);
+
+    const first_reduce = runtimeActionFromParseAction(.{ .reduce = 0 }, serialized.productions);
+    const second_reduce = runtimeActionFromParseAction(.{ .reduce = 1 }, serialized.productions);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 10 }, first_reduce.symbol);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 11 }, second_reduce.symbol);
+    try std.testing.expectEqual(@as(u8, 1), first_reduce.child_count);
+    try std.testing.expectEqual(@as(u8, 2), second_reduce.child_count);
+    try std.testing.expectEqual(@as(u16, 0), first_reduce.production_id);
+    try std.testing.expectEqual(@as(u16, 0), second_reduce.production_id);
+
+    try std.testing.expectEqual(@as(usize, 2), serialized.field_map.slices.len);
+    try std.testing.expectEqual(SerializedFieldMapSlice{ .index = 0, .length = 0 }, serialized.field_map.slices[0]);
+    try std.testing.expectEqual(SerializedFieldMapSlice{ .index = 0, .length = 1 }, serialized.field_map.slices[1]);
+}
+
 test "serializeBuildResult rejects blocked snapshots in strict mode" {
     const allocator = std.testing.allocator;
 
@@ -3074,6 +3592,7 @@ test "serializeBuildResult accepts expected reduce reduce snapshots in strict mo
     defer allocator.free(serialized.primary_state_ids);
     defer allocator.free(serialized.productions);
     defer allocator.free(serialized.alias_sequences);
+    defer allocator.free(serialized.non_terminal_aliases);
     defer allocator.free(serialized.states[0].gotos);
     defer allocator.free(serialized.states[0].actions);
 
@@ -3465,7 +3984,7 @@ test "buildLexStateTerminalSetsAlloc preserves lex-state terminal sets by id" {
     try std.testing.expectEqualSlices(bool, source[1], terminal_sets[1]);
 }
 
-test "serializeBuildResult records original alias step symbols" {
+test "buildProductionSerializationAlloc records original alias step symbols" {
     const allocator = std.testing.allocator;
     const aliased_steps = [_]syntax_ir.ProductionStep{
         .{
@@ -3473,31 +3992,20 @@ test "serializeBuildResult records original alias step symbols" {
             .alias = .{ .value = "aliased_child", .named = true },
         },
     };
-    const result = build.BuildResult{
-        .productions = &[_]build.ProductionInfo{
-            .{ .lhs = 0, .steps = aliased_steps[0..] },
-        },
-        .precedence_orderings = &.{},
-        .states = &.{},
-        .lex_state_count = 0,
-        .lex_state_terminal_sets = &.{},
-        .actions = .{ .states = &.{} },
-        .resolved_actions = .{ .states = &.{} },
+    const productions = [_]build.ProductionInfo{
+        .{ .lhs = 0, .steps = aliased_steps[0..] },
     };
 
-    const serialized = try serializeBuildResult(allocator, result, .strict);
-    defer allocator.free(serialized.states);
+    const serialized = try buildProductionSerializationAlloc(allocator, productions[0..]);
     defer allocator.free(serialized.productions);
-    defer deinitParseActionList(allocator, serialized.parse_action_list);
-    defer deinitSmallParseTable(allocator, serialized.small_parse_table);
     defer allocator.free(serialized.alias_sequences);
+    defer allocator.free(serialized.non_terminal_aliases);
     defer deinitFieldMap(allocator, serialized.field_map);
-    defer allocator.free(serialized.lex_modes);
-    defer deinitLexStateTerminalSets(allocator, serialized.lex_state_terminal_sets);
-    defer allocator.free(serialized.primary_state_ids);
 
     try std.testing.expectEqual(@as(usize, 1), serialized.alias_sequences.len);
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 7 }, serialized.alias_sequences[0].original_symbol);
+    try std.testing.expectEqual(@as(usize, 1), serialized.non_terminal_aliases.len);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 7 }, serialized.non_terminal_aliases[0].original_symbol);
 }
 
 test "buildSmallParseTableAlloc groups values and deduplicates rows" {
