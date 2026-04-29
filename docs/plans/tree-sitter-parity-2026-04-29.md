@@ -120,6 +120,17 @@ Batch order:
 - [ ] Promote the next state-count mover from symbol/token parity: local
   JavaScript currently exposes 92 lexical tokens versus upstream's 134, so
   some upstream-distinct lookahead rows cannot split local states yet.
+- [ ] Close JavaScript surface parity before interpreting minimization:
+  explain local 92 vs upstream 134 tokens, starting with aliased
+  identifier-like tokens that appear in upstream node-types but are missing
+  locally (`property_identifier`, `statement_identifier`, and
+  `shorthand_property_identifier*`).
+- [ ] Treat alias/node-type parity as part of the same surface-parity
+  workstream as token extraction; use node-types diff as the user-visible proof
+  once token identity converges.
+- [ ] Keep the 1,626 minimized JavaScript count classified as non-actionable
+  minimizer-quality evidence until token/symbol extraction, alias/node-types,
+  and external scanner valid-symbol rows converge.
 
 Batch 2 note: JavaScript comparison now writes
 `.zig-cache/upstream-compare-javascript/local-upstream-summary.json`. Two
@@ -219,6 +230,36 @@ default unresolved expected-conflict rows, and 7 minimized unresolved
 expected-conflict rows. The next state-count mover is therefore likely earlier
 symbol/token parity, not another generic compatible-minimizer split: local
 JavaScript exposes 92 lexical tokens while upstream exposes 134.
+
+Surface-parity rule: do not interpret JavaScript's 1,626 minimized local states
+as a minimizer quality signal until the generated surface converges. The active
+workstream is token/symbol extraction and aliases together: local's 92 lexical
+tokens versus upstream's 134 means local is missing upstream-distinct lookahead
+rows, and the missing node-types entries (`property_identifier`,
+`statement_identifier`, `shorthand_property_identifier`, and
+`shorthand_property_identifier_pattern`) are proof that alias promotion and
+token extraction are still coupled. External scanner valid-symbol rows remain a
+separate surface gate before minimized table counts become meaningful.
+
+Batch 9 investigation note: the 92-token surface is not the raw lexical
+extraction count. The current JavaScript artifact has 130 extracted lexical
+variables, but parser emission serializes only 92 token/external symbols because
+`collectEmittedSymbols` only discovers referenced symbols and synthetic terminal
+metadata falls back to `terminal:N` labels. Upstream's extraction does an
+additional symbol-replacement pass: if a syntax variable's entire rule was
+extracted into a uniquely-used terminal, it removes that syntax variable,
+renames/kinds the lexical variable with the syntax variable metadata, and remaps
+all later symbols. Local still keeps wrappers like `hash_bang_line`,
+`jsx_identifier`, string-fragment rules, `escape_sequence`, `regex_pattern`,
+`number`, `identifier`, and `private_property_identifier` as syntax variables
+while also extracting matching lexical variables. The alias side is similarly
+coupled: local `parser.c` already contains alias symbols for
+`property_identifier`, `shorthand_property_identifier`,
+`shorthand_property_identifier_pattern`, and `statement_identifier`, but
+node-types generation does not enumerate named production aliases through an
+upstream-style aliases-by-symbol map. The next implementation step is therefore
+the upstream `SymbolReplacer`-shaped extraction/remap pass, with node-types
+alias enumeration used as a visible proof surface.
 
 Gate:
 
