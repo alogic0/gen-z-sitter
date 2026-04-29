@@ -114,6 +114,9 @@ Batch order:
 - [ ] Refresh only the affected golden/report artifacts.
 - [ ] Isolate the remaining compatible-minimizer over-merge, with the first
   suspect being minimizer core identity versus exact upstream item cores.
+- [ ] Reduce or explain the surviving JavaScript `shift_reduce_expected` rows,
+  starting with the `primary_expression` / `lexical_declaration` samples on
+  lookahead terminal 41.
 
 Batch 2 note: JavaScript comparison now writes
 `.zig-cache/upstream-compare-javascript/local-upstream-summary.json`. Two
@@ -182,6 +185,22 @@ upstream's 1,870. The next task is therefore not external-token metadata; it is
 the compatible-minimizer over-merge itself, starting with whether local
 structural item identity is making minimizer core groups broader than upstream's
 exact parse item cores.
+
+Batch 7 note: two minimizer over-merge suspects have now been ruled out by
+bounded JavaScript probes. First, grouping minimizer inputs by exact
+`(production_id, step_index)` item cores instead of local structural core ids
+left JavaScript at 1,626 minimized states, so structural item identity is not
+the active over-merge cause. Second, upstream's `is_repetition` shift metadata
+is now carried into resolved action groups and used as a minimizer split
+condition, with a focused regression test, but JavaScript still reports 1,626
+minimized states. Rejected probes also showed that splitting on reserved-word
+set id contradicts the existing reserved-word merge fixture, broad
+starting-overlap token conflicts prevent JavaScript minimization entirely, and
+all-token follow sets only move JavaScript from 1,626 to 1,628 states. The
+remaining concrete surface is the 14 default / 7 minimized
+`shift_reduce_expected` rows, especially the repeated
+`primary_expression`/`lexical_declaration` samples, rather than a generic
+minimizer grouping condition.
 
 Gate:
 

@@ -408,7 +408,26 @@ fn entriesConflict(
     group_of: []const u32,
 ) bool {
     if (!actionListsEquivalent(left.candidate_actions, right.candidate_actions, group_of)) return true;
+    if (shiftRepetitionDiffers(left, right)) return true;
     return !decisionsEquivalent(left.decision, right.decision, group_of);
+}
+
+fn shiftRepetitionDiffers(left: resolution.ResolvedActionGroup, right: resolution.ResolvedActionGroup) bool {
+    switch (left.decision) {
+        .chosen => |left_action| switch (left_action) {
+            .shift => {},
+            else => return false,
+        },
+        .unresolved => return false,
+    }
+    switch (right.decision) {
+        .chosen => |right_action| switch (right_action) {
+            .shift => {},
+            else => return false,
+        },
+        .unresolved => return false,
+    }
+    return left.shift_is_repetition != right.shift_is_repetition;
 }
 
 fn successorsDiffer(
@@ -542,6 +561,7 @@ fn remapResolvedActionGroup(
             .chosen => |action| .{ .chosen = remapAction(action, id_remap) },
             .unresolved => group.decision,
         },
+        .shift_is_repetition = group.shift_is_repetition,
     };
 }
 
@@ -1070,5 +1090,59 @@ test "minimizeAlloc keeps external-internal terminal states separate" {
     defer result.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 2), result.states.len);
+    try std.testing.expectEqual(@as(usize, 0), result.merged_count);
+}
+
+test "minimizeAlloc keeps repetition and non-repetition shifts separate" {
+    const allocator = std.testing.allocator;
+
+    const parse_states = [_]state.ParseState{
+        .{ .id = 0, .core_id = 0, .items = &.{}, .transitions = &.{} },
+        .{ .id = 1, .core_id = 0, .items = &.{}, .transitions = &.{} },
+        .{ .id = 2, .core_id = 1, .items = &.{}, .transitions = &.{} },
+    };
+
+    const shift_action = [_]@import("actions.zig").ParseAction{.{ .shift = 2 }};
+    const resolved_actions = resolution.ResolvedActionTable{
+        .states = &[_]resolution.ResolvedStateActions{
+            .{
+                .state_id = 0,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = shift_action[0..],
+                        .decision = .{ .chosen = .{ .shift = 2 } },
+                        .shift_is_repetition = true,
+                    },
+                },
+            },
+            .{
+                .state_id = 1,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = shift_action[0..],
+                        .decision = .{ .chosen = .{ .shift = 2 } },
+                        .shift_is_repetition = false,
+                    },
+                },
+            },
+            .{
+                .state_id = 2,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &.{},
+                        .decision = .{ .chosen = .{ .accept = {} } },
+                    },
+                },
+            },
+        },
+    };
+
+    const result = try minimizeAlloc(allocator, parse_states[0..], resolved_actions, null, null);
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 3), result.states.len);
     try std.testing.expectEqual(@as(usize, 0), result.merged_count);
 }

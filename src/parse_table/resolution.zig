@@ -47,6 +47,7 @@ pub const ResolvedActionGroup = struct {
     symbol: @import("../ir/syntax_grammar.zig").SymbolRef,
     candidate_actions: []const actions.ParseAction,
     decision: ResolvedDecision,
+    shift_is_repetition: bool = false,
 
     pub fn chosenAction(self: ResolvedActionGroup) ?actions.ParseAction {
         return switch (self.decision) {
@@ -408,13 +409,21 @@ fn resolveActionTableWithOptionalFirstSets(
                 group.symbol,
                 candidate_actions,
             );
+            const resolved_decision: ResolvedDecision = if (decision.chosen) |chosen|
+                .{ .chosen = chosen }
+            else
+                .{ .unresolved = decision.reason orelse .unsupported_action_mix };
             groups[group_index] = .{
                 .symbol = group.symbol,
                 .candidate_actions = candidate_actions,
-                .decision = if (decision.chosen) |chosen|
-                    .{ .chosen = chosen }
-                else
-                    .{ .unresolved = decision.reason orelse .unsupported_action_mix },
+                .decision = resolved_decision,
+                .shift_is_repetition = resolvedShiftIsRepetition(
+                    productions,
+                    parse_state,
+                    first_sets,
+                    group.symbol,
+                    resolved_decision,
+                ),
             };
         }
         states[state_index] = .{
@@ -423,6 +432,24 @@ fn resolveActionTableWithOptionalFirstSets(
         };
     }
     return .{ .states = states };
+}
+
+fn resolvedShiftIsRepetition(
+    productions: anytype,
+    parse_state: ?state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
+    symbol: syntax_ir.SymbolRef,
+    decision: ResolvedDecision,
+) bool {
+    switch (decision) {
+        .chosen => |action| switch (action) {
+            .shift => {},
+            else => return false,
+        },
+        .unresolved => return false,
+    }
+    const resolved_state = parse_state orelse return false;
+    return hasSameAuxiliaryRepeatConflictWithFirstSets(productions, resolved_state, first_sets, symbol);
 }
 
 fn actionGroupActionsAlloc(
