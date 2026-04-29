@@ -614,6 +614,28 @@ fn shiftReduceConflictCandidate(
     }
     if (!saw_shift or !saw_reduce) return null;
 
+    if (findShiftReduceConflict(parse_state, lookahead)) |conflict| {
+        for (conflict.items) |parse_item| {
+            if (parse_item.production_id >= productions.len) continue;
+            const production = productions[parse_item.production_id];
+            member_count = appendConflictMemberExpanded(
+                members_buffer,
+                member_count,
+                .{ .non_terminal = production.lhs },
+                productions,
+                parse_state,
+                0,
+            ) orelse return null;
+        }
+        if (member_count > 0) {
+            return .{
+                .state_id = state_id,
+                .lookahead = lookahead,
+                .members = members_buffer[0..member_count],
+            };
+        }
+    }
+
     for (parse_state.items) |entry| {
         if (entry.item.production_id >= productions.len) continue;
         const production = productions[entry.item.production_id];
@@ -636,6 +658,15 @@ fn shiftReduceConflictCandidate(
         .lookahead = lookahead,
         .members = members_buffer[0..member_count],
     };
+}
+
+fn findShiftReduceConflict(parse_state: state.ParseState, lookahead: syntax_ir.SymbolRef) ?state.Conflict {
+    for (parse_state.conflicts) |conflict| {
+        if (conflict.kind != .shift_reduce) continue;
+        const symbol = conflict.symbol orelse continue;
+        if (symbolRefEql(symbol, lookahead)) return conflict;
+    }
+    return null;
 }
 
 fn appendConflictMemberExpanded(
@@ -1487,6 +1518,87 @@ test "resolveActionTable marks declared shift reduce conflicts expected" {
     );
     defer allocator.free(unused);
     try std.testing.expectEqual(@as(usize, 0), unused.len);
+}
+
+test "resolveActionTable derives shift reduce expected members from conflict items" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const shift_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 7 } },
+        .{ .symbol = .{ .non_terminal = 9 } },
+    };
+    const reduce_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 7 } },
+    };
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 83, .steps = shift_steps[0..] },
+        .{ .lhs = 48, .steps = reduce_steps[0..] },
+    };
+    const expected = [_]syntax_ir.SymbolRef{
+        .{ .non_terminal = 48 },
+        .{ .non_terminal = 83 },
+    };
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 3, 0, item.ParseItem.init(1, 1)),
+        try item.ParseItemSetEntry.withLookahead(allocator, 3, 0, item.ParseItem.init(2, 1), .{ .terminal = 2 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+
+    const conflict_items = [_]item.ParseItem{
+        item.ParseItem.init(2, 1),
+        item.ParseItem.init(1, 1),
+    };
+    const conflicts = [_]state.Conflict{.{
+        .kind = .shift_reduce,
+        .symbol = .{ .terminal = 2 },
+        .items = conflict_items[0..],
+    }};
+    const parse_states = [_]state.ParseState{.{
+        .id = 3,
+        .items = &parse_items,
+        .transitions = &.{},
+        .conflicts = conflicts[0..],
+    }};
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{.{
+            .state_id = 3,
+            .groups = &[_]actions.ActionGroup{.{
+                .symbol = .{ .terminal = 2 },
+                .entries = &[_]actions.ActionEntry{
+                    .{ .symbol = .{ .terminal = 2 }, .action = .{ .shift = 4 } },
+                    .{ .symbol = .{ .terminal = 2 }, .action = .{ .reduce = 2 } },
+                },
+            }},
+        }},
+    };
+
+    const resolved = try resolveActionTableWithContext(
+        allocator,
+        productions[0..],
+        &.{},
+        &.{&expected},
+        &parse_states,
+        grouped,
+    );
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectUnresolvedGroup(resolved.groupsForState(3)[0], .shift_reduce_expected, 2);
+    try std.testing.expect(!resolved.hasBlockingUnresolvedDecisions());
 }
 
 test "resolveActionTable expands auxiliary conflict members to parent symbols" {

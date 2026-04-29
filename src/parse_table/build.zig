@@ -10,6 +10,7 @@ const conflict_resolution = @import("conflict_resolution.zig");
 const minimize = @import("minimize.zig");
 const rules = @import("../ir/rules.zig");
 const runtime_io = @import("../support/runtime_io.zig");
+const process_inlines = @import("process_inlines.zig");
 
 threadlocal var scoped_progress_enabled: bool = false;
 threadlocal var current_transition_context: ?TransitionContext = null;
@@ -712,6 +713,9 @@ const ParseItemSetBuilder = struct {
     additions_per_non_terminal: [][]const TransitiveClosureAddition,
     reserved_word_context_names: []const []const u8,
     word_token: ?syntax_ir.SymbolRef,
+    variables_to_inline: []const syntax_ir.SymbolRef,
+    inline_map: process_inlines.InlinedProductionMap,
+    original_productions_len: u32,
 
     fn init(
         allocator: std.mem.Allocator,
@@ -719,11 +723,61 @@ const ParseItemSetBuilder = struct {
         first_sets: first.FirstSets,
         reserved_word_context_names: []const []const u8,
         word_token: ?syntax_ir.SymbolRef,
+        variables_to_inline: []const syntax_ir.SymbolRef,
+        grammar_variables: []const syntax_ir.SyntaxVariable,
     ) !@This() {
-        const variable_count = variableCountFromProductions(productions);
+        const original_productions_len: u32 = @intCast(productions.len);
+
+        // Build inline expansion map from original productions.
+        const inlined_src = try allocator.alloc(process_inlines.InlinedProduction, productions.len);
+        defer allocator.free(inlined_src);
+        for (inlined_src, productions) |*dst, src| {
+            dst.* = .{
+                .lhs = src.lhs,
+                .lhs_kind = src.lhs_kind,
+                .steps = src.steps,
+                .lhs_is_repeat_auxiliary = src.lhs_is_repeat_auxiliary,
+                .augmented = src.augmented,
+                .dynamic_precedence = src.dynamic_precedence,
+            };
+        }
+        var inline_map = try process_inlines.buildInlinedProductionMapAlloc(
+            allocator,
+            inlined_src,
+            variables_to_inline,
+            grammar_variables,
+        );
+        errdefer inline_map.deinit();
+
+        // Extend productions slice with inlined extras. Clone steps so lifetime is
+        // independent of inline_map (BuildResult takes ownership of extended_productions).
+        const extended_productions = if (inline_map.extra_productions.len > 0) blk: {
+            const combined = try allocator.alloc(ProductionInfo, productions.len + inline_map.extra_productions.len);
+            @memcpy(combined[0..productions.len], productions);
+            var cloned: usize = 0;
+            errdefer {
+                for (combined[productions.len..][0..cloned]) |p| allocator.free(p.steps);
+                allocator.free(combined);
+            }
+            for (combined[productions.len..], inline_map.extra_productions) |*dst, src| {
+                const steps_copy = try allocator.dupe(syntax_ir.ProductionStep, src.steps);
+                dst.* = .{
+                    .lhs = src.lhs,
+                    .lhs_kind = src.lhs_kind,
+                    .steps = steps_copy,
+                    .lhs_is_repeat_auxiliary = src.lhs_is_repeat_auxiliary,
+                    .augmented = src.augmented,
+                    .dynamic_precedence = src.dynamic_precedence,
+                };
+                cloned += 1;
+            }
+            break :blk combined;
+        } else productions;
+
+        const variable_count = variableCountFromProductions(extended_productions);
         const reserved_first_set_ids = try computeReservedFirstSetIdsAlloc(
             allocator,
-            productions,
+            extended_productions,
             reserved_word_context_names,
             variable_count,
         );
@@ -741,23 +795,29 @@ const ParseItemSetBuilder = struct {
         for (0..variable_count) |non_terminal| {
             additions_per_non_terminal[non_terminal] = try computeTransitiveClosureAdditionsAlloc(
                 allocator,
-                productions,
+                extended_productions,
                 first_sets,
                 reserved_word_context_names,
                 reserved_first_set_ids,
                 @intCast(non_terminal),
+                variables_to_inline,
+                inline_map,
+                original_productions_len,
             );
             additions_count += 1;
         }
 
         return .{
             .allocator = allocator,
-            .productions = productions,
+            .productions = extended_productions,
             .first_sets = first_sets,
             .reserved_first_set_ids = reserved_first_set_ids,
             .additions_per_non_terminal = additions_per_non_terminal,
             .reserved_word_context_names = reserved_word_context_names,
             .word_token = word_token,
+            .variables_to_inline = variables_to_inline,
+            .inline_map = inline_map,
+            .original_productions_len = original_productions_len,
         };
     }
 
@@ -770,6 +830,9 @@ const ParseItemSetBuilder = struct {
         }
         self.allocator.free(self.additions_per_non_terminal);
         self.allocator.free(self.reserved_first_set_ids);
+        // The extended productions slice (and its cloned steps) are returned as
+        // BuildResult.productions and owned by the caller — do not free them here.
+        self.inline_map.deinit();
     }
 
     fn additionsForNonTerminal(self: @This(), non_terminal: u32) []const TransitiveClosureAddition {
@@ -1163,6 +1226,16 @@ fn mergeFollowInfo(
     return changed;
 }
 
+fn isNonTerminalInline(variables_to_inline: []const syntax_ir.SymbolRef, nt: u32) bool {
+    for (variables_to_inline) |sym| {
+        switch (sym) {
+            .non_terminal => |n| if (n == nt) return true,
+            else => {},
+        }
+    }
+    return false;
+}
+
 fn computeTransitiveClosureAdditionsAlloc(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
@@ -1170,7 +1243,15 @@ fn computeTransitiveClosureAdditionsAlloc(
     reserved_word_context_names: []const []const u8,
     reserved_first_set_ids: []const u16,
     root_non_terminal: u32,
+    variables_to_inline: []const syntax_ir.SymbolRef,
+    inline_map: process_inlines.InlinedProductionMap,
+    original_productions_len: u32,
 ) ![]const TransitiveClosureAddition {
+    // Inline non-terminals have no closure additions; they're substituted away.
+    if (isNonTerminalInline(variables_to_inline, root_non_terminal)) {
+        return &.{};
+    }
+
     const variable_count = variableCountFromProductions(productions);
     var infos = try allocator.alloc(?ClosureFollowInfo, variable_count);
     defer {
@@ -1211,6 +1292,10 @@ fn computeTransitiveClosureAdditionsAlloc(
 
             switch (production.steps[0].symbol) {
                 .non_terminal => |next_non_terminal| {
+                    // Skip inline variables: their expansions appear as extra productions
+                    // with the same lhs, so the correct step[0] non-terminals are followed
+                    // via those extra productions instead.
+                    if (isNonTerminalInline(variables_to_inline, next_non_terminal)) break;
                     const remainder = production.steps[1..];
                     if (remainder.len == 0) {
                         const info = infos[entry.non_terminal].?;
@@ -1242,9 +1327,31 @@ fn computeTransitiveClosureAdditionsAlloc(
 
     for (infos, 0..) |maybe_info, non_terminal| {
         const info = maybe_info orelse continue;
-        for (productions, 0..) |production, production_id| {
+        // Only iterate original productions; extra productions are added via inlinedProductions().
+        for (productions[0..original_productions_len], 0..) |production, production_id| {
             if (production.augmented) continue;
             if (production.lhs != non_terminal) continue;
+            // If step[0] is an inline variable, substitute with inlined alternatives.
+            if (production.steps.len > 0) {
+                switch (production.steps[0].symbol) {
+                    .non_terminal => |nt| if (isNonTerminalInline(variables_to_inline, nt)) {
+                        if (inline_map.inlinedProductions(@intCast(production_id), 0)) |exp_ids| {
+                            for (exp_ids) |exp_id| {
+                                try additions.append(.{
+                                    .production_id = exp_id,
+                                    .info = .{
+                                        .lookaheads = try cloneSymbolSet(allocator, info.lookaheads),
+                                        .reserved_lookaheads = info.reserved_lookaheads,
+                                        .propagates_lookaheads = info.propagates_lookaheads,
+                                    },
+                                });
+                            }
+                        }
+                        continue;
+                    },
+                    else => {},
+                }
+            }
             try additions.append(.{
                 .production_id = @intCast(production_id),
                 .info = .{
@@ -1850,7 +1957,15 @@ pub fn buildStatesWithOptions(
     defer if (!uses_option_reserved_contexts) allocator.free(reserved_word_context_names);
 
     stage_profile_timer = profileTimer(profile_log);
-    var item_set_builder = try ParseItemSetBuilder.init(allocator, productions, first_sets, reserved_word_context_names, grammar.word_token);
+    var item_set_builder = try ParseItemSetBuilder.init(
+        allocator,
+        productions,
+        first_sets,
+        reserved_word_context_names,
+        grammar.word_token,
+        grammar.variables_to_inline,
+        grammar.variables,
+    );
     logProfileDone("item_set_builder_init", stage_profile_timer);
     defer item_set_builder.deinit();
 
@@ -1875,7 +1990,7 @@ pub fn buildStatesWithOptions(
     if (progress_log) logBuildStart("resolve_action_table");
     const resolved_actions = try resolution.resolveActionTableWithFirstSetsContext(
         allocator,
-        productions,
+        item_set_builder.productions,
         grammar.precedence_orderings,
         grammar.expected_conflicts,
         constructed.states,
@@ -1913,7 +2028,7 @@ pub fn buildStatesWithOptions(
             );
         }
         return .{
-            .productions = productions,
+            .productions = item_set_builder.productions,
             .precedence_orderings = grammar.precedence_orderings,
             .expected_conflicts = grammar.expected_conflicts,
             .states = minimized.states,
@@ -1925,7 +2040,7 @@ pub fn buildStatesWithOptions(
     }
 
     return .{
-        .productions = productions,
+        .productions = item_set_builder.productions,
         .precedence_orderings = grammar.precedence_orderings,
         .expected_conflicts = grammar.expected_conflicts,
         .states = lex_states.states,
@@ -2839,7 +2954,31 @@ const ClosureRun = struct {
     }
 
     fn seed(self: *@This(), seed_items: []const item.ParseItemSetEntry) !void {
-        _ = try appendGeneratedItemsToClosure(self.allocator, &self.items, &self.item_indexes, seed_items, false);
+        if (self.item_set_builder.variables_to_inline.len == 0) {
+            _ = try appendGeneratedItemsToClosure(self.allocator, &self.items, &self.item_indexes, seed_items, false);
+            state.sortItems(self.items.items);
+            return;
+        }
+        // Substitute inline variables at the current step of each seed item.
+        var expanded = std.array_list.Managed(item.ParseItemSetEntry).init(self.allocator);
+        defer expanded.deinit();
+        for (seed_items) |entry| {
+            const parse_item = entry.item;
+            const production = self.item_set_builder.productions[parse_item.production_id];
+            const step_idx: u16 = @intCast(parse_item.step_index);
+            if (parse_item.step_index < production.steps.len) {
+                if (self.item_set_builder.inline_map.inlinedProductions(parse_item.production_id, step_idx)) |inlined_ids| {
+                    for (inlined_ids) |inlined_id| {
+                        var new_entry = entry;
+                        new_entry.item.production_id = inlined_id;
+                        try expanded.append(new_entry);
+                    }
+                    continue;
+                }
+            }
+            try expanded.append(entry);
+        }
+        _ = try appendGeneratedItemsToClosure(self.allocator, &self.items, &self.item_indexes, expanded.items, false);
         state.sortItems(self.items.items);
     }
 
@@ -3173,7 +3312,7 @@ test "ParseItemSetBuilder precomputes transitive closure additions with propagat
 
     const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
     const productions = try collectProductions(arena.allocator(), grammar);
-    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null, &.{}, &.{});
     defer item_set_builder.deinit();
 
     const additions = item_set_builder.additionsForNonTerminal(1);
@@ -3257,7 +3396,7 @@ test "ParseItemSetBuilder carries upstream-style transitive lookahead propagatio
 
     const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
     const productions = try collectProductions(arena.allocator(), grammar);
-    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null, &.{}, &.{});
     defer item_set_builder.deinit();
 
     const additions = item_set_builder.additionsForNonTerminal(1);
@@ -3332,7 +3471,7 @@ test "closure uses precomputed transitive additions to expand leading recursive 
 
     const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
     const productions = try collectProductions(arena.allocator(), grammar);
-    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null, &.{}, &.{});
     defer item_set_builder.deinit();
 
     const seed = [_]item.ParseItemSetEntry{
@@ -3401,7 +3540,7 @@ test "buildClosureExpansionItemsAlloc preserves inherited and propagated follow 
 
     const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
     const productions = try collectProductions(arena.allocator(), grammar);
-    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null, &.{}, &.{});
     defer item_set_builder.deinit();
 
     const generated = try buildClosureExpansionItemsAlloc(arena.allocator(), item_set_builder, 1, blk: {
@@ -3485,7 +3624,7 @@ test "closure preserves named-precedence plus lookahead through recursive contex
 
     const first_sets = try first.computeFirstSets(arena.allocator(), grammar);
     const productions = try collectProductions(arena.allocator(), grammar);
-    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null);
+    var item_set_builder = try ParseItemSetBuilder.init(arena.allocator(), productions, first_sets, &.{}, null, &.{}, &.{});
     defer item_set_builder.deinit();
 
     const seed = [_]item.ParseItemSetEntry{
@@ -3707,7 +3846,7 @@ fn extraSeedGroupIndex(
 fn constructStates(
     allocator: std.mem.Allocator,
     variables: []const syntax_ir.SyntaxVariable,
-    productions: []const ProductionInfo,
+    _: []const ProductionInfo,
     first_sets: first.FirstSets,
     item_set_builder: ParseItemSetBuilder,
     options: BuildOptions,
@@ -3746,17 +3885,18 @@ fn constructStates(
     defer closure_expansion_cache.deinit();
     var successor_seed_state_cache = SuccessorSeedStateCache.init(allocator);
     defer successor_seed_state_cache.deinit();
+    const all_productions = item_set_builder.productions;
     const non_terminal_extra_starts = try addNonTerminalExtraStatesAlloc(
         allocator,
         variables,
-        productions,
+        all_productions,
         first_sets,
         item_set_builder,
         options,
         &state_registry,
     );
     const follow_sets = if (options.closure_lookahead_mode == .none and options.coarse_follow_lookaheads)
-        try computeFollowSetsAlloc(allocator, productions, first_sets, variables.len)
+        try computeFollowSetsAlloc(allocator, all_productions, first_sets, variables.len)
     else
         FollowSets{ .values = &.{} };
     defer follow_sets.deinit(allocator);
@@ -3764,7 +3904,7 @@ fn constructStates(
     var state_engine = StateConstructionEngine{
         .allocator = allocator,
         .variables = variables,
-        .productions = productions,
+        .productions = all_productions,
         .first_sets = first_sets,
         .follow_sets = follow_sets.values,
         .item_set_builder = item_set_builder,

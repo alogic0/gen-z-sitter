@@ -129,6 +129,22 @@ upstream-style symbol replacement/removal during token extraction/inlining, so
 extracted inline variables like `_reserved_identifier`, `_identifier`, and
 `_semicolon` do not remain as independent parser variables.
 
+Batch 4 note: the next root-cause pass checked upstream
+`prepare_grammar/process_inlines.rs` and `build_tables/item_set_builder.rs`.
+The important upstream behavior is not global grammar rewriting. Tree-sitter
+keeps `variables_to_inline` in the syntax grammar, builds an
+`InlinedProductionMap` keyed by `(production, step_index)`, and substitutes those
+productions lazily when item-set closure reaches an inline step. Two local
+experiments were rejected: global collect-time inline expansion timed out the
+bounded JavaScript comparison, and leaf-only/token-choice lazy substitution
+completed but worsened JavaScript to 12,620 states and 49,988 unresolved
+decisions because wrappers like `_identifier` still reduced through
+`_reserved_identifier`. Broad nested lazy substitution exposed a separate
+reduce/reduce issue in the inline field-inheritance fixture. The next
+implementation should therefore reproduce the upstream inlined-production map
+more faithfully, including substituted production identity and hidden-field
+inheritance, before promoting another JavaScript comparison boundary.
+
 Gate:
 
 - The primary grammar has either advanced one parser-table boundary or has a
