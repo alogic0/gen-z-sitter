@@ -3541,6 +3541,8 @@ fn writePreparedIrSnapshotJson(
         try writeJsonString(writer, token.name);
         try writer.writeAll(", \"kind\": ");
         try writeJsonString(writer, @tagName(token.kind));
+        try writer.writeAll(", \"corresponding_internal_token\": ");
+        try writeOptionalSymbolRef(writer, token.corresponding_internal_token);
         try writer.writeAll(" }");
         if (index + 1 != extracted.syntax.external_tokens.len) try writer.writeByte(',');
         try writer.writeByte('\n');

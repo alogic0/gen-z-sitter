@@ -88,18 +88,49 @@ const Extractor = struct {
         defer result.deinit();
 
         for (self.prepared.external_tokens) |token| {
+            if (self.externalTokenCorrespondingInternal(token)) |internal| {
+                try result.append(.{
+                    .name = self.lexical_variables.items[internal.terminal].name,
+                    .kind = convertVariableKind(token.kind),
+                    .corresponding_internal_token = internal,
+                });
+                continue;
+            }
+
             try result.append(.{
                 .name = token.name,
-                .kind = switch (token.kind) {
-                    .named => .named,
-                    .hidden => .hidden,
-                    .anonymous => .anonymous,
-                    .auxiliary => .auxiliary,
-                },
+                .kind = convertVariableKind(token.kind),
             });
         }
 
         return try result.toOwnedSlice();
+    }
+
+    fn externalTokenCorrespondingInternal(self: *Extractor, token: prepared_ir.ExternalToken) ?syntax_ir.SymbolRef {
+        if (self.findLexicalVariable(token.rule)) |terminal_index| {
+            return .{ .terminal = terminal_index };
+        }
+        if (self.findEquivalentLexicalVariable(token.rule, self.lexicalKindForRule(token.rule, externalPreferredName(token.name)))) |terminal_index| {
+            return .{ .terminal = terminal_index };
+        }
+
+        const rule = self.prepared.rules[@intCast(token.rule)];
+        switch (rule) {
+            .symbol => |symbol| switch (symbol.kind) {
+                .external => return null,
+                .non_terminal => {
+                    const variable = self.prepared.variables[symbol.index];
+                    if (self.findLexicalVariable(variable.rule)) |terminal_index| {
+                        return .{ .terminal = terminal_index };
+                    }
+                    if (self.findEquivalentLexicalVariable(variable.rule, self.lexicalKindForRule(variable.rule, variable.name))) |terminal_index| {
+                        return .{ .terminal = terminal_index };
+                    }
+                    return null;
+                },
+            },
+            else => return null,
+        }
     }
 
     fn extractWordToken(self: *Extractor) ExtractTokensError!?syntax_ir.SymbolRef {
@@ -786,6 +817,19 @@ const Extractor = struct {
     }
 };
 
+fn externalPreferredName(name: []const u8) ?[]const u8 {
+    return if (name.len == 0) null else name;
+}
+
+fn convertVariableKind(kind: prepared_ir.VariableKind) syntax_ir.VariableKind {
+    return switch (kind) {
+        .named => .named,
+        .hidden => .hidden,
+        .anonymous => .anonymous,
+        .auxiliary => .auxiliary,
+    };
+}
+
 fn shouldUseLiteralLexicalName(preferred_name: []const u8) bool {
     return std.mem.eql(u8, preferred_name, "source_file") or isHiddenName(preferred_name);
 }
@@ -1074,8 +1118,69 @@ test "extractTokens carries external token metadata into syntax grammar" {
     try std.testing.expectEqual(@as(usize, 2), extracted.syntax.external_tokens.len);
     try std.testing.expectEqualStrings("_automatic_semicolon", extracted.syntax.external_tokens[0].name);
     try std.testing.expectEqual(syntax_ir.VariableKind.hidden, extracted.syntax.external_tokens[0].kind);
+    try std.testing.expect(extracted.syntax.external_tokens[0].corresponding_internal_token == null);
     try std.testing.expectEqualStrings("template_chars", extracted.syntax.external_tokens[1].name);
     try std.testing.expectEqual(syntax_ir.VariableKind.named, extracted.syntax.external_tokens[1].kind);
+    try std.testing.expect(extracted.syntax.external_tokens[1].corresponding_internal_token == null);
+}
+
+test "extractTokens records external token corresponding internal terminal" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "external-internal",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+        },
+        .external_tokens = &.{
+            .{
+                .name = "",
+                .symbol = ir_symbols.SymbolId.external(0),
+                .kind = .anonymous,
+                .rule = 2,
+            },
+        },
+        .rules = &.{
+            .{ .seq = &.{1} },
+            .{ .string = "||" },
+            .{ .string = "||" },
+        },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.external(0),
+                .name = "",
+                .named = false,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
+    try std.testing.expectEqualStrings("||", extracted.lexical.variables[0].name);
+    try std.testing.expectEqual(@as(usize, 1), extracted.syntax.external_tokens.len);
+    try std.testing.expectEqualStrings("||", extracted.syntax.external_tokens[0].name);
+    try std.testing.expectEqual(syntax_ir.VariableKind.anonymous, extracted.syntax.external_tokens[0].kind);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .terminal = 0 }, extracted.syntax.external_tokens[0].corresponding_internal_token.?);
 }
 
 test "extractTokens rejects external supertype symbols" {

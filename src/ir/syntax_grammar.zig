@@ -10,6 +10,7 @@ pub const SyntaxVariable = struct {
 pub const ExternalToken = struct {
     name: []const u8,
     kind: VariableKind,
+    corresponding_internal_token: ?SymbolRef = null,
 };
 
 pub const VariableKind = enum {

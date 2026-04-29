@@ -1773,6 +1773,7 @@ pub const LexStateTerminalConflictMap = struct {
     terminal_count: usize,
     conflicts: []const bool,
     keyword_tokens: []const bool = &.{},
+    external_internal_tokens: []const bool = &.{},
 
     pub fn conflictsWith(self: LexStateTerminalConflictMap, left: usize, right: usize) bool {
         if (left >= self.terminal_count or right >= self.terminal_count) return true;
@@ -1784,6 +1785,7 @@ pub const LexStateTerminalConflictMap = struct {
             .terminal_count = self.terminal_count,
             .conflicts = self.conflicts,
             .keyword_tokens = self.keyword_tokens,
+            .external_internal_tokens = self.external_internal_tokens,
         };
     }
 };

@@ -21,6 +21,15 @@ current-state audit instead of continuing to implement stale items.
 - Record every promoted boundary in checked-in compatibility artifacts.
 - Do not convert diagnostic coarse/thresholded modes into correctness claims
   unless the target config explicitly documents why that is acceptable.
+- Batch rule: small mechanical fixes can be grouped into one commit when they
+  share the same phase and gate. Algorithm rewrites, grammar promotions, and
+  runtime behavior changes must be committed separately with before/after
+  evidence. Each batch appends a commit-ready summary to
+  `tmp/gen-z-changelog.txt`, then rewrites that file into the final commit
+  message before committing. Do not run broad heavy suites by default; use
+  focused filters first, then the accepted bounded release gate when the batch
+  affects promoted behavior. Commit messages and batch notes must use
+  repo-relative paths or `../tree-sitter`, not machine-local absolute paths.
 
 ## Phase 1 — Fresh Current-State Audit
 
@@ -100,7 +109,11 @@ Batch order:
 - [ ] Replace the partial inline expansion with upstream-style extracted-symbol
   replacement/removal so inlined/tokenized syntax variables do not remain as
   parser variables.
+- [x] Carry upstream `ExternalToken.corresponding_internal_token` metadata
+  through token extraction and minimization compatibility.
 - [ ] Refresh only the affected golden/report artifacts.
+- [ ] Isolate the remaining compatible-minimizer over-merge, with the first
+  suspect being minimizer core identity versus exact upstream item cores.
 
 Batch 2 note: JavaScript comparison now writes
 `.zig-cache/upstream-compare-javascript/local-upstream-summary.json`. Two
@@ -144,6 +157,31 @@ reduce/reduce issue in the inline field-inheritance fixture. The next
 implementation should therefore reproduce the upstream inlined-production map
 more faithfully, including substituted production identity and hidden-field
 inheritance, before promoting another JavaScript comparison boundary.
+
+Batch 5 note: the upstream-style `InlinedProductionMap` is now built lazily
+during item-set closure, and inline cursor symbols are guarded before successor
+grouping so parser states no longer transition on inline variables. That moved
+JavaScript from the earlier blocked parser-table construction to an unblocked
+comparison, but exact parity is still not reached. Without minimization the
+local JavaScript table reports 2,777 states versus upstream's 1,870; with the
+compatible minimizer enabled, local JavaScript over-merges to 1,626 states
+versus upstream's 1,870, with 14 unresolved expected-conflict entries remaining.
+The next concrete parity task is upstream's corresponding-internal external
+token rule: external tokens that also correspond to an internal terminal must be
+recorded during extraction and must block otherwise-compatible minimizer merges,
+matching `../tree-sitter`'s minimization constraints.
+
+Batch 6 note: corresponding-internal external token metadata now flows through
+token extraction into the minimizer conflict map. The focused fixture covers the
+JavaScript-shaped duplicate literal case where an external string rule matches
+an already extracted anonymous terminal. JavaScript comparison confirms the
+external `'||'` token is now recorded as the internal terminal name, and the
+minimized table remains unblocked, but this does not change the remaining
+state-count gap: local JavaScript is still 1,626 minimized states versus
+upstream's 1,870. The next task is therefore not external-token metadata; it is
+the compatible-minimizer over-merge itself, starting with whether local
+structural item identity is making minimizer core groups broader than upstream's
+exact parse item cores.
 
 Gate:
 

@@ -218,6 +218,7 @@ pub fn buildStatesFromPreparedWithOptions(
     var owned_lex_conflicts: ?build.LexStateTerminalConflictMap = null;
     defer if (owned_lex_conflicts) |conflicts| {
         allocator.free(conflicts.keyword_tokens);
+        allocator.free(conflicts.external_internal_tokens);
         allocator.free(conflicts.conflicts);
     };
     if (effective_build_options.lex_state_terminal_conflicts == null) {
@@ -321,6 +322,9 @@ fn lexStateTerminalConflictMapAlloc(
     const keyword_tokens = try allocator.alloc(bool, terminal_count);
     errdefer allocator.free(keyword_tokens);
     @memset(keyword_tokens, false);
+    const external_internal_tokens = try allocator.alloc(bool, terminal_count);
+    errdefer allocator.free(external_internal_tokens);
+    @memset(external_internal_tokens, false);
 
     const word_token = build.minimizeWordToken(syntax);
     const word_terminal = switch (word_token orelse .end) {
@@ -335,6 +339,16 @@ fn lexStateTerminalConflictMapAlloc(
             const right_status = conflict_map.status(word_index, index);
             keyword_tokens[index] = left_status.matches_same_string or
                 right_status.matches_same_string;
+        }
+    }
+
+    for (syntax.external_tokens) |external| {
+        const internal = external.corresponding_internal_token orelse continue;
+        switch (internal) {
+            .terminal => |index| {
+                if (index < terminal_count) external_internal_tokens[index] = true;
+            },
+            else => {},
         }
     }
 
@@ -353,6 +367,7 @@ fn lexStateTerminalConflictMapAlloc(
         .terminal_count = terminal_count,
         .conflicts = conflicts,
         .keyword_tokens = keyword_tokens,
+        .external_internal_tokens = external_internal_tokens,
     };
 }
 

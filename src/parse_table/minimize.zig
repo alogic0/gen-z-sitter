@@ -26,6 +26,7 @@ pub const TerminalConflictMap = struct {
     terminal_count: usize,
     conflicts: []const bool,
     keyword_tokens: []const bool = &.{},
+    external_internal_tokens: []const bool = &.{},
 
     pub fn conflictsWith(self: TerminalConflictMap, left: usize, right: usize) bool {
         if (left >= self.terminal_count or right >= self.terminal_count) return true;
@@ -34,6 +35,10 @@ pub const TerminalConflictMap = struct {
 
     pub fn isKeyword(self: TerminalConflictMap, token: usize) bool {
         return token < self.keyword_tokens.len and self.keyword_tokens[token];
+    }
+
+    pub fn isExternalInternal(self: TerminalConflictMap, token: usize) bool {
+        return token < self.external_internal_tokens.len and self.external_internal_tokens[token];
     }
 };
 
@@ -375,6 +380,7 @@ fn tokenConflicts(
         .non_terminal => return false,
         .terminal => |left| {
             const conflict_map = terminal_conflicts orelse return false;
+            if (conflict_map.isExternalInternal(left)) return true;
             for (other_groups) |group| {
                 switch (group.symbol) {
                     .terminal => |right| {
@@ -1013,4 +1019,56 @@ test "minimizeAlloc merges compatible reserved-word states" {
     try std.testing.expectEqual(@as(usize, 1), result.states.len);
     try std.testing.expectEqual(@as(usize, 1), result.merged_count);
     try std.testing.expectEqual(@as(u16, 1), result.states[0].reserved_word_set_id);
+}
+
+test "minimizeAlloc keeps external-internal terminal states separate" {
+    const allocator = std.testing.allocator;
+
+    const parse_states = [_]state.ParseState{
+        .{ .id = 0, .items = &.{}, .transitions = &.{} },
+        .{ .id = 1, .items = &.{}, .transitions = &.{} },
+    };
+
+    const resolved_actions = resolution.ResolvedActionTable{
+        .states = &[_]resolution.ResolvedStateActions{
+            .{
+                .state_id = 0,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &.{},
+                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                    },
+                },
+            },
+            .{
+                .state_id = 1,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 1 },
+                        .candidate_actions = &.{},
+                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                    },
+                },
+            },
+        },
+    };
+
+    const conflicts = [_]bool{ false, false, false, false };
+    const external_internal_tokens = [_]bool{ true, false };
+    const result = try minimizeAlloc(
+        allocator,
+        parse_states[0..],
+        resolved_actions,
+        .{
+            .terminal_count = 2,
+            .conflicts = conflicts[0..],
+            .external_internal_tokens = external_internal_tokens[0..],
+        },
+        null,
+    );
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 2), result.states.len);
+    try std.testing.expectEqual(@as(usize, 0), result.merged_count);
 }
