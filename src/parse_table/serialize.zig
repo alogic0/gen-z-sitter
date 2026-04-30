@@ -59,6 +59,7 @@ pub const SerializedActionEntry = struct {
     extra: bool = false,
     repetition: bool = false,
     recover: bool = false,
+    reusable: bool = true,
 };
 
 /// A non-terminal transition attached to one serialized state.
@@ -379,6 +380,7 @@ pub fn serializeBuildResultWithOptions(
                 snapshot.chosen,
                 snapshot.unresolved,
                 parse_state,
+                if (index < result.fragile_token_sets.len) result.fragile_token_sets[index] else &.{},
             ),
             .gotos = try collectGotosForState(allocator, parse_state),
             .unresolved = if (mode == .diagnostic)
@@ -598,6 +600,7 @@ fn attachExtractedErrorRecoveryStateAlloc(
             .symbol = symbol,
             .action = .{ .accept = {} },
             .recover = true,
+            .reusable = false,
         });
     }
     std.mem.sort(SerializedActionEntry, actions_list.items, {}, serializedActionEntryLessThan);
@@ -1029,7 +1032,7 @@ pub fn attachKeywordLexTableAlloc(
 
     result.keyword_unmapped_reserved_word_count = countUnmappedReservedWords(prepared, keyword_lexical.lexical);
 
-    const terminal_set = try buildKeywordTerminalSetAlloc(allocator, prepared, keyword_lexical.lexical);
+    const terminal_set = try buildKeywordLexTableTerminalSetAlloc(allocator, prepared, keyword_lexical.lexical);
     defer allocator.free(terminal_set);
     var any_terminal = false;
     for (terminal_set) |enabled| {
@@ -1097,7 +1100,7 @@ fn buildParseActionListWithOptionsAlloc(
     for (states) |serialized_state| {
         for (serialized_state.actions) |entry| {
             const action_slice = try runtimeActionsFromActionEntryAlloc(allocator, entry, productions);
-            const reusable = actionSliceIsReusable(action_slice);
+            const reusable = entry.reusable and actionSliceIsReusable(action_slice);
             const action_key: ParseActionListSliceKey = .{ .reusable = reusable, .actions = action_slice };
             if (reusable) {
                 profile.reusable_inputs += 1;
@@ -1582,7 +1585,7 @@ fn parseActionListIndexForActionEntryWithMap(
 ) ?u16 {
     if (entry.candidate_actions.len <= 1) {
         const runtime_action = runtimeActionFromActionEntry(entry, productions);
-        if (runtime_action.kind != .recover) {
+        if (entry.reusable and runtime_action.kind != .recover) {
             if (single_action_indexes.get(runtime_action)) |index| return index;
         }
     }
@@ -1692,8 +1695,9 @@ fn actionEntryIsReusable(
     productions: []const SerializedProductionInfo,
 ) bool {
     if (entry.candidate_actions.len <= 1) {
-        return runtimeActionFromActionEntry(entry, productions).kind != .recover;
+        return entry.reusable and runtimeActionFromActionEntry(entry, productions).kind != .recover;
     }
+    if (!entry.reusable) return false;
     for (entry.candidate_actions) |candidate| {
         if (runtimeActionFromCandidateAction(entry, candidate, productions).kind == .recover) return false;
     }
@@ -2649,7 +2653,7 @@ fn buildKeywordTerminalSetAlloc(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
     lexical: lexical_ir.LexicalGrammar,
-) std.mem.Allocator.Error![]const bool {
+) std.mem.Allocator.Error![]bool {
     const terminal_set = try allocator.alloc(bool, lexical.variables.len);
     @memset(terminal_set, false);
     for (prepared.reserved_word_sets) |reserved_set| {
@@ -2663,6 +2667,34 @@ fn buildKeywordTerminalSetAlloc(
         }
     }
     return terminal_set;
+}
+
+fn buildKeywordLexTableTerminalSetAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) std.mem.Allocator.Error![]bool {
+    const terminal_set = try buildKeywordTerminalSetAlloc(allocator, prepared, lexical);
+    errdefer allocator.free(terminal_set);
+
+    for (lexical.variables, 0..) |variable, index| {
+        if (variable.source_kind != .string) continue;
+        const literal = directStringRuleValue(prepared.rules, variable.rule) orelse continue;
+        if (!literalCanBeKeyword(literal)) continue;
+        terminal_set[index] = true;
+    }
+
+    return terminal_set;
+}
+
+fn literalCanBeKeyword(literal: []const u8) bool {
+    if (literal.len == 0) return false;
+    for (literal, 0..) |byte, index| {
+        const valid = std.ascii.isAlphabetic(byte) or byte == '_' or
+            (index > 0 and std.ascii.isDigit(byte));
+        if (!valid) return false;
+    }
+    return true;
 }
 
 fn countUnmappedReservedWords(
@@ -2807,6 +2839,7 @@ fn collectActionsForState(
     chosen: []const resolution.ChosenDecisionRef,
     unresolved: []const resolution.UnresolvedDecisionRef,
     parse_state: state.ParseState,
+    fragile_tokens: []const bool,
 ) std.mem.Allocator.Error![]const SerializedActionEntry {
     var count: usize = 0;
     for (chosen) |entry| {
@@ -2825,6 +2858,7 @@ fn collectActionsForState(
             .action = entry.action,
             .candidate_actions = entry.candidate_actions,
             .extra = shiftActionIsExtra(parse_state.transitions, entry.symbol, entry.action),
+            .reusable = serializedActionEntryIsReusable(entry.symbol, fragile_tokens),
         };
         index += 1;
     }
@@ -2836,10 +2870,19 @@ fn collectActionsForState(
             .action = action,
             .candidate_actions = entry.candidate_actions,
             .extra = shiftCandidateIsExtra(parse_state.transitions, entry.symbol, entry.candidate_actions),
+            .reusable = serializedActionEntryIsReusable(entry.symbol, fragile_tokens),
         };
         index += 1;
     }
     return entries;
+}
+
+fn serializedActionEntryIsReusable(symbol: syntax_ir.SymbolRef, fragile_tokens: []const bool) bool {
+    const terminal = switch (symbol) {
+        .terminal => |index| index,
+        .end, .non_terminal, .external => return true,
+    };
+    return terminal >= fragile_tokens.len or !fragile_tokens[terminal];
 }
 
 fn unresolvedReasonIsExpected(reason: resolution.UnresolvedReason) bool {

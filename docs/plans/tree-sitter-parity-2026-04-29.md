@@ -316,6 +316,27 @@ remaining JavaScript emission diffs are parse-action list shape/count and lexer
 emission shape (`lex_function_case_count`, `keyword_lex_function_case_count`,
 and large character sets), plus the known language-version and ordering hashes.
 
+Batch 13 note: the next emission-shape pass made two safe, corpus-preserving
+moves and exposed the remaining lexer task more precisely. Generated
+`ts_parse_actions` now uses upstream-style `SHIFT`, `SHIFT_REPEAT`,
+`SHIFT_EXTRA`, `REDUCE`, `RECOVER`, and `ACCEPT_INPUT` macros instead of verbose
+union initializers. Parse-action reusability now carries the upstream fragile
+terminal bit: terminal actions whose token overlaps another valid terminal in
+the same state emit with `.reusable = false`, so action-list interning no
+longer collapses fragile and reusable rows together. The JavaScript action-list
+metric moved from `3070` after macro emission to `3592` against upstream's
+`3588`, leaving a four-brace/two-row shape delta. Runtime lexer state
+minimization now collapses duplicate concatenated lexer states before C
+emission, reducing local `lex_function_case_count` from `775` to `525` while
+keeping `corpus_samples.status="matched"`. The summary counter now reports
+upstream ABI-14 keyword cases correctly (`keyword_lex_function_case_count=200`
+instead of `0`). The local keyword table now includes identifier-shaped string
+tokens beyond reserved-word-set members, moving JavaScript keyword lex cases
+from `147` to `201` while keeping the bounded corpus matched. A tested
+keyword-to-word-token split reduced main lex cases further but still broke
+`declaration.js`; the remaining task is therefore exact keyword classification
+plus runtime keyword remapping before enabling the upstream main-lexer split.
+
 Gate:
 
 - The primary grammar has either advanced one parser-table boundary or has a

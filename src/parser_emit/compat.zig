@@ -217,6 +217,12 @@ pub fn writeContractTypesAndConstants(writer: anytype, info: RuntimeCompatibilit
     try writer.writeAll("#define SMALL_STATE(id) ((id) - LARGE_STATE_COUNT)\n");
     try writer.writeAll("#define STATE(id) id\n");
     try writer.writeAll("#define ACTIONS(id) id\n\n");
+    try writer.writeAll("#define SHIFT(state_value) {{ .shift = { .type = TSParseActionTypeShift, .state = (state_value) } }}\n");
+    try writer.writeAll("#define SHIFT_REPEAT(state_value) {{ .shift = { .type = TSParseActionTypeShift, .state = (state_value), .repetition = true } }}\n");
+    try writer.writeAll("#define SHIFT_EXTRA() {{ .shift = { .type = TSParseActionTypeShift, .extra = true } }}\n");
+    try writer.writeAll("#define REDUCE(symbol_name, children, precedence, prod_id) {{ .reduce = { .type = TSParseActionTypeReduce, .symbol = symbol_name, .child_count = children, .dynamic_precedence = precedence, .production_id = prod_id } }}\n");
+    try writer.writeAll("#define RECOVER() {{ .type = TSParseActionTypeRecover }}\n");
+    try writer.writeAll("#define ACCEPT_INPUT() {{ .type = TSParseActionTypeAccept }}\n\n");
     try writeLexerMacros(writer);
 }
 

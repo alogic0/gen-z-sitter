@@ -539,19 +539,24 @@ fn writeRuntimeAction(
     action: serialize.SerializedParseAction,
 ) !void {
     switch (action.kind) {
-        .shift => try writer.print(
-            "{{ .action = {{ .shift = {{ .type = TSParseActionTypeShift, .state = {d}, .extra = {}, .repetition = {} }} }} }}",
-            .{ action.state, action.extra, action.repetition },
-        ),
+        .shift => {
+            if (action.extra) {
+                try writer.writeAll("SHIFT_EXTRA()");
+            } else if (action.repetition) {
+                try writer.print("SHIFT_REPEAT({d})", .{action.state});
+            } else {
+                try writer.print("SHIFT({d})", .{action.state});
+            }
+        },
         .reduce => {
             const symbol_id = symbolIdForRef(symbols, action.symbol) orelse 0;
             try writer.print(
-                "{{ .action = {{ .reduce = {{ .type = TSParseActionTypeReduce, .child_count = {d}, .symbol = {d}, .dynamic_precedence = {d}, .production_id = {d} }} }} }}",
-                .{ action.child_count, symbol_id, action.dynamic_precedence, action.production_id },
+                "REDUCE({d}, {d}, {d}, {d})",
+                .{ symbol_id, action.child_count, action.dynamic_precedence, action.production_id },
             );
         },
-        .accept => try writer.writeAll("{ .action = { .type = TSParseActionTypeAccept } }"),
-        .recover => try writer.writeAll("{ .action = { .type = TSParseActionTypeRecover } }"),
+        .accept => try writer.writeAll("ACCEPT_INPUT()"),
+        .recover => try writer.writeAll("RECOVER()"),
     }
 }
 
@@ -1515,13 +1520,169 @@ fn buildRuntimeLexTableAlloc(
         offset += @intCast(table.states.len);
     }
 
+    return try minimizeRuntimeLexTableAlloc(allocator, states, starts);
+}
+
+fn minimizeRuntimeLexTableAlloc(
+    allocator: std.mem.Allocator,
+    states: []const lexer_serialize.SerializedLexState,
+    starts: []u16,
+) EmitError!RuntimeLexTable {
+    if (states.len == 0) {
+        return .{
+            .table = .{ .start_state_id = 0, .states = states },
+            .lex_state_starts = starts,
+        };
+    }
+
+    var groups = std.array_list.Managed([]usize).init(allocator);
+    defer groups.deinit();
+    defer {
+        for (groups.items) |group| allocator.free(group);
+    }
+    for (states, 0..) |state_value, state_id| {
+        var matched: ?usize = null;
+        for (groups.items, 0..) |group, group_id| {
+            if (lexInitialSignaturesEql(states[group[0]], state_value, group[0] == 0, state_id == 0)) {
+                matched = group_id;
+                break;
+            }
+        }
+        if (matched) |group_id| {
+            groups.items[group_id] = try appendUsize(allocator, groups.items[group_id], state_id);
+        } else {
+            const group = try allocator.alloc(usize, 1);
+            group[0] = state_id;
+            try groups.append(group);
+        }
+    }
+
+    const group_ids = try allocator.alloc(usize, states.len);
+    defer allocator.free(group_ids);
+    assignLexGroupIds(groups.items, group_ids);
+
+    var changed = true;
+    while (changed) {
+        changed = false;
+        var group_index: usize = 0;
+        while (group_index < groups.items.len) : (group_index += 1) {
+            const group = groups.items[group_index];
+            if (group.len <= 1) continue;
+
+            var retained = std.array_list.Managed(usize).init(allocator);
+            defer retained.deinit();
+            var split = std.array_list.Managed(usize).init(allocator);
+            defer split.deinit();
+
+            const representative = group[0];
+            try retained.append(representative);
+            for (group[1..]) |state_id| {
+                if (lexSuccessorsEql(states[representative], states[state_id], group_ids)) {
+                    try retained.append(state_id);
+                } else {
+                    try split.append(state_id);
+                }
+            }
+            if (split.items.len == 0) continue;
+
+            allocator.free(group);
+            groups.items[group_index] = try retained.toOwnedSlice();
+            try groups.insert(group_index + 1, try split.toOwnedSlice());
+            assignLexGroupIds(groups.items, group_ids);
+            changed = true;
+            break;
+        }
+    }
+
+    const minimized_states = try allocator.alloc(lexer_serialize.SerializedLexState, groups.items.len);
+    for (groups.items, 0..) |group, group_id| {
+        const representative = states[group[0]];
+        const transitions = try allocator.alloc(lexer_serialize.SerializedLexTransition, representative.transitions.len);
+        for (representative.transitions, 0..) |transition, transition_index| {
+            transitions[transition_index] = transition;
+            transitions[transition_index].next_state_id = @intCast(group_ids[transition.next_state_id]);
+        }
+        minimized_states[group_id] = .{
+            .accept_symbol = representative.accept_symbol,
+            .eof_target = if (representative.eof_target) |target| @intCast(group_ids[target]) else null,
+            .transitions = transitions,
+        };
+    }
+
+    const minimized_starts = try allocator.alloc(u16, starts.len);
+    for (starts, 0..) |start, index| {
+        minimized_starts[index] = if (start < group_ids.len) @intCast(group_ids[start]) else start;
+    }
+
     return .{
         .table = .{
-            .start_state_id = if (starts.len == 0) 0 else starts[0],
-            .states = states,
+            .start_state_id = if (minimized_starts.len == 0) 0 else minimized_starts[0],
+            .states = minimized_states,
         },
-        .lex_state_starts = starts,
+        .lex_state_starts = minimized_starts,
     };
+}
+
+fn appendUsize(allocator: std.mem.Allocator, values: []usize, value: usize) std.mem.Allocator.Error![]usize {
+    const result = try allocator.alloc(usize, values.len + 1);
+    @memcpy(result[0..values.len], values);
+    result[values.len] = value;
+    allocator.free(values);
+    return result;
+}
+
+fn assignLexGroupIds(groups: []const []usize, group_ids: []usize) void {
+    for (groups, 0..) |group, group_id| {
+        for (group) |state_id| group_ids[state_id] = group_id;
+    }
+}
+
+fn lexInitialSignaturesEql(
+    left: lexer_serialize.SerializedLexState,
+    right: lexer_serialize.SerializedLexState,
+    left_is_zero: bool,
+    right_is_zero: bool,
+) bool {
+    if (left_is_zero != right_is_zero) return false;
+    if (!optionalSymbolRefEql(left.accept_symbol, right.accept_symbol)) return false;
+    if ((left.eof_target != null) != (right.eof_target != null)) return false;
+    if (left.transitions.len != right.transitions.len) return false;
+    for (left.transitions, right.transitions) |left_transition, right_transition| {
+        if (left_transition.skip != right_transition.skip) return false;
+        if (!rangeSlicesEql(left_transition.ranges, right_transition.ranges)) return false;
+    }
+    return true;
+}
+
+fn lexSuccessorsEql(
+    left: lexer_serialize.SerializedLexState,
+    right: lexer_serialize.SerializedLexState,
+    group_ids: []const usize,
+) bool {
+    for (left.transitions, right.transitions) |left_transition, right_transition| {
+        if (left_transition.next_state_id >= group_ids.len or right_transition.next_state_id >= group_ids.len) return false;
+        if (group_ids[left_transition.next_state_id] != group_ids[right_transition.next_state_id]) return false;
+    }
+    if (left.eof_target == null and right.eof_target == null) return true;
+    if (left.eof_target == null or right.eof_target == null) return false;
+    return group_ids[left.eof_target.?] == group_ids[right.eof_target.?];
+}
+
+fn optionalSymbolRefEql(left: ?syntax_grammar.SymbolRef, right: ?syntax_grammar.SymbolRef) bool {
+    if (left == null and right == null) return true;
+    if (left == null or right == null) return false;
+    return symbolRefEql(left.?, right.?);
+}
+
+fn rangeSlicesEql(
+    left: []const lexer_serialize.SerializedCharacterRange,
+    right: []const lexer_serialize.SerializedCharacterRange,
+) bool {
+    if (left.len != right.len) return false;
+    for (left, right) |left_range, right_range| {
+        if (left_range.start != right_range.start or left_range.end_inclusive != right_range.end_inclusive) return false;
+    }
+    return true;
 }
 
 fn runtimeLexStateForMode(lex_state_starts: []const u16, lex_state_id: u16) u16 {
@@ -1756,7 +1917,8 @@ fn serializedEntryEql(comptime T: type, left: T, right: T) bool {
         return symbolRefEql(left.symbol, right.symbol) and
             parseActionEql(left.action, right.action) and
             left.extra == right.extra and
-            left.repetition == right.repetition;
+            left.repetition == right.repetition and
+            left.reusable == right.reusable;
     }
     if (T == serialize.SerializedGotoEntry) {
         return symbolRefEql(left.symbol, right.symbol) and left.state == right.state;
@@ -3092,8 +3254,11 @@ test "emitParserCAlloc emits compiler optimization pragmas for large lexer table
     const allocator = std.testing.allocator;
     const lex_states = try allocator.alloc(lexer_serialize.SerializedLexState, compat.large_lexer_optimization_state_threshold + 1);
     defer allocator.free(lex_states);
-    for (lex_states) |*state_value| {
-        state_value.* = .{ .transitions = &.{} };
+    for (lex_states, 0..) |*state_value, index| {
+        state_value.* = .{
+            .accept_symbol = .{ .terminal = @intCast(index) },
+            .transitions = &.{},
+        };
     }
 
     const serialized = serialize.SerializedTable{
@@ -3387,11 +3552,11 @@ test "emitParserCAlloc emits full runtime parse action fields" {
     });
     defer allocator.free(emitted);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSParseActionTypeShift"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".state = 9"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".extra = true"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".repetition = true"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "{ .action = { .type = TSParseActionTypeRecover } }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define SHIFT(state_value)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define SHIFT_EXTRA()"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define SHIFT_REPEAT(state_value)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "SHIFT_EXTRA()"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "RECOVER()"));
 }
 
 test "emitParserCAlloc emits self-contained C that compiles" {

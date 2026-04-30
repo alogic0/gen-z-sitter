@@ -267,6 +267,7 @@ fn remapActionEntries(
             .extra = entry.extra,
             .repetition = entry.repetition,
             .recover = entry.recover,
+            .reusable = entry.reusable,
         };
     }
     return remapped;
@@ -354,6 +355,7 @@ fn actionEntrySlicesEql(left: []const serialize.SerializedActionEntry, right: []
         if (left_entry.extra != right_entry.extra) return false;
         if (left_entry.repetition != right_entry.repetition) return false;
         if (left_entry.recover != right_entry.recover) return false;
+        if (left_entry.reusable != right_entry.reusable) return false;
     }
     return true;
 }

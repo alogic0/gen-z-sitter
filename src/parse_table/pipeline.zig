@@ -223,6 +223,7 @@ pub fn buildStatesFromPreparedWithOptions(
     effective_build_options.reserved_word_sets = reserved_words.sets;
     var owned_lex_conflicts: ?build.LexStateTerminalConflictMap = null;
     defer if (owned_lex_conflicts) |conflicts| {
+        allocator.free(conflicts.overlaps);
         allocator.free(conflicts.keyword_tokens);
         allocator.free(conflicts.external_internal_tokens);
         allocator.free(conflicts.conflicts);
@@ -365,6 +366,9 @@ fn lexStateTerminalConflictMapAlloc(
     const conflicts = try allocator.alloc(bool, terminal_count * terminal_count);
     errdefer allocator.free(conflicts);
     @memset(conflicts, false);
+    const overlaps = try allocator.alloc(bool, terminal_count * terminal_count);
+    errdefer allocator.free(overlaps);
+    @memset(overlaps, false);
     const keyword_tokens = try allocator.alloc(bool, terminal_count);
     errdefer allocator.free(keyword_tokens);
     @memset(keyword_tokens, false);
@@ -407,12 +411,18 @@ fn lexStateTerminalConflictMapAlloc(
                 status.does_match_valid_continuation or
                 status.does_match_separators or
                 status.matches_same_string;
+            overlaps[left * terminal_count + right] =
+                status.does_match_separators or
+                status.matches_prefix or
+                status.matches_same_string or
+                status.does_match_valid_continuation;
         }
     }
 
     return .{
         .terminal_count = terminal_count,
         .conflicts = conflicts,
+        .overlaps = overlaps,
         .keyword_tokens = keyword_tokens,
         .external_internal_tokens = external_internal_tokens,
         .terminal_names = terminal_names,

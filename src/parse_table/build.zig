@@ -1840,6 +1840,7 @@ pub const CoarseTransitionSpec = struct {
 pub const LexStateTerminalConflictMap = struct {
     terminal_count: usize,
     conflicts: []const bool,
+    overlaps: []const bool = &.{},
     keyword_tokens: []const bool = &.{},
     external_internal_tokens: []const bool = &.{},
     terminal_names: []const []const u8 = &.{},
@@ -1847,6 +1848,14 @@ pub const LexStateTerminalConflictMap = struct {
     pub fn conflictsWith(self: LexStateTerminalConflictMap, left: usize, right: usize) bool {
         if (left >= self.terminal_count or right >= self.terminal_count) return true;
         return self.conflicts[left * self.terminal_count + right];
+    }
+
+    pub fn overlapsWith(self: LexStateTerminalConflictMap, left: usize, right: usize) bool {
+        if (left >= self.terminal_count or right >= self.terminal_count) return true;
+        if (self.overlaps.len == self.terminal_count * self.terminal_count) {
+            return self.overlaps[left * self.terminal_count + right];
+        }
+        return self.conflictsWith(left, right);
     }
 
     fn toMinimizeMap(
@@ -2430,6 +2439,7 @@ pub const BuildResult = struct {
     states: []const state.ParseState,
     lex_state_count: usize,
     lex_state_terminal_sets: []const []const bool = &.{},
+    fragile_token_sets: []const []const bool = &.{},
     actions: actions.ActionTable,
     resolved_actions: resolution.ResolvedActionTable,
 
@@ -2781,6 +2791,12 @@ pub fn buildStatesWithOptions(
             minimized.resolved_actions,
             options.lex_state_terminal_conflicts,
         );
+        const fragile_token_sets = try buildFragileTokenSetsAlloc(
+            allocator,
+            minimized_lex_states.states,
+            minimized.resolved_actions,
+            options.lex_state_terminal_conflicts,
+        );
         logProfileDone("assign_lex_state_ids", stage_profile_timer);
         return .{
             .productions = item_set_builder.productions,
@@ -2789,6 +2805,7 @@ pub fn buildStatesWithOptions(
             .states = minimized_lex_states.states,
             .lex_state_count = minimized_lex_states.count,
             .lex_state_terminal_sets = minimized_lex_states.terminal_sets,
+            .fragile_token_sets = fragile_token_sets,
             .actions = action_projection,
             .resolved_actions = minimized.resolved_actions,
         };
@@ -2801,6 +2818,12 @@ pub fn buildStatesWithOptions(
         resolved_actions_with_extras,
         options.lex_state_terminal_conflicts,
     );
+    const fragile_token_sets = try buildFragileTokenSetsAlloc(
+        allocator,
+        lex_states.states,
+        resolved_actions_with_extras,
+        options.lex_state_terminal_conflicts,
+    );
     logProfileDone("assign_lex_state_ids", stage_profile_timer);
 
     return .{
@@ -2810,9 +2833,60 @@ pub fn buildStatesWithOptions(
         .states = lex_states.states,
         .lex_state_count = lex_states.count,
         .lex_state_terminal_sets = lex_states.terminal_sets,
+        .fragile_token_sets = fragile_token_sets,
         .actions = action_projection,
         .resolved_actions = resolved_actions_with_extras,
     };
+}
+
+fn buildFragileTokenSetsAlloc(
+    allocator: std.mem.Allocator,
+    parse_states: []const state.ParseState,
+    resolved_actions: resolution.ResolvedActionTable,
+    terminal_conflicts: ?LexStateTerminalConflictMap,
+) std.mem.Allocator.Error![]const []const bool {
+    const conflict_map = terminal_conflicts orelse return &.{};
+    if (parse_states.len == 0 or conflict_map.terminal_count == 0) return &.{};
+
+    const result = try allocator.alloc([]const bool, parse_states.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (result[0..initialized]) |set| allocator.free(set);
+        allocator.free(result);
+    }
+
+    var valid_terminals = std.array_list.Managed(usize).init(allocator);
+    defer valid_terminals.deinit();
+
+    for (parse_states, 0..) |parse_state, state_index| {
+        const fragile = try allocator.alloc(bool, conflict_map.terminal_count);
+        errdefer allocator.free(fragile);
+        @memset(fragile, false);
+
+        valid_terminals.clearRetainingCapacity();
+        for (resolved_actions.groupsForState(parse_state.id)) |group| {
+            const terminal = switch (group.symbol) {
+                .terminal => |index| index,
+                .end, .non_terminal, .external => continue,
+            };
+            if (terminal >= conflict_map.terminal_count) continue;
+            try valid_terminals.append(terminal);
+        }
+
+        for (valid_terminals.items) |token| {
+            for (valid_terminals.items) |other| {
+                if (conflict_map.overlapsWith(other, token)) {
+                    fragile[token] = true;
+                    break;
+                }
+            }
+        }
+
+        result[state_index] = fragile;
+        initialized += 1;
+    }
+
+    return result;
 }
 
 fn addTerminalExtraActionsAlloc(

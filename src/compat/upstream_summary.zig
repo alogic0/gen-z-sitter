@@ -702,8 +702,10 @@ fn countLexFunctionCases(source: []const u8) usize {
     const start_marker = "static bool ts_lex(TSLexer *lexer, TSStateId state)";
     const keyword_marker = "static bool ts_lex_keywords(TSLexer *lexer, TSStateId state)";
     const modes_marker = "static const TSLexerMode ts_lex_modes";
+    const legacy_modes_marker = "static const TSLexMode ts_lex_modes";
     return countCasesBetween(source, start_marker, keyword_marker) orelse
         countCasesBetween(source, start_marker, modes_marker) orelse
+        countCasesBetween(source, start_marker, legacy_modes_marker) orelse
         0;
 }
 
@@ -712,6 +714,10 @@ fn countKeywordLexFunctionCases(source: []const u8) usize {
         source,
         "static bool ts_lex_keywords(TSLexer *lexer, TSStateId state)",
         "static const TSLexerMode ts_lex_modes",
+    ) orelse countCasesBetween(
+        source,
+        "static bool ts_lex_keywords(TSLexer *lexer, TSStateId state)",
+        "static const TSLexMode ts_lex_modes",
     ) orelse 0;
 }
 
@@ -2484,6 +2490,7 @@ fn hashSerializedStateActions(states: []const parse_table_serialize.SerializedSt
             hashBool(&hasher, entry.extra);
             hashBool(&hasher, entry.repetition);
             hashBool(&hasher, entry.recover);
+            hashBool(&hasher, entry.reusable);
         }
         hashUsize(&hasher, serialized_state.unresolved.len);
         for (serialized_state.unresolved) |entry| {
