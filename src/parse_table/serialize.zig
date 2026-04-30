@@ -1283,12 +1283,6 @@ pub fn buildSmallParseTableAlloc(
 
     for (states[large_state_count..], 0..) |serialized_state, small_index| {
         const groups = try buildSmallParseGroupsAlloc(allocator, serialized_state, parse_action_list, &action_indexes, productions);
-        if (findSmallParseRow(unique_rows.items, groups)) |existing_index| {
-            map[small_index] = unique_rows.items[existing_index].offset;
-            deinitSmallParseGroups(allocator, groups);
-            continue;
-        }
-
         map[small_index] = next_offset;
         try unique_rows.append(.{
             .offset = next_offset,
@@ -4714,7 +4708,7 @@ test "buildProductionSerializationAlloc records original alias step symbols" {
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 7 }, serialized.non_terminal_aliases[0].original_symbol);
 }
 
-test "buildSmallParseTableAlloc groups values and deduplicates rows" {
+test "buildSmallParseTableAlloc groups values and keeps one row per small state" {
     const allocator = std.testing.allocator;
     const states = [_]SerializedState{
         .{
@@ -4758,14 +4752,15 @@ test "buildSmallParseTableAlloc groups values and deduplicates rows" {
     const table = try buildSmallParseTableAlloc(allocator, states[0..], 2, actions_list, &.{});
     defer deinitSmallParseTable(allocator, table);
 
-    try std.testing.expectEqual(@as(usize, 1), table.rows.len);
+    try std.testing.expectEqual(@as(usize, 2), table.rows.len);
     try std.testing.expectEqual(@as(usize, 2), table.map.len);
     try std.testing.expectEqual(@as(u32, 0), table.map[0]);
-    try std.testing.expectEqual(@as(u32, 0), table.map[1]);
+    try std.testing.expectEqual(packedSmallParseRowLength(table.rows[0].groups), table.map[1]);
     try std.testing.expectEqual(@as(usize, 2), table.rows[0].groups.len);
     try std.testing.expectEqual(SerializedSmallParseValueKind.state, table.rows[0].groups[0].kind);
     try std.testing.expectEqual(@as(u16, 4), table.rows[0].groups[0].value);
     try std.testing.expectEqual(@as(usize, 1), table.rows[0].groups[0].symbols.len);
     try std.testing.expectEqual(SerializedSmallParseValueKind.action, table.rows[0].groups[1].kind);
     try std.testing.expectEqual(@as(usize, 2), table.rows[0].groups[1].symbols.len);
+    try std.testing.expectEqual(table.rows[0].groups.len, table.rows[1].groups.len);
 }

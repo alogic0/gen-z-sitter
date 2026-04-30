@@ -300,6 +300,22 @@ parse-action list/small-table packing, lex function case counts, keyword lex
 table shape, and large character sets), not the conflict/parse-table
 construction blocker.
 
+Batch 12 note: the first post-Phase-2 runtime and emission-shape pass closed
+three follow-up gaps. JavaScript comparison now links the real external scanner
+from `compat_targets/tree_sitter_javascript_scanner_json/runtime_proof_config.json`
+instead of reporting `runner_compile_failed`, and generated local `parser.c`
+uses runtime lexer tables with EOF-valid lex states. A compaction bug that
+dropped serialized `recover` flags was fixed, so state 0 emits `RECOVER()`
+instead of aliasing the accept action. The bounded comparison now reports
+`corpus_samples.status="matched"` for five JavaScript samples, including the
+multi-token accepted sample
+`compat_targets/tree_sitter_javascript_scanner/declaration.js`. Emission-shape
+parity also moved: `large_state_count`, `small_parse_row_count`, and
+`small_parse_map_count` now match upstream (`387`, `1483`, and `1483`). The
+remaining JavaScript emission diffs are parse-action list shape/count and lexer
+emission shape (`lex_function_case_count`, `keyword_lex_function_case_count`,
+and large character sets), plus the known language-version and ordering hashes.
+
 Gate:
 
 - The primary grammar has either advanced one parser-table boundary or has a
@@ -310,14 +326,14 @@ Gate:
 Goal: move from single-token scanner proofs toward realistic multi-token
 scanner behavior without making routine tests heavy.
 
-- [ ] For the primary grammar, add one multi-token accepted scanner sample.
-- [ ] Add runtime proof config metadata for the sample file and proof id.
-- [ ] Assert generated parser metrics where stable: consumed bytes, error
+- [x] For the primary grammar, add one multi-token accepted scanner sample.
+- [x] Add runtime proof config metadata for the sample file and proof id.
+- [x] Assert generated parser metrics where stable: consumed bytes, error
   count, error cost, and dynamic precedence.
 - [ ] Add scanner serialize/deserialize checks if the scanner state changes
   across the sample.
-- [ ] Add one invalid scanner sample only after the accepted path is stable.
-- [ ] Keep target runtime under the accepted bounded-suite cost.
+- [x] Add one invalid scanner sample only after the accepted path is stable.
+- [x] Keep target runtime under the accepted bounded-suite cost.
 
 Gate:
 
@@ -333,7 +349,7 @@ upstream parser behavior.
   semantics for the primary grammar sample.
 - [ ] Add focused runtime-link tests for scanner-state preservation across
   multiple parse versions.
-- [ ] Add focused invalid-input tests for recovery tree shape where the current
+- [x] Add focused invalid-input tests for recovery tree shape where the current
   temporary API exposes enough information.
 - [ ] Add incremental parsing samples for the primary grammar when scanner
   state is involved.
@@ -351,13 +367,13 @@ Gate:
 Goal: start proving real grammar behavior on curated corpus samples without
 running the full upstream corpus.
 
-- [ ] Add a bounded corpus runner for one grammar.
-- [ ] Start with three curated samples: smallest accepted, scanner accepted,
+- [x] Add a bounded corpus runner for one grammar.
+- [x] Start with three curated samples: smallest accepted, scanner accepted,
   and invalid/recovery.
-- [ ] Compare accepted/error status and root tree string where stable.
-- [ ] Record divergences as structured artifacts with sample labels and
+- [x] Compare accepted/error status and root tree string where stable.
+- [x] Record divergences as structured artifacts with sample labels and
   mismatch categories.
-- [ ] Keep corpus execution out of fast unit tests unless the samples are very
+- [x] Keep corpus execution out of fast unit tests unless the samples are very
   small.
 
 Gate:

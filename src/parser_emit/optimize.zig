@@ -56,14 +56,17 @@ pub fn compactSerializedTableAlloc(
         compacted_index += 1;
     }
 
-    const large_state_count = try serialize.computeLargeStateCountAlloc(allocator, compacted_states, serialized.productions);
-    const parse_action_list = try serialize.buildRuntimeParseActionListAlloc(allocator, compacted_states, serialized.productions);
     const lex_modes = try lexer_serialize.buildLexModesAlloc(allocator, compacted_states);
     compactLexModeExternalStates(@constCast(lex_modes), serialized.lex_modes, serialized.states, state_owners);
-    const primary_state_ids = try serialize.buildPrimaryStateIdsAlloc(allocator, compacted_states);
+    const ordered = try reorderLargeStatesFirstAlloc(allocator, compacted_states, lex_modes, serialized.symbols.len);
+    const ordered_states = ordered.states;
+    const ordered_lex_modes = ordered.lex_modes;
+    const large_state_count = try serialize.computeLargeStateCountAlloc(allocator, ordered_states, serialized.productions);
+    const parse_action_list = try serialize.buildRuntimeParseActionListAlloc(allocator, ordered_states, serialized.productions);
+    const primary_state_ids = try serialize.buildPrimaryStateIdsAlloc(allocator, ordered_states);
 
     return .{
-        .states = compacted_states,
+        .states = ordered_states,
         .blocked = serialized.blocked,
         .grammar_name = serialized.grammar_name,
         .grammar_version = serialized.grammar_version,
@@ -72,12 +75,12 @@ pub fn compactSerializedTableAlloc(
         .production_id_count = serialized.production_id_count,
         .productions = serialized.productions,
         .parse_action_list = parse_action_list,
-        .small_parse_table = try serialize.buildSmallParseTableAlloc(allocator, compacted_states, large_state_count, parse_action_list, serialized.productions),
+        .small_parse_table = try serialize.buildSmallParseTableAlloc(allocator, ordered_states, large_state_count, parse_action_list, serialized.productions),
         .alias_sequences = serialized.alias_sequences,
         .non_terminal_aliases = serialized.non_terminal_aliases,
         .field_map = serialized.field_map,
         .supertype_map = serialized.supertype_map,
-        .lex_modes = lex_modes,
+        .lex_modes = ordered_lex_modes,
         .lex_state_terminal_sets = serialized.lex_state_terminal_sets,
         .lex_tables = serialized.lex_tables,
         .keyword_lex_table = serialized.keyword_lex_table,
@@ -85,6 +88,100 @@ pub fn compactSerializedTableAlloc(
         .word_token = serialized.word_token,
         .reserved_words = serialized.reserved_words,
         .external_scanner = serialized.external_scanner,
+    };
+}
+
+const OrderedStates = struct {
+    states: []const serialize.SerializedState,
+    lex_modes: []const lexer_serialize.SerializedLexMode,
+};
+
+fn reorderLargeStatesFirstAlloc(
+    allocator: std.mem.Allocator,
+    states: []const serialize.SerializedState,
+    lex_modes: []const lexer_serialize.SerializedLexMode,
+    symbol_count: usize,
+) std.mem.Allocator.Error!OrderedStates {
+    const threshold = @min(@as(usize, 64), symbol_count / 2);
+    const order = try allocator.alloc(usize, states.len);
+    defer allocator.free(order);
+    var cursor: usize = 0;
+    const fixed_count = @min(states.len, 2);
+    for (0..fixed_count) |index| {
+        order[cursor] = index;
+        cursor += 1;
+    }
+    for (states[fixed_count..], fixed_count..) |state_value, index| {
+        if (state_value.actions.len + state_value.gotos.len <= threshold) continue;
+        order[cursor] = index;
+        cursor += 1;
+    }
+    for (states[fixed_count..], fixed_count..) |state_value, index| {
+        if (state_value.actions.len + state_value.gotos.len > threshold) continue;
+        order[cursor] = index;
+        cursor += 1;
+    }
+    std.debug.assert(cursor == states.len);
+
+    var identity = true;
+    for (order, 0..) |old_index, new_index| {
+        if (old_index != new_index) {
+            identity = false;
+            break;
+        }
+    }
+    if (identity) return .{ .states = states, .lex_modes = lex_modes };
+
+    const old_to_new = try allocator.alloc(parse_state.StateId, states.len);
+    defer allocator.free(old_to_new);
+    for (order, 0..) |old_index, new_index| old_to_new[old_index] = @intCast(new_index);
+
+    const ordered_states = try allocator.alloc(serialize.SerializedState, states.len);
+    errdefer allocator.free(ordered_states);
+    for (order, 0..) |old_index, new_index| {
+        ordered_states[new_index] = states[old_index];
+        ordered_states[new_index].id = @intCast(new_index);
+    }
+    for (ordered_states) |*state_value| remapSerializedStateByIdMap(state_value, old_to_new);
+
+    const ordered_lex_modes = try allocator.alloc(lexer_serialize.SerializedLexMode, lex_modes.len);
+    errdefer allocator.free(ordered_lex_modes);
+    for (order, 0..) |old_index, new_index| {
+        if (old_index < lex_modes.len and new_index < ordered_lex_modes.len) {
+            ordered_lex_modes[new_index] = lex_modes[old_index];
+        }
+    }
+
+    allocator.free(states);
+    allocator.free(lex_modes);
+    return .{ .states = ordered_states, .lex_modes = ordered_lex_modes };
+}
+
+fn remapSerializedStateByIdMap(
+    state_value: *serialize.SerializedState,
+    old_to_new: []const parse_state.StateId,
+) void {
+    const actions = @constCast(state_value.actions);
+    for (actions) |*entry| {
+        entry.action = remapParseActionByIdMap(entry.action, old_to_new);
+        const candidate_actions = @constCast(entry.candidate_actions);
+        for (candidate_actions) |*candidate| {
+            candidate.* = remapParseActionByIdMap(candidate.*, old_to_new);
+        }
+    }
+    const gotos = @constCast(state_value.gotos);
+    for (gotos) |*entry| {
+        if (entry.state < old_to_new.len) entry.state = old_to_new[entry.state];
+    }
+}
+
+fn remapParseActionByIdMap(
+    action: parse_actions.ParseAction,
+    old_to_new: []const parse_state.StateId,
+) parse_actions.ParseAction {
+    return switch (action) {
+        .shift => |state_id| if (state_id < old_to_new.len) .{ .shift = old_to_new[state_id] } else action,
+        .shift_extra, .reduce, .accept => action,
     };
 }
 
@@ -169,6 +266,7 @@ fn remapActionEntries(
             .candidate_actions = candidate_actions,
             .extra = entry.extra,
             .repetition = entry.repetition,
+            .recover = entry.recover,
         };
     }
     return remapped;
@@ -255,6 +353,7 @@ fn actionEntrySlicesEql(left: []const serialize.SerializedActionEntry, right: []
         if (!parseActionSliceEql(left_entry.candidate_actions, right_entry.candidate_actions)) return false;
         if (left_entry.extra != right_entry.extra) return false;
         if (left_entry.repetition != right_entry.repetition) return false;
+        if (left_entry.recover != right_entry.recover) return false;
     }
     return true;
 }
@@ -351,4 +450,97 @@ test "compactSerializedTableAlloc keeps states with different external lex state
     try std.testing.expectEqual(@as(usize, 2), compacted.states.len);
     try std.testing.expectEqual(@as(u16, 0), compacted.lex_modes[0].external_lex_state);
     try std.testing.expectEqual(@as(u16, 1), compacted.lex_modes[1].external_lex_state);
+}
+
+test "compactSerializedTableAlloc preserves recovery actions" {
+    const allocator = std.testing.allocator;
+    const recover_entries = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .end = {} }, .action = .{ .accept = {} }, .recover = true },
+    };
+
+    const compacted = try compactSerializedTableAlloc(allocator, .{
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = recover_entries[0..], .gotos = &.{}, .unresolved = &.{} },
+            .{ .id = 1, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+        .blocked = false,
+        .lex_modes = &[_]lexer_serialize.SerializedLexMode{
+            .{ .lex_state = 0, .external_lex_state = 0 },
+            .{ .lex_state = 1, .external_lex_state = 0 },
+        },
+    });
+    defer {
+        for (compacted.states) |state_value| {
+            for (state_value.actions) |entry| allocator.free(entry.candidate_actions);
+            allocator.free(state_value.actions);
+            allocator.free(state_value.gotos);
+            allocator.free(state_value.unresolved);
+        }
+        allocator.free(compacted.states);
+        serialize.deinitParseActionList(allocator, compacted.parse_action_list);
+        serialize.deinitSmallParseTable(allocator, compacted.small_parse_table);
+        allocator.free(compacted.lex_modes);
+        allocator.free(compacted.primary_state_ids);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), compacted.states.len);
+    try std.testing.expectEqual(@as(usize, 1), compacted.states[0].actions.len);
+    try std.testing.expect(compacted.states[0].actions[0].recover);
+    try std.testing.expectEqual(@as(usize, 1), compacted.parse_action_list[1].actions.len);
+    try std.testing.expectEqual(serialize.SerializedParseAction{ .kind = .recover }, compacted.parse_action_list[1].actions[0]);
+}
+
+test "compactSerializedTableAlloc orders dense states before sparse states" {
+    const allocator = std.testing.allocator;
+    const dense_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
+        .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 2 } },
+        .{ .symbol = .{ .terminal = 2 }, .action = .{ .shift = 2 } },
+    };
+    const sparse_actions = [_]serialize.SerializedActionEntry{
+        .{ .symbol = .{ .end = {} }, .action = .{ .accept = {} } },
+    };
+    const symbols = [_]serialize.SerializedSymbolInfo{
+        .{ .ref = .{ .terminal = 0 }, .name = "a", .named = false, .visible = true, .supertype = false, .public_symbol = 1 },
+        .{ .ref = .{ .terminal = 1 }, .name = "b", .named = false, .visible = true, .supertype = false, .public_symbol = 2 },
+        .{ .ref = .{ .terminal = 2 }, .name = "c", .named = false, .visible = true, .supertype = false, .public_symbol = 3 },
+        .{ .ref = .{ .terminal = 3 }, .name = "d", .named = false, .visible = true, .supertype = false, .public_symbol = 4 },
+    };
+
+    const compacted = try compactSerializedTableAlloc(allocator, .{
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+            .{ .id = 1, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+            .{ .id = 2, .actions = sparse_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+            .{ .id = 3, .actions = dense_actions[0..], .gotos = &.{}, .unresolved = &.{} },
+        },
+        .blocked = false,
+        .symbols = symbols[0..],
+        .lex_modes = &[_]lexer_serialize.SerializedLexMode{
+            .{ .lex_state = 0 },
+            .{ .lex_state = 1 },
+            .{ .lex_state = 2 },
+            .{ .lex_state = 3 },
+        },
+    });
+    defer {
+        for (compacted.states) |state_value| {
+            for (state_value.actions) |entry| allocator.free(entry.candidate_actions);
+            allocator.free(state_value.actions);
+            allocator.free(state_value.gotos);
+            allocator.free(state_value.unresolved);
+        }
+        allocator.free(compacted.states);
+        serialize.deinitParseActionList(allocator, compacted.parse_action_list);
+        serialize.deinitSmallParseTable(allocator, compacted.small_parse_table);
+        allocator.free(compacted.lex_modes);
+        allocator.free(compacted.primary_state_ids);
+    }
+
+    try std.testing.expectEqual(@as(usize, 4), compacted.states.len);
+    try std.testing.expectEqual(@as(u32, 3), compacted.lex_modes[2].lex_state);
+    try std.testing.expectEqual(@as(u32, 2), compacted.lex_modes[3].lex_state);
+    try std.testing.expectEqual(@as(usize, 3), compacted.states[2].actions.len);
+    try std.testing.expectEqual(@as(usize, 1), compacted.states[3].actions.len);
+    try std.testing.expectEqual(@as(usize, 3), compacted.large_state_count);
 }

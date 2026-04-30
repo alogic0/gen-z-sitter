@@ -10,6 +10,7 @@
   "external_scanner_source": "../tree-sitter-grammars/tree-sitter-javascript/src/scanner.c",
   "external_scanner_include_dir": "../tree-sitter-grammars/tree-sitter-javascript/src",
   "sample_files": [
+    "compat_targets/tree_sitter_javascript_scanner/declaration.js",
     "compat_targets/tree_sitter_javascript_scanner/ternary.js",
     "compat_targets/tree_sitter_javascript_scanner/ternary_invalid.js",
     "compat_targets/tree_sitter_javascript_scanner/jsx_text.js",

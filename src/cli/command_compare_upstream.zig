@@ -120,6 +120,21 @@ const CorpusComparison = struct {
     }
 };
 
+const RuntimeCorpusConfig = struct {
+    config_path: []const u8,
+    external_scanner_source: ?[]const u8 = null,
+    external_scanner_include_dir: ?[]const u8 = null,
+    sample_files: []const []const u8 = &.{},
+
+    fn deinit(self: RuntimeCorpusConfig, allocator: std.mem.Allocator) void {
+        allocator.free(self.config_path);
+        if (self.external_scanner_source) |value| allocator.free(value);
+        if (self.external_scanner_include_dir) |value| allocator.free(value);
+        for (self.sample_files) |sample| allocator.free(sample);
+        allocator.free(self.sample_files);
+    }
+};
+
 const LocalArtifacts = struct {
     output_dir: ?[]const u8 = null,
     raw_grammar_path: ?[]const u8 = null,
@@ -298,20 +313,22 @@ fn runCorpusComparisonAlloc(
     defer allocator.free(local_exe);
     const upstream_exe = try std.fs.path.join(allocator, &.{ output_root, "upstream-parser-runner" });
     defer allocator.free(upstream_exe);
-    compileParserRunner(allocator, local_parser_path, output_root, driver_path, local_exe) catch |err| {
+    const runtime_config = try loadRuntimeCorpusConfigForGrammarAlloc(allocator, opts.grammar_path, grammar_name);
+    defer if (runtime_config) |config| config.deinit(allocator);
+    compileParserRunner(allocator, local_parser_path, output_root, driver_path, local_exe, runtime_config) catch |err| {
         return .{
             .status = try allocator.dupe(u8, "runner_compile_failed"),
             .note = try std.fmt.allocPrint(allocator, "local corpus runner failed to compile: {s}", .{@errorName(err)}),
         };
     };
-    compileParserRunner(allocator, snapshot.parser_c_path.?, snapshot.output_dir.?, driver_path, upstream_exe) catch |err| {
+    compileParserRunner(allocator, snapshot.parser_c_path.?, snapshot.output_dir.?, driver_path, upstream_exe, runtime_config) catch |err| {
         return .{
             .status = try allocator.dupe(u8, "runner_compile_failed"),
             .note = try std.fmt.allocPrint(allocator, "upstream corpus runner failed to compile: {s}", .{@errorName(err)}),
         };
     };
 
-    const samples = try loadCorpusSamplesAlloc(allocator, opts.grammar_path, grammar_name);
+    const samples = try loadCorpusSamplesAlloc(allocator, opts.grammar_path, grammar_name, runtime_config);
     defer {
         for (samples) |sample| {
             allocator.free(sample.name);
@@ -498,7 +515,30 @@ fn loadCorpusSamplesAlloc(
     allocator: std.mem.Allocator,
     grammar_path: []const u8,
     grammar_name: []const u8,
+    runtime_config: ?RuntimeCorpusConfig,
 ) ![]const CorpusSample {
+    if (runtime_config) |config| {
+        if (config.sample_files.len != 0) {
+            const samples = try allocator.alloc(CorpusSample, config.sample_files.len);
+            var initialized: usize = 0;
+            errdefer {
+                for (samples[0..initialized]) |sample| {
+                    allocator.free(sample.name);
+                    allocator.free(sample.input);
+                }
+                allocator.free(samples);
+            }
+            for (config.sample_files, 0..) |sample_path, index| {
+                samples[index] = .{
+                    .name = try allocator.dupe(u8, std.fs.path.basename(sample_path)),
+                    .input = try fs_support.readFileAlloc(allocator, sample_path, 64 * 1024),
+                };
+                initialized += 1;
+            }
+            return samples;
+        }
+    }
+
     const grammar_dir = std.fs.path.dirname(grammar_path) orelse ".";
     const valid_path = try std.fs.path.join(allocator, &.{ grammar_dir, "valid.txt" });
     defer allocator.free(valid_path);
@@ -536,27 +576,135 @@ fn compileParserRunner(
     parser_include_dir: []const u8,
     driver_path: []const u8,
     exe_path: []const u8,
+    runtime_config: ?RuntimeCorpusConfig,
 ) !void {
     const include_arg = try includeArgAlloc(allocator, parser_include_dir);
     defer allocator.free(include_arg);
-    var result = try process_support.runCapture(allocator, &.{
+    var argv = std.array_list.Managed([]const u8).init(allocator);
+    defer argv.deinit();
+    try argv.appendSlice(&.{
         "zig",
         "cc",
         parser_path,
         "../tree-sitter/lib/src/lib.c",
         driver_path,
+    });
+    if (runtime_config) |config| {
+        if (config.external_scanner_source) |scanner_source| try argv.append(scanner_source);
+    }
+    try argv.appendSlice(&.{
         "-I../tree-sitter/lib/include",
         "-I../tree-sitter/lib/src",
         include_arg,
-        "-o",
-        exe_path,
     });
+    var scanner_include_arg: ?[]const u8 = null;
+    defer if (scanner_include_arg) |value| allocator.free(value);
+    if (runtime_config) |config| {
+        if (config.external_scanner_include_dir) |include_dir| {
+            scanner_include_arg = try includeArgAlloc(allocator, include_dir);
+            try argv.append(scanner_include_arg.?);
+        }
+    }
+    try argv.appendSlice(&.{ "-o", exe_path });
+
+    var result = try process_support.runCapture(allocator, argv.items);
     defer result.deinit(allocator);
     if (result.term != .exited or result.term.exited != 0) return error.CompileCorpusRunnerFailed;
 }
 
 fn includeArgAlloc(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     return try std.fmt.allocPrint(allocator, "-I{s}", .{path});
+}
+
+fn loadRuntimeCorpusConfigForGrammarAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    grammar_name: []const u8,
+) !?RuntimeCorpusConfig {
+    const grammar_dir = std.fs.path.dirname(grammar_path) orelse ".";
+    const scanner_config_dir = try std.fmt.allocPrint(allocator, "{s}_scanner_json", .{grammar_dir});
+    defer allocator.free(scanner_config_dir);
+    if (try loadRuntimeCorpusConfigAtDirAlloc(allocator, scanner_config_dir)) |config| return config;
+
+    const json_config_dir = try std.fmt.allocPrint(allocator, "{s}_json", .{grammar_dir});
+    defer allocator.free(json_config_dir);
+    if (try loadRuntimeCorpusConfigAtDirAlloc(allocator, json_config_dir)) |config| return config;
+
+    const named_scanner_config_dir = try std.fmt.allocPrint(allocator, "compat_targets/tree_sitter_{s}_scanner_json", .{grammar_name});
+    defer allocator.free(named_scanner_config_dir);
+    if (try loadRuntimeCorpusConfigAtDirAlloc(allocator, named_scanner_config_dir)) |config| return config;
+
+    return null;
+}
+
+fn loadRuntimeCorpusConfigAtDirAlloc(
+    allocator: std.mem.Allocator,
+    config_dir: []const u8,
+) !?RuntimeCorpusConfig {
+    const config_path = try std.fs.path.join(allocator, &.{ config_dir, "runtime_proof_config.json" });
+    errdefer allocator.free(config_path);
+    const contents = std.Io.Dir.cwd().readFileAlloc(runtime_io.get(), config_path, allocator, .limited(64 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => {
+            allocator.free(config_path);
+            return null;
+        },
+        else => return err,
+    };
+    defer allocator.free(contents);
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, contents, .{});
+    defer parsed.deinit();
+    const root = switch (parsed.value) {
+        .object => |object| object,
+        else => return error.InvalidRuntimeProofConfig,
+    };
+
+    return .{
+        .config_path = config_path,
+        .external_scanner_source = try optionalJsonStringAlloc(allocator, root, "external_scanner_source"),
+        .external_scanner_include_dir = try optionalJsonStringAlloc(allocator, root, "external_scanner_include_dir"),
+        .sample_files = try optionalJsonStringArrayAlloc(allocator, root, "sample_files"),
+    };
+}
+
+fn optionalJsonStringAlloc(
+    allocator: std.mem.Allocator,
+    root: std.json.ObjectMap,
+    field_name: []const u8,
+) !?[]const u8 {
+    const value = root.get(field_name) orelse return null;
+    return switch (value) {
+        .string => |text| try allocator.dupe(u8, text),
+        .null => null,
+        else => error.InvalidRuntimeProofConfig,
+    };
+}
+
+fn optionalJsonStringArrayAlloc(
+    allocator: std.mem.Allocator,
+    root: std.json.ObjectMap,
+    field_name: []const u8,
+) ![]const []const u8 {
+    const value = root.get(field_name) orelse return &.{};
+    const array = switch (value) {
+        .array => |items| items,
+        else => return error.InvalidRuntimeProofConfig,
+    };
+    const result = try allocator.alloc([]const u8, array.items.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (result[0..initialized]) |item| allocator.free(item);
+        allocator.free(result);
+    }
+    for (array.items, 0..) |item, index| {
+        const text = switch (item) {
+            .string => |string_value| string_value,
+            else => return error.InvalidRuntimeProofConfig,
+        };
+        result[index] = try allocator.dupe(u8, text);
+        initialized += 1;
+    }
+    return result;
 }
 
 fn runParserRunnerAlloc(allocator: std.mem.Allocator, exe_path: []const u8, input: []const u8) !ParserRunResult {
