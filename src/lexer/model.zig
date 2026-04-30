@@ -3,6 +3,7 @@ const lexical_ir = @import("../ir/lexical_grammar.zig");
 const rules = @import("../ir/rules.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 const first_sets = @import("../parse_table/first.zig");
+const process_inlines = @import("../parse_table/process_inlines.zig");
 const lexer_table = @import("table.zig");
 
 pub const ExpandError = std.mem.Allocator.Error || error{
@@ -1555,6 +1556,36 @@ pub fn computeFollowingTokensAlloc(
     grammar: syntax_ir.SyntaxGrammar,
     terminal_count: usize,
 ) (std.mem.Allocator.Error || first_sets.FirstError)![]TokenIndexSet {
+    return computeFollowingTokensWithReservedAlloc(
+        allocator,
+        grammar,
+        terminal_count,
+        &.{},
+        &.{},
+    );
+}
+
+pub fn computeFollowingTokensWithReservedAlloc(
+    allocator: std.mem.Allocator,
+    grammar: syntax_ir.SyntaxGrammar,
+    terminal_count: usize,
+    reserved_word_sets: []const []const syntax_ir.SymbolRef,
+    reserved_word_context_names: []const []const u8,
+) (std.mem.Allocator.Error || first_sets.FirstError)![]TokenIndexSet {
+    return computeAdjacentFollowingTokensAlloc(
+        allocator,
+        grammar,
+        terminal_count,
+        reserved_word_sets,
+        reserved_word_context_names,
+    );
+}
+
+fn computeFollowTokensByGrammarFollowAlloc(
+    allocator: std.mem.Allocator,
+    grammar: syntax_ir.SyntaxGrammar,
+    terminal_count: usize,
+) (std.mem.Allocator.Error || first_sets.FirstError)![]TokenIndexSet {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
@@ -1624,6 +1655,315 @@ pub fn computeFollowingTokensAlloc(
     }
 
     return following_tokens;
+}
+
+const AdjacentSymbolSets = struct {
+    first: []TokenIndexSet,
+    last: []TokenIndexSet,
+    reserved_first_set_ids: []u16,
+
+    fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        for (self.first) |*set| set.deinit(allocator);
+        allocator.free(self.first);
+        for (self.last) |*set| set.deinit(allocator);
+        allocator.free(self.last);
+        allocator.free(self.reserved_first_set_ids);
+        self.* = undefined;
+    }
+};
+
+fn computeAdjacentFollowingTokensAlloc(
+    allocator: std.mem.Allocator,
+    grammar: syntax_ir.SyntaxGrammar,
+    terminal_count: usize,
+    reserved_word_sets: []const []const syntax_ir.SymbolRef,
+    reserved_word_context_names: []const []const u8,
+) std.mem.Allocator.Error![]TokenIndexSet {
+    var symbol_sets = try computeAdjacentSymbolSetsAlloc(
+        allocator,
+        grammar,
+        terminal_count,
+        reserved_word_context_names,
+    );
+    defer symbol_sets.deinit(allocator);
+
+    var inline_map = try buildSyntaxInlineMapAlloc(allocator, grammar);
+    defer inline_map.deinit();
+
+    const following_tokens = try allocator.alloc(TokenIndexSet, terminal_count);
+    errdefer allocator.free(following_tokens);
+    var initialized: usize = 0;
+    errdefer {
+        for (following_tokens[0..initialized]) |*set| set.deinit(allocator);
+    }
+    for (following_tokens) |*set| {
+        set.* = try TokenIndexSet.initEmpty(allocator, terminal_count);
+        initialized += 1;
+    }
+
+    for (grammar.variables) |variable| {
+        for (variable.productions) |production| {
+            addAdjacentProductionFollowingTokens(
+                following_tokens,
+                symbol_sets,
+                production.steps,
+                reserved_word_sets,
+            );
+        }
+    }
+    for (inline_map.extra_productions) |production| {
+        addAdjacentProductionFollowingTokens(
+            following_tokens,
+            symbol_sets,
+            production.steps,
+            reserved_word_sets,
+        );
+    }
+
+    addExtraSymbolFollowingTokens(following_tokens, grammar.extra_symbols);
+    return following_tokens;
+}
+
+fn computeAdjacentSymbolSetsAlloc(
+    allocator: std.mem.Allocator,
+    grammar: syntax_ir.SyntaxGrammar,
+    terminal_count: usize,
+    reserved_word_context_names: []const []const u8,
+) std.mem.Allocator.Error!AdjacentSymbolSets {
+    const variable_count = grammar.variables.len;
+    const first = try allocator.alloc(TokenIndexSet, variable_count);
+    errdefer allocator.free(first);
+    var initialized_first: usize = 0;
+    errdefer {
+        for (first[0..initialized_first]) |*set| set.deinit(allocator);
+    }
+    for (first) |*set| {
+        set.* = try TokenIndexSet.initEmpty(allocator, terminal_count);
+        initialized_first += 1;
+    }
+
+    const last = try allocator.alloc(TokenIndexSet, variable_count);
+    errdefer allocator.free(last);
+    var initialized_last: usize = 0;
+    errdefer {
+        for (last[0..initialized_last]) |*set| set.deinit(allocator);
+    }
+    for (last) |*set| {
+        set.* = try TokenIndexSet.initEmpty(allocator, terminal_count);
+        initialized_last += 1;
+    }
+
+    const reserved_first_set_ids = try allocator.alloc(u16, variable_count);
+    errdefer allocator.free(reserved_first_set_ids);
+    @memset(reserved_first_set_ids, 0);
+
+    var processed = try allocator.alloc(bool, variable_count);
+    defer allocator.free(processed);
+    var stack = std.array_list.Managed(u32).init(allocator);
+    defer stack.deinit();
+
+    for (0..variable_count) |root_index| {
+        @memset(processed, false);
+        stack.clearRetainingCapacity();
+        try stack.append(@intCast(root_index));
+        while (stack.items.len != 0) {
+            const current = stack.pop().?;
+            if (current >= variable_count) continue;
+            for (grammar.variables[current].productions) |production| {
+                if (production.steps.len == 0) continue;
+                const step = production.steps[0];
+                insertTerminalToken(&first[root_index], step.symbol);
+                reserved_first_set_ids[root_index] = @max(
+                    reserved_first_set_ids[root_index],
+                    reservedWordSetIdForContext(step.reserved_context_name, reserved_word_context_names),
+                );
+                const next = switch (step.symbol) {
+                    .non_terminal => |index| index,
+                    else => continue,
+                };
+                if (next >= variable_count or processed[next]) continue;
+                processed[next] = true;
+                try stack.append(next);
+            }
+        }
+
+        @memset(processed, false);
+        stack.clearRetainingCapacity();
+        try stack.append(@intCast(root_index));
+        while (stack.items.len != 0) {
+            const current = stack.pop().?;
+            if (current >= variable_count) continue;
+            for (grammar.variables[current].productions) |production| {
+                if (production.steps.len == 0) continue;
+                const step = production.steps[production.steps.len - 1];
+                insertTerminalToken(&last[root_index], step.symbol);
+                const next = switch (step.symbol) {
+                    .non_terminal => |index| index,
+                    else => continue,
+                };
+                if (next >= variable_count or processed[next]) continue;
+                processed[next] = true;
+                try stack.append(next);
+            }
+        }
+    }
+
+    return .{
+        .first = first,
+        .last = last,
+        .reserved_first_set_ids = reserved_first_set_ids,
+    };
+}
+
+fn buildSyntaxInlineMapAlloc(
+    allocator: std.mem.Allocator,
+    grammar: syntax_ir.SyntaxGrammar,
+) std.mem.Allocator.Error!process_inlines.InlinedProductionMap {
+    var production_count: usize = 0;
+    for (grammar.variables) |variable| production_count += variable.productions.len;
+
+    const original = try allocator.alloc(process_inlines.InlinedProduction, production_count);
+    defer allocator.free(original);
+
+    var index: usize = 0;
+    for (grammar.variables, 0..) |variable, lhs_index| {
+        for (variable.productions) |production| {
+            original[index] = .{
+                .lhs = @intCast(lhs_index),
+                .lhs_kind = variable.kind,
+                .steps = production.steps,
+                .dynamic_precedence = production.dynamic_precedence,
+            };
+            index += 1;
+        }
+    }
+
+    return process_inlines.buildInlinedProductionMapAlloc(
+        allocator,
+        original,
+        grammar.variables_to_inline,
+        grammar.variables,
+    );
+}
+
+fn addAdjacentProductionFollowingTokens(
+    following_tokens: []TokenIndexSet,
+    symbol_sets: AdjacentSymbolSets,
+    steps: []const syntax_ir.ProductionStep,
+    reserved_word_sets: []const []const syntax_ir.SymbolRef,
+) void {
+    if (steps.len < 2) return;
+    for (1..steps.len) |step_index| {
+        const left = steps[step_index - 1].symbol;
+        const right = steps[step_index].symbol;
+        addFollowingTokensForAdjacentSymbols(
+            following_tokens,
+            symbol_sets,
+            left,
+            right,
+            reserved_word_sets,
+        );
+    }
+}
+
+fn addFollowingTokensForAdjacentSymbols(
+    following_tokens: []TokenIndexSet,
+    symbol_sets: AdjacentSymbolSets,
+    left: syntax_ir.SymbolRef,
+    right: syntax_ir.SymbolRef,
+    reserved_word_sets: []const []const syntax_ir.SymbolRef,
+) void {
+    switch (left) {
+        .terminal => |index| {
+            if (index >= following_tokens.len) return;
+            addFirstTokensForSymbol(&following_tokens[index], symbol_sets, right);
+            addReservedTokensForSymbol(&following_tokens[index], symbol_sets, right, reserved_word_sets);
+        },
+        .non_terminal => |variable_index| {
+            if (variable_index >= symbol_sets.last.len) return;
+            for (symbol_sets.last[variable_index].values, 0..) |present, terminal_index| {
+                if (!present) continue;
+                addFirstTokensForSymbol(&following_tokens[terminal_index], symbol_sets, right);
+                addReservedTokensForSymbol(&following_tokens[terminal_index], symbol_sets, right, reserved_word_sets);
+            }
+        },
+        else => {},
+    }
+}
+
+fn addFirstTokensForSymbol(
+    target: *TokenIndexSet,
+    symbol_sets: AdjacentSymbolSets,
+    symbol: syntax_ir.SymbolRef,
+) void {
+    switch (symbol) {
+        .terminal => |index| insertTokenIndex(target, index),
+        .non_terminal => |index| {
+            if (index < symbol_sets.first.len) _ = mergeTokenIndexSet(target, symbol_sets.first[index]);
+        },
+        else => {},
+    }
+}
+
+fn addReservedTokensForSymbol(
+    target: *TokenIndexSet,
+    symbol_sets: AdjacentSymbolSets,
+    symbol: syntax_ir.SymbolRef,
+    reserved_word_sets: []const []const syntax_ir.SymbolRef,
+) void {
+    const set_id = switch (symbol) {
+        .non_terminal => |index| if (index < symbol_sets.reserved_first_set_ids.len)
+            symbol_sets.reserved_first_set_ids[index]
+        else
+            0,
+        else => 0,
+    };
+    if (set_id >= reserved_word_sets.len) return;
+    for (reserved_word_sets[set_id]) |reserved_token| {
+        switch (reserved_token) {
+            .terminal => |index| insertTokenIndex(target, index),
+            else => {},
+        }
+    }
+}
+
+fn addExtraSymbolFollowingTokens(
+    following_tokens: []TokenIndexSet,
+    extra_symbols: []const syntax_ir.SymbolRef,
+) void {
+    for (extra_symbols) |extra_symbol| {
+        const extra_index = switch (extra_symbol) {
+            .terminal => |index| index,
+            else => continue,
+        };
+        if (extra_index >= following_tokens.len) continue;
+        for (following_tokens) |*set| insertTokenIndex(set, extra_index);
+        following_tokens[extra_index].fill();
+    }
+}
+
+fn insertTerminalToken(target: *TokenIndexSet, symbol: syntax_ir.SymbolRef) void {
+    switch (symbol) {
+        .terminal => |index| insertTokenIndex(target, index),
+        else => {},
+    }
+}
+
+fn insertTokenIndex(target: *TokenIndexSet, index: usize) void {
+    if (index < target.values.len) target.values[index] = true;
+}
+
+fn reservedWordSetIdForContext(
+    context_name: ?[]const u8,
+    reserved_word_context_names: []const []const u8,
+) u16 {
+    const name = context_name orelse return 0;
+    for (reserved_word_context_names, 0..) |candidate, index| {
+        if (std.mem.eql(u8, name, candidate)) {
+            return @intCast(@min(index + 1, std.math.maxInt(u16)));
+        }
+    }
+    return 0;
 }
 
 pub fn buildTokenConflictMapWithFollowingTokensAlloc(
@@ -2092,7 +2432,7 @@ fn computeConflictStatusPair(
                     completion,
                     transition,
                     successor_contains_completed,
-                    right_transitions.has_separator_transitions,
+                    within_separator,
                 )) {
                     result[1].does_match_continuation = true;
                     if (characterSetsIntersect(transition.chars, left_following_chars)) {
@@ -2117,7 +2457,7 @@ fn computeConflictStatusPair(
                     completion,
                     transition,
                     successor_contains_completed,
-                    left_transitions.has_separator_transitions,
+                    within_separator,
                 )) {
                     result[0].does_match_continuation = true;
                     if (characterSetsIntersect(transition.chars, right_following_chars)) {

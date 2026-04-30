@@ -1,4 +1,5 @@
 const std = @import("std");
+const alias_ir = @import("../ir/aliases.zig");
 const grammar_ir = @import("../ir/grammar_ir.zig");
 const ir_rules = @import("../ir/rules.zig");
 const ir_symbols = @import("../ir/symbols.zig");
@@ -206,6 +207,8 @@ pub fn buildStatesFromPreparedWithOptions(
     if (progress_log) logPipelineStart("flatten_grammar");
     const default_aliases = try extract_default_aliases.extractDefaultAliases(allocator, extracted.syntax, extracted.lexical);
     const flattened = try flatten_grammar.flattenGrammar(allocator, default_aliases.syntax);
+    const simple_alias_symbols = try simpleAliasSymbolsAlloc(allocator, default_aliases.defaults);
+    const reserved_words = try serialize.buildReservedWordsAlloc(allocator, prepared, extracted.lexical);
     logProfileDone("flatten_grammar", stage_profile_timer);
     if (progress_log) maybeLogPipelineDone("flatten_grammar", timer);
 
@@ -215,11 +218,15 @@ pub fn buildStatesFromPreparedWithOptions(
     var effective_build_options = build_options;
     effective_build_options.reserved_word_context_names = try reservedWordContextNamesAlloc(allocator, prepared.reserved_word_sets);
     effective_build_options.non_terminal_extra_symbols = try nonTerminalExtraSymbolsAlloc(allocator, flattened.extra_symbols);
+    effective_build_options.terminal_extra_symbols = try terminalExtraSymbolsAlloc(allocator, flattened.extra_symbols);
+    effective_build_options.simple_alias_symbols = simple_alias_symbols;
+    effective_build_options.reserved_word_sets = reserved_words.sets;
     var owned_lex_conflicts: ?build.LexStateTerminalConflictMap = null;
     defer if (owned_lex_conflicts) |conflicts| {
         allocator.free(conflicts.keyword_tokens);
         allocator.free(conflicts.external_internal_tokens);
         allocator.free(conflicts.conflicts);
+        allocator.free(conflicts.terminal_names);
     };
     if (effective_build_options.lex_state_terminal_conflicts == null) {
         owned_lex_conflicts = lexStateTerminalConflictMapAlloc(
@@ -227,6 +234,8 @@ pub fn buildStatesFromPreparedWithOptions(
             prepared.rules,
             flattened,
             extracted.lexical,
+            reserved_words.sets,
+            effective_build_options.reserved_word_context_names,
         ) catch |err| switch (err) {
             error.UnsupportedRule, error.UnsupportedPattern => null,
             else => return err,
@@ -236,7 +245,10 @@ pub fn buildStatesFromPreparedWithOptions(
         }
     }
     defer allocator.free(effective_build_options.non_terminal_extra_symbols);
+    defer allocator.free(effective_build_options.terminal_extra_symbols);
     defer allocator.free(effective_build_options.reserved_word_context_names);
+    defer allocator.free(simple_alias_symbols);
+    defer serialize.deinitReservedWords(allocator, reserved_words);
     const result = try build.buildStatesWithOptions(allocator, flattened, effective_build_options);
     if (effective_build_options.strict_expected_conflicts) {
         try validateResolvedConflictPolicy(allocator, result);
@@ -292,19 +304,53 @@ fn nonTerminalExtraSymbolsAlloc(
     return try symbols.toOwnedSlice();
 }
 
+fn terminalExtraSymbolsAlloc(
+    allocator: std.mem.Allocator,
+    extra_symbols: []const @import("../ir/syntax_grammar.zig").SymbolRef,
+) std.mem.Allocator.Error![]const @import("../ir/syntax_grammar.zig").SymbolRef {
+    var symbols = std.array_list.Managed(@import("../ir/syntax_grammar.zig").SymbolRef).init(allocator);
+    defer symbols.deinit();
+    for (extra_symbols) |symbol| {
+        switch (symbol) {
+            .terminal, .external => try symbols.append(symbol),
+            .end, .non_terminal => {},
+        }
+    }
+    return try symbols.toOwnedSlice();
+}
+
+fn simpleAliasSymbolsAlloc(
+    allocator: std.mem.Allocator,
+    aliases: alias_ir.AliasMap,
+) std.mem.Allocator.Error![]const @import("../ir/syntax_grammar.zig").SymbolRef {
+    var symbols = std.array_list.Managed(@import("../ir/syntax_grammar.zig").SymbolRef).init(allocator);
+    defer symbols.deinit();
+    for (aliases.entries) |entry| {
+        switch (entry.target) {
+            .symbol => |symbol| try symbols.append(symbol),
+            else => {},
+        }
+    }
+    return try symbols.toOwnedSlice();
+}
+
 fn lexStateTerminalConflictMapAlloc(
     allocator: std.mem.Allocator,
     all_rules: []const ir_rules.Rule,
     syntax: @import("../ir/syntax_grammar.zig").SyntaxGrammar,
     lexical: @import("../ir/lexical_grammar.zig").LexicalGrammar,
+    reserved_word_sets: []const []const @import("../ir/syntax_grammar.zig").SymbolRef,
+    reserved_word_context_names: []const []const u8,
 ) (lexer_model.ExpandError || std.mem.Allocator.Error || first.FirstError)!build.LexStateTerminalConflictMap {
     var expanded = try lexer_model.expandExtractedLexicalGrammar(allocator, all_rules, lexical);
     defer expanded.deinit(allocator);
 
-    const following_tokens = try lexer_model.computeFollowingTokensAlloc(
+    const following_tokens = try lexer_model.computeFollowingTokensWithReservedAlloc(
         allocator,
         syntax,
         expanded.variables.len,
+        reserved_word_sets,
+        reserved_word_context_names,
     );
     defer lexer_model.deinitTokenIndexSets(allocator, following_tokens);
 
@@ -325,6 +371,9 @@ fn lexStateTerminalConflictMapAlloc(
     const external_internal_tokens = try allocator.alloc(bool, terminal_count);
     errdefer allocator.free(external_internal_tokens);
     @memset(external_internal_tokens, false);
+    const terminal_names = try allocator.alloc([]const u8, terminal_count);
+    errdefer allocator.free(terminal_names);
+    for (expanded.variables, 0..) |variable, index| terminal_names[index] = variable.name;
 
     const word_token = build.minimizeWordToken(syntax);
     const word_terminal = switch (word_token orelse .end) {
@@ -366,6 +415,7 @@ fn lexStateTerminalConflictMapAlloc(
         .conflicts = conflicts,
         .keyword_tokens = keyword_tokens,
         .external_internal_tokens = external_internal_tokens,
+        .terminal_names = terminal_names,
     };
 }
 

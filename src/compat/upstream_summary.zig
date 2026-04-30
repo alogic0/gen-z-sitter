@@ -160,7 +160,9 @@ pub fn generateLocalSummaryAlloc(
 fn hasBlockingSerializedUnresolved(serialized: parse_table_serialize.SerializedTable) bool {
     for (serialized.states) |parse_state| {
         for (parse_state.unresolved) |entry| {
-            if (entry.reason != .shift_reduce_expected and entry.reason != .reduce_reduce_expected) return true;
+            if (entry.reason != .auxiliary_repeat and
+                entry.reason != .shift_reduce_expected and
+                entry.reason != .reduce_reduce_expected) return true;
         }
     }
     return false;
@@ -449,6 +451,43 @@ pub fn generateLocalMinimizationSummaryJsonAlloc(
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     try writeMinimizationSummaryJson(&out.writer, default_serialized, minimized_serialized);
+    return try out.toOwnedSlice();
+}
+
+pub fn generateLocalProductionInfoSummaryJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena_allocator, &loaded.json.grammar);
+    const extracted = try extract_tokens.extractTokens(arena_allocator, prepared);
+    const default_aliases = try extract_default_aliases.extractDefaultAliases(arena_allocator, extracted.syntax, extracted.lexical);
+    const flattened = try flatten_grammar.flattenGrammar(arena_allocator, default_aliases.syntax);
+    const result = try parse_table_pipeline.buildStatesFromPreparedWithOptions(
+        arena_allocator,
+        prepared,
+        .{
+            .minimize_states = options.minimize_states,
+            .strict_expected_conflicts = false,
+            .include_unresolved_parse_actions = false,
+        },
+    );
+    const serialized = try parse_table_serialize.serializeBuildResultWithOptions(arena_allocator, result, .diagnostic, .{
+        .include_unresolved_parse_actions = false,
+    });
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeProductionInfoSummaryJson(&out.writer, result, serialized, flattened, extracted.lexical);
     return try out.toOwnedSlice();
 }
 
@@ -1380,6 +1419,7 @@ fn writeConflictSummaryJson(
     try writeUsizeField(writer, 2, "unresolved_count", unresolved.len, true);
     try writer.writeAll("  \"unresolved_reasons\": {\n");
     try writeUsizeField(writer, 4, "multiple_candidates", counts.multiple_candidates, true);
+    try writeUsizeField(writer, 4, "auxiliary_repeat", counts.auxiliary_repeat, true);
     try writeUsizeField(writer, 4, "shift_reduce", counts.shift_reduce, true);
     try writeUsizeField(writer, 4, "shift_reduce_expected", counts.shift_reduce_expected, true);
     try writeUsizeField(writer, 4, "reduce_reduce_deferred", counts.reduce_reduce_deferred, true);
@@ -1389,29 +1429,70 @@ fn writeConflictSummaryJson(
     try writer.writeAll("  \"unresolved_samples\": [");
     if (unresolved.len != 0) try writer.writeByte('\n');
     for (unresolved[0..@min(unresolved.len, 16)], 0..) |decision, index| {
-        try writer.writeAll("    { \"state_id\": ");
-        try writer.print("{d}", .{decision.state_id});
-        try writer.writeAll(", \"lookahead\": ");
-        try writeSymbolRef(writer, decision.symbol);
-        try writer.writeAll(", \"reason\": ");
-        try writeJsonString(writer, @tagName(decision.reason));
-        try writer.writeAll(", \"candidate_shape\": ");
-        try writeJsonString(writer, @tagName(candidateShape(decision.candidate_actions)));
-        try writer.writeAll(", \"reduce_parent_rules\": ");
-        try writeReduceParentRuleNames(writer, result, flattened, decision.candidate_actions);
-        if (findConflictCandidate(conflict_candidates, decision.state_id, decision.symbol)) |candidate| {
-            try writer.writeAll(", \"actual_conflict_members\": ");
-            try writeSymbolRefArray(writer, candidate.members);
-            try writer.writeAll(", \"actual_conflict_rule_names\": ");
-            try writeConflictMemberRuleNames(writer, flattened, candidate.members);
-        }
-        try writer.writeAll(" }");
+        try writeUnresolvedDecisionSampleJson(writer, decision, conflict_candidates, result, flattened, 4);
         if (index + 1 != @min(unresolved.len, 16)) try writer.writeByte(',');
         try writer.writeByte('\n');
     }
     if (unresolved.len != 0) try writer.writeAll("  ");
-    try writer.writeAll("]\n");
+    try writer.writeAll("],\n");
+    try writer.writeAll("  \"unresolved_samples_by_reason\": {\n");
+    inline for (std.meta.fields(@import("../parse_table/resolution.zig").UnresolvedReason), 0..) |field, reason_index| {
+        const reason: @import("../parse_table/resolution.zig").UnresolvedReason = @enumFromInt(field.value);
+        try writer.writeAll("    ");
+        try writeJsonString(writer, field.name);
+        try writer.writeAll(": [");
+        var written: usize = 0;
+        for (unresolved) |decision| {
+            if (decision.reason != reason) continue;
+            if (written == 4) break;
+            if (written == 0) {
+                try writer.writeByte('\n');
+            } else {
+                try writer.writeAll(",\n");
+            }
+            try writeUnresolvedDecisionSampleJson(writer, decision, conflict_candidates, result, flattened, 6);
+            written += 1;
+        }
+        if (written != 0) {
+            try writer.writeByte('\n');
+            try writer.writeAll("    ");
+        }
+        try writer.writeByte(']');
+        if (reason_index + 1 != std.meta.fields(@import("../parse_table/resolution.zig").UnresolvedReason).len) {
+            try writer.writeByte(',');
+        }
+        try writer.writeByte('\n');
+    }
+    try writer.writeAll("  }\n");
     try writer.writeAll("}\n");
+}
+
+fn writeUnresolvedDecisionSampleJson(
+    writer: anytype,
+    decision: @import("../parse_table/resolution.zig").UnresolvedDecisionRef,
+    conflict_candidates: []const parse_table_conflict_resolution.ConflictCandidate,
+    result: parse_table_build.BuildResult,
+    flattened: syntax_ir.SyntaxGrammar,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"state_id\": ");
+    try writer.print("{d}", .{decision.state_id});
+    try writer.writeAll(", \"lookahead\": ");
+    try writeSymbolRef(writer, decision.symbol);
+    try writer.writeAll(", \"reason\": ");
+    try writeJsonString(writer, @tagName(decision.reason));
+    try writer.writeAll(", \"candidate_shape\": ");
+    try writeJsonString(writer, @tagName(candidateShape(decision.candidate_actions)));
+    try writer.writeAll(", \"reduce_parent_rules\": ");
+    try writeReduceParentRuleNames(writer, result, flattened, decision.candidate_actions);
+    if (findConflictCandidate(conflict_candidates, decision.state_id, decision.symbol)) |candidate| {
+        try writer.writeAll(", \"actual_conflict_members\": ");
+        try writeSymbolRefArray(writer, candidate.members);
+        try writer.writeAll(", \"actual_conflict_rule_names\": ");
+        try writeConflictMemberRuleNames(writer, flattened, candidate.members);
+    }
+    try writer.writeAll(" }");
 }
 
 fn writeConflictComparisonKeysJson(
@@ -1563,6 +1644,7 @@ fn chosenDecisionCounts(
         }
         switch (decision.action) {
             .shift => counts.shift += 1,
+            .shift_extra => counts.shift += 1,
             .reduce => counts.reduce += 1,
             .accept => counts.accept += 1,
         }
@@ -1600,6 +1682,7 @@ fn candidateShape(actions: []const @import("../parse_table/actions.zig").ParseAc
     var accept_count: usize = 0;
     for (actions) |action| switch (action) {
         .shift => shift_count += 1,
+        .shift_extra => shift_count += 1,
         .reduce => reduce_count += 1,
         .accept => accept_count += 1,
     };
@@ -1611,6 +1694,7 @@ fn candidateShape(actions: []const @import("../parse_table/actions.zig").ParseAc
 
 const ConflictReasonCounts = struct {
     multiple_candidates: usize = 0,
+    auxiliary_repeat: usize = 0,
     shift_reduce: usize = 0,
     shift_reduce_expected: usize = 0,
     reduce_reduce_deferred: usize = 0,
@@ -1623,6 +1707,7 @@ fn conflictReasonCounts(unresolved: []const @import("../parse_table/resolution.z
     for (unresolved) |decision| {
         switch (decision.reason) {
             .multiple_candidates => counts.multiple_candidates += 1,
+            .auxiliary_repeat => counts.auxiliary_repeat += 1,
             .shift_reduce => counts.shift_reduce += 1,
             .shift_reduce_expected => counts.shift_reduce_expected += 1,
             .reduce_reduce_deferred => counts.reduce_reduce_deferred += 1,
@@ -1955,6 +2040,295 @@ fn writeMinimizationSummaryJson(
     try writer.writeAll("}\n");
 }
 
+fn writeProductionInfoSummaryJson(
+    writer: anytype,
+    result: parse_table_build.BuildResult,
+    serialized: parse_table_serialize.SerializedTable,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) !void {
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, 2, "production_count", result.productions.len, true);
+    try writeUsizeField(writer, 2, "production_info_count", serialized.production_id_count, true);
+    try writeUsizeField(writer, 2, "alias_sequence_entry_count", serialized.alias_sequences.len, true);
+    try writeUsizeField(writer, 2, "field_map_entry_count", serialized.field_map.entries.len, true);
+    try writeIndent(writer, 2);
+    try writer.writeAll("\"metadata_rows\": [");
+    if (serialized.production_id_count != 0) try writer.writeByte('\n');
+    for (0..serialized.production_id_count) |production_info_id| {
+        try writeProductionMetadataRowJson(writer, serialized, production_info_id, syntax, lexical, 4);
+        if (production_info_id + 1 != serialized.production_id_count) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (serialized.production_id_count != 0) try writeIndent(writer, 2);
+    try writer.writeAll("],\n");
+    try writeIndent(writer, 2);
+    try writer.writeAll("\"productions\": [");
+    if (result.productions.len != 0) try writer.writeByte('\n');
+    for (result.productions, 0..) |production, production_id| {
+        try writeProductionDetailJson(writer, production, serialized, production_id, syntax, lexical, 4);
+        if (production_id + 1 != result.productions.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (result.productions.len != 0) try writeIndent(writer, 2);
+    try writer.writeAll("]\n");
+    try writer.writeAll("}\n");
+}
+
+fn writeProductionMetadataRowJson(
+    writer: anytype,
+    serialized: parse_table_serialize.SerializedTable,
+    production_info_id: usize,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, indent + 2, "production_info_id", production_info_id, true);
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"aliases\": [");
+    var alias_count: usize = 0;
+    for (serialized.alias_sequences) |alias| {
+        if (alias.production_id == production_info_id) alias_count += 1;
+    }
+    if (alias_count != 0) try writer.writeByte('\n');
+    var alias_index: usize = 0;
+    for (serialized.alias_sequences) |alias| {
+        if (alias.production_id != production_info_id) continue;
+        try writeAliasEntryJson(writer, alias, syntax, lexical, indent + 4);
+        alias_index += 1;
+        if (alias_index != alias_count) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (alias_count != 0) try writeIndent(writer, indent + 2);
+    try writer.writeAll("],\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"fields\": [");
+    const field_slice = if (production_info_id < serialized.field_map.slices.len)
+        serialized.field_map.slices[production_info_id]
+    else
+        parse_table_serialize.SerializedFieldMapSlice{ .index = 0, .length = 0 };
+    if (field_slice.length != 0) try writer.writeByte('\n');
+    for (0..field_slice.length) |offset| {
+        const entry_index = @as(usize, field_slice.index) + offset;
+        if (entry_index >= serialized.field_map.entries.len) break;
+        try writeFieldMapEntryJson(writer, serialized.field_map, serialized.field_map.entries[entry_index], indent + 4);
+        if (offset + 1 != field_slice.length) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (field_slice.length != 0) try writeIndent(writer, indent + 2);
+    try writer.writeAll("]\n");
+    try writeIndent(writer, indent);
+    try writer.writeByte('}');
+}
+
+fn writeProductionDetailJson(
+    writer: anytype,
+    production: parse_table_build.ProductionInfo,
+    serialized: parse_table_serialize.SerializedTable,
+    production_id: usize,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    indent: usize,
+) !void {
+    const serialized_info = if (production_id < serialized.productions.len)
+        serialized.productions[production_id]
+    else
+        parse_table_serialize.SerializedProductionInfo{
+            .lhs = production.lhs,
+            .child_count = @intCast(@min(production.steps.len, std.math.maxInt(u8))),
+            .dynamic_precedence = @intCast(std.math.clamp(production.dynamic_precedence, std.math.minInt(i16), std.math.maxInt(i16))),
+        };
+
+    try writeIndent(writer, indent);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, indent + 2, "production_id", production_id, true);
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"lhs\": ");
+    try writeNamedSymbolRefJson(writer, .{ .non_terminal = production.lhs }, syntax, lexical);
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"lhs_kind\": ");
+    try writeJsonString(writer, @tagName(production.lhs_kind));
+    try writer.writeAll(",\n");
+    try writeBoolField(writer, indent + 2, "augmented", production.augmented, true);
+    try writeBoolField(writer, indent + 2, "lhs_is_repeat_auxiliary", production.lhs_is_repeat_auxiliary, true);
+    try writeUsizeField(writer, indent + 2, "child_count", serialized_info.child_count, true);
+    try writeIndent(writer, indent + 2);
+    try writer.print("\"dynamic_precedence\": {d},\n", .{serialized_info.dynamic_precedence});
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"production_info_id\": ");
+    if (serialized_info.production_info_id) |production_info_id| {
+        try writer.print("{d}", .{production_info_id});
+    } else {
+        try writer.writeAll("null");
+    }
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"steps\": [");
+    if (production.steps.len != 0) try writer.writeByte('\n');
+    for (production.steps, 0..) |step, step_index| {
+        try writeProductionStepDetailJson(writer, step, step_index, syntax, lexical, indent + 4);
+        if (step_index + 1 != production.steps.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (production.steps.len != 0) try writeIndent(writer, indent + 2);
+    try writer.writeAll("]\n");
+    try writeIndent(writer, indent);
+    try writer.writeByte('}');
+}
+
+fn writeProductionStepDetailJson(
+    writer: anytype,
+    step: syntax_ir.ProductionStep,
+    step_index: usize,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"index\": ");
+    try writer.print("{d}", .{step_index});
+    try writer.writeAll(", \"symbol\": ");
+    try writeNamedSymbolRefJson(writer, step.symbol, syntax, lexical);
+    try writer.writeAll(", \"alias\": ");
+    try writeOptionalAliasJson(writer, step.alias);
+    try writer.writeAll(", \"field_name\": ");
+    try writeOptionalStringJson(writer, step.field_name);
+    try writer.writeAll(", \"field_inherited\": ");
+    try writeBoolJson(writer, step.field_inherited);
+    try writer.writeAll(", \"precedence\": ");
+    try writePrecedenceValueJson(writer, step.precedence);
+    try writer.writeAll(", \"associativity\": ");
+    try writeJsonString(writer, @tagName(step.associativity));
+    try writer.writeAll(", \"reserved_context_name\": ");
+    try writeOptionalStringJson(writer, step.reserved_context_name);
+    try writer.writeAll(" }");
+}
+
+fn writeAliasEntryJson(
+    writer: anytype,
+    alias: parse_table_serialize.SerializedAliasEntry,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"step_index\": ");
+    try writer.print("{d}", .{alias.step_index});
+    try writer.writeAll(", \"name\": ");
+    try writeJsonString(writer, alias.name);
+    try writer.writeAll(", \"named\": ");
+    try writeBoolJson(writer, alias.named);
+    try writer.writeAll(", \"original_symbol\": ");
+    try writeNamedSymbolRefJson(writer, alias.original_symbol, syntax, lexical);
+    try writer.writeAll(" }");
+}
+
+fn writeFieldMapEntryJson(
+    writer: anytype,
+    field_map: parse_table_serialize.SerializedFieldMap,
+    entry: parse_table_serialize.SerializedFieldMapEntry,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"field_id\": ");
+    try writer.print("{d}", .{entry.field_id});
+    try writer.writeAll(", \"name\": ");
+    try writeJsonString(writer, fieldNameForId(field_map, entry.field_id));
+    try writer.writeAll(", \"child_index\": ");
+    try writer.print("{d}", .{entry.child_index});
+    try writer.writeAll(", \"inherited\": ");
+    try writeBoolJson(writer, entry.inherited);
+    try writer.writeAll(" }");
+}
+
+fn writeNamedSymbolRefJson(
+    writer: anytype,
+    symbol: syntax_ir.SymbolRef,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) !void {
+    try writer.writeAll("{ \"kind\": ");
+    switch (symbol) {
+        .end => try writeJsonString(writer, "end"),
+        .non_terminal => |index| {
+            try writeJsonString(writer, "non_terminal");
+            try writer.print(", \"index\": {d}, \"name\": ", .{index});
+            try writeJsonString(writer, symbolRefName(symbol, syntax, lexical));
+        },
+        .terminal => |index| {
+            try writeJsonString(writer, "terminal");
+            try writer.print(", \"index\": {d}, \"name\": ", .{index});
+            try writeJsonString(writer, symbolRefName(symbol, syntax, lexical));
+        },
+        .external => |index| {
+            try writeJsonString(writer, "external");
+            try writer.print(", \"index\": {d}, \"name\": ", .{index});
+            try writeJsonString(writer, symbolRefName(symbol, syntax, lexical));
+        },
+    }
+    try writer.writeAll(" }");
+}
+
+fn writeOptionalAliasJson(writer: anytype, maybe_alias: ?ir_rules.Alias) !void {
+    const alias = maybe_alias orelse {
+        try writer.writeAll("null");
+        return;
+    };
+    try writer.writeAll("{ \"value\": ");
+    try writeJsonString(writer, alias.value);
+    try writer.writeAll(", \"named\": ");
+    try writeBoolJson(writer, alias.named);
+    try writer.writeAll(" }");
+}
+
+fn writeOptionalStringJson(writer: anytype, maybe_value: ?[]const u8) !void {
+    if (maybe_value) |value| {
+        try writeJsonString(writer, value);
+    } else {
+        try writer.writeAll("null");
+    }
+}
+
+fn writePrecedenceValueJson(writer: anytype, precedence: ir_rules.PrecedenceValue) !void {
+    try writer.writeAll("{ \"kind\": ");
+    switch (precedence) {
+        .none => try writeJsonString(writer, "none"),
+        .integer => |value| {
+            try writeJsonString(writer, "integer");
+            try writer.print(", \"value\": {d}", .{value});
+        },
+        .name => |name| {
+            try writeJsonString(writer, "name");
+            try writer.writeAll(", \"value\": ");
+            try writeJsonString(writer, name);
+        },
+    }
+    try writer.writeAll(" }");
+}
+
+fn symbolRefName(
+    symbol: syntax_ir.SymbolRef,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) []const u8 {
+    return switch (symbol) {
+        .end => "end",
+        .non_terminal => |index| if (index < syntax.variables.len) syntax.variables[index].name else "<unknown-non-terminal>",
+        .terminal => |index| if (index < lexical.variables.len) lexical.variables[index].name else "<unknown-terminal>",
+        .external => |index| if (index < syntax.external_tokens.len) syntax.external_tokens[index].name else "<unknown-external>",
+    };
+}
+
+fn fieldNameForId(field_map: parse_table_serialize.SerializedFieldMap, field_id: u16) []const u8 {
+    for (field_map.names) |entry| {
+        if (entry.id == field_id) return entry.name;
+    }
+    return "<unknown-field>";
+}
+
 fn writeMinimizationComparisonKeysJson(
     writer: anytype,
     default_serialized: parse_table_serialize.SerializedTable,
@@ -2171,6 +2545,9 @@ fn hashParseAction(hasher: *std.hash.Wyhash, action: @import("../parse_table/act
         .shift => |state_id| {
             hashTag(hasher, "shift");
             hashU32(hasher, state_id);
+        },
+        .shift_extra => {
+            hashTag(hasher, "shift_extra");
         },
         .reduce => |production_id| {
             hashTag(hasher, "reduce");
@@ -4481,7 +4858,9 @@ test "generateLocalConflictSummaryJsonAlloc writes resolved precedence decisions
     try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"reduce\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"max_candidate_count\": 2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"max_candidate_count\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"single_action\": 9") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_count\": 0") != null);
 }
 
 test "generateLocalConflictSummaryJsonAlloc writes associativity decisions" {
@@ -4540,8 +4919,10 @@ test "generateLocalConflictSummaryJsonAlloc writes dynamic precedence decisions"
     defer std.testing.allocator.free(json);
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_count\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"dynamic_precedence\": 1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"dynamic_precedence\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"single_action\": 9") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_count\": 0") != null);
 }
 
 test "generateLocalConflictSummaryJsonAlloc distinguishes expected shift reduce conflicts" {

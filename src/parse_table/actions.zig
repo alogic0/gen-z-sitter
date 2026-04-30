@@ -5,12 +5,14 @@ const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const ActionKind = enum {
     shift,
+    shift_extra,
     reduce,
     accept,
 };
 
 pub const ParseAction = union(ActionKind) {
     shift: state.StateId,
+    shift_extra: void,
     reduce: item.ProductionId,
     accept: void,
 
@@ -24,6 +26,7 @@ pub const ParseAction = union(ActionKind) {
                 .shift => |right| left < right,
                 else => false,
             },
+            .shift_extra => false,
             .reduce => |left| switch (b) {
                 .reduce => |right| left < right,
                 else => false,
@@ -378,6 +381,10 @@ fn parseActionEql(a: ParseAction, b: ParseAction) bool {
     return switch (a) {
         .shift => |left| switch (b) {
             .shift => |right| left == right,
+            else => false,
+        },
+        .shift_extra => switch (b) {
+            .shift_extra => true,
             else => false,
         },
         .reduce => |left| switch (b) {

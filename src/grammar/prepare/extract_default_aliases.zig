@@ -205,7 +205,7 @@ fn markExtraSymbolsUnaliased(
 
 fn incrementAliasCount(status: *SymbolStatus, alias: rules.Alias) ExtractDefaultAliasesError!void {
     for (status.aliases.items) |*entry| {
-        if (std.meta.eql(entry.alias, alias)) {
+        if (aliasEql(entry.alias, alias)) {
             entry.count += 1;
             return;
         }
@@ -297,7 +297,7 @@ fn clearDefaultAliasUses(
             for (production.steps, 0..) |step, step_index| {
                 if (step.alias == null) continue;
                 const default_alias = defaultAliasForSymbol(defaults, step.symbol) orelse continue;
-                if (!std.meta.eql(step.alias.?, default_alias)) continue;
+                if (!aliasEql(step.alias.?, default_alias)) continue;
 
                 var must_keep = false;
                 for (variable.productions, 0..) |other_production, other_index| {
@@ -305,10 +305,10 @@ fn clearDefaultAliasUses(
                     if (other_production.steps.len <= step_index) continue;
                     const other_step = other_production.steps[step_index];
                     if (other_step.alias == null) continue;
-                    if (!std.meta.eql(other_step.alias.?, step.alias.?)) continue;
+                    if (!aliasEql(other_step.alias.?, step.alias.?)) continue;
 
                     const other_default = defaultAliasForSymbol(defaults, other_step.symbol);
-                    if (other_default == null or !std.meta.eql(other_default.?, step.alias.?)) {
+                    if (other_default == null or !aliasEql(other_default.?, step.alias.?)) {
                         must_keep = true;
                         break;
                     }
@@ -357,6 +357,10 @@ fn defaultAliasForSymbol(defaults: alias_ir.AliasMap, symbol: syntax_ir.SymbolRe
         .non_terminal => |index| defaults.findForSymbol(.{ .non_terminal = index }),
         .external => |index| defaults.findForSymbol(.{ .external = index }),
     };
+}
+
+fn aliasEql(left: rules.Alias, right: rules.Alias) bool {
+    return left.named == right.named and std.mem.eql(u8, left.value, right.value);
 }
 
 fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
@@ -426,6 +430,51 @@ test "extractDefaultAliases promotes always-aliased symbols and clears redundant
     try std.testing.expect(result.syntax.variables[0].productions[0].steps[0].alias == null);
     try std.testing.expect(result.syntax.variables[0].productions[1].steps[0].alias == null);
     try std.testing.expectEqualStrings("plus", result.syntax.variables[0].productions[0].steps[1].alias.?.value);
+}
+
+test "extractDefaultAliases compares alias text instead of slice identity" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alias_one = try arena.allocator().dupe(u8, "node");
+    const alias_two = try arena.allocator().dupe(u8, "node");
+    try std.testing.expect(alias_one.ptr != alias_two.ptr);
+
+    var prod1_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 }, .alias = .{ .value = alias_one, .named = true } },
+    };
+    var prod2_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 }, .alias = .{ .value = alias_two, .named = true } },
+    };
+
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .kind = .named,
+                .productions = &.{
+                    .{ .steps = prod1_steps[0..] },
+                    .{ .steps = prod2_steps[0..] },
+                },
+            },
+        },
+        .external_tokens = &.{},
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{.{ .name = "t0", .kind = .named, .rule = 0 }},
+        .separators = &.{},
+    };
+
+    const result = try extractDefaultAliases(arena.allocator(), syntax, lexical);
+    const default_alias = result.defaults.findForSymbol(.{ .terminal = 0 }).?;
+    try std.testing.expectEqualStrings("node", default_alias.value);
+    try std.testing.expect(result.syntax.variables[0].productions[0].steps[0].alias == null);
+    try std.testing.expect(result.syntax.variables[0].productions[1].steps[0].alias == null);
 }
 
 test "extractDefaultAliases does not promote aliases for inlined variables" {

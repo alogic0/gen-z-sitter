@@ -1775,6 +1775,10 @@ fn parseActionEql(left: @import("../parse_table/actions.zig").ParseAction, right
             .shift => |right_value| left_value == right_value,
             else => false,
         },
+        .shift_extra => switch (right) {
+            .shift_extra => true,
+            else => false,
+        },
         .reduce => |left_value| switch (right) {
             .reduce => |right_value| left_value == right_value,
             else => false,
@@ -1834,7 +1838,7 @@ fn collectEmittedSymbols(
                         try appendUniqueEmittedSymbol(allocator, &symbols, .{ .non_terminal = serialized.productions[production_id].lhs });
                     }
                 },
-                .shift, .accept => {},
+                .shift, .shift_extra, .accept => {},
             }
         }
         for (state.gotos) |entry| {
@@ -1849,7 +1853,7 @@ fn collectEmittedSymbols(
                             try appendUniqueEmittedSymbol(allocator, &symbols, .{ .non_terminal = serialized.productions[production_id].lhs });
                         }
                     },
-                    .shift, .accept => {},
+                    .shift, .shift_extra, .accept => {},
                 }
             }
         }
@@ -2040,6 +2044,7 @@ fn actionKindCode(action: @import("../parse_table/actions.zig").ParseAction) u16
 
 fn unresolvedReasonCode(reason: @import("../parse_table/resolution.zig").UnresolvedReason) u16 {
     return switch (reason) {
+        .auxiliary_repeat => 1,
         .shift_reduce => 1,
         .shift_reduce_expected => 1,
         .reduce_reduce_deferred => 2,

@@ -21,6 +21,7 @@ pub fn writeQuotedSymbol(writer: anytype, symbol: syntax_grammar.SymbolRef) !voi
 pub fn writeActionKind(writer: anytype, action: actions.ParseAction) !void {
     switch (action) {
         .shift => try writer.writeAll("shift"),
+        .shift_extra => try writer.writeAll("shift_extra"),
         .reduce => try writer.writeAll("reduce"),
         .accept => try writer.writeAll("accept"),
     }
@@ -29,6 +30,7 @@ pub fn writeActionKind(writer: anytype, action: actions.ParseAction) !void {
 pub fn writeActionValue(writer: anytype, action: actions.ParseAction) !void {
     switch (action) {
         .shift => |target| try writer.print("{d}", .{target}),
+        .shift_extra => try writer.writeByte('0'),
         .reduce => |production_id| try writer.print("{d}", .{production_id}),
         .accept => try writer.writeByte('0'),
     }
@@ -37,7 +39,7 @@ pub fn writeActionValue(writer: anytype, action: actions.ParseAction) !void {
 pub fn writeActionWithValue(writer: anytype, action: actions.ParseAction) !void {
     try writeActionKind(writer, action);
     switch (action) {
-        .accept => {},
+        .accept, .shift_extra => {},
         else => {
             try writer.writeByte(' ');
             try writeActionValue(writer, action);

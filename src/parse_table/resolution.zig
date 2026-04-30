@@ -5,9 +5,11 @@ const item = @import("item.zig");
 const state = @import("state.zig");
 const conflict_resolution = @import("conflict_resolution.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
+const runtime_io = @import("../support/runtime_io.zig");
 
 pub const UnresolvedReason = enum {
     multiple_candidates,
+    auxiliary_repeat,
     shift_reduce,
     shift_reduce_expected,
     reduce_reduce_deferred,
@@ -138,7 +140,9 @@ pub const ResolvedActionTable = struct {
                 switch (group.decision) {
                     .chosen => {},
                     .unresolved => |reason| {
-                        if (reason != .reduce_reduce_expected and reason != .shift_reduce_expected) return true;
+                        if (reason != .auxiliary_repeat and
+                            reason != .reduce_reduce_expected and
+                            reason != .shift_reduce_expected) return true;
                     },
                 }
             }
@@ -284,7 +288,7 @@ pub const ResolvedActionTable = struct {
                             );
                             if (candidate) |value| try result.append(value);
                         },
-                        .multiple_candidates, .unsupported_action_mix => {},
+                        .auxiliary_repeat, .multiple_candidates, .unsupported_action_mix => {},
                     },
                 }
             }
@@ -399,7 +403,36 @@ fn resolveActionTableWithOptionalFirstSets(
         const groups = try allocator.alloc(ResolvedActionGroup, grouped_state.groups.len);
         const parse_state = findState(parse_states, grouped_state.state_id);
         for (grouped_state.groups, 0..) |group, group_index| {
-            const candidate_actions = try actionGroupActionsAlloc(allocator, group);
+            var candidate_actions = try actionGroupActionsAlloc(allocator, group);
+            if (try filterLowerPrecedenceReductionsAlloc(
+                allocator,
+                productions,
+                precedence_orderings,
+                candidate_actions,
+            )) |filtered| {
+                allocator.free(candidate_actions);
+                candidate_actions = filtered;
+            }
+            if (!hasSameAuxiliaryRepeatConflictForGroup(
+                productions,
+                parse_state,
+                first_sets,
+                group.symbol,
+                candidate_actions,
+            )) {
+                if (try filterShiftReduceByPrecedenceAlloc(
+                    allocator,
+                    productions,
+                    precedence_orderings,
+                    parse_state,
+                    first_sets,
+                    group.symbol,
+                    candidate_actions,
+                )) |filtered| {
+                    allocator.free(candidate_actions);
+                    candidate_actions = filtered;
+                }
+            }
             const decision = chooseResolvedAction(
                 productions,
                 precedence_orderings,
@@ -446,10 +479,31 @@ fn resolvedShiftIsRepetition(
             .shift => {},
             else => return false,
         },
-        .unresolved => return false,
+        .unresolved => |reason| if (reason != .auxiliary_repeat) return false,
     }
     const resolved_state = parse_state orelse return false;
     return hasSameAuxiliaryRepeatConflictWithFirstSets(productions, resolved_state, first_sets, symbol);
+}
+
+fn hasSameAuxiliaryRepeatConflictForGroup(
+    productions: anytype,
+    parse_state: ?state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
+    symbol: syntax_ir.SymbolRef,
+    candidate_actions: []const actions.ParseAction,
+) bool {
+    const resolved_state = parse_state orelse return false;
+    var saw_shift = false;
+    var saw_reduce = false;
+    for (candidate_actions) |candidate| {
+        switch (candidate) {
+            .shift => saw_shift = true,
+            .reduce => saw_reduce = true,
+            else => return false,
+        }
+    }
+    return saw_shift and saw_reduce and
+        hasSameAuxiliaryRepeatConflictWithFirstSets(productions, resolved_state, first_sets, symbol);
 }
 
 fn actionGroupActionsAlloc(
@@ -458,6 +512,61 @@ fn actionGroupActionsAlloc(
 ) std.mem.Allocator.Error![]const actions.ParseAction {
     if (group.actions.len != 0) return try allocator.dupe(actions.ParseAction, group.actions);
     return try actionsFromEntriesAlloc(allocator, group.entries);
+}
+
+fn filterLowerPrecedenceReductionsAlloc(
+    allocator: std.mem.Allocator,
+    productions: anytype,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    candidate_actions: []const actions.ParseAction,
+) std.mem.Allocator.Error!?[]const actions.ParseAction {
+    if (candidate_actions.len <= 2) return null;
+
+    var kept_reductions_buffer: [256]actions.ParseAction = undefined;
+    var kept_reduction_count: usize = 0;
+    var original_reduction_count: usize = 0;
+
+    for (candidate_actions) |candidate| {
+        if (!isReduce(candidate)) continue;
+        original_reduction_count += 1;
+
+        if (kept_reduction_count == 0) {
+            kept_reductions_buffer[0] = candidate;
+            kept_reduction_count = 1;
+            continue;
+        }
+
+        switch (compareReduceActionPrecedence(
+            productions,
+            precedence_orderings,
+            candidate,
+            kept_reductions_buffer[0],
+        ) orelse .equal) {
+            .greater => {
+                kept_reductions_buffer[0] = candidate;
+                kept_reduction_count = 1;
+            },
+            .less => {},
+            .equal => {
+                if (kept_reduction_count == kept_reductions_buffer.len) return null;
+                kept_reductions_buffer[kept_reduction_count] = candidate;
+                kept_reduction_count += 1;
+            },
+        }
+    }
+
+    if (kept_reduction_count == 0 or kept_reduction_count == original_reduction_count) return null;
+
+    const filtered_len = candidate_actions.len - (original_reduction_count - kept_reduction_count);
+    var filtered = try allocator.alloc(actions.ParseAction, filtered_len);
+    var index: usize = 0;
+    for (candidate_actions) |candidate| {
+        if (isReduce(candidate) and !containsParseAction(kept_reductions_buffer[0..kept_reduction_count], candidate)) continue;
+        filtered[index] = candidate;
+        index += 1;
+    }
+    std.debug.assert(index == filtered.len);
+    return filtered;
 }
 
 fn actionsFromEntriesAlloc(
@@ -469,6 +578,81 @@ fn actionsFromEntriesAlloc(
         duplicated[index] = entry.action;
     }
     return duplicated;
+}
+
+fn filterShiftReduceByPrecedenceAlloc(
+    allocator: std.mem.Allocator,
+    productions: anytype,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    parse_state: ?state.ParseState,
+    first_sets: ?first_sets_mod.FirstSets,
+    symbol: syntax_ir.SymbolRef,
+    candidate_actions: []const actions.ParseAction,
+) std.mem.Allocator.Error!?[]const actions.ParseAction {
+    var shift_action: ?actions.ParseAction = null;
+    var reduce_count: usize = 0;
+
+    for (candidate_actions) |candidate| {
+        switch (candidate) {
+            .shift => {
+                if (shift_action != null) return null;
+                shift_action = candidate;
+            },
+            .reduce => reduce_count += 1,
+            else => return null,
+        }
+    }
+
+    const shift = shift_action orelse return null;
+    if (reduce_count == 0) return null;
+
+    var shift_wins = false;
+    var reduce_wins = false;
+    for (candidate_actions) |candidate| {
+        switch (candidate) {
+            .reduce => {
+                const chosen = resolveShiftReduce(
+                    productions,
+                    precedence_orderings,
+                    parse_state,
+                    first_sets,
+                    symbol,
+                    shift,
+                    candidate,
+                ) orelse return null;
+                if (std.meta.eql(chosen, shift)) {
+                    shift_wins = true;
+                } else if (std.meta.eql(chosen, candidate)) {
+                    reduce_wins = true;
+                } else {
+                    return null;
+                }
+            },
+            else => {},
+        }
+    }
+
+    if (shift_wins and reduce_wins) return null;
+
+    if (shift_wins) {
+        const filtered = try allocator.alloc(actions.ParseAction, 1);
+        filtered[0] = shift;
+        return filtered;
+    }
+
+    const filtered = try allocator.alloc(actions.ParseAction, reduce_count);
+    var index: usize = 0;
+    for (candidate_actions) |candidate| {
+        switch (candidate) {
+            .reduce => {
+                filtered[index] = candidate;
+                index += 1;
+            },
+            else => {},
+        }
+    }
+    std.debug.assert(index == filtered.len);
+    return filtered;
 }
 
 const ResolutionDecision = struct {
@@ -492,6 +676,9 @@ fn chooseResolvedAction(
         const second = candidates[1];
 
         if (isShift(first) and isReduce(second)) {
+            if (hasSameAuxiliaryRepeatConflictForGroup(productions, parse_state, first_sets, symbol, candidates)) {
+                return .{ .chosen = null, .reason = .auxiliary_repeat };
+            }
             const chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, symbol, first, second);
             return .{
                 .chosen = chosen,
@@ -506,6 +693,9 @@ fn chooseResolvedAction(
             };
         }
         if (isReduce(first) and isShift(second)) {
+            if (hasSameAuxiliaryRepeatConflictForGroup(productions, parse_state, first_sets, symbol, candidates)) {
+                return .{ .chosen = null, .reason = .auxiliary_repeat };
+            }
             const chosen = resolveShiftReduce(productions, precedence_orderings, parse_state, first_sets, symbol, second, first);
             return .{
                 .chosen = chosen,
@@ -534,6 +724,50 @@ fn chooseResolvedAction(
             else
                 .reduce_reduce_deferred;
             return .{ .chosen = null, .reason = reason };
+        }
+    }
+
+    if (candidates.len > 2) {
+        var has_shift = false;
+        var has_reduce = false;
+        var has_other = false;
+        for (candidates) |candidate| {
+            if (isShift(candidate)) {
+                has_shift = true;
+            } else if (isReduce(candidate)) {
+                has_reduce = true;
+            } else {
+                has_other = true;
+            }
+        }
+
+        if (!has_other and has_reduce and has_shift) {
+            if (hasSameAuxiliaryRepeatConflictForGroup(productions, parse_state, first_sets, symbol, candidates)) {
+                return .{ .chosen = null, .reason = .auxiliary_repeat };
+            }
+            return .{
+                .chosen = null,
+                .reason = if (shiftReduceIsExpected(
+                    productions,
+                    expected_conflicts,
+                    parse_state,
+                    first_sets,
+                    symbol,
+                    candidates,
+                )) .shift_reduce_expected else .multiple_candidates,
+            };
+        }
+        if (!has_other and has_reduce) {
+            return .{
+                .chosen = null,
+                .reason = if (reduceReduceIsExpected(
+                    productions,
+                    expected_conflicts,
+                    parse_state,
+                    symbol,
+                    candidates,
+                )) .reduce_reduce_expected else .reduce_reduce_deferred,
+            };
         }
     }
 
@@ -661,6 +895,7 @@ fn shiftReduceIsExpected(
     ) orelse return false;
     const policy = conflict_resolution.ExpectedConflictPolicy{ .expected_conflicts = expected_conflicts };
     if (policy.isExpected(candidate)) return true;
+    if (envFlagEnabled("GEN_Z_SITTER_DISABLE_EXPECTED_CONFLICT_SUBSET")) return false;
     const reduce_only_candidate = shiftReduceReduceOnlyCandidate(
         &members_buffer,
         resolved_state.id,
@@ -670,6 +905,16 @@ fn shiftReduceIsExpected(
         candidates,
     ) orelse return false;
     return policy.isExpectedSubset(reduce_only_candidate);
+}
+
+fn envFlagEnabled(name: []const u8) bool {
+    const value = std.process.Environ.getAlloc(
+        runtime_io.environ(),
+        std.heap.page_allocator,
+        name,
+    ) catch return false;
+    defer std.heap.page_allocator.free(value);
+    return value.len != 0 and !std.mem.eql(u8, value, "0");
 }
 
 fn shiftReduceConflictCandidateAlloc(
@@ -931,6 +1176,24 @@ const PrecedenceComparison = enum {
     greater,
 };
 
+fn compareReduceActionPrecedence(
+    productions: anytype,
+    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
+    first: actions.ParseAction,
+    second: actions.ParseAction,
+) ?PrecedenceComparison {
+    const first_id = switch (first) {
+        .reduce => |id| id,
+        else => return null,
+    };
+    const second_id = switch (second) {
+        .reduce => |id| id,
+        else => return null,
+    };
+    if (first_id >= productions.len or second_id >= productions.len) return null;
+    return compareReducePrecedence(productions[first_id], productions[second_id], precedence_orderings);
+}
+
 fn resolveReduceReduceByPrecedence(
     productions: anytype,
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
@@ -1111,8 +1374,12 @@ fn resolveShiftReduce(
             first_sets,
             shift_symbol,
             production,
-        )) |shift_wins| {
-            return if (shift_wins) shift_action else reduce_action;
+        )) |comparison| {
+            switch (comparison) {
+                .greater => return shift_action,
+                .less => return reduce_action,
+                .equal => if (resolveEqualPrecedenceByAssociativity(metadata, reduce_action, shift_action)) |action| return action,
+            }
         }
     }
 
@@ -1154,8 +1421,9 @@ fn compareShiftItemPrecedence(
     first_sets: ?first_sets_mod.FirstSets,
     shift_symbol: syntax_ir.SymbolRef,
     reduce_production: @TypeOf(productions[0]),
-) ?bool {
+) ?PrecedenceComparison {
     const reduce_metadata = extractResolutionMetadata(reduce_production);
+    var saw_shift_precedence = false;
     var shift_is_less = false;
     var shift_is_more = false;
 
@@ -1169,6 +1437,7 @@ fn compareShiftItemPrecedence(
         if (!symbolCanStartLookahead(first_sets, step.symbol, shift_symbol)) continue;
 
         const shift_metadata = extractShiftItemResolutionMetadata(shift_production, parse_item.step_index);
+        saw_shift_precedence = true;
         switch (compareProductionPrecedence(
             shift_metadata,
             shift_production.lhs,
@@ -1182,8 +1451,9 @@ fn compareShiftItemPrecedence(
         }
     }
 
-    if (shift_is_more and !shift_is_less) return true;
-    if (shift_is_less and !shift_is_more) return false;
+    if (shift_is_more and !shift_is_less) return .greater;
+    if (shift_is_less and !shift_is_more) return .less;
+    if (saw_shift_precedence and !shift_is_more and !shift_is_less) return .equal;
     return null;
 }
 
@@ -1311,7 +1581,7 @@ fn comparePrecedenceEntries(
 
         if (left_index != null and right_index != null) {
             if (left_index.? == right_index.?) return null;
-            return left_index.? > right_index.?;
+            return left_index.? < right_index.?;
         }
     }
 
@@ -1448,6 +1718,13 @@ fn isReduce(action: actions.ParseAction) bool {
         .reduce => true,
         else => false,
     };
+}
+
+fn containsParseAction(haystack: []const actions.ParseAction, needle: actions.ParseAction) bool {
+    for (haystack) |candidate| {
+        if (std.meta.eql(candidate, needle)) return true;
+    }
+    return false;
 }
 
 fn expectChosenAction(group: ResolvedActionGroup, expected: actions.ParseAction) !void {
@@ -1930,6 +2207,241 @@ test "resolveActionTable derives shift reduce expected members from conflict ite
     try std.testing.expect(!resolved.hasBlockingUnresolvedDecisions());
 }
 
+test "resolveActionTable marks multi-reduce shift conflicts expected" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const shift_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 7 } },
+        .{ .symbol = .{ .non_terminal = 9 } },
+    };
+    const reduce_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 7 } },
+    };
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 83, .steps = shift_steps[0..] },
+        .{ .lhs = 48, .steps = reduce_steps[0..] },
+        .{ .lhs = 117, .steps = reduce_steps[0..] },
+    };
+    const expected = [_]syntax_ir.SymbolRef{
+        .{ .non_terminal = 48 },
+        .{ .non_terminal = 117 },
+    };
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 8, 0, item.ParseItem.init(1, 1)),
+        try item.ParseItemSetEntry.withLookahead(allocator, 8, 0, item.ParseItem.init(2, 1), .{ .terminal = 2 }),
+        try item.ParseItemSetEntry.withLookahead(allocator, 8, 0, item.ParseItem.init(3, 1), .{ .terminal = 2 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+
+    const conflict_items = [_]item.ParseItem{
+        item.ParseItem.init(2, 1),
+        item.ParseItem.init(3, 1),
+        item.ParseItem.init(1, 1),
+    };
+    const conflicts = [_]state.Conflict{.{
+        .kind = .shift_reduce,
+        .symbol = .{ .terminal = 2 },
+        .items = conflict_items[0..],
+    }};
+    const parse_states = [_]state.ParseState{.{
+        .id = 3,
+        .items = &parse_items,
+        .transitions = &.{},
+        .conflicts = conflicts[0..],
+    }};
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{.{
+            .state_id = 3,
+            .groups = &[_]actions.ActionGroup{.{
+                .symbol = .{ .terminal = 2 },
+                .entries = &[_]actions.ActionEntry{
+                    .{ .symbol = .{ .terminal = 2 }, .action = .{ .shift = 4 } },
+                    .{ .symbol = .{ .terminal = 2 }, .action = .{ .reduce = 2 } },
+                    .{ .symbol = .{ .terminal = 2 }, .action = .{ .reduce = 3 } },
+                },
+            }},
+        }},
+    };
+
+    const resolved = try resolveActionTableWithContext(
+        allocator,
+        productions[0..],
+        &.{},
+        &.{&expected},
+        &parse_states,
+        grouped,
+    );
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectUnresolvedGroup(resolved.groupsForState(3)[0], .shift_reduce_expected, 3);
+    try std.testing.expect(!resolved.hasBlockingUnresolvedDecisions());
+}
+
+test "resolveActionTable drops lower-precedence reductions before shift reduce resolution" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{
+            .lhs = 1,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .terminal = 1 }, .precedence = .{ .name = "low" } },
+            },
+        },
+        .{
+            .lhs = 2,
+            .steps = &[_]syntax_ir.ProductionStep{
+                .{ .symbol = .{ .terminal = 2 }, .precedence = .{ .name = "high" } },
+            },
+        },
+    };
+    const precedence_orderings = [_][]const syntax_ir.PrecedenceEntry{
+        &[_]syntax_ir.PrecedenceEntry{
+            .{ .name = "high" },
+            .{ .name = "low" },
+            .{ .symbol = .{ .terminal = 0 } },
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{.{
+            .state_id = 4,
+            .groups = &[_]actions.ActionGroup{.{
+                .symbol = .{ .terminal = 0 },
+                .entries = &[_]actions.ActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 5 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                },
+            }},
+        }},
+    };
+
+    const resolved = try resolveActionTableWithPrecedence(allocator, productions[0..], precedence_orderings[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    const group = resolved.groupsForState(4)[0];
+    try std.testing.expectEqual(@as(usize, 1), group.candidate_actions.len);
+    try expectChosenAction(group, .{ .reduce = 2 });
+}
+
+test "resolveActionTable removes shift when multiple reductions outrank it" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = &.{}, .dynamic_precedence = 3 },
+        .{ .lhs = 2, .steps = &.{}, .dynamic_precedence = 3 },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{.{
+            .state_id = 4,
+            .groups = &[_]actions.ActionGroup{.{
+                .symbol = .{ .terminal = 0 },
+                .entries = &[_]actions.ActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 5 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                },
+            }},
+        }},
+    };
+
+    const resolved = try resolveActionTable(allocator, productions[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    const group = resolved.groupsForState(4)[0];
+    try expectUnresolvedGroup(group, .reduce_reduce_deferred, 2);
+    try std.testing.expectEqual(actions.ParseAction{ .reduce = 1 }, group.candidate_actions[0]);
+    try std.testing.expectEqual(actions.ParseAction{ .reduce = 2 }, group.candidate_actions[1]);
+}
+
+test "resolveActionTable removes multiple reductions when shift outranks them" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = &.{}, .dynamic_precedence = -1 },
+        .{ .lhs = 2, .steps = &.{}, .dynamic_precedence = -1 },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{.{
+            .state_id = 4,
+            .groups = &[_]actions.ActionGroup{.{
+                .symbol = .{ .terminal = 0 },
+                .entries = &[_]actions.ActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 5 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                },
+            }},
+        }},
+    };
+
+    const resolved = try resolveActionTable(allocator, productions[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    const group = resolved.groupsForState(4)[0];
+    try std.testing.expectEqual(@as(usize, 1), group.candidate_actions.len);
+    try expectChosenAction(group, .{ .shift = 5 });
+}
+
 test "resolveActionTable expands auxiliary conflict members to parent symbols" {
     const allocator = std.testing.allocator;
 
@@ -2253,8 +2765,8 @@ test "resolveActionTable chooses reduce for named precedence ordered above the c
 
     const precedence_orderings = [_][]const syntax_ir.PrecedenceEntry{
         &[_]syntax_ir.PrecedenceEntry{
-            .{ .symbol = .{ .terminal = 0 } },
             .{ .name = "sum" },
+            .{ .symbol = .{ .terminal = 0 } },
         },
     };
 
@@ -2312,8 +2824,8 @@ test "resolveActionTable chooses shift for named precedence ordered below the co
 
     const precedence_orderings = [_][]const syntax_ir.PrecedenceEntry{
         &[_]syntax_ir.PrecedenceEntry{
-            .{ .name = "sum" },
             .{ .symbol = .{ .terminal = 0 } },
+            .{ .name = "sum" },
         },
     };
 
@@ -2564,6 +3076,99 @@ test "resolveActionTable chooses shift for equal-precedence right associativity"
     }
 
     try expectChosenAction(resolved.groupsForState(3)[0], .{ .shift = 4 });
+}
+
+test "resolveActionTable uses associativity for unordered shift and reduce precedence" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const reduce_steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .non_terminal = 1 },
+            .precedence = .{ .name = "assign" },
+            .associativity = .right,
+        },
+    };
+    const shift_steps = [_]syntax_ir.ProductionStep{
+        .{
+            .symbol = .{ .non_terminal = 1 },
+            .precedence = .{ .name = "member" },
+        },
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .steps = reduce_steps[0..] },
+        .{ .lhs = 2, .steps = shift_steps[0..] },
+    };
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 1, .step_index = 1 }, .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, .{ .production_id = 2, .step_index = 1 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 6,
+            .items = parse_items[0..],
+            .transitions = &.{},
+            .conflicts = &.{},
+        },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 6,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const precedence_orderings = [_][]const syntax_ir.PrecedenceEntry{
+        &[_]syntax_ir.PrecedenceEntry{
+            .{ .name = "member" },
+            .{ .name = "call" },
+        },
+        &[_]syntax_ir.PrecedenceEntry{
+            .{ .name = "assign" },
+            .{ .symbol = .{ .non_terminal = 1 } },
+        },
+    };
+
+    const resolved = try resolveActionTableWithContext(
+        allocator,
+        productions[0..],
+        precedence_orderings[0..],
+        &.{},
+        parse_states[0..],
+        grouped,
+    );
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
 }
 
 test "resolveActionTable keeps equal-precedence non-associative conflicts unresolved" {
@@ -2948,8 +3553,8 @@ test "resolveActionTable uses shift-side named precedence from the current state
 
     const precedence_orderings = [_][]const syntax_ir.PrecedenceEntry{
         &[_]syntax_ir.PrecedenceEntry{
-            .{ .name = "sum" },
             .{ .name = "product" },
+            .{ .name = "sum" },
         },
     };
 
@@ -3113,7 +3718,7 @@ test "resolveActionTable prefers shift over reducing repeat auxiliaries" {
     try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
 }
 
-test "resolveActionTable prefers shift for same auxiliary repeat conflicts" {
+test "resolveActionTable keeps same auxiliary repeat conflicts with repetition metadata" {
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -3174,7 +3779,10 @@ test "resolveActionTable prefers shift for same auxiliary repeat conflicts" {
         allocator.free(resolved.states);
     }
 
-    try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
+    const group = resolved.groupsForState(6)[0];
+    try expectUnresolvedGroup(group, .auxiliary_repeat, 2);
+    try std.testing.expect(group.shift_is_repetition);
+    try std.testing.expect(!resolved.hasBlockingUnresolvedDecisions());
 }
 
 test "hasSameAuxiliaryRepeatConflictWithFirstSets matches upstream FIRST-set rule" {

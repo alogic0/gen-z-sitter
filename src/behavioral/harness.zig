@@ -2239,7 +2239,7 @@ fn selectFallbackAction(result: build.BuildResult, state_id: u32) ?actions.Parse
             .unresolved => |reason| switch (reason) {
                 // shift/reduce: at fallback time there is no lookahead, so shifting is
                 // impossible.  Extract just the reduce half from the candidates.
-                .shift_reduce, .shift_reduce_expected => {
+                .auxiliary_repeat, .shift_reduce, .shift_reduce_expected => {
                     for (group.candidate_actions) |a| switch (a) {
                         .reduce, .accept => {
                             if (selected) |existing| {
@@ -2277,7 +2277,7 @@ fn selectEofAction(result: build.BuildResult, state_id: u32) ?actions.ParseActio
     return switch (decision) {
         .chosen => |action| action,
         .unresolved => |reason| switch (reason) {
-            .shift_reduce, .shift_reduce_expected => blk: {
+            .auxiliary_repeat, .shift_reduce, .shift_reduce_expected => blk: {
                 var selected: ?actions.ParseAction = null;
                 for (result.resolved_actions.candidateActionsFor(state_id, .{ .end = {} })) |action| {
                     switch (action) {

@@ -1665,6 +1665,7 @@ fn buildBlockedBoundarySnapshotAlloc(
 
         for (state_value.unresolved) |entry| {
             switch (entry.reason) {
+                .auxiliary_repeat => reasons.shift_reduce += 1,
                 .shift_reduce => reasons.shift_reduce += 1,
                 .shift_reduce_expected => reasons.shift_reduce += 1,
                 .reduce_reduce_deferred => reasons.reduce_reduce_deferred += 1,

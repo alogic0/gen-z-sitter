@@ -106,6 +106,7 @@ pub fn writeStatesWithActions(
                 try writer.writeAll(" => ");
                 switch (entry.action) {
                     .shift => |target| try writer.print("shift {d}\n", .{target}),
+                    .shift_extra => try writer.writeAll("shift_extra\n"),
                     .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
                     .accept => try writer.writeAll("accept\n"),
                 }
@@ -145,6 +146,7 @@ pub fn writeActionTable(
             try writer.writeAll(" => ");
             switch (entry.action) {
                 .shift => |target| try writer.print("shift {d}\n", .{target}),
+                .shift_extra => try writer.writeAll("shift_extra\n"),
                 .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
                 .accept => try writer.writeAll("accept\n"),
             }
@@ -200,6 +202,7 @@ pub fn writeGroupedActionTableAlloc(
                 try writer.writeAll("      ");
                 switch (entry.action) {
                     .shift => |target| try writer.print("shift {d}\n", .{target}),
+                    .shift_extra => try writer.writeAll("shift_extra\n"),
                     .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
                     .accept => try writer.writeAll("accept\n"),
                 }
@@ -241,6 +244,7 @@ pub fn writeResolvedActionTable(
                 .chosen => |chosen| {
                     switch (chosen) {
                         .shift => |target| try writer.print("shift {d}\n", .{target}),
+                        .shift_extra => try writer.writeAll("shift_extra\n"),
                         .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
                         .accept => try writer.writeAll("accept\n"),
                     }
@@ -255,6 +259,7 @@ pub fn writeResolvedActionTable(
                         try writer.writeAll("      candidate ");
                         switch (candidate) {
                             .shift => |target| try writer.print("shift {d}\n", .{target}),
+                            .shift_extra => try writer.writeAll("shift_extra\n"),
                             .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
                             .accept => try writer.writeAll("accept\n"),
                         }
@@ -282,6 +287,7 @@ pub fn writeSerializedTable(
             try writer.writeAll(" => ");
             switch (entry.action) {
                 .shift => |target| try writer.print("shift {d}\n", .{target}),
+                .shift_extra => try writer.writeAll("shift_extra\n"),
                 .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
                 .accept => try writer.writeAll("accept\n"),
             }
@@ -306,6 +312,7 @@ pub fn writeSerializedTable(
                     try writer.writeAll("      candidate ");
                     switch (candidate) {
                         .shift => |target| try writer.print("shift {d}\n", .{target}),
+                        .shift_extra => try writer.writeAll("shift_extra\n"),
                         .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
                         .accept => try writer.writeAll("accept\n"),
                     }

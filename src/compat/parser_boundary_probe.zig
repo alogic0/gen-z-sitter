@@ -309,6 +309,7 @@ fn formatBlockedSignatureSummaryAlloc(
         unresolved_entry_count += state.unresolved.len;
         for (state.unresolved) |entry| {
             switch (entry.reason) {
+                .auxiliary_repeat => shift_reduce_count += 1,
                 .shift_reduce, .shift_reduce_expected => shift_reduce_count += 1,
                 .reduce_reduce_deferred => reduce_reduce_deferred_count += 1,
                 .reduce_reduce_expected => reduce_reduce_expected_count += 1,

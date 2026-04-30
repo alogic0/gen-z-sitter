@@ -129,6 +129,7 @@ const LocalArtifacts = struct {
     conflict_summary_path: ?[]const u8 = null,
     token_conflicts_path: ?[]const u8 = null,
     minimization_summary_path: ?[]const u8 = null,
+    production_info_summary_path: ?[]const u8 = null,
     regex_surface_path: ?[]const u8 = null,
     lex_table_summary_path: ?[]const u8 = null,
     parser_c_path: ?[]const u8 = null,
@@ -144,6 +145,7 @@ const LocalArtifacts = struct {
         if (self.conflict_summary_path) |value| allocator.free(value);
         if (self.token_conflicts_path) |value| allocator.free(value);
         if (self.minimization_summary_path) |value| allocator.free(value);
+        if (self.production_info_summary_path) |value| allocator.free(value);
         if (self.regex_surface_path) |value| allocator.free(value);
         if (self.lex_table_summary_path) |value| allocator.free(value);
         if (self.parser_c_path) |value| allocator.free(value);
@@ -378,6 +380,8 @@ fn writeLocalArtifactsAlloc(
     errdefer allocator.free(local_token_conflicts_path);
     const local_minimization_summary_path = try std.fs.path.join(allocator, &.{ local_dir, "minimization-summary.json" });
     errdefer allocator.free(local_minimization_summary_path);
+    const local_production_info_summary_path = try std.fs.path.join(allocator, &.{ local_dir, "production-info-summary.json" });
+    errdefer allocator.free(local_production_info_summary_path);
     const local_regex_surface_path = try std.fs.path.join(allocator, &.{ local_dir, "regex-surface.json" });
     errdefer allocator.free(local_regex_surface_path);
     const local_lex_table_summary_path = try std.fs.path.join(allocator, &.{ local_dir, "lex-table-summary.json" });
@@ -438,6 +442,12 @@ fn writeLocalArtifactsAlloc(
     });
     defer allocator.free(local_minimization_summary);
     try fs_support.writeFile(local_minimization_summary_path, local_minimization_summary);
+    const local_production_info_summary = try upstream_summary.generateLocalProductionInfoSummaryJsonAlloc(allocator, opts.grammar_path, .{
+        .js_runtime = opts.js_runtime orelse "node",
+        .minimize_states = opts.minimize_states,
+    });
+    defer allocator.free(local_production_info_summary);
+    try fs_support.writeFile(local_production_info_summary_path, local_production_info_summary);
     const local_regex_surface = try upstream_summary.generateLocalRegexSurfaceSummaryJsonAlloc(allocator, opts.grammar_path, .{
         .js_runtime = opts.js_runtime orelse "node",
         .minimize_states = opts.minimize_states,
@@ -471,6 +481,7 @@ fn writeLocalArtifactsAlloc(
     local_artifacts.conflict_summary_path = local_conflict_summary_path;
     local_artifacts.token_conflicts_path = local_token_conflicts_path;
     local_artifacts.minimization_summary_path = local_minimization_summary_path;
+    local_artifacts.production_info_summary_path = local_production_info_summary_path;
     local_artifacts.regex_surface_path = local_regex_surface_path;
     local_artifacts.lex_table_summary_path = local_lex_table_summary_path;
     local_artifacts.parser_c_path = local_parser_path;
@@ -673,6 +684,9 @@ fn renderReportAlloc(
     try writer.writeAll("    \"minimization_summary_path\": ");
     try writeOptionalJsonString(writer, local_artifacts.minimization_summary_path);
     try writer.writeAll(",\n");
+    try writer.writeAll("    \"production_info_summary_path\": ");
+    try writeOptionalJsonString(writer, local_artifacts.production_info_summary_path);
+    try writer.writeAll(",\n");
     try writer.writeAll("    \"regex_surface_path\": ");
     try writeOptionalJsonString(writer, local_artifacts.regex_surface_path);
     try writer.writeAll(",\n");
@@ -845,6 +859,8 @@ test "runCompareUpstream writes local summary report" {
     try std.testing.expect(std.mem.indexOf(u8, report, "local/token-conflicts.json") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"minimization_summary_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "local/minimization-summary.json") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report, "\"production_info_summary_path\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report, "local/production-info-summary.json") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"regex_surface_path\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "local/regex-surface.json") != null);
     try std.testing.expect(std.mem.indexOf(u8, report, "\"lex_table_summary_path\"") != null);

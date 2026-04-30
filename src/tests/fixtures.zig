@@ -2413,27 +2413,30 @@ pub fn parseTablePrecedenceResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:1: shift 3
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:1: shift 4
         \\
         \\state 2
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 3
+        \\  resolved_actions:
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
+        \\
+        \\state 4
         \\  resolved_actions:
         \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
-        \\state 4
-        \\  resolved_actions:
-        \\    terminal:1: shift 3
-        \\
         \\state 5
+        \\  resolved_actions:
+        \\    terminal:1: shift 4
+        \\
+        \\state 6
         \\  resolved_actions:
         \\    end: reduce 2
         \\    terminal:0: reduce 2
@@ -2448,29 +2451,28 @@ pub fn parseTableNamedPrecedenceResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:0: shift 3
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:0: shift 4
         \\
         \\state 2
+        \\  resolved_actions:
+        \\    end: accept
+        \\
+        \\state 3
         \\  resolved_actions:
         \\    end: reduce 1
         \\    terminal:1: shift 5
         \\
-        \\state 3
+        \\state 4
         \\  resolved_actions:
         \\    end: reduce 3
         \\    terminal:1: reduce 3
         \\
-        \\state 4
-        \\  resolved_actions:
-        \\    terminal:0: shift 3
-        \\
         \\state 5
         \\  resolved_actions:
-        \\    terminal:0: reduce 4
+        \\    terminal:0: shift 4
         \\
         \\state 6
         \\  resolved_actions:
@@ -2487,29 +2489,28 @@ pub fn parseTableNamedPrecedenceShiftResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:0: shift 3
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:0: shift 4
         \\
         \\state 2
+        \\  resolved_actions:
+        \\    end: accept
+        \\
+        \\state 3
         \\  resolved_actions:
         \\    end: reduce 1
         \\    terminal:1: shift 5
         \\
-        \\state 3
+        \\state 4
         \\  resolved_actions:
         \\    end: reduce 3
         \\    terminal:1: reduce 3
         \\
-        \\state 4
-        \\  resolved_actions:
-        \\    terminal:0: shift 3
-        \\
         \\state 5
         \\  resolved_actions:
-        \\    terminal:0: reduce 4
+        \\    terminal:0: shift 4
         \\
         \\state 6
         \\  resolved_actions:
@@ -2526,27 +2527,30 @@ pub fn parseTableDynamicPrecedenceResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:1: shift 3
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:1: shift 4
         \\
         \\state 2
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 3
+        \\  resolved_actions:
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
+        \\
+        \\state 4
         \\  resolved_actions:
         \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
-        \\state 4
-        \\  resolved_actions:
-        \\    terminal:1: shift 3
-        \\
         \\state 5
+        \\  resolved_actions:
+        \\    terminal:1: shift 4
+        \\
+        \\state 6
         \\  resolved_actions:
         \\    end: reduce 2
         \\    terminal:0: reduce 2
@@ -2561,30 +2565,33 @@ pub fn parseTableNegativeDynamicPrecedenceResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:1: shift 3
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:1: shift 4
         \\
         \\state 2
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 3
+        \\  resolved_actions:
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
+        \\
+        \\state 4
         \\  resolved_actions:
         \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
-        \\state 4
-        \\  resolved_actions:
-        \\    terminal:1: shift 3
-        \\
         \\state 5
         \\  resolved_actions:
+        \\    terminal:1: shift 4
+        \\
+        \\state 6
+        \\  resolved_actions:
         \\    end: reduce 2
-        \\    terminal:0: shift 4
+        \\    terminal:0: shift 5
         \\
         ,
     };
@@ -2596,29 +2603,28 @@ pub fn parseTableDynamicBeatsNamedPrecedenceResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:0: shift 3
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:0: shift 4
         \\
         \\state 2
+        \\  resolved_actions:
+        \\    end: accept
+        \\
+        \\state 3
         \\  resolved_actions:
         \\    end: reduce 1
         \\    terminal:1: shift 5
         \\
-        \\state 3
+        \\state 4
         \\  resolved_actions:
         \\    end: reduce 3
         \\    terminal:1: reduce 3
         \\
-        \\state 4
-        \\  resolved_actions:
-        \\    terminal:0: shift 3
-        \\
         \\state 5
         \\  resolved_actions:
-        \\    terminal:0: reduce 4
+        \\    terminal:0: shift 4
         \\
         \\state 6
         \\  resolved_actions:
@@ -2757,30 +2763,33 @@ pub fn parseTableNegativePrecedenceResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:1: shift 3
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:1: shift 4
         \\
         \\state 2
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 3
+        \\  resolved_actions:
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
+        \\
+        \\state 4
         \\  resolved_actions:
         \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
-        \\state 4
-        \\  resolved_actions:
-        \\    terminal:1: shift 3
-        \\
         \\state 5
         \\  resolved_actions:
+        \\    terminal:1: shift 4
+        \\
+        \\state 6
+        \\  resolved_actions:
         \\    end: reduce 2
-        \\    terminal:0: shift 4
+        \\    terminal:0: shift 5
         \\
         ,
     };
@@ -2827,31 +2836,34 @@ pub fn parseTableNonAssociativeResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:1: shift 3
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:1: shift 4
         \\
         \\state 2
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 3
+        \\  resolved_actions:
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
+        \\
+        \\state 4
         \\  resolved_actions:
         \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
-        \\state 4
-        \\  resolved_actions:
-        \\    terminal:1: shift 3
-        \\
         \\state 5
+        \\  resolved_actions:
+        \\    terminal:1: shift 4
+        \\
+        \\state 6
         \\  resolved_actions:
         \\    end: reduce 2
         \\    terminal:0: unresolved (shift_reduce)
-        \\      candidate shift 4
+        \\      candidate shift 5
         \\      candidate reduce 2
         \\
         ,

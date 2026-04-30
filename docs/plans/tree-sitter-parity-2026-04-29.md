@@ -92,9 +92,9 @@ Batch order:
   plan.
 - [x] Add or refine comparison artifacts only if the current summary is too
   coarse to classify the gap.
-- [ ] Add the smallest focused fixture that reproduces the discovered gap.
-- [ ] Implement the smallest upstream-aligned fix.
-- [ ] Re-run the JavaScript comparison and refresh only affected checked-in
+- [x] Add the smallest focused fixture that reproduces the discovered gap.
+- [x] Implement the smallest upstream-aligned fix.
+- [x] Re-run the JavaScript comparison and refresh only affected checked-in
   artifacts.
 
 - [x] Run local parser-state, item-set, conflict, minimization, lex-table, and
@@ -106,15 +106,15 @@ Batch order:
 - [x] Add a focused regression fixture for the smallest discovered algorithm
   difference.
 - [x] Implement the first focused upstream-aligned parser-table fixes.
-- [ ] Replace the partial inline expansion with upstream-style extracted-symbol
+- [x] Replace the partial inline expansion with upstream-style extracted-symbol
   replacement/removal so inlined/tokenized syntax variables do not remain as
   parser variables.
 - [x] Carry upstream `ExternalToken.corresponding_internal_token` metadata
   through token extraction and minimization compatibility.
 - [ ] Refresh only the affected golden/report artifacts.
-- [ ] Isolate the remaining compatible-minimizer over-merge, with the first
+- [x] Isolate the remaining compatible-minimizer over-merge, with the first
   suspect being minimizer core identity versus exact upstream item cores.
-- [ ] Reduce or explain the surviving JavaScript `shift_reduce_expected` rows,
+- [x] Reduce or explain the surviving JavaScript `shift_reduce_expected` rows,
   starting with the `primary_expression` / `lexical_declaration` samples on
   lookahead terminal 41.
 - [x] Promote the next state-count mover from symbol/token parity: local
@@ -134,10 +134,9 @@ Batch order:
 - [x] Intern serialized production metadata separately from raw reduce payloads,
   matching upstream's distinction between reduce symbol/child-count/dynamic
   precedence and `production_id` alias/field metadata.
-- [ ] Isolate the remaining JavaScript production-info delta: local now emits
-  135 production IDs versus upstream's 121, and the local set is an upstream
-  superset with 14 local-only metadata rows, mostly member-expression aliases
-  and context-inherited `parameters` rows.
+- [x] Close the JavaScript production-info delta: local and upstream now both
+  emit 121 production IDs after serialized production metadata and precedence
+  resolution were aligned.
 
 Batch 2 note: JavaScript comparison now writes
 `.zig-cache/upstream-compare-javascript/local-upstream-summary.json`. Two
@@ -281,6 +280,25 @@ upstream has 121 production IDs, and local's metadata set is an upstream
 superset with 14 local-only rows. The next task is to decide whether those rows
 come from default-alias clearing, context-inherited inline fields, or local-only
 inline productions before touching state minimization again.
+
+Batch 11 note: the JavaScript parser-table gate is now closed on the structural
+surface that blocked Phase 2. The precedence-order comparison was inverted
+locally; fixing it moved minimized JavaScript from the 2,161/2,171 plateau to
+1,869 states. The remaining one-state delta was not a minimizer logic bug:
+`../tree-sitter` reserves parse state 0 as the error/recovery state and starts
+the real grammar at state 1. Local construction now does the same, and
+serialization populates state 0 with upstream-shaped `RECOVER` entries before
+external scanner state assignment. The final minimized comparison
+`.zig-cache/upstream-compare-javascript-final-mile/local-upstream-summary.json`
+reports local/upstream parity for the active parser-table blockers:
+`blocked=false`, `symbol_count=261`, `token_count=134`, `alias_count=4`,
+`node_types_hash=0xd9183da56f875d8c`, `production_id_count=121`,
+`serialized_state_count=1870`, `emitted_state_count=1870`,
+`lex_mode_count=1870`, and `external_lex_state_count=10`. Remaining JavaScript
+diffs are emission-shape and lexer-emission metrics (`large_state_count`,
+parse-action list/small-table packing, lex function case counts, keyword lex
+table shape, and large character sets), not the conflict/parse-table
+construction blocker.
 
 Gate:
 

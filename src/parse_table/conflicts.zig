@@ -185,6 +185,7 @@ fn classifyConflict(grouped: []const actions.ActionEntry) ?state.ConflictKind {
     for (grouped) |entry| {
         switch (entry.action) {
             .shift => saw_shift = true,
+            .shift_extra => {},
             .reduce, .accept => reduce_like_count += 1,
         }
     }
@@ -201,6 +202,7 @@ fn classifyConflictActions(grouped: []const actions.ParseAction) ?state.Conflict
     for (grouped) |action| {
         switch (action) {
             .shift => saw_shift = true,
+            .shift_extra => {},
             .reduce, .accept => reduce_like_count += 1,
         }
     }

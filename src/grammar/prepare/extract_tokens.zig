@@ -405,11 +405,16 @@ const Extractor = struct {
     }
 
     fn extractProductions(self: *Extractor, variable_name: []const u8, rule_id: ir_rules.RuleId) ExtractTokensError![]syntax_ir.Production {
-        return self.extractProductionsWithLexicalName(variable_name, rule_id, variable_name);
+        return self.extractProductionsWithLexicalName(variable_name, rule_id, variable_name, true);
     }
 
-    fn extractNestedProductions(self: *Extractor, variable_name: []const u8, rule_id: ir_rules.RuleId) ExtractTokensError![]syntax_ir.Production {
-        return self.extractProductionsWithLexicalName(variable_name, rule_id, null);
+    fn extractNestedProductions(
+        self: *Extractor,
+        variable_name: []const u8,
+        rule_id: ir_rules.RuleId,
+        at_end: bool,
+    ) ExtractTokensError![]syntax_ir.Production {
+        return self.extractProductionsWithLexicalName(variable_name, rule_id, null, at_end);
     }
 
     fn extractProductionsWithLexicalName(
@@ -417,6 +422,7 @@ const Extractor = struct {
         variable_name: []const u8,
         rule_id: ir_rules.RuleId,
         lexical_preferred_name: ?[]const u8,
+        at_end: bool,
     ) ExtractTokensError![]syntax_ir.Production {
         const lexical_name = lexical_preferred_name orelse if (self.lexicalRuleHasDirectLiteralName(rule_id)) null else variable_name;
         if (self.tryEnsureLexicalVariable(lexical_name, rule_id, lexical_preferred_name)) |terminal_index| {
@@ -435,11 +441,11 @@ const Extractor = struct {
                 .symbol = try self.convertSymbol(symbol),
             }),
             .string, .pattern => unreachable,
-            .choice => |members| self.extractChoiceProductions(variable_name, members),
-            .seq => |members| self.extractSequenceProductions(variable_name, members),
+            .choice => |members| self.extractChoiceProductions(variable_name, members, at_end),
+            .seq => |members| self.extractSequenceProductions(variable_name, members, at_end),
             .repeat => |inner| self.extractRepeatProductions(variable_name, inner, false),
             .repeat1 => |inner| self.extractRepeatProductions(variable_name, inner, true),
-            .metadata => |metadata| self.extractMetadataProductions(variable_name, metadata, lexical_preferred_name),
+            .metadata => |metadata| self.extractMetadataProductions(variable_name, metadata, lexical_preferred_name, at_end),
         };
     }
 
@@ -455,23 +461,34 @@ const Extractor = struct {
         });
     }
 
-    fn extractChoiceProductions(self: *Extractor, variable_name: []const u8, members: []const ir_rules.RuleId) ExtractTokensError![]syntax_ir.Production {
+    fn extractChoiceProductions(
+        self: *Extractor,
+        variable_name: []const u8,
+        members: []const ir_rules.RuleId,
+        at_end: bool,
+    ) ExtractTokensError![]syntax_ir.Production {
         var result = std.array_list.Managed(syntax_ir.Production).init(self.allocator);
         defer result.deinit();
 
         for (members) |member| {
-            const productions = try self.extractNestedProductions(variable_name, member);
+            const productions = try self.extractNestedProductions(variable_name, member, at_end);
             try result.appendSlice(productions);
         }
 
         return try result.toOwnedSlice();
     }
 
-    fn extractSequenceProductions(self: *Extractor, variable_name: []const u8, members: []const ir_rules.RuleId) ExtractTokensError![]syntax_ir.Production {
+    fn extractSequenceProductions(
+        self: *Extractor,
+        variable_name: []const u8,
+        members: []const ir_rules.RuleId,
+        at_end: bool,
+    ) ExtractTokensError![]syntax_ir.Production {
         var current = try self.singleProduction(&.{}); // one empty production
 
-        for (members) |member| {
-            const next = try self.extractNestedProductions(variable_name, member);
+        for (members, 0..) |member, index| {
+            const member_at_end = at_end and index + 1 == members.len;
+            const next = try self.extractNestedProductions(variable_name, member, member_at_end);
             current = try self.combineProductionSets(current, next);
         }
 
@@ -483,23 +500,29 @@ const Extractor = struct {
         variable_name: []const u8,
         metadata: ir_rules.MetadataRule,
         lexical_preferred_name: ?[]const u8,
+        at_end: bool,
     ) ExtractTokensError![]syntax_ir.Production {
         if (metadata.data.token or metadata.data.immediate_token) {
             if (self.tryEnsureLexicalVariable(lexical_preferred_name, @intCast(metadata.inner), lexical_preferred_name)) |terminal_index| {
                 const productions = try self.singleStepProductions(.{
                     .symbol = .{ .terminal = terminal_index },
                 });
-                self.applyMetadataToProductions(productions, metadata.data);
+                self.applyMetadataToProductions(productions, metadata.data, at_end);
                 return productions;
             }
         }
 
-        const productions = try self.extractProductionsWithLexicalName(variable_name, metadata.inner, lexical_preferred_name);
-        self.applyMetadataToProductions(productions, metadata.data);
+        const productions = try self.extractProductionsWithLexicalName(variable_name, metadata.inner, lexical_preferred_name, at_end);
+        self.applyMetadataToProductions(productions, metadata.data, at_end);
         return productions;
     }
 
-    fn applyMetadataToProductions(self: *Extractor, productions: []syntax_ir.Production, metadata: ir_rules.Metadata) void {
+    fn applyMetadataToProductions(
+        self: *Extractor,
+        productions: []syntax_ir.Production,
+        metadata: ir_rules.Metadata,
+        at_end: bool,
+    ) void {
         _ = self;
         for (productions) |*production| {
             if (production.steps.len == 0) continue;
@@ -510,9 +533,19 @@ const Extractor = struct {
             }
             var step = &production.steps[0];
             if (metadata.alias) |alias| step.alias = alias;
-            if (metadata.precedence != .none) step.precedence = metadata.precedence;
-            if (metadata.associativity != .none) step.associativity = metadata.associativity;
             if (metadata.reserved_context_name) |context| step.reserved_context_name = context;
+            if (metadata.precedence != .none) {
+                for (production.steps) |*precedence_step| {
+                    if (precedence_step.precedence == .none) precedence_step.precedence = metadata.precedence;
+                }
+                if (!at_end) production.steps[production.steps.len - 1].precedence = .none;
+            }
+            if (metadata.associativity != .none) {
+                for (production.steps) |*associativity_step| {
+                    if (associativity_step.associativity == .none) associativity_step.associativity = metadata.associativity;
+                }
+                if (!at_end) production.steps[production.steps.len - 1].associativity = .none;
+            }
             if (metadata.dynamic_precedence != 0) production.dynamic_precedence = metadata.dynamic_precedence;
         }
     }
@@ -641,7 +674,7 @@ const Extractor = struct {
         });
         errdefer _ = self.repeat_cache.pop();
 
-        const inner_productions = try self.extractNestedProductions(variable_name, inner);
+        const inner_productions = try self.extractNestedProductions(variable_name, inner, true);
         const expansion = try expand_repeats.createRepeatAuxiliary(
             self.allocator,
             variable_name,
@@ -1116,6 +1149,73 @@ test "extractTokens rewrites precedence symbols to extracted terminals" {
         .symbol => |symbol| try std.testing.expectEqual(@as(u32, 0), symbol.terminal),
         .name => return error.TestUnexpectedResult,
     }
+}
+
+test "extractTokens propagates final precedence across multi-step productions" {
+    const top_seq = [_]ir_rules.RuleId{ 1, 2 };
+    const inner_seq = [_]ir_rules.RuleId{ 5, 6 };
+    const outer_seq = [_]ir_rules.RuleId{ 4, 7 };
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "final-precedence",
+        .variables = &.{
+            .{ .name = "source_file", .symbol = ir_symbols.SymbolId.nonTerminal(0), .kind = .named, .rule = 0 },
+            .{ .name = "left", .symbol = ir_symbols.SymbolId.nonTerminal(1), .kind = .named, .rule = 8 },
+            .{ .name = "right", .symbol = ir_symbols.SymbolId.nonTerminal(2), .kind = .named, .rule = 8 },
+            .{ .name = "tail", .symbol = ir_symbols.SymbolId.nonTerminal(3), .kind = .named, .rule = 8 },
+            .{ .name = "wrapped", .symbol = ir_symbols.SymbolId.nonTerminal(4), .kind = .named, .rule = 10 },
+        },
+        .external_tokens = &.{},
+        .rules = &.{
+            .{ .metadata = .{ .inner = 3, .data = .{ .precedence = .{ .name = "outer" }, .associativity = .left } } },
+            .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) },
+            .{ .symbol = ir_symbols.SymbolId.nonTerminal(2) },
+            .{ .seq = top_seq[0..] },
+            .{ .metadata = .{ .inner = 9, .data = .{ .precedence = .{ .name = "inner" }, .associativity = .right } } },
+            .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) },
+            .{ .symbol = ir_symbols.SymbolId.nonTerminal(2) },
+            .{ .symbol = ir_symbols.SymbolId.nonTerminal(3) },
+            .{ .blank = {} },
+            .{ .seq = inner_seq[0..] },
+            .{ .seq = outer_seq[0..] },
+        },
+        .symbols = &.{
+            .{ .id = ir_symbols.SymbolId.nonTerminal(0), .name = "source_file", .named = true, .visible = true },
+            .{ .id = ir_symbols.SymbolId.nonTerminal(1), .name = "left", .named = true, .visible = true },
+            .{ .id = ir_symbols.SymbolId.nonTerminal(2), .name = "right", .named = true, .visible = true },
+            .{ .id = ir_symbols.SymbolId.nonTerminal(3), .name = "tail", .named = true, .visible = true },
+            .{ .id = ir_symbols.SymbolId.nonTerminal(4), .name = "wrapped", .named = true, .visible = true },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{&.{
+            prepared_ir.PrecedenceEntry{ .name = "inner" },
+            prepared_ir.PrecedenceEntry{ .name = "outer" },
+        }},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    const source_steps = extracted.syntax.variables[0].productions[0].steps;
+    try std.testing.expectEqual(@as(usize, 2), source_steps.len);
+    try std.testing.expectEqualStrings("outer", source_steps[0].precedence.name);
+    try std.testing.expectEqualStrings("outer", source_steps[1].precedence.name);
+    try std.testing.expectEqual(ir_rules.Assoc.left, source_steps[0].associativity);
+    try std.testing.expectEqual(ir_rules.Assoc.left, source_steps[1].associativity);
+
+    const wrapped_steps = extracted.syntax.variables[4].productions[0].steps;
+    try std.testing.expectEqual(@as(usize, 3), wrapped_steps.len);
+    try std.testing.expectEqualStrings("inner", wrapped_steps[0].precedence.name);
+    try std.testing.expect(wrapped_steps[1].precedence == .none);
+    try std.testing.expect(wrapped_steps[2].precedence == .none);
+    try std.testing.expectEqual(ir_rules.Assoc.right, wrapped_steps[0].associativity);
+    try std.testing.expectEqual(ir_rules.Assoc.none, wrapped_steps[1].associativity);
+    try std.testing.expectEqual(ir_rules.Assoc.none, wrapped_steps[2].associativity);
 }
 
 test "extractTokens rewrites symbol extras to extracted terminals" {

@@ -9,6 +9,7 @@ const grammar_ir = @import("../ir/grammar_ir.zig");
 const ir_rules = @import("../ir/rules.zig");
 const ir_symbols = @import("../ir/symbols.zig");
 const lexical_ir = @import("../ir/lexical_grammar.zig");
+const lexer_model = @import("../lexer/model.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 const runtime_io = @import("../support/runtime_io.zig");
@@ -373,7 +374,12 @@ pub fn serializeBuildResultWithOptions(
             .id = parse_state.id,
             .core_id = parse_state.core_id,
             .lex_state_id = parse_state.lex_state_id,
-            .actions = try collectActionsForState(allocator, snapshot.chosen, parse_state),
+            .actions = try collectActionsForState(
+                allocator,
+                snapshot.chosen,
+                snapshot.unresolved,
+                parse_state,
+            ),
             .gotos = try collectGotosForState(allocator, parse_state),
             .unresolved = if (mode == .diagnostic)
                 try collectUnresolvedForState(allocator, snapshot.unresolved, parse_state.id)
@@ -446,7 +452,7 @@ pub fn attachExtractedMetadataAlloc(
     prepared: grammar_ir.PreparedGrammar,
     syntax: syntax_ir.SyntaxGrammar,
     lexical: lexical_ir.LexicalGrammar,
-) std.mem.Allocator.Error!SerializedTable {
+) ParseActionListError!SerializedTable {
     const external_symbol_count = countExternalOnlyTokens(syntax.external_tokens);
     const syntax_symbol_count = countSerializedSyntaxVariables(syntax);
     const symbol_count = lexical.variables.len + external_symbol_count + syntax_symbol_count;
@@ -496,6 +502,7 @@ pub fn attachExtractedMetadataAlloc(
     result.grammar_version = prepared.grammar_version;
     result.symbols = serialized_symbols;
     result.supertype_map = try buildExtractedSupertypeMapAlloc(allocator, syntax);
+    result = try attachExtractedErrorRecoveryStateAlloc(allocator, result, prepared, syntax, lexical);
     result = try attachExtractedExternalScannerAlloc(allocator, result, syntax);
     if (syntax.external_tokens.len != 0) {
         result.blocked = true;
@@ -558,6 +565,237 @@ fn countSerializedSyntaxVariables(syntax: syntax_ir.SyntaxGrammar) usize {
         count += 1;
     }
     return count;
+}
+
+fn attachExtractedErrorRecoveryStateAlloc(
+    allocator: std.mem.Allocator,
+    serialized: SerializedTable,
+    prepared: grammar_ir.PreparedGrammar,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) ParseActionListError!SerializedTable {
+    if (serialized.states.len == 0) return serialized;
+
+    const recover_symbols = buildExtractedErrorRecoverySymbolsAlloc(
+        allocator,
+        prepared,
+        syntax,
+        lexical,
+        serialized.states,
+    ) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => try buildFallbackErrorRecoverySymbolsAlloc(allocator, syntax, lexical),
+    };
+    defer allocator.free(recover_symbols);
+
+    var actions_list = std.array_list.Managed(SerializedActionEntry).init(allocator);
+    defer actions_list.deinit();
+    try actions_list.appendSlice(serialized.states[0].actions);
+
+    for (recover_symbols) |symbol| {
+        if (hasSerializedActionForSymbol(actions_list.items, symbol)) continue;
+        try actions_list.append(.{
+            .symbol = symbol,
+            .action = .{ .accept = {} },
+            .recover = true,
+        });
+    }
+    std.mem.sort(SerializedActionEntry, actions_list.items, {}, serializedActionEntryLessThan);
+
+    const states = try allocator.alloc(SerializedState, serialized.states.len);
+    @memcpy(states, serialized.states);
+    states[0] = serialized.states[0];
+    states[0].actions = try actions_list.toOwnedSlice();
+
+    var result = serialized;
+    result.states = states;
+    result.large_state_count = try computeLargeStateCountAlloc(allocator, result.states, result.productions);
+    try rebuildParseActionTables(allocator, &result, .{});
+    return result;
+}
+
+fn buildExtractedErrorRecoverySymbolsAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    states: []const SerializedState,
+) (std.mem.Allocator.Error || lexer_model.ExpandError || first.FirstError)![]const syntax_ir.SymbolRef {
+    for (lexical.variables) |variable| {
+        if (variable.rule >= prepared.rules.len) return error.UnsupportedRule;
+    }
+
+    var expanded = try lexer_model.expandExtractedLexicalGrammar(allocator, prepared.rules, lexical);
+    defer expanded.deinit(allocator);
+
+    const reserved_words = try buildReservedWordsAlloc(allocator, prepared, lexical);
+    defer deinitReservedWords(allocator, reserved_words);
+    const reserved_context_names = try reservedWordContextNamesAlloc(allocator, prepared.reserved_word_sets);
+    defer allocator.free(reserved_context_names);
+
+    const following_tokens = try lexer_model.computeFollowingTokensWithReservedAlloc(
+        allocator,
+        syntax,
+        expanded.variables.len,
+        reserved_words.sets,
+        reserved_context_names,
+    );
+    defer lexer_model.deinitTokenIndexSets(allocator, following_tokens);
+
+    var conflict_map = try lexer_model.buildTokenConflictMapWithFollowingTokensAlloc(
+        allocator,
+        expanded,
+        following_tokens,
+    );
+    defer conflict_map.deinit(allocator);
+
+    const keyword_tokens = try buildKeywordTerminalSetAlloc(allocator, prepared, lexical);
+    defer allocator.free(keyword_tokens);
+    const coincident_tokens = try buildSerializedCoincidentTokenIndexAlloc(allocator, states, lexical.variables.len);
+    defer allocator.free(coincident_tokens);
+
+    const conflict_free_tokens = try allocator.alloc(bool, lexical.variables.len);
+    defer allocator.free(conflict_free_tokens);
+    @memset(conflict_free_tokens, false);
+
+    for (0..lexical.variables.len) |left| {
+        var conflicts_with_other_tokens = false;
+        for (0..lexical.variables.len) |right| {
+            if (left == right) continue;
+            if (coincidentTokenContains(coincident_tokens, lexical.variables.len, left, right)) continue;
+            if (tokenConflictDoesMatchShorterOrLonger(conflict_map, left, right)) {
+                conflicts_with_other_tokens = true;
+                break;
+            }
+        }
+        conflict_free_tokens[left] = !conflicts_with_other_tokens;
+    }
+
+    var symbols = std.array_list.Managed(syntax_ir.SymbolRef).init(allocator);
+    defer symbols.deinit();
+    for (0..lexical.variables.len) |index| {
+        const symbol = syntax_ir.SymbolRef{ .terminal = @intCast(index) };
+        if (!conflict_free_tokens[index] and !keyword_tokens[index] and !symbolRefEql(syntax.word_token orelse .{ .end = {} }, symbol)) {
+            var excluded = false;
+            for (0..lexical.variables.len) |conflict_free_index| {
+                if (!conflict_free_tokens[conflict_free_index]) continue;
+                if (coincidentTokenContains(coincident_tokens, lexical.variables.len, index, conflict_free_index)) continue;
+                if (tokenConflictDoesConflict(conflict_map, index, conflict_free_index)) {
+                    excluded = true;
+                    break;
+                }
+            }
+            if (excluded) continue;
+        }
+        try appendUniqueSymbolRef(&symbols, symbol);
+    }
+
+    try appendExternalOnlyRecoverySymbols(&symbols, syntax);
+    try appendUniqueSymbolRef(&symbols, .{ .end = {} });
+    std.mem.sort(syntax_ir.SymbolRef, symbols.items, {}, symbolRefLessThan);
+    return try symbols.toOwnedSlice();
+}
+
+fn buildFallbackErrorRecoverySymbolsAlloc(
+    allocator: std.mem.Allocator,
+    syntax: syntax_ir.SyntaxGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+) std.mem.Allocator.Error![]const syntax_ir.SymbolRef {
+    var symbols = std.array_list.Managed(syntax_ir.SymbolRef).init(allocator);
+    defer symbols.deinit();
+    for (0..lexical.variables.len) |index| {
+        try appendUniqueSymbolRef(&symbols, .{ .terminal = @intCast(index) });
+    }
+    try appendExternalOnlyRecoverySymbols(&symbols, syntax);
+    try appendUniqueSymbolRef(&symbols, .{ .end = {} });
+    std.mem.sort(syntax_ir.SymbolRef, symbols.items, {}, symbolRefLessThan);
+    return try symbols.toOwnedSlice();
+}
+
+fn appendExternalOnlyRecoverySymbols(
+    symbols: *std.array_list.Managed(syntax_ir.SymbolRef),
+    syntax: syntax_ir.SyntaxGrammar,
+) std.mem.Allocator.Error!void {
+    for (syntax.external_tokens, 0..) |external_token, index| {
+        if (external_token.corresponding_internal_token != null) continue;
+        try appendUniqueSymbolRef(symbols, .{ .external = @intCast(index) });
+    }
+}
+
+fn reservedWordContextNamesAlloc(
+    allocator: std.mem.Allocator,
+    reserved_word_sets: []const grammar_ir.ReservedWordSet,
+) std.mem.Allocator.Error![]const []const u8 {
+    const names = try allocator.alloc([]const u8, reserved_word_sets.len);
+    for (reserved_word_sets, 0..) |reserved_set, index| {
+        names[index] = reserved_set.context_name;
+    }
+    return names;
+}
+
+fn buildSerializedCoincidentTokenIndexAlloc(
+    allocator: std.mem.Allocator,
+    states: []const SerializedState,
+    terminal_count: usize,
+) std.mem.Allocator.Error![]bool {
+    const values = try allocator.alloc(bool, terminal_count * terminal_count);
+    @memset(values, false);
+
+    var terminals = std.array_list.Managed(usize).init(allocator);
+    defer terminals.deinit();
+    for (states) |serialized_state| {
+        terminals.clearRetainingCapacity();
+        for (serialized_state.actions) |entry| {
+            const terminal_index = switch (entry.symbol) {
+                .terminal => |index| index,
+                else => continue,
+            };
+            if (terminal_index >= terminal_count) continue;
+            var seen = false;
+            for (terminals.items) |existing| {
+                if (existing == terminal_index) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (!seen) try terminals.append(terminal_index);
+        }
+
+        for (terminals.items, 0..) |left, left_index| {
+            for (terminals.items[left_index..]) |right| {
+                values[left * terminal_count + right] = true;
+                values[right * terminal_count + left] = true;
+            }
+        }
+    }
+
+    return values;
+}
+
+fn coincidentTokenContains(values: []const bool, terminal_count: usize, left: usize, right: usize) bool {
+    return values[left * terminal_count + right];
+}
+
+fn tokenConflictDoesMatchShorterOrLonger(map: lexer_model.TokenConflictMap, left: usize, right: usize) bool {
+    const entry = map.status(left, right);
+    const reverse = map.status(right, left);
+    return (entry.does_match_valid_continuation or entry.does_match_separators) and !reverse.does_match_separators;
+}
+
+fn tokenConflictDoesConflict(map: lexer_model.TokenConflictMap, left: usize, right: usize) bool {
+    const entry = map.status(left, right);
+    return entry.does_match_valid_continuation or entry.does_match_separators or entry.matches_same_string;
+}
+
+fn hasSerializedActionForSymbol(entries: []const SerializedActionEntry, symbol: syntax_ir.SymbolRef) bool {
+    for (entries) |entry| {
+        if (symbolRefEql(entry.symbol, symbol)) return true;
+    }
+    return false;
+}
+
+fn serializedActionEntryLessThan(_: void, left: SerializedActionEntry, right: SerializedActionEntry) bool {
+    return symbolRefLessThan({}, left.symbol, right.symbol);
 }
 
 pub fn attachReservedWordLexModesAlloc(
@@ -623,7 +861,7 @@ pub fn attachExtraShiftMetadataWithOptionsAlloc(
         const entries = try allocator.alloc(SerializedActionEntry, serialized_state.actions.len);
         for (serialized_state.actions, 0..) |entry, entry_index| {
             entries[entry_index] = entry;
-            if (entry.action == .shift and symbolRefIn(extra_symbols, entry.symbol)) {
+            if (actionEntryHasShift(entry) and symbolRefIn(extra_symbols, entry.symbol)) {
                 entries[entry_index].extra = true;
             }
         }
@@ -685,7 +923,7 @@ pub fn attachRepetitionShiftMetadataWithFirstSetsAndOptionsAlloc(
         const entries = try allocator.alloc(SerializedActionEntry, serialized_state.actions.len);
         for (serialized_state.actions, 0..) |entry, entry_index| {
             entries[entry_index] = entry;
-            if (entry.action == .shift and state_index < parse_states.len and
+            if (actionEntryHasShift(entry) and state_index < parse_states.len and
                 shiftHasRepeatAuxiliaryConflict(parse_states[state_index], productions, first_sets, entry.symbol))
             {
                 entries[entry_index].repetition = true;
@@ -731,7 +969,7 @@ fn attachExternalScannerAlloc(
         symbols[index] = symbolRefFromPreparedSymbol(token.symbol);
     }
 
-    const built_states = try buildExternalScannerStatesAlloc(allocator, symbols, serialized.states);
+    const built_states = try buildExternalScannerStatesAlloc(allocator, symbols, serialized.states, &.{});
     errdefer deinitExternalScanner(allocator, .{ .symbols = symbols, .states = built_states.states });
     errdefer allocator.free(built_states.state_ids);
     result.external_scanner = .{
@@ -761,7 +999,7 @@ fn attachExtractedExternalScannerAlloc(
         symbol.* = syntax.external_tokens[index].corresponding_internal_token orelse .{ .external = @intCast(index) };
     }
 
-    const built_states = try buildExternalScannerStatesAlloc(allocator, symbols, serialized.states);
+    const built_states = try buildExternalScannerStatesAlloc(allocator, symbols, serialized.states, syntax.extra_symbols);
     errdefer deinitExternalScanner(allocator, .{ .symbols = symbols, .states = built_states.states });
     errdefer allocator.free(built_states.state_ids);
     result.external_scanner = .{
@@ -1151,13 +1389,25 @@ pub fn computeLargeStateCountAlloc(
     for (states) |serialized_state| {
         for (serialized_state.actions) |entry| {
             try appendUniqueSymbolRef(&symbols, entry.symbol);
+            if (entry.candidate_actions.len > 1) {
+                for (entry.candidate_actions) |candidate| {
+                    const production_id = switch (candidate) {
+                        .reduce => |id| id,
+                        .shift, .shift_extra, .accept => continue,
+                    };
+                    if (production_id < productions.len) {
+                        try appendUniqueSymbolRef(&symbols, .{ .non_terminal = productions[production_id].lhs });
+                    }
+                }
+                continue;
+            }
             switch (entry.action) {
                 .reduce => |production_id| {
                     if (production_id < productions.len) {
                         try appendUniqueSymbolRef(&symbols, .{ .non_terminal = productions[production_id].lhs });
                     }
                 },
-                .shift, .accept => {},
+                .shift, .shift_extra, .accept => {},
             }
         }
         for (serialized_state.gotos) |entry| {
@@ -1310,8 +1560,7 @@ pub fn parseActionListIndexForActionEntry(
     entry: SerializedActionEntry,
     productions: []const SerializedProductionInfo,
 ) ?u16 {
-    const expected = runtimeActionFromActionEntry(entry, productions);
-    const expected_reusable = expected.kind != .recover;
+    const expected_reusable = actionEntryIsReusable(entry, productions);
     for (entries) |candidate| {
         if (candidate.reusable != expected_reusable) continue;
         if (runtimeActionSlicesEql(candidate.actions, entry, productions)) return candidate.index;
@@ -1337,7 +1586,7 @@ fn parseActionListIndexForActionEntryWithMap(
     entry: SerializedActionEntry,
     productions: []const SerializedProductionInfo,
 ) ?u16 {
-    if (!entry.repetition or entry.candidate_actions.len <= 1) {
+    if (entry.candidate_actions.len <= 1) {
         const runtime_action = runtimeActionFromActionEntry(entry, productions);
         if (runtime_action.kind != .recover) {
             if (single_action_indexes.get(runtime_action)) |index| return index;
@@ -1354,9 +1603,12 @@ pub fn runtimeActionFromActionEntry(
         return .{ .kind = .recover };
     }
     var runtime_action = runtimeActionFromParseAction(entry.action, productions);
-    if (runtime_action.kind == .shift) {
-        runtime_action.extra = entry.extra;
-        runtime_action.repetition = entry.repetition;
+    switch (entry.action) {
+        .shift => if (runtime_action.kind == .shift) {
+            runtime_action.extra = entry.extra;
+            runtime_action.repetition = entry.repetition;
+        },
+        else => {},
     }
     return runtime_action;
 }
@@ -1366,7 +1618,7 @@ fn runtimeActionsFromActionEntryAlloc(
     entry: SerializedActionEntry,
     productions: []const SerializedProductionInfo,
 ) std.mem.Allocator.Error![]const SerializedParseAction {
-    if (!entry.repetition or entry.candidate_actions.len <= 1) {
+    if (entry.candidate_actions.len <= 1) {
         const action_slice = try allocator.alloc(SerializedParseAction, 1);
         action_slice[0] = runtimeActionFromActionEntry(entry, productions);
         return action_slice;
@@ -1376,16 +1628,31 @@ fn runtimeActionsFromActionEntryAlloc(
     var index: usize = 0;
     for (entry.candidate_actions) |candidate| {
         if (candidate == .shift) continue;
-        action_slice[index] = runtimeActionFromParseAction(candidate, productions);
+        action_slice[index] = runtimeActionFromCandidateAction(entry, candidate, productions);
         index += 1;
     }
     for (entry.candidate_actions) |candidate| {
         if (candidate != .shift) continue;
-        action_slice[index] = runtimeActionFromParseAction(candidate, productions);
-        action_slice[index].repetition = true;
+        action_slice[index] = runtimeActionFromCandidateAction(entry, candidate, productions);
         index += 1;
     }
     return action_slice[0..index];
+}
+
+fn runtimeActionFromCandidateAction(
+    entry: SerializedActionEntry,
+    action: actions.ParseAction,
+    productions: []const SerializedProductionInfo,
+) SerializedParseAction {
+    var runtime_action = runtimeActionFromParseAction(action, productions);
+    switch (action) {
+        .shift => if (runtime_action.kind == .shift) {
+            runtime_action.extra = entry.extra;
+            runtime_action.repetition = entry.repetition;
+        },
+        else => {},
+    }
+    return runtime_action;
 }
 
 fn runtimeActionsFromParseActionSliceAlloc(
@@ -1405,7 +1672,7 @@ fn runtimeActionSlicesEql(
     entry: SerializedActionEntry,
     productions: []const SerializedProductionInfo,
 ) bool {
-    if (!entry.repetition or entry.candidate_actions.len <= 1) {
+    if (entry.candidate_actions.len <= 1) {
         return actions_slice.len == 1 and runtimeActionEql(actions_slice[0], runtimeActionFromActionEntry(entry, productions));
     }
 
@@ -1413,18 +1680,30 @@ fn runtimeActionSlicesEql(
     for (entry.candidate_actions) |candidate| {
         if (candidate == .shift) continue;
         if (cursor >= actions_slice.len) return false;
-        if (!runtimeActionEql(actions_slice[cursor], runtimeActionFromParseAction(candidate, productions))) return false;
+        if (!runtimeActionEql(actions_slice[cursor], runtimeActionFromCandidateAction(entry, candidate, productions))) return false;
         cursor += 1;
     }
     for (entry.candidate_actions) |candidate| {
         if (candidate != .shift) continue;
         if (cursor >= actions_slice.len) return false;
-        var expected = runtimeActionFromParseAction(candidate, productions);
-        expected.repetition = true;
+        const expected = runtimeActionFromCandidateAction(entry, candidate, productions);
         if (!runtimeActionEql(actions_slice[cursor], expected)) return false;
         cursor += 1;
     }
     return cursor == actions_slice.len;
+}
+
+fn actionEntryIsReusable(
+    entry: SerializedActionEntry,
+    productions: []const SerializedProductionInfo,
+) bool {
+    if (entry.candidate_actions.len <= 1) {
+        return runtimeActionFromActionEntry(entry, productions).kind != .recover;
+    }
+    for (entry.candidate_actions) |candidate| {
+        if (runtimeActionFromCandidateAction(entry, candidate, productions).kind == .recover) return false;
+    }
+    return true;
 }
 
 fn runtimeActionSliceEqlParseActions(
@@ -1439,6 +1718,16 @@ fn runtimeActionSliceEqlParseActions(
     return true;
 }
 
+fn actionEntryHasShift(entry: SerializedActionEntry) bool {
+    if (entry.candidate_actions.len > 1) {
+        for (entry.candidate_actions) |candidate| {
+            if (candidate == .shift) return true;
+        }
+        return false;
+    }
+    return entry.action == .shift;
+}
+
 pub fn runtimeActionFromParseAction(
     action: actions.ParseAction,
     productions: []const SerializedProductionInfo,
@@ -1447,6 +1736,10 @@ pub fn runtimeActionFromParseAction(
         .shift => |state_id| .{
             .kind = .shift,
             .state = state_id,
+        },
+        .shift_extra => .{
+            .kind = .shift,
+            .extra = true,
         },
         .reduce => |production_id| blk: {
             const production = if (production_id < productions.len)
@@ -1486,6 +1779,16 @@ fn parseActionListIndexForRuntimeActionSlice(
     for (entries) |entry| {
         if (!entry.reusable) continue;
         if (serializedParseActionSlicesEql(entry.actions, action_slice)) return entry.index;
+    }
+    return null;
+}
+
+fn parseActionListEntryByIndex(
+    entries: []const SerializedParseActionListEntry,
+    index: u16,
+) ?SerializedParseActionListEntry {
+    for (entries) |entry| {
+        if (entry.index == index) return entry;
     }
     return null;
 }
@@ -1572,10 +1875,11 @@ fn buildProductionSerializationForUsedAlloc(
     try populateSortedProductionFieldNamesAlloc(allocator, &field_names, productions, variable_fields);
 
     for (productions, 0..) |production, production_id| {
-        const production_is_used = if (maybe_used_productions) |used_productions|
+        const requested_for_metadata = if (maybe_used_productions) |used_productions|
             production_id < used_productions.len and used_productions[production_id]
         else
             true;
+        const production_is_used = requested_for_metadata and production.production_metadata_eligible;
         if (!production_is_used) {
             raw_infos[production_id] = .{
                 .lhs = production.lhs,
@@ -1610,6 +1914,24 @@ fn buildProductionSerializationForUsedAlloc(
             .dynamic_precedence = @intCast(std.math.clamp(production.dynamic_precedence, std.math.minInt(i16), std.math.maxInt(i16))),
             .production_info_id = @intCast(@min(production_info_id, std.math.maxInt(u16))),
         };
+    }
+
+    for (productions, 0..) |production, production_id| {
+        if (raw_infos[production_id].production_info_id != null) continue;
+        const requested_for_metadata = if (maybe_used_productions) |used_productions|
+            production_id < used_productions.len and used_productions[production_id]
+        else
+            true;
+        if (!requested_for_metadata) continue;
+
+        const current = try buildProductionMetadataAlloc(allocator, productions, variable_fields, &field_names, production);
+        defer {
+            allocator.free(current.aliases);
+            allocator.free(current.fields);
+        }
+        if (findProductionMetadata(metadata.items, current)) |existing| {
+            raw_infos[production_id].production_info_id = @intCast(@min(existing, std.math.maxInt(u16)));
+        }
     }
 
     var aliases = std.ArrayListUnmanaged(SerializedAliasEntry).empty;
@@ -2145,7 +2467,7 @@ fn supertypeSliceLessThan(_: void, left: SerializedSupertypeMapSlice, right: Ser
     return symbolSortKey(left.supertype) < symbolSortKey(right.supertype);
 }
 
-fn buildReservedWordsAlloc(
+pub fn buildReservedWordsAlloc(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
     lexical: lexical_ir.LexicalGrammar,
@@ -2371,6 +2693,7 @@ fn buildExternalScannerStatesAlloc(
     allocator: std.mem.Allocator,
     symbols: []const syntax_ir.SymbolRef,
     states: []const SerializedState,
+    extra_symbols: []const syntax_ir.SymbolRef,
 ) std.mem.Allocator.Error!BuiltExternalScannerStates {
     var unique_states = std.array_list.Managed([]const bool).init(allocator);
     defer unique_states.deinit();
@@ -2386,6 +2709,10 @@ fn buildExternalScannerStatesAlloc(
         @memset(set, false);
         for (serialized_state.actions) |entry| {
             const symbol_index = externalScannerSymbolIndex(symbols, entry.symbol) orelse continue;
+            set[symbol_index] = true;
+        }
+        for (extra_symbols) |extra_symbol| {
+            const symbol_index = externalScannerSymbolIndex(symbols, extra_symbol) orelse continue;
             set[symbol_index] = true;
         }
 
@@ -2423,6 +2750,12 @@ fn buildLexModesWithExternalStatesAlloc(
 fn externalScannerSymbolIndex(symbols: []const syntax_ir.SymbolRef, symbol: syntax_ir.SymbolRef) ?usize {
     for (symbols, 0..) |candidate, index| {
         if (symbolRefEql(candidate, symbol)) return index;
+    }
+    switch (symbol) {
+        .external => |index| {
+            if (index < symbols.len) return index;
+        },
+        else => {},
     }
     return null;
 }
@@ -2478,11 +2811,15 @@ fn symbolSortKey(symbol: syntax_ir.SymbolRef) u64 {
 fn collectActionsForState(
     allocator: std.mem.Allocator,
     chosen: []const resolution.ChosenDecisionRef,
+    unresolved: []const resolution.UnresolvedDecisionRef,
     parse_state: state.ParseState,
 ) std.mem.Allocator.Error![]const SerializedActionEntry {
     var count: usize = 0;
     for (chosen) |entry| {
         if (entry.state_id == parse_state.id) count += 1;
+    }
+    for (unresolved) |entry| {
+        if (entry.state_id == parse_state.id and unresolvedReasonIsExpected(entry.reason)) count += 1;
     }
 
     const entries = try allocator.alloc(SerializedActionEntry, count);
@@ -2497,7 +2834,43 @@ fn collectActionsForState(
         };
         index += 1;
     }
+    for (unresolved) |entry| {
+        if (entry.state_id != parse_state.id or !unresolvedReasonIsExpected(entry.reason)) continue;
+        const action = preferredActionForExpectedConflict(entry.candidate_actions) orelse continue;
+        entries[index] = .{
+            .symbol = entry.symbol,
+            .action = action,
+            .candidate_actions = entry.candidate_actions,
+            .extra = shiftCandidateIsExtra(parse_state.transitions, entry.symbol, entry.candidate_actions),
+        };
+        index += 1;
+    }
     return entries;
+}
+
+fn unresolvedReasonIsExpected(reason: resolution.UnresolvedReason) bool {
+    return reason == .auxiliary_repeat or
+        reason == .shift_reduce_expected or
+        reason == .reduce_reduce_expected;
+}
+
+fn preferredActionForExpectedConflict(candidate_actions: []const actions.ParseAction) ?actions.ParseAction {
+    for (candidate_actions) |candidate| {
+        if (candidate == .shift) return candidate;
+    }
+    if (candidate_actions.len == 0) return null;
+    return candidate_actions[0];
+}
+
+fn shiftCandidateIsExtra(
+    transitions: []const state.Transition,
+    symbol: syntax_ir.SymbolRef,
+    candidate_actions: []const actions.ParseAction,
+) bool {
+    for (candidate_actions) |candidate| {
+        if (shiftActionIsExtra(transitions, symbol, candidate)) return true;
+    }
+    return false;
 }
 
 fn shiftActionIsExtra(
@@ -2855,6 +3228,139 @@ test "attachPreparedMetadataAlloc reserves all-false external scanner state zero
     try std.testing.expect(serialized.external_scanner.states[2][1]);
     try std.testing.expectEqual(@as(u16, 1), serialized.lex_modes[0].external_lex_state);
     try std.testing.expectEqual(@as(u16, 2), serialized.lex_modes[1].external_lex_state);
+}
+
+test "attachExtractedMetadataAlloc marks external extras valid for scanner states" {
+    const allocator = std.testing.allocator;
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "external_extra_states",
+        .variables = &.{},
+        .external_tokens = &.{},
+        .rules = &.{},
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{},
+        .external_tokens = &.{
+            .{ .name = "html_comment", .kind = .named },
+            .{ .name = "PIPE_PIPE", .kind = .anonymous, .corresponding_internal_token = .{ .terminal = 0 } },
+        },
+        .extra_symbols = &.{
+            .{ .external = 0 },
+            .{ .external = 1 },
+        },
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "||", .kind = .anonymous, .rule = 0 },
+        },
+        .separators = &.{},
+    };
+    const lex_modes = [_]lexer_serialize.SerializedLexMode{
+        .{ .lex_state = 0 },
+    };
+
+    const serialized = try attachExtractedMetadataAlloc(allocator, .{
+        .states = &[_]SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+        .blocked = false,
+        .lex_modes = lex_modes[0..],
+    }, prepared, syntax, lexical);
+    const recovery_actions = serialized.states[0].actions;
+    defer allocator.free(serialized.symbols);
+    defer allocator.free(recovery_actions);
+    defer allocator.free(serialized.states);
+    defer deinitParseActionList(allocator, serialized.parse_action_list);
+    defer deinitSmallParseTable(allocator, serialized.small_parse_table);
+    defer allocator.free(serialized.lex_modes);
+    defer deinitSupertypeMap(allocator, serialized.supertype_map);
+    defer deinitExternalScanner(allocator, serialized.external_scanner);
+
+    try std.testing.expect(!serialized.isSerializationReady());
+    try std.testing.expectEqual(@as(usize, 2), serialized.external_scanner.symbols.len);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .external = 0 }, serialized.external_scanner.symbols[0]);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .terminal = 0 }, serialized.external_scanner.symbols[1]);
+    try std.testing.expectEqual(@as(usize, 2), serialized.external_scanner.states.len);
+    try std.testing.expect(!serialized.external_scanner.states[0][0]);
+    try std.testing.expect(!serialized.external_scanner.states[0][1]);
+    try std.testing.expect(serialized.external_scanner.states[1][0]);
+    try std.testing.expect(serialized.external_scanner.states[1][1]);
+    try std.testing.expectEqual(@as(u16, 1), serialized.lex_modes[0].external_lex_state);
+}
+
+test "attachExtractedMetadataAlloc gives state zero a recovery external scanner row" {
+    const allocator = std.testing.allocator;
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "external_recovery_state",
+        .variables = &.{},
+        .external_tokens = &.{},
+        .rules = &.{},
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+    const syntax = syntax_ir.SyntaxGrammar{
+        .variables = &.{},
+        .external_tokens = &.{
+            .{ .name = "_automatic_semicolon", .kind = .hidden },
+        },
+        .extra_symbols = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{},
+        .separators = &.{},
+    };
+    const lex_modes = [_]lexer_serialize.SerializedLexMode{
+        .{ .lex_state = 0 },
+    };
+
+    const serialized = try attachExtractedMetadataAlloc(allocator, .{
+        .states = &[_]SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+        .blocked = false,
+        .lex_modes = lex_modes[0..],
+    }, prepared, syntax, lexical);
+    const recovery_actions = serialized.states[0].actions;
+    defer allocator.free(serialized.symbols);
+    defer allocator.free(recovery_actions);
+    defer allocator.free(serialized.states);
+    defer deinitParseActionList(allocator, serialized.parse_action_list);
+    defer deinitSmallParseTable(allocator, serialized.small_parse_table);
+    defer allocator.free(serialized.lex_modes);
+    defer deinitSupertypeMap(allocator, serialized.supertype_map);
+    defer deinitExternalScanner(allocator, serialized.external_scanner);
+
+    try std.testing.expectEqual(@as(usize, 2), serialized.external_scanner.states.len);
+    try std.testing.expect(!serialized.external_scanner.states[0][0]);
+    try std.testing.expect(serialized.external_scanner.states[1][0]);
+    try std.testing.expectEqual(@as(u16, 1), serialized.lex_modes[0].external_lex_state);
+    try std.testing.expectEqual(@as(usize, 2), recovery_actions.len);
+    try std.testing.expect(hasSerializedActionForSymbol(recovery_actions, .{ .end = {} }));
+    try std.testing.expect(hasSerializedActionForSymbol(recovery_actions, .{ .external = 0 }));
 }
 
 test "attachExtraShiftMetadataAlloc marks terminal extra shifts" {
@@ -3490,6 +3996,81 @@ test "buildProductionSerializationAlloc interns production ids separately from r
     try std.testing.expectEqual(SerializedFieldMapSlice{ .index = 0, .length = 1 }, serialized.field_map.slices[1]);
 }
 
+test "buildProductionSerializationAlloc skips inline-shadowed raw production metadata" {
+    const allocator = std.testing.allocator;
+    const raw_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    const inlined_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 2 }, .field_name = "parameters" },
+    };
+    const productions = [_]build.ProductionInfo{
+        .{
+            .lhs = 0,
+            .lhs_kind = .named,
+            .steps = raw_steps[0..],
+            .production_metadata_eligible = false,
+        },
+        .{
+            .lhs = 0,
+            .lhs_kind = .named,
+            .steps = inlined_steps[0..],
+            .production_metadata_eligible = true,
+        },
+    };
+
+    const serialized = try buildProductionSerializationAlloc(allocator, productions[0..]);
+    defer allocator.free(serialized.productions);
+    defer allocator.free(serialized.alias_sequences);
+    defer allocator.free(serialized.non_terminal_aliases);
+    defer deinitFieldMap(allocator, serialized.field_map);
+
+    try std.testing.expectEqual(@as(usize, 1), serialized.production_id_count);
+    try std.testing.expect(serialized.productions[0].production_info_id == null);
+    try std.testing.expectEqual(@as(?u16, 0), serialized.productions[1].production_info_id);
+    try std.testing.expectEqual(@as(usize, 1), serialized.field_map.slices.len);
+    try std.testing.expectEqual(SerializedFieldMapSlice{ .index = 0, .length = 1 }, serialized.field_map.slices[0]);
+    try std.testing.expectEqual(SerializedFieldMapEntry{ .field_id = 1, .child_index = 0, .inherited = false }, serialized.field_map.entries[0]);
+}
+
+test "buildProductionSerializationAlloc reuses existing metadata for ineligible productions" {
+    const allocator = std.testing.allocator;
+    const raw_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+    const empty_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 1 } },
+        .{ .symbol = .{ .terminal = 2 } },
+    };
+    const productions = [_]build.ProductionInfo{
+        .{
+            .lhs = 0,
+            .lhs_kind = .named,
+            .steps = raw_steps[0..],
+            .production_metadata_eligible = false,
+        },
+        .{
+            .lhs = 1,
+            .lhs_kind = .named,
+            .steps = empty_steps[0..],
+            .production_metadata_eligible = true,
+        },
+    };
+
+    const serialized = try buildProductionSerializationAlloc(allocator, productions[0..]);
+    defer allocator.free(serialized.productions);
+    defer allocator.free(serialized.alias_sequences);
+    defer allocator.free(serialized.non_terminal_aliases);
+    defer deinitFieldMap(allocator, serialized.field_map);
+
+    try std.testing.expectEqual(@as(usize, 1), serialized.production_id_count);
+    try std.testing.expectEqual(@as(?u16, 0), serialized.productions[0].production_info_id);
+    try std.testing.expectEqual(@as(?u16, 0), serialized.productions[1].production_info_id);
+
+    const raw_reduce = runtimeActionFromParseAction(.{ .reduce = 0 }, serialized.productions);
+    try std.testing.expectEqual(@as(u16, 0), raw_reduce.production_id);
+}
+
 test "serializeBuildResult rejects blocked snapshots in strict mode" {
     const allocator = std.testing.allocator;
 
@@ -3598,6 +4179,94 @@ test "serializeBuildResult accepts expected reduce reduce snapshots in strict mo
 
     try std.testing.expect(serialized.isSerializationReady());
     try std.testing.expectEqual(@as(usize, 0), serialized.states[0].unresolved.len);
+    try std.testing.expectEqual(@as(usize, 1), serialized.states[0].actions.len);
+    try std.testing.expectEqual(@as(usize, 2), serialized.states[0].actions[0].candidate_actions.len);
+    try std.testing.expect(
+        parseActionListIndexForActionEntry(
+            serialized.parse_action_list,
+            serialized.states[0].actions[0],
+            serialized.productions,
+        ) != null,
+    );
+}
+
+test "serializeBuildResult emits expected shift reduce conflicts as runtime actions" {
+    const allocator = std.testing.allocator;
+
+    const parse_states = [_]state.ParseState{
+        .{
+            .id = 2,
+            .items = &.{},
+            .transitions = &[_]state.Transition{
+                .{ .symbol = .{ .terminal = 0 }, .state = 4 },
+            },
+            .conflicts = &.{},
+        },
+    };
+
+    const productions = [_]build.ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+    };
+
+    const resolved_actions = resolution.ResolvedActionTable{
+        .states = &[_]resolution.ResolvedStateActions{
+            .{
+                .state_id = 2,
+                .groups = &[_]resolution.ResolvedActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .candidate_actions = &[_]actions.ParseAction{
+                            .{ .shift = 4 },
+                            .{ .reduce = 0 },
+                        },
+                        .decision = .{ .unresolved = .shift_reduce_expected },
+                    },
+                },
+            },
+        },
+    };
+
+    const result = build.BuildResult{
+        .productions = productions[0..],
+        .precedence_orderings = &.{},
+        .states = parse_states[0..],
+        .lex_state_count = 1,
+        .actions = .{ .states = &.{} },
+        .resolved_actions = resolved_actions,
+    };
+
+    const serialized = try serializeBuildResultWithOptions(
+        allocator,
+        result,
+        .strict,
+        .{ .include_unresolved_parse_actions = false },
+    );
+    defer allocator.free(serialized.states);
+    defer deinitSmallParseTable(allocator, serialized.small_parse_table);
+    defer deinitParseActionList(allocator, serialized.parse_action_list);
+    defer deinitFieldMap(allocator, serialized.field_map);
+    defer allocator.free(serialized.lex_modes);
+    defer deinitLexStateTerminalSets(allocator, serialized.lex_state_terminal_sets);
+    defer allocator.free(serialized.primary_state_ids);
+    defer allocator.free(serialized.productions);
+    defer allocator.free(serialized.alias_sequences);
+    defer allocator.free(serialized.non_terminal_aliases);
+    defer allocator.free(serialized.states[0].gotos);
+    defer allocator.free(serialized.states[0].actions);
+
+    try std.testing.expect(serialized.isSerializationReady());
+    try std.testing.expectEqual(@as(usize, 0), serialized.states[0].unresolved.len);
+    try std.testing.expectEqual(@as(usize, 1), serialized.states[0].actions.len);
+    const action_index = parseActionListIndexForActionEntry(
+        serialized.parse_action_list,
+        serialized.states[0].actions[0],
+        serialized.productions,
+    ).?;
+    const entry = parseActionListEntryByIndex(serialized.parse_action_list, action_index).?;
+    try std.testing.expectEqual(@as(usize, 2), entry.actions.len);
+    try std.testing.expectEqual(SerializedParseActionKind.reduce, entry.actions[0].kind);
+    try std.testing.expectEqual(SerializedParseActionKind.shift, entry.actions[1].kind);
+    try std.testing.expect(!entry.actions[1].repetition);
 }
 
 test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {
@@ -3801,6 +4470,43 @@ test "buildParseActionListAlloc keeps reductions before repetition shifts" {
     try std.testing.expectEqual(SerializedParseActionKind.reduce, list[1].actions[0].kind);
     try std.testing.expectEqual(SerializedParseActionKind.shift, list[1].actions[1].kind);
     try std.testing.expect(list[1].actions[1].repetition);
+    try std.testing.expectEqual(
+        list[1].index,
+        parseActionListIndexForActionEntry(list, states[0].actions[0], productions[0..]).?,
+    );
+}
+
+test "buildParseActionListAlloc keeps reductions before expected conflict shifts" {
+    const allocator = std.testing.allocator;
+    const productions = [_]SerializedProductionInfo{
+        .{ .lhs = 1, .child_count = 1, .dynamic_precedence = 0 },
+    };
+    const states = [_]SerializedState{
+        .{
+            .id = 0,
+            .actions = &[_]SerializedActionEntry{
+                .{
+                    .symbol = .{ .terminal = 0 },
+                    .action = .{ .shift = 7 },
+                    .candidate_actions = &[_]actions.ParseAction{
+                        .{ .shift = 7 },
+                        .{ .reduce = 0 },
+                    },
+                },
+            },
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+    };
+
+    const list = try buildRuntimeParseActionListAlloc(allocator, states[0..], productions[0..]);
+    defer deinitParseActionList(allocator, list);
+
+    try std.testing.expectEqual(@as(usize, 2), list.len);
+    try std.testing.expectEqual(@as(usize, 2), list[1].actions.len);
+    try std.testing.expectEqual(SerializedParseActionKind.reduce, list[1].actions[0].kind);
+    try std.testing.expectEqual(SerializedParseActionKind.shift, list[1].actions[1].kind);
+    try std.testing.expect(!list[1].actions[1].repetition);
     try std.testing.expectEqual(
         list[1].index,
         parseActionListIndexForActionEntry(list, states[0].actions[0], productions[0..]).?,
