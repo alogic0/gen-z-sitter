@@ -248,19 +248,19 @@ step must be exact classification and remapping evidence, not a broad split.
 
 Tasks:
 
-- [ ] Add a keyword-lex artifact that lists keyword lex states, outgoing cases,
+- [x] Add a keyword-lex artifact that lists keyword lex states, outgoing cases,
   accepted symbols, and owner parser states for local and upstream.
-- [ ] Identify the extra local keyword case and classify whether it is:
+- [x] Identify the extra local keyword case and classify whether it is:
   - initial/fallback state handling;
   - an identifier-shaped string token classification;
   - a reserved-word-set remapping difference;
   - an alias/inline wrapper remnant;
   - a side effect of large-character-set emission.
-- [ ] If Phase 1 changes keyword shape, rebase this investigation on the new
+- [x] If Phase 1 changes keyword shape, rebase this investigation on the new
   comparison before patching.
-- [ ] Add a focused fixture for the exact keyword state if it is independent of
+- [x] Add a focused fixture for the exact keyword state if it is independent of
   Phase 1.
-- [ ] Patch keyword classification or runtime keyword remapping with corpus
+- [x] Patch keyword classification or runtime keyword remapping with corpus
   proof.
 
 Gate:
@@ -268,6 +268,16 @@ Gate:
 - `keyword_lex_function_case_count=200`.
 - JavaScript `declaration.js` and all bounded corpus samples remain matched.
 - No token/symbol count or node-types hash regression.
+
+Batch 4 implementation note: the extra keyword case was a separator-loop
+construction issue. Local keyword state 0 skipped whitespace to a separate
+post-separator state, while upstream loops single-character separators back to
+the separator-aware start state. The NFA separator loop now returns through the
+separator-aware split, focused separator tests cover repeated single-character
+separators, and JavaScript now reports `keyword_lex_function_case_count=200/200`
+with bounded corpus samples still matched. The main `lex_function_case_count`
+only moved from `525/279` to `521/279`, so that residual remains a separate
+Phase 1 lexer-state construction/minimization task.
 
 ## Phase 5 — Real-Grammar Promotion Wave
 

@@ -1021,6 +1021,41 @@ test "buildLexTableForSet reports leading separator prefix in detailed matches" 
     try std.testing.expectEqual(@as(usize, 2), best.leading_separator_len);
 }
 
+test "buildLexTableForSet loops single-character separators through the start state" {
+    const rules = [_]@import("../ir/rules.zig").Rule{
+        .{ .string = "let" },
+        .{ .string = " " },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "keyword", .kind = .named, .rule = 0 },
+        },
+        .separators = &.{1},
+    };
+
+    var expanded = try lexer_model.expandExtractedLexicalGrammar(std.testing.allocator, rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    var allowed = try lexer_model.TokenIndexSet.initEmpty(std.testing.allocator, expanded.variables.len);
+    defer allowed.deinit(std.testing.allocator);
+    allowed.fill();
+
+    var table = try buildLexTableForSet(std.testing.allocator, expanded, allowed);
+    defer table.deinit();
+
+    const best = (try table.selectBestTokenDetailed("  let")).?;
+    try std.testing.expectEqual(@as(usize, 5), best.len);
+    try std.testing.expectEqual(@as(usize, 2), best.leading_separator_len);
+
+    const start = table.states[table.start_state_id];
+    var found_loop = false;
+    for (start.transitions) |transition| {
+        if (!transition.is_separator) continue;
+        if (transition.next_state_id == table.start_state_id) found_loop = true;
+    }
+    try std.testing.expect(found_loop);
+}
+
 test "buildLexTableForSet sorts lexer states deterministically with start state first" {
     const rules = [_]@import("../ir/rules.zig").Rule{
         .{ .string = "a" },

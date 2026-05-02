@@ -592,10 +592,13 @@ const Builder = struct {
         });
         const accept_state = self.nfa.lastStateId();
         _ = try self.expandRule(variable.rule, accept_state);
+        var start_state = self.nfa.lastStateId();
         if (!self.isImmediateToken(variable.rule) and separators.len != 0) {
             self.is_separator = true;
             defer self.is_separator = false;
-            _ = try self.expandSeparatorLoop(separators, self.nfa.lastStateId());
+            if (try self.expandSeparatorLoop(separators, start_state)) |separator_start| {
+                start_state = separator_start;
+            }
         }
 
         return .{
@@ -603,32 +606,45 @@ const Builder = struct {
             .kind = variable.kind,
             .completion_precedence = self.completionPrecedence(variable.rule),
             .implicit_precedence = self.implicitPrecedence(variable.rule),
-            .start_state = self.nfa.lastStateId(),
+            .start_state = start_state,
             .source_rule = variable.rule,
         };
     }
 
-    fn expandSeparatorLoop(self: *Builder, separators: []const rules.RuleId, next_state_id: u32) !bool {
-        var branch_states = std.ArrayListUnmanaged(u32).empty;
-        defer branch_states.deinit(self.allocator);
+    fn expandSeparatorLoop(self: *Builder, separators: []const rules.RuleId, next_state_id: u32) !?u32 {
+        const before_loop = self.nfa.states.items.len;
+        try self.nfa.states.append(self.allocator, .{
+            .split = .{ .left = next_state_id, .right = next_state_id },
+        });
+        const loop_state_id = self.nfa.lastStateId();
 
-        try branch_states.append(self.allocator, next_state_id);
+        var separator_starts = std.ArrayListUnmanaged(u32).empty;
+        defer separator_starts.deinit(self.allocator);
+
         for (separators) |rule_id| {
             const before = self.nfa.states.items.len;
-            if (try self.expandRule(rule_id, next_state_id)) {
-                try branch_states.append(self.allocator, self.nfa.lastStateId());
+            if (try self.expandRule(rule_id, loop_state_id)) {
+                try separator_starts.append(self.allocator, self.nfa.lastStateId());
             } else {
                 self.nfa.states.items.len = before;
             }
         }
 
-        if (branch_states.items.len == 1) return false;
-
-        const loop_target = next_state_id;
-        for (branch_states.items[1..]) |state_id| {
-            try self.pushSplit(state_id, loop_target);
+        if (separator_starts.items.len == 0) {
+            self.nfa.states.items.len = before_loop;
+            return null;
         }
-        return true;
+
+        var separator_start = separator_starts.items[0];
+        for (separator_starts.items[1..]) |state_id| {
+            try self.pushSplit(state_id, separator_start);
+            separator_start = self.nfa.lastStateId();
+        }
+
+        self.nfa.states.items[loop_state_id] = .{
+            .split = .{ .left = separator_start, .right = next_state_id },
+        };
+        return loop_state_id;
     }
 
     fn expandRule(self: *Builder, rule_id: rules.RuleId, next_state_id: u32) ExpandError!bool {
@@ -2794,6 +2810,27 @@ test "matchVariable consumes leading separators for non-immediate tokens" {
     try std.testing.expectEqual(@as(?usize, 5), try matchVariable(std.testing.allocator, expanded, 0, "  let"));
     const match = (try selectBestToken(std.testing.allocator, expanded, "  let")).?;
     try std.testing.expectEqual(@as(usize, 5), match.len);
+}
+
+test "matchVariable consumes repeated single-character leading separators" {
+    const all_rules = [_]rules.Rule{
+        .{ .string = "let" },
+        .{ .string = " " },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "keyword", .kind = .named, .rule = 0 },
+        },
+        .separators = &.{1},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(?usize, 5), try matchVariable(std.testing.allocator, expanded, 0, "  let"));
+    const match = (try selectBestTokenDetailed(std.testing.allocator, expanded, "  let")).?;
+    try std.testing.expectEqual(@as(usize, 5), match.len);
+    try std.testing.expectEqual(@as(usize, 2), match.leading_separator_len);
 }
 
 test "matchVariable does not consume leading separators for immediate tokens" {
