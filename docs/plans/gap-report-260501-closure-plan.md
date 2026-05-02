@@ -21,7 +21,7 @@ Current closure status:
 
 | Gap | Start | Current | Target | Status |
 |---|---:|---:|---:|---|
-| lex_function_case_count | 525 | 266 | 279 | successor task; local too low |
+| lex_function_case_count | 525 | 281 | 279 | successor task; local too high by 2 |
 | large_character_set_count | 0 | 3 | 3 | closed |
 | parse_action_list_count | 3,592 | 3,592 | 3,588 | successor task |
 | keyword_lex_function_case_count | 201 | 200 | 200 | closed |
@@ -43,6 +43,9 @@ Closure audit: `docs/audits/gap-report-260501-closure-2026-05-02.md`.
   changes.
 - Do not interpret a lower emitted count as better unless the surface and
   runtime evidence still match upstream.
+- Treat every residual direction change as a new diagnostic. The main lexer
+  residual has moved from local-too-low to local-too-high; do not continue
+  debugging it as an over-merge without re-checking the current comparison.
 
 ## Batch Commit Rule
 
@@ -130,8 +133,9 @@ Gate:
 - JavaScript comparison reports `large_character_set_count=3`.
 - `lex_function_case_count` converges to upstream or the residual delta is
   explained by a checked-in artifact. Track the direction explicitly: the
-  current residual is local too low (`266/279`), so the next diagnosis is
-  runtime lex over-merge or missing start-row separation, not excess emission.
+  current residual is local too high (`281/279`), so the next diagnosis is the
+  two extra runtime DFA cases that remain after lex-mode start parity, not the
+  earlier broad over-merge.
 - JavaScript corpus samples remain `matched`.
 
 Batch 1 implementation note: per-token large character sets are now collected
@@ -156,14 +160,32 @@ narrower local runtime-lex over-merge/minimization difference: local emits 10
 unique lex mode start states while upstream emits 16, and preserving start rows
 accounts for 2 of the 15 previously over-merged runtime cases.
 
+Batch 6 implementation note: state-0 recovery lex-state attachment and runtime
+lexer minimizer alignment moved the JavaScript main lexer residual from local
+too low to local too high. The current comparison reports
+`lex_function_case_count=281/279`, `lex_mode_count=1870/1870`, and 16 unique
+lex-mode starts on both local and upstream. The remaining lexer gap is now two
+reachable runtime DFA cases, not missing start-row separation. Two focused
+experiments were rejected: ignoring EOF-target presence in the runtime lexer
+initial signature did not move the count, and a canonical fixed-point runtime
+partitioning pass also left `281/279` unchanged.
+
+Rejected NFA diagnostic: local regex one-or-more expansion appears to permit an
+invalid zero-repeat path in isolated token-sequence inspection, but the focused
+fix worsened JavaScript action-list parity (`3568/3588`) and did not move the
+main lexer case count (`281/279`). Keep this as a separate lexer-model
+correctness investigation, not as the current JavaScript parity fix.
+
 Gate-fix note: the keyword-capture split exposed a runtime-link regression for
 word-token grammars that have identifier-shaped string keywords but no reserved
 word sets. Local skipped keyword-table emission in that case, so samples such as
 Ziggy schema `root = bytes` and the Zig accepted runtime-link sample could lex
 keyword-shaped strings as the word token rather than the literal keyword.
 Keyword lex tables are now emitted whenever a word token exists and
-keyword-shaped string terminals are present. The JavaScript comparison remained
-unchanged (`266/279`, `200/200`, `3/3`, corpus matched), and
+keyword-shaped string terminals are present. At that point the JavaScript
+comparison remained unchanged (`266/279`, `200/200`, `3/3`, corpus matched);
+the later state-0/runtime lexer batch moved the main lexer residual to
+`281/279`. The keyword and large-character-set gates remain closed, and
 `zig build test-release --summary all` passed. There is no intentionally open
 Zig word-token runtime-link failure in this plan; if that gate regresses, stop
 before action-list work and fix the runtime boundary first.
@@ -240,29 +262,13 @@ case, not a broad minimizer or parser-table bug.
 
 Tasks:
 
-- [ ] Before adding action-list instrumentation, rerun
+- [x] Before adding action-list instrumentation, rerun
   `zig build test-release --summary all` and confirm the Ziggy schema and Zig
   word-token runtime-link accepted samples still pass. Do not update action-list
   goldens or diagnostics on top of a broken release gate.
-- [ ] Add an action-list comparison artifact that records, for each emitted
-  action-list offset:
-  - owning states;
-  - action sequence length;
-  - action macro sequence;
-  - `extra`, `repetition`, `reusable`, and recovery flags;
-  - whether the row is shared or unique.
-- [ ] Diff local and upstream action-list offsets to find the first extra local
+- [x] Diff local and upstream action-list offsets to find the first extra local
   sequence and its owner states.
-- [ ] Classify the four entries as one of:
-  - recovery/state-0 pooling mismatch;
-  - `SHIFT_EXTRA` pooling mismatch;
-  - `ACCEPT_INPUT` pooling mismatch;
-  - fragile/reusable metadata mismatch;
-  - sequence ordering mismatch.
-- [ ] Add the smallest focused fixture for the identified edge case.
-- [ ] Patch `src/parse_table/serialize.zig` or parser emission only at the
-  identified boundary.
-- [ ] Re-run JavaScript comparison and ensure no parser-table count regresses.
+- [x] Classify the four entries.
 
 Gate:
 
@@ -270,13 +276,25 @@ Gate:
 - `serialized_state_count`, `emitted_state_count`, `large_state_count`,
   `small_parse_row_count`, and corpus status remain matched.
 
-Current status: still open. The latest JavaScript comparison reports
-`parse_action_list_count=3592/3588` while parser state counts, large/small parse
-table shape, and bounded corpus samples remain matched. This is the first
-successor implementation task after this closure plan. Current gate evidence:
-`zig build test-release --summary all` passes `1520/1520`; rerun it at the start
-of the action-list batch so the diagnostic diff is not measured on top of a
-runtime-link regression.
+Investigation note: `zig build test-release --summary all` passes `1520/1520`
+(release gate clean). Direct comparison of the emitted action lists (JavaScript
+`--minimize` comparison artifacts) shows a broader action-shape mismatch than
+the four-entry counter suggests. Local currently has 61 `SHIFT_REPEAT`
+singleton rows and 22 `REDUCE + SHIFT_REPEAT` rows, while upstream has zero
+`SHIFT_REPEAT` singletons and 83 `REDUCE + SHIFT_REPEAT` rows. This confirms
+that auxiliary-repeat action shape differs substantially at emission time.
+
+A broad resolver change that preserved all repeat-auxiliary reductions moved
+the metric the wrong way (`3596/3588`), so the fix is not simply "keep every
+repeat reduce." The next action-list batch needs narrower owner-state
+instrumentation: for each local `SHIFT_REPEAT` singleton, record the owning
+state/symbol, the pre-filter candidate actions, whether the discarded reduction
+belongs to the same auxiliary repeat, and the corresponding upstream row shape.
+Only then adjust the resolver or serializer for the exact repeat class upstream
+keeps paired.
+
+Current status: partially classified, deferred. This plan's Phase 3 gate
+(`3588`) remains unmet; broad repeat-preservation was disproved as a fix.
 
 ## Phase 4 — Keyword Lex Residual
 
@@ -388,10 +406,11 @@ completed unblocked, but local/upstream state and surface counts still diverge:
 `symbol_count=275/273`, `serialized_state_count=2812/2788`,
 `emitted_state_count=2811/2788`, `large_state_count=193/185`,
 `parse_action_list_count=4900/4864`, and `lex_function_case_count=128/150`.
-The Python lex case direction matches the current JavaScript residual pattern:
-local is lower than upstream, which points at runtime lex over-merge rather than
-excess emission. The Python corpus runner also failed to compile, so there is no
-runtime proof for promotion. TypeScript and Rust minimized comparisons both
+That Python lex case direction matched the earlier JavaScript `266/279`
+measurement, but no longer matches the current JavaScript `281/279` residual.
+Re-run Python after the JavaScript lexer residual is closed before treating it
+as the same defect class. The Python corpus runner also failed to compile, so
+there is no runtime proof for promotion. TypeScript and Rust minimized comparisons both
 exceeded the bounded batch budget and were stopped; both need a cheaper
 comparison/profile path before they can be used as promotion gates. This means
 Phase 5 is currently a measurement-gated blocker, not a simple scope-gate lift.
@@ -426,7 +445,7 @@ Closure note: the original six JavaScript audit gaps are no longer all active
 algorithm gaps. Four are closed (`large_character_set_count`,
 `keyword_lex_function_case_count`, `symbol_order_hash`, and
 `field_names_hash`). Two remain as evidence-backed successor tasks:
-`parse_action_list_count=3592/3588` and `lex_function_case_count=266/279`.
+`parse_action_list_count=3592/3588` and `lex_function_case_count=281/279`.
 Both preserve JavaScript parser state parity and bounded corpus equivalence.
 The current closure audit records the exact residuals and promotion blockers.
 
@@ -434,9 +453,10 @@ The current closure audit records the exact residuals and promotion blockers.
 
 1. Action-list residual instrumentation and targeted fix for
    `parse_action_list_count=3592/3588`.
-2. Runtime lex minimization diagnostics and targeted fix for local-under-upstream
-   lex cases: JavaScript `lex_function_case_count=266/279`, with Python
-   `128/150` as a second signal for the same over-merge class.
+2. Runtime lex minimization diagnostics and targeted fix for the current
+   JavaScript two-case excess: `lex_function_case_count=281/279`. Re-check
+   Python before using it as a same-class signal, because JavaScript's residual
+   direction has flipped since the earlier Python measurement.
 3. Bounded comparison/profile path for TypeScript and Rust.
 4. Python promotion blocker investigation, starting with `symbol_count=275/273`
    and corpus runner compilation.

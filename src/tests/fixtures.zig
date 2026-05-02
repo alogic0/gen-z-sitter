@@ -1099,6 +1099,10 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\    case 2:
         \\      ACCEPT_TOKEN(2);
         \\      END_STATE();
+        \\    case 3:
+        \\      if (lookahead == 43) ADVANCE(1);
+        \\      if (lookahead == 120) ADVANCE(2);
+        \\      END_STATE();
         \\    default:
         \\      return false;
         \\  }
@@ -1205,11 +1209,11 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\
         \\static const TSLexerMode ts_lex_modes[STATE_COUNT] = {
         \\  [0] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [1] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [2] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [3] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [4] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [5] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [1] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [2] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [3] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [4] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [5] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\};
         \\
         \\static const TSLanguage ts_language = {
@@ -1535,6 +1539,10 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\    case 2:
         \\      ACCEPT_TOKEN(2);
         \\      END_STATE();
+        \\    case 3:
+        \\      if (lookahead == 43) ADVANCE(1);
+        \\      if (lookahead == 120) ADVANCE(2);
+        \\      END_STATE();
         \\    default:
         \\      return false;
         \\  }
@@ -1646,12 +1654,12 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\
         \\static const TSLexerMode ts_lex_modes[STATE_COUNT] = {
         \\  [0] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [1] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [2] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [3] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [4] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [5] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [6] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [1] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [2] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [3] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [4] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [5] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [6] = { .lex_state = 3, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\};
         \\
         \\bool ts_parser_runtime_has_unresolved_states(void) {

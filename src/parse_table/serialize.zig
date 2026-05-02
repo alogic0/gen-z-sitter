@@ -308,6 +308,8 @@ pub const SerializedTable = struct {
     supertype_map: SerializedSupertypeMap = .{},
     lex_modes: []const lexer_serialize.SerializedLexMode = &.{},
     lex_state_terminal_sets: []const []const bool = &.{},
+    recovery_coincident_tokens: []const bool = &.{},
+    recovery_coincident_terminal_count: usize = 0,
     lex_tables: []const lexer_serialize.SerializedLexTable = &.{},
     keyword_lex_table: ?lexer_serialize.SerializedLexTable = null,
     keyword_unmapped_reserved_word_count: usize = 0,
@@ -413,6 +415,8 @@ pub fn serializeBuildResultWithOptions(
         .field_map = production_serialization.field_map,
         .lex_modes = lex_modes,
         .lex_state_terminal_sets = lex_state_terminal_sets,
+        .recovery_coincident_tokens = result.recovery_coincident_tokens,
+        .recovery_coincident_terminal_count = result.recovery_coincident_terminal_count,
         .primary_state_ids = primary_state_ids,
     };
 }
@@ -622,6 +626,8 @@ fn attachExtractedErrorRecoveryStateAlloc(
         syntax,
         lexical,
         serialized.states,
+        serialized.recovery_coincident_tokens,
+        serialized.recovery_coincident_terminal_count,
     ) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => try buildFallbackErrorRecoverySymbolsAlloc(allocator, syntax, lexical),
@@ -650,9 +656,92 @@ fn attachExtractedErrorRecoveryStateAlloc(
 
     var result = serialized;
     result.states = states;
+    result.lex_state_terminal_sets = try attachStateZeroRecoveryLexStateAlloc(
+        allocator,
+        serialized.lex_state_terminal_sets,
+        states,
+        lexical.variables.len,
+    );
+    if (syntax.external_tokens.len == 0) {
+        result.lex_modes = try lexer_serialize.buildLexModesAlloc(allocator, result.states);
+    }
     result.large_state_count = try computeLargeStateCountAlloc(allocator, result.states, result.productions);
     try rebuildParseActionTables(allocator, &result, .{});
     return result;
+}
+
+fn attachStateZeroRecoveryLexStateAlloc(
+    allocator: std.mem.Allocator,
+    terminal_sets: []const []const bool,
+    states: []SerializedState,
+    terminal_count: usize,
+) std.mem.Allocator.Error![]const []const bool {
+    if (states.len == 0) return try buildLexStateTerminalSetsAlloc(allocator, terminal_sets);
+
+    const old_id: usize = @intCast(states[0].lex_state_id);
+    const old_id_valid = old_id < terminal_sets.len;
+    var shared = false;
+    if (old_id_valid) {
+        for (states[1..]) |state_value| {
+            if (state_value.lex_state_id == states[0].lex_state_id) {
+                shared = true;
+                break;
+            }
+        }
+    }
+
+    const extra_count: usize = if (old_id_valid and shared) 1 else if (!old_id_valid) 1 else 0;
+    const result = try allocator.alloc([]const bool, terminal_sets.len + extra_count);
+    var initialized: usize = 0;
+    errdefer {
+        for (result[0..initialized]) |terminal_set| allocator.free(terminal_set);
+        allocator.free(result);
+    }
+
+    for (terminal_sets, 0..) |terminal_set, index| {
+        if (old_id_valid and index == old_id) {
+            result[index] = try recoveryLexTerminalSetAlloc(allocator, states[0].actions, terminal_count);
+        } else {
+            result[index] = try allocator.dupe(bool, terminal_set);
+        }
+        initialized += 1;
+    }
+
+    if (old_id_valid and shared) {
+        const replacement_id = result.len - 1;
+        result[replacement_id] = try allocator.dupe(bool, terminal_sets[old_id]);
+        initialized += 1;
+        for (states[1..]) |*state_value| {
+            if (state_value.lex_state_id == states[0].lex_state_id) {
+                state_value.lex_state_id = @intCast(replacement_id);
+            }
+        }
+    } else if (!old_id_valid) {
+        const replacement_id = result.len - 1;
+        result[replacement_id] = try recoveryLexTerminalSetAlloc(allocator, states[0].actions, terminal_count);
+        initialized += 1;
+        states[0].lex_state_id = @intCast(replacement_id);
+    }
+
+    return result;
+}
+
+fn recoveryLexTerminalSetAlloc(
+    allocator: std.mem.Allocator,
+    actions_list: []const SerializedActionEntry,
+    terminal_count: usize,
+) std.mem.Allocator.Error![]const bool {
+    const terminal_set = try allocator.alloc(bool, terminal_count);
+    @memset(terminal_set, false);
+    for (actions_list) |entry| {
+        switch (entry.symbol) {
+            .terminal => |index| {
+                if (index < terminal_set.len) terminal_set[index] = true;
+            },
+            .end, .non_terminal, .external => {},
+        }
+    }
+    return terminal_set;
 }
 
 fn buildExtractedErrorRecoverySymbolsAlloc(
@@ -661,6 +750,8 @@ fn buildExtractedErrorRecoverySymbolsAlloc(
     syntax: syntax_ir.SyntaxGrammar,
     lexical: lexical_ir.LexicalGrammar,
     states: []const SerializedState,
+    upstream_coincident_tokens: []const bool,
+    upstream_coincident_terminal_count: usize,
 ) (std.mem.Allocator.Error || lexer_model.ExpandError || first.FirstError)![]const syntax_ir.SymbolRef {
     for (lexical.variables) |variable| {
         if (variable.rule >= prepared.rules.len) return error.UnsupportedRule;
@@ -692,8 +783,14 @@ fn buildExtractedErrorRecoverySymbolsAlloc(
 
     const keyword_tokens = try buildKeywordTerminalSetAlloc(allocator, prepared, lexical);
     defer allocator.free(keyword_tokens);
-    const coincident_tokens = try buildSerializedCoincidentTokenIndexAlloc(allocator, states, lexical.variables.len);
-    defer allocator.free(coincident_tokens);
+    var allocated_coincident_tokens: []bool = &.{};
+    const coincident_tokens: []const bool = if (upstream_coincident_terminal_count == lexical.variables.len and upstream_coincident_tokens.len == lexical.variables.len * lexical.variables.len)
+        upstream_coincident_tokens
+    else blk: {
+        allocated_coincident_tokens = try buildSerializedCoincidentTokenIndexAlloc(allocator, states, lexical.variables.len);
+        break :blk allocated_coincident_tokens;
+    };
+    defer if (allocated_coincident_tokens.len != 0) allocator.free(allocated_coincident_tokens);
 
     const conflict_free_tokens = try allocator.alloc(bool, lexical.variables.len);
     defer allocator.free(conflict_free_tokens);
@@ -1017,9 +1114,10 @@ fn attachExternalScannerAlloc(
         .symbols = symbols,
         .states = built_states.states,
     };
-    result.lex_modes = try buildLexModesWithExternalStatesAlloc(
+    result.lex_modes = try buildLexModesWithExternalStatesFromStatesAlloc(
         allocator,
         serialized.lex_modes,
+        serialized.states,
         built_states.state_ids,
     );
     allocator.free(built_states.state_ids);
@@ -1047,9 +1145,10 @@ fn attachExtractedExternalScannerAlloc(
         .symbols = symbols,
         .states = built_states.states,
     };
-    result.lex_modes = try buildLexModesWithExternalStatesAlloc(
+    result.lex_modes = try buildLexModesWithExternalStatesFromStatesAlloc(
         allocator,
         serialized.lex_modes,
+        serialized.states,
         built_states.state_ids,
     );
     allocator.free(built_states.state_ids);
@@ -2836,14 +2935,18 @@ fn buildExternalScannerStatesAlloc(
     };
 }
 
-fn buildLexModesWithExternalStatesAlloc(
+fn buildLexModesWithExternalStatesFromStatesAlloc(
     allocator: std.mem.Allocator,
     lex_modes: []const lexer_serialize.SerializedLexMode,
+    states: []const SerializedState,
     external_state_ids: []const u16,
 ) std.mem.Allocator.Error![]const lexer_serialize.SerializedLexMode {
     const result = try allocator.alloc(lexer_serialize.SerializedLexMode, lex_modes.len);
     for (lex_modes, 0..) |mode, index| {
         result[index] = mode;
+        if (index < states.len) {
+            result[index].lex_state = @intCast(states[index].lex_state_id);
+        }
         if (index < external_state_ids.len) {
             result[index].external_lex_state = external_state_ids[index];
         }
@@ -3401,6 +3504,7 @@ test "attachExtractedMetadataAlloc marks external extras valid for scanner state
     defer deinitParseActionList(allocator, serialized.parse_action_list);
     defer deinitSmallParseTable(allocator, serialized.small_parse_table);
     defer allocator.free(serialized.lex_modes);
+    defer deinitLexStateTerminalSets(allocator, serialized.lex_state_terminal_sets);
     defer deinitSupertypeMap(allocator, serialized.supertype_map);
     defer deinitExternalScanner(allocator, serialized.external_scanner);
 
@@ -3466,6 +3570,7 @@ test "attachExtractedMetadataAlloc gives state zero a recovery external scanner 
     defer deinitParseActionList(allocator, serialized.parse_action_list);
     defer deinitSmallParseTable(allocator, serialized.small_parse_table);
     defer allocator.free(serialized.lex_modes);
+    defer deinitLexStateTerminalSets(allocator, serialized.lex_state_terminal_sets);
     defer deinitSupertypeMap(allocator, serialized.supertype_map);
     defer deinitExternalScanner(allocator, serialized.external_scanner);
 

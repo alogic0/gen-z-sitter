@@ -1606,20 +1606,14 @@ fn minimizeRuntimeLexTableAlloc(
     defer {
         for (groups.items) |group| allocator.free(group);
     }
-    const start_rank_by_state = try allocator.alloc(usize, states.len);
-    defer allocator.free(start_rank_by_state);
-    @memset(start_rank_by_state, std.math.maxInt(usize));
-    for (starts, 0..) |start, start_rank| {
-        if (start < start_rank_by_state.len) start_rank_by_state[start] = start_rank;
-    }
     for (states, 0..) |state_value, state_id| {
         var matched: ?usize = null;
         for (groups.items, 0..) |group, group_id| {
             if (lexInitialSignaturesEql(
                 states[group[0]],
                 state_value,
-                start_rank_by_state[group[0]],
-                start_rank_by_state[state_id],
+                group[0] == 0,
+                state_id == 0,
             )) {
                 matched = group_id;
                 break;
@@ -1646,28 +1640,40 @@ fn minimizeRuntimeLexTableAlloc(
             const group = groups.items[group_index];
             if (group.len <= 1) continue;
 
-            var retained = std.array_list.Managed(usize).init(allocator);
-            defer retained.deinit();
+            const split_marks = try allocator.alloc(bool, states.len);
+            defer allocator.free(split_marks);
+            @memset(split_marks, false);
+
             var split = std.array_list.Managed(usize).init(allocator);
             defer split.deinit();
+            var left_index: usize = 0;
+            while (left_index < group.len) : (left_index += 1) {
+                const left_state_id = group[left_index];
+                if (split_marks[left_state_id]) continue;
 
-            const representative = group[0];
-            try retained.append(representative);
-            for (group[1..]) |state_id| {
-                if (lexSuccessorsEql(states[representative], states[state_id], group_ids)) {
-                    try retained.append(state_id);
-                } else {
-                    try split.append(state_id);
+                var right_index = left_index + 1;
+                while (right_index < group.len) : (right_index += 1) {
+                    const right_state_id = group[right_index];
+                    if (split_marks[right_state_id]) continue;
+                    if (lexSuccessorsDiffer(states[left_state_id], states[right_state_id], group_ids)) {
+                        try split.append(right_state_id);
+                        split_marks[right_state_id] = true;
+                    }
                 }
             }
             if (split.items.len == 0) continue;
 
+            var retained = std.array_list.Managed(usize).init(allocator);
+            defer retained.deinit();
+            for (group) |state_id| {
+                if (!split_marks[state_id]) try retained.append(state_id);
+            }
+
             allocator.free(group);
             groups.items[group_index] = try retained.toOwnedSlice();
-            try groups.insert(group_index + 1, try split.toOwnedSlice());
+            try groups.append(try split.toOwnedSlice());
             assignLexGroupIds(groups.items, group_ids);
             changed = true;
-            break;
         }
     }
 
@@ -1717,10 +1723,10 @@ fn assignLexGroupIds(groups: []const []usize, group_ids: []usize) void {
 fn lexInitialSignaturesEql(
     left: lexer_serialize.SerializedLexState,
     right: lexer_serialize.SerializedLexState,
-    left_start_rank: usize,
-    right_start_rank: usize,
+    left_is_error_state: bool,
+    right_is_error_state: bool,
 ) bool {
-    if (left_start_rank != right_start_rank) return false;
+    if (left_is_error_state != right_is_error_state) return false;
     if (!optionalSymbolRefEql(left.accept_symbol, right.accept_symbol)) return false;
     if ((left.eof_target != null) != (right.eof_target != null)) return false;
     if (left.transitions.len != right.transitions.len) return false;
@@ -1731,18 +1737,16 @@ fn lexInitialSignaturesEql(
     return true;
 }
 
-fn lexSuccessorsEql(
+fn lexSuccessorsDiffer(
     left: lexer_serialize.SerializedLexState,
     right: lexer_serialize.SerializedLexState,
     group_ids: []const usize,
 ) bool {
     for (left.transitions, right.transitions) |left_transition, right_transition| {
-        if (left_transition.next_state_id >= group_ids.len or right_transition.next_state_id >= group_ids.len) return false;
-        if (group_ids[left_transition.next_state_id] != group_ids[right_transition.next_state_id]) return false;
+        if (left_transition.next_state_id >= group_ids.len or right_transition.next_state_id >= group_ids.len) return true;
+        if (group_ids[left_transition.next_state_id] != group_ids[right_transition.next_state_id]) return true;
     }
-    if (left.eof_target == null and right.eof_target == null) return true;
-    if (left.eof_target == null or right.eof_target == null) return false;
-    return group_ids[left.eof_target.?] == group_ids[right.eof_target.?];
+    return false;
 }
 
 fn optionalSymbolRefEql(left: ?syntax_grammar.SymbolRef, right: ?syntax_grammar.SymbolRef) bool {

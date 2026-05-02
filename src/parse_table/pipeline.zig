@@ -223,7 +223,9 @@ pub fn buildStatesFromPreparedWithOptions(
     effective_build_options.reserved_word_sets = reserved_words.sets;
     var owned_lex_conflicts: ?build.LexStateTerminalConflictMap = null;
     defer if (owned_lex_conflicts) |conflicts| {
+        allocator.free(conflicts.conflict_or_prefixes);
         allocator.free(conflicts.overlaps);
+        allocator.free(conflicts.merge_overlaps);
         allocator.free(conflicts.keyword_tokens);
         allocator.free(conflicts.external_internal_tokens);
         allocator.free(conflicts.conflicts);
@@ -366,9 +368,15 @@ fn lexStateTerminalConflictMapAlloc(
     const conflicts = try allocator.alloc(bool, terminal_count * terminal_count);
     errdefer allocator.free(conflicts);
     @memset(conflicts, false);
+    const conflict_or_prefixes = try allocator.alloc(bool, terminal_count * terminal_count);
+    errdefer allocator.free(conflict_or_prefixes);
+    @memset(conflict_or_prefixes, false);
     const overlaps = try allocator.alloc(bool, terminal_count * terminal_count);
     errdefer allocator.free(overlaps);
     @memset(overlaps, false);
+    const merge_overlaps = try allocator.alloc(bool, terminal_count * terminal_count);
+    errdefer allocator.free(merge_overlaps);
+    @memset(merge_overlaps, false);
     const keyword_tokens = try allocator.alloc(bool, terminal_count);
     errdefer allocator.free(keyword_tokens);
     @memset(keyword_tokens, false);
@@ -411,18 +419,30 @@ fn lexStateTerminalConflictMapAlloc(
                 status.does_match_valid_continuation or
                 status.does_match_separators or
                 status.matches_same_string;
+            conflict_or_prefixes[left * terminal_count + right] =
+                status.does_match_valid_continuation or
+                status.does_match_separators or
+                status.matches_same_string or
+                status.matches_prefix;
             overlaps[left * terminal_count + right] =
                 status.does_match_separators or
                 status.matches_prefix or
                 status.matches_same_string or
                 status.does_match_valid_continuation;
+            merge_overlaps[left * terminal_count + right] =
+                status.does_match_separators or
+                status.matches_prefix or
+                status.matches_same_string or
+                status.does_match_continuation;
         }
     }
 
     return .{
         .terminal_count = terminal_count,
         .conflicts = conflicts,
+        .conflict_or_prefixes = conflict_or_prefixes,
         .overlaps = overlaps,
+        .merge_overlaps = merge_overlaps,
         .keyword_tokens = keyword_tokens,
         .external_internal_tokens = external_internal_tokens,
         .terminal_names = terminal_names,

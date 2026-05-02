@@ -82,6 +82,7 @@ const BuildEnvFlags = struct {
     progress: bool = false,
     global_progress: bool = false,
     context_log: bool = false,
+    lex_state_merge_trace: bool = false,
     profile: bool = false,
     has_target_filter: bool = false,
 };
@@ -105,6 +106,13 @@ fn hasProgressTargetFilterRaw() bool {
     return value.len != 0;
 }
 
+fn envUsizeRaw(name: []const u8, default_value: usize) usize {
+    const value = std.process.Environ.getAlloc(runtime_io.environ(), std.heap.page_allocator, name) catch return default_value;
+    defer std.heap.page_allocator.free(value);
+    if (value.len == 0) return default_value;
+    return std.fmt.parseUnsigned(usize, value, 10) catch default_value;
+}
+
 fn ensureBuildEnvFlags() void {
     if (build_env_flags_loaded) return;
     build_env_flags = .{
@@ -113,6 +121,7 @@ fn ensureBuildEnvFlags() void {
         .progress = envFlagEnabledRaw("GEN_Z_SITTER_PARSE_TABLE_PROGRESS"),
         .global_progress = envFlagEnabledRaw("GEN_Z_SITTER_PROGRESS"),
         .context_log = envFlagEnabledRaw("GEN_Z_SITTER_PARSE_TABLE_CONTEXT_LOG"),
+        .lex_state_merge_trace = envFlagEnabledRaw("GEN_Z_SITTER_LEX_STATE_MERGE_TRACE"),
         .profile = envFlagEnabledRaw("GEN_Z_SITTER_PARSE_TABLE_PROFILE"),
         .has_target_filter = hasProgressTargetFilterRaw(),
     };
@@ -149,6 +158,13 @@ fn shouldLogBuildProgress() bool {
 fn shouldLogBuildContexts() bool {
     ensureBuildEnvFlags();
     if (!build_env_flags.context_log) return false;
+    if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
+    return true;
+}
+
+fn shouldTraceLexStateMerges() bool {
+    ensureBuildEnvFlags();
+    if (!build_env_flags.lex_state_merge_trace) return false;
     if (hasProgressTargetFilter() and !scoped_progress_enabled) return false;
     return true;
 }
@@ -1840,7 +1856,9 @@ pub const CoarseTransitionSpec = struct {
 pub const LexStateTerminalConflictMap = struct {
     terminal_count: usize,
     conflicts: []const bool,
+    conflict_or_prefixes: []const bool = &.{},
     overlaps: []const bool = &.{},
+    merge_overlaps: []const bool = &.{},
     keyword_tokens: []const bool = &.{},
     external_internal_tokens: []const bool = &.{},
     terminal_names: []const []const u8 = &.{},
@@ -1850,12 +1868,28 @@ pub const LexStateTerminalConflictMap = struct {
         return self.conflicts[left * self.terminal_count + right];
     }
 
+    pub fn conflictsOrPrefixesWith(self: LexStateTerminalConflictMap, left: usize, right: usize) bool {
+        if (left >= self.terminal_count or right >= self.terminal_count) return true;
+        if (self.conflict_or_prefixes.len == self.terminal_count * self.terminal_count) {
+            return self.conflict_or_prefixes[left * self.terminal_count + right];
+        }
+        return self.conflictsWith(left, right);
+    }
+
     pub fn overlapsWith(self: LexStateTerminalConflictMap, left: usize, right: usize) bool {
         if (left >= self.terminal_count or right >= self.terminal_count) return true;
         if (self.overlaps.len == self.terminal_count * self.terminal_count) {
             return self.overlaps[left * self.terminal_count + right];
         }
         return self.conflictsWith(left, right);
+    }
+
+    pub fn mergeOverlapsWith(self: LexStateTerminalConflictMap, left: usize, right: usize) bool {
+        if (left >= self.terminal_count or right >= self.terminal_count) return true;
+        if (self.merge_overlaps.len == self.terminal_count * self.terminal_count) {
+            return self.merge_overlaps[left * self.terminal_count + right];
+        }
+        return self.overlapsWith(left, right);
     }
 
     fn toMinimizeMap(
@@ -2440,6 +2474,8 @@ pub const BuildResult = struct {
     lex_state_count: usize,
     lex_state_terminal_sets: []const []const bool = &.{},
     fragile_token_sets: []const []const bool = &.{},
+    recovery_coincident_tokens: []const bool = &.{},
+    recovery_coincident_terminal_count: usize = 0,
     actions: actions.ActionTable,
     resolved_actions: resolution.ResolvedActionTable,
 
@@ -2519,11 +2555,18 @@ fn terminalCountForResolvedActions(resolved_actions: resolution.ResolvedActionTa
     return count;
 }
 
+const LexStateAssignmentOptions = struct {
+    word_token: ?syntax_ir.SymbolRef = null,
+    reserved_word_sets: []const []const syntax_ir.SymbolRef = &.{},
+    coincident_tokens: []const bool = &.{},
+};
+
 fn assignLexStateIdsAlloc(
     allocator: std.mem.Allocator,
     parse_states: []const state.ParseState,
     resolved_actions: resolution.ResolvedActionTable,
     terminal_conflicts: ?LexStateTerminalConflictMap,
+    options: LexStateAssignmentOptions,
 ) std.mem.Allocator.Error!AssignedLexStates {
     if (parse_states.len == 0) {
         return .{
@@ -2533,7 +2576,10 @@ fn assignLexStateIdsAlloc(
         };
     }
 
-    const terminal_count = terminalCountForResolvedActions(resolved_actions);
+    const terminal_count = if (terminal_conflicts) |terminal_conflict_map|
+        @max(terminalCountForResolvedActions(resolved_actions), terminal_conflict_map.terminal_count)
+    else
+        terminalCountForResolvedActions(resolved_actions);
     const assigned_states = try allocator.dupe(state.ParseState, parse_states);
     errdefer allocator.free(assigned_states);
     var terminal_sets = std.array_list.Managed([]bool).init(allocator);
@@ -2543,6 +2589,29 @@ fn assignLexStateIdsAlloc(
     }
     var lex_state_ids = LexStateIdByTerminalSet.init(allocator);
     defer lex_state_ids.deinit();
+
+    const trace_merges = shouldTraceLexStateMerges();
+    const trace_limit = envUsizeRaw("GEN_Z_SITTER_LEX_STATE_MERGE_TRACE_LIMIT", 128);
+    var trace_printed: usize = 0;
+    var trace_union_merges: usize = 0;
+    var owner_counts: []usize = &.{};
+    if (trace_merges) {
+        owner_counts = try allocator.alloc(usize, parse_states.len);
+        @memset(owner_counts, 0);
+    }
+    defer if (trace_merges) allocator.free(owner_counts);
+
+    var allocated_coincident_tokens: []bool = &.{};
+    const coincident_tokens: []const bool = if (options.coincident_tokens.len == terminal_count * terminal_count)
+        options.coincident_tokens
+    else blk: {
+        if (terminal_conflicts == null or terminal_count == 0) break :blk &.{};
+        allocated_coincident_tokens = try buildCoincidentTerminalMapAlloc(allocator, resolved_actions, terminal_count);
+        break :blk allocated_coincident_tokens;
+    };
+    defer {
+        if (allocated_coincident_tokens.len != 0) allocator.free(allocated_coincident_tokens);
+    }
 
     var next_id: state.LexStateId = 0;
     for (assigned_states) |*parse_state| {
@@ -2556,16 +2625,43 @@ fn assignLexStateIdsAlloc(
                 .end, .non_terminal, .external => {},
             }
         }
+        addReservedWordTokensToLexSet(terminal_set, parse_state.reserved_word_set_id, options.reserved_word_sets);
+        normalizeKeywordTokensInLexSet(terminal_set, terminal_conflicts, options.word_token);
 
         if (terminal_conflicts) |terminal_conflict_map| {
-            if (assignMergedLexStateId(terminal_sets.items, terminal_set, terminal_conflict_map)) |existing_id| {
+            if (assignMergedLexStateId(terminal_sets.items, terminal_set, terminal_conflict_map, coincident_tokens)) |merge| {
+                parse_state.lex_state_id = merge.id;
+                if (trace_merges) {
+                    owner_counts[merge.id] += 1;
+                    if (merge.candidate_only_count != 0 or merge.existing_only_count != 0) {
+                        trace_union_merges += 1;
+                        if (trace_printed < trace_limit) {
+                            traceLexStateMerge(
+                                parse_state.id,
+                                merge,
+                                terminal_sets.items[merge.id],
+                                terminal_set,
+                                terminal_conflict_map,
+                                owner_counts[merge.id],
+                            );
+                            trace_printed += 1;
+                        }
+                    }
+                }
+                mergeTerminalSet(terminal_sets.items[merge.id], terminal_set);
                 allocator.free(terminal_set);
-                parse_state.lex_state_id = existing_id;
                 continue;
             }
 
             try terminal_sets.append(terminal_set);
             parse_state.lex_state_id = next_id;
+            if (trace_merges) {
+                owner_counts[next_id] = 1;
+                if (trace_printed < trace_limit) {
+                    traceLexStateNewGroup(parse_state.id, next_id, terminal_set, terminal_conflict_map);
+                    trace_printed += 1;
+                }
+            }
             next_id += 1;
             continue;
         }
@@ -2574,6 +2670,7 @@ fn assignLexStateIdsAlloc(
         if (gop.found_existing) {
             allocator.free(terminal_set);
             parse_state.lex_state_id = gop.value_ptr.*;
+            if (trace_merges) owner_counts[gop.value_ptr.*] += 1;
             continue;
         }
 
@@ -2581,7 +2678,20 @@ fn assignLexStateIdsAlloc(
         gop.value_ptr.* = next_id;
         try terminal_sets.append(terminal_set);
         parse_state.lex_state_id = next_id;
+        if (trace_merges) {
+            owner_counts[next_id] = 1;
+        }
         next_id += 1;
+    }
+
+    if (trace_merges) {
+        std.debug.print(
+            "[lex-state-merge-summary] states={d} lex_states={d} union_merges={d} printed={d} terminal_count={d}\n",
+            .{ assigned_states.len, next_id, trace_union_merges, trace_printed, terminal_count },
+        );
+        if (terminal_conflicts) |terminal_conflict_map| {
+            traceLexStateGroups(terminal_sets.items, owner_counts[0..next_id], terminal_conflict_map, trace_limit);
+        }
     }
 
     return .{
@@ -2591,41 +2701,308 @@ fn assignLexStateIdsAlloc(
     };
 }
 
+const LexStateMerge = struct {
+    id: state.LexStateId,
+    existing_count: usize,
+    candidate_count: usize,
+    shared_count: usize,
+    existing_only_count: usize,
+    candidate_only_count: usize,
+    union_count: usize,
+};
+
 fn assignMergedLexStateId(
     terminal_sets: []const []bool,
     candidate: []const bool,
     terminal_conflict_map: LexStateTerminalConflictMap,
-) ?state.LexStateId {
+    coincident_tokens: []const bool,
+) ?LexStateMerge {
     for (terminal_sets, 0..) |terminal_set, index| {
-        if (!terminalSetsCanMerge(terminal_set, candidate, terminal_conflict_map)) continue;
-        mergeTerminalSet(terminal_set, candidate);
-        return @intCast(index);
+        if (!terminalSetsCanMerge(terminal_set, candidate, terminal_conflict_map, coincident_tokens)) continue;
+        const merge = lexStateMergeStats(@intCast(index), terminal_set, candidate);
+        return merge;
     }
     return null;
+}
+
+fn addReservedWordTokensToLexSet(
+    terminal_set: []bool,
+    reserved_word_set_id: u16,
+    reserved_word_sets: []const []const syntax_ir.SymbolRef,
+) void {
+    if (reserved_word_set_id >= reserved_word_sets.len) return;
+    for (reserved_word_sets[reserved_word_set_id]) |reserved_word| {
+        switch (reserved_word) {
+            .terminal => |index| {
+                if (index < terminal_set.len) terminal_set[index] = true;
+            },
+            .end, .non_terminal, .external => {},
+        }
+    }
+}
+
+fn normalizeKeywordTokensInLexSet(
+    terminal_set: []bool,
+    terminal_conflicts: ?LexStateTerminalConflictMap,
+    word_token: ?syntax_ir.SymbolRef,
+) void {
+    const word_index = switch (word_token orelse syntax_ir.SymbolRef{ .end = {} }) {
+        .terminal => |index| index,
+        .end, .non_terminal, .external => return,
+    };
+    if (word_index >= terminal_set.len) return;
+    const conflict_map = terminal_conflicts orelse return;
+
+    var saw_keyword = false;
+    for (conflict_map.keyword_tokens, 0..) |is_keyword, token_index| {
+        if (!is_keyword or token_index >= terminal_set.len or !terminal_set[token_index]) continue;
+        terminal_set[token_index] = false;
+        saw_keyword = true;
+    }
+    if (saw_keyword) terminal_set[word_index] = true;
+}
+
+fn lexStateMergeStats(
+    id: state.LexStateId,
+    existing: []const bool,
+    candidate: []const bool,
+) LexStateMerge {
+    var existing_count: usize = 0;
+    var candidate_count: usize = 0;
+    var shared_count: usize = 0;
+    var existing_only_count: usize = 0;
+    var candidate_only_count: usize = 0;
+    for (existing, 0..) |existing_present, index| {
+        const candidate_present = index < candidate.len and candidate[index];
+        if (existing_present) existing_count += 1;
+        if (candidate_present) candidate_count += 1;
+        if (existing_present and candidate_present) {
+            shared_count += 1;
+        } else if (existing_present) {
+            existing_only_count += 1;
+        } else if (candidate_present) {
+            candidate_only_count += 1;
+        }
+    }
+    return .{
+        .id = id,
+        .existing_count = existing_count,
+        .candidate_count = candidate_count,
+        .shared_count = shared_count,
+        .existing_only_count = existing_only_count,
+        .candidate_only_count = candidate_only_count,
+        .union_count = existing_count + candidate_only_count,
+    };
 }
 
 fn terminalSetsCanMerge(
     existing: []const bool,
     candidate: []const bool,
     terminal_conflict_map: LexStateTerminalConflictMap,
+    coincident_tokens: []const bool,
 ) bool {
     for (existing, 0..) |existing_present, existing_index| {
         if (!existing_present or candidate[existing_index]) continue;
-        for (candidate, 0..) |candidate_present, candidate_index| {
-            if (!candidate_present or existing[candidate_index]) continue;
-            if (terminal_conflict_map.conflictsWith(existing_index, candidate_index) or
-                terminal_conflict_map.conflictsWith(candidate_index, existing_index))
-            {
-                return false;
+        if (tokenConflictsWithSet(existing_index, candidate, terminal_conflict_map, coincident_tokens)) return false;
+    }
+    for (candidate, 0..) |candidate_present, candidate_index| {
+        if (!candidate_present or existing[candidate_index]) continue;
+        if (tokenConflictsWithSet(candidate_index, existing, terminal_conflict_map, coincident_tokens)) return false;
+    }
+    return true;
+}
+
+fn tokenConflictsWithSet(
+    token: usize,
+    other_set: []const bool,
+    terminal_conflict_map: LexStateTerminalConflictMap,
+    coincident_tokens: []const bool,
+) bool {
+    for (other_set, 0..) |other_present, other| {
+        if (!other_present) continue;
+        if (terminal_conflict_map.conflictsOrPrefixesWith(token, other)) return true;
+        if (terminal_conflict_map.mergeOverlapsWith(token, other) or terminal_conflict_map.mergeOverlapsWith(other, token)) {
+            if (!coincidentTokenContains(coincident_tokens, terminal_conflict_map.terminal_count, token, other)) {
+                return true;
             }
         }
     }
-    return true;
+    return false;
+}
+
+fn buildCoincidentTerminalMapAlloc(
+    allocator: std.mem.Allocator,
+    resolved_actions: resolution.ResolvedActionTable,
+    terminal_count: usize,
+) std.mem.Allocator.Error![]bool {
+    const values = try allocator.alloc(bool, terminal_count * terminal_count);
+    @memset(values, false);
+
+    var terminals = std.array_list.Managed(usize).init(allocator);
+    defer terminals.deinit();
+
+    for (resolved_actions.states) |resolved_state| {
+        terminals.clearRetainingCapacity();
+        for (resolved_state.groups) |group| {
+            const terminal = switch (group.symbol) {
+                .terminal => |index| index,
+                .end, .non_terminal, .external => continue,
+            };
+            if (terminal >= terminal_count) continue;
+
+            var seen = false;
+            for (terminals.items) |existing| {
+                if (existing == terminal) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (!seen) try terminals.append(terminal);
+        }
+
+        for (terminals.items, 0..) |left, left_index| {
+            for (terminals.items[left_index..]) |right| {
+                values[left * terminal_count + right] = true;
+                values[right * terminal_count + left] = true;
+            }
+        }
+    }
+
+    return values;
+}
+
+fn coincidentTokenContains(values: []const bool, terminal_count: usize, left: usize, right: usize) bool {
+    if (left >= terminal_count or right >= terminal_count) return false;
+    if (values.len != terminal_count * terminal_count) return false;
+    return values[left * terminal_count + right];
 }
 
 fn mergeTerminalSet(existing: []bool, candidate: []const bool) void {
     for (candidate, 0..) |present, index| {
         if (present) existing[index] = true;
+    }
+}
+
+fn traceLexStateMerge(
+    parse_state_id: state.StateId,
+    merge: LexStateMerge,
+    existing_set: []const bool,
+    candidate_set: []const bool,
+    terminal_conflict_map: LexStateTerminalConflictMap,
+    owner_count: usize,
+) void {
+    std.debug.print(
+        "[lex-state-merge] state={d} into={d} owners={d} existing={d} candidate={d} shared={d} existing_only={d} candidate_only={d} union={d} candidate_only_tokens=",
+        .{
+            parse_state_id,
+            merge.id,
+            owner_count,
+            merge.existing_count,
+            merge.candidate_count,
+            merge.shared_count,
+            merge.existing_only_count,
+            merge.candidate_only_count,
+            merge.union_count,
+        },
+    );
+    traceTerminalSetDiffTokens(existing_set, candidate_set, terminal_conflict_map, .candidate_only, 24);
+    std.debug.print(" existing_only_tokens=", .{});
+    traceTerminalSetDiffTokens(existing_set, candidate_set, terminal_conflict_map, .existing_only, 24);
+    std.debug.print("\n", .{});
+}
+
+fn traceLexStateNewGroup(
+    parse_state_id: state.StateId,
+    lex_state_id: state.LexStateId,
+    terminal_set: []const bool,
+    terminal_conflict_map: LexStateTerminalConflictMap,
+) void {
+    std.debug.print(
+        "[lex-state-new-group] state={d} id={d} terminals={d} tokens=",
+        .{ parse_state_id, lex_state_id, countTerminalSet(terminal_set) },
+    );
+    traceTerminalSetTokens(terminal_set, terminal_conflict_map, 64);
+    std.debug.print("\n", .{});
+}
+
+const TerminalDiffKind = enum {
+    candidate_only,
+    existing_only,
+};
+
+fn traceTerminalSetTokens(
+    terminal_set: []const bool,
+    terminal_conflict_map: LexStateTerminalConflictMap,
+    limit: usize,
+) void {
+    std.debug.print("[", .{});
+    var printed: usize = 0;
+    for (terminal_set, 0..) |present, index| {
+        if (!present) continue;
+        if (printed != 0) std.debug.print(",", .{});
+        traceTerminalName(index, terminal_conflict_map);
+        printed += 1;
+        if (printed >= limit) break;
+    }
+    if (printed >= limit) std.debug.print(",...", .{});
+    std.debug.print("]", .{});
+}
+
+fn traceTerminalSetDiffTokens(
+    existing_set: []const bool,
+    candidate_set: []const bool,
+    terminal_conflict_map: LexStateTerminalConflictMap,
+    kind: TerminalDiffKind,
+    limit: usize,
+) void {
+    std.debug.print("[", .{});
+    var printed: usize = 0;
+    for (existing_set, 0..) |existing_present, index| {
+        const candidate_present = index < candidate_set.len and candidate_set[index];
+        const include = switch (kind) {
+            .candidate_only => candidate_present and !existing_present,
+            .existing_only => existing_present and !candidate_present,
+        };
+        if (!include) continue;
+        if (printed != 0) std.debug.print(",", .{});
+        traceTerminalName(index, terminal_conflict_map);
+        printed += 1;
+        if (printed >= limit) break;
+    }
+    if (printed >= limit) std.debug.print(",...", .{});
+    std.debug.print("]", .{});
+}
+
+fn traceLexStateGroups(
+    terminal_sets: []const []bool,
+    owner_counts: []const usize,
+    terminal_conflict_map: LexStateTerminalConflictMap,
+    limit: usize,
+) void {
+    for (terminal_sets, 0..) |terminal_set, index| {
+        if (index >= limit) break;
+        std.debug.print(
+            "[lex-state-group] id={d} owners={d} terminals={d} tokens=",
+            .{ index, if (index < owner_counts.len) owner_counts[index] else 0, countTerminalSet(terminal_set) },
+        );
+        traceTerminalSetTokens(terminal_set, terminal_conflict_map, 64);
+        std.debug.print("\n", .{});
+    }
+}
+
+fn countTerminalSet(terminal_set: []const bool) usize {
+    var count: usize = 0;
+    for (terminal_set) |present| {
+        if (present) count += 1;
+    }
+    return count;
+}
+
+fn traceTerminalName(index: usize, terminal_conflict_map: LexStateTerminalConflictMap) void {
+    if (index < terminal_conflict_map.terminal_names.len and terminal_conflict_map.terminal_names[index].len != 0) {
+        std.debug.print("{d}:{s}", .{ index, terminal_conflict_map.terminal_names[index] });
+    } else {
+        std.debug.print("{d}", .{index});
     }
 }
 
@@ -2756,6 +3133,24 @@ pub fn buildStatesWithOptions(
             .{ resolved_actions_with_extras.hasUnresolvedDecisions(), resolved_actions_with_extras.isSerializationReady() },
         );
     }
+
+    var pre_minimize_coincident_tokens: []bool = &.{};
+    var pre_minimize_coincident_terminal_count: usize = 0;
+    if (options.lex_state_terminal_conflicts) |terminal_conflict_map| {
+        const terminal_count = @max(
+            terminalCountForResolvedActions(resolved_actions_with_extras),
+            terminal_conflict_map.terminal_count,
+        );
+        if (terminal_count != 0) {
+            pre_minimize_coincident_terminal_count = terminal_count;
+            pre_minimize_coincident_tokens = try buildCoincidentTerminalMapAlloc(
+                allocator,
+                resolved_actions_with_extras,
+                terminal_count,
+            );
+        }
+    }
+
     if (options.minimize_states) {
         const unit_reduction_options = try unitReductionOptionsAlloc(
             allocator,
@@ -2790,6 +3185,11 @@ pub fn buildStatesWithOptions(
             minimized.states,
             minimized.resolved_actions,
             options.lex_state_terminal_conflicts,
+            .{
+                .word_token = minimizeWordToken(grammar),
+                .reserved_word_sets = options.reserved_word_sets,
+                .coincident_tokens = pre_minimize_coincident_tokens,
+            },
         );
         const fragile_token_sets = try buildFragileTokenSetsAlloc(
             allocator,
@@ -2806,6 +3206,8 @@ pub fn buildStatesWithOptions(
             .lex_state_count = minimized_lex_states.count,
             .lex_state_terminal_sets = minimized_lex_states.terminal_sets,
             .fragile_token_sets = fragile_token_sets,
+            .recovery_coincident_tokens = pre_minimize_coincident_tokens,
+            .recovery_coincident_terminal_count = pre_minimize_coincident_terminal_count,
             .actions = action_projection,
             .resolved_actions = minimized.resolved_actions,
         };
@@ -2817,6 +3219,11 @@ pub fn buildStatesWithOptions(
         constructed.states,
         resolved_actions_with_extras,
         options.lex_state_terminal_conflicts,
+        .{
+            .word_token = minimizeWordToken(grammar),
+            .reserved_word_sets = options.reserved_word_sets,
+            .coincident_tokens = pre_minimize_coincident_tokens,
+        },
     );
     const fragile_token_sets = try buildFragileTokenSetsAlloc(
         allocator,
@@ -2834,6 +3241,8 @@ pub fn buildStatesWithOptions(
         .lex_state_count = lex_states.count,
         .lex_state_terminal_sets = lex_states.terminal_sets,
         .fragile_token_sets = fragile_token_sets,
+        .recovery_coincident_tokens = pre_minimize_coincident_tokens,
+        .recovery_coincident_terminal_count = pre_minimize_coincident_terminal_count,
         .actions = action_projection,
         .resolved_actions = resolved_actions_with_extras,
     };
@@ -6121,7 +6530,7 @@ test "assignLexStateIdsAlloc reuses ids for equivalent terminal sets determinist
         },
     };
 
-    const assigned = try assignLexStateIdsAlloc(allocator, parse_states[0..], resolved_actions, null);
+    const assigned = try assignLexStateIdsAlloc(allocator, parse_states[0..], resolved_actions, null, .{});
     defer allocator.free(assigned.states);
     defer {
         for (assigned.terminal_sets) |terminal_set| allocator.free(terminal_set);
@@ -6189,7 +6598,7 @@ test "assignLexStateIdsAlloc merges non-conflicting terminal sets" {
         .conflicts = conflict_bits[0..],
     };
 
-    const assigned = try assignLexStateIdsAlloc(allocator, parse_states[0..], resolved_actions, terminal_conflict_map);
+    const assigned = try assignLexStateIdsAlloc(allocator, parse_states[0..], resolved_actions, terminal_conflict_map, .{});
     defer allocator.free(assigned.states);
     defer {
         for (assigned.terminal_sets) |terminal_set| allocator.free(terminal_set);
