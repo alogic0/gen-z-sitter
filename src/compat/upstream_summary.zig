@@ -12,11 +12,13 @@ const node_type_pipeline = @import("../node_types/pipeline.zig");
 const parse_grammar = @import("../grammar/parse_grammar.zig");
 const raw_grammar = @import("../grammar/raw_grammar.zig");
 const parse_table_build = @import("../parse_table/build.zig");
+const parse_table_actions = @import("../parse_table/actions.zig");
 const parse_table_conflict_resolution = @import("../parse_table/conflict_resolution.zig");
 const parse_table_pipeline = @import("../parse_table/pipeline.zig");
 const parse_table_serialize = @import("../parse_table/serialize.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const parser_compat = @import("../parser_emit/compat.zig");
+const parser_optimize = @import("../parser_emit/optimize.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
@@ -498,6 +500,49 @@ pub fn generateLocalProductionInfoSummaryJsonAlloc(
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     try writeProductionInfoSummaryJson(&out.writer, result, serialized, flattened, extracted.lexical);
+    return try out.toOwnedSlice();
+}
+
+pub fn generateLocalActionListSummaryJsonAlloc(
+    allocator: std.mem.Allocator,
+    grammar_path: []const u8,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    var loaded = try grammar_loader.loadGrammarFileWithOptions(allocator, grammar_path, .{
+        .js_runtime = options.js_runtime,
+    });
+    defer loaded.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    const prepared = try parse_grammar.parseRawGrammar(arena_allocator, &loaded.json.grammar);
+    const result = try parse_table_pipeline.buildStatesFromPreparedWithOptions(
+        arena_allocator,
+        prepared,
+        .{
+            .minimize_states = options.minimize_states,
+            .strict_expected_conflicts = false,
+            .include_unresolved_parse_actions = false,
+        },
+    );
+    const raw_grouped_actions = try parse_table_actions.buildGroupedActionTable(arena_allocator, result.productions, result.states);
+    const serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+        arena_allocator,
+        prepared,
+        .diagnostic,
+        .{
+            .minimize_states = options.minimize_states,
+            .strict_expected_conflicts = false,
+            .include_unresolved_parse_actions = false,
+        },
+    );
+    const emitted = try parser_optimize.prepareSerializedTableAlloc(arena_allocator, serialized, .{});
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeActionListSummaryJson(&out.writer, emitted, serialized, result, raw_grouped_actions);
     return try out.toOwnedSlice();
 }
 
@@ -2094,6 +2139,366 @@ fn writeMinimizationSummaryJson(
     try writer.writeAll("  },\n");
     try writeMinimizationComparisonKeysJson(writer, default_serialized, minimized_serialized, 2);
     try writer.writeAll("}\n");
+}
+
+const ActionListShapeCounts = struct {
+    empty: usize = 0,
+    shift: usize = 0,
+    shift_repeat: usize = 0,
+    shift_extra: usize = 0,
+    reduce: usize = 0,
+    accept: usize = 0,
+    recover: usize = 0,
+    reduce_shift_repeat: usize = 0,
+    other_single: usize = 0,
+    other_multi: usize = 0,
+};
+
+fn writeActionListSummaryJson(
+    writer: anytype,
+    emitted: parse_table_serialize.SerializedTable,
+    serialized: parse_table_serialize.SerializedTable,
+    result: parse_table_build.BuildResult,
+    raw_grouped_actions: parse_table_actions.GroupedActionTable,
+) !void {
+    const emitted_shape_counts = countActionListShapes(emitted.parse_action_list);
+    const serialized_shape_counts = countActionListShapes(serialized.parse_action_list);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, 2, "parse_action_list_flat_width", parseActionListFlatCount(emitted.parse_action_list), true);
+    try writeUsizeField(writer, 2, "parse_action_list_entry_count", emitted.parse_action_list.len, true);
+    try writeUsizeField(writer, 2, "repeat_singleton_owner_count", countRepeatSingletonOwners(emitted), true);
+    try writeUsizeField(writer, 2, "serialized_parse_action_list_flat_width", parseActionListFlatCount(serialized.parse_action_list), true);
+    try writeUsizeField(writer, 2, "serialized_parse_action_list_entry_count", serialized.parse_action_list.len, true);
+    try writeUsizeField(writer, 2, "serialized_repeat_singleton_owner_count", countRepeatSingletonOwners(serialized), true);
+    try writeUsizeField(writer, 2, "raw_repeat_singleton_with_discarded_reduce_count", countRepeatSingletonsWithDiscardedReductions(serialized, result, raw_grouped_actions), true);
+    try writer.writeAll("  \"shape_counts\": {\n");
+    try writeActionListShapeCountsJson(writer, emitted_shape_counts, 4);
+    try writer.writeAll("  },\n");
+    try writer.writeAll("  \"serialized_shape_counts\": {\n");
+    try writeActionListShapeCountsJson(writer, serialized_shape_counts, 4);
+    try writer.writeAll("  },\n");
+    try writeRepeatSingletonOwnersJson(writer, serialized, result, raw_grouped_actions, 2);
+    try writer.writeAll("\n}\n");
+}
+
+fn writeActionListShapeCountsJson(writer: anytype, counts: ActionListShapeCounts, indent: usize) !void {
+    try writeUsizeField(writer, indent, "empty", counts.empty, true);
+    try writeUsizeField(writer, indent, "SHIFT", counts.shift, true);
+    try writeUsizeField(writer, indent, "SHIFT_REPEAT", counts.shift_repeat, true);
+    try writeUsizeField(writer, indent, "SHIFT_EXTRA", counts.shift_extra, true);
+    try writeUsizeField(writer, indent, "REDUCE", counts.reduce, true);
+    try writeUsizeField(writer, indent, "ACCEPT", counts.accept, true);
+    try writeUsizeField(writer, indent, "RECOVER", counts.recover, true);
+    try writeUsizeField(writer, indent, "REDUCE+SHIFT_REPEAT", counts.reduce_shift_repeat, true);
+    try writeUsizeField(writer, indent, "OTHER_SINGLE", counts.other_single, true);
+    try writeUsizeField(writer, indent, "OTHER_MULTI", counts.other_multi, false);
+}
+
+fn parseActionListFlatCount(entries: []const parse_table_serialize.SerializedParseActionListEntry) usize {
+    var count: usize = 0;
+    for (entries) |entry| count += entry.actions.len + 1;
+    return count;
+}
+
+fn countActionListShapes(entries: []const parse_table_serialize.SerializedParseActionListEntry) ActionListShapeCounts {
+    var counts = ActionListShapeCounts{};
+    for (entries) |entry| {
+        if (entry.actions.len == 0) {
+            counts.empty += 1;
+        } else if (entry.actions.len == 1) {
+            switch (entry.actions[0].kind) {
+                .shift => {
+                    if (entry.actions[0].extra) {
+                        counts.shift_extra += 1;
+                    } else if (entry.actions[0].repetition) {
+                        counts.shift_repeat += 1;
+                    } else {
+                        counts.shift += 1;
+                    }
+                },
+                .reduce => counts.reduce += 1,
+                .accept => counts.accept += 1,
+                .recover => counts.recover += 1,
+            }
+        } else if (actionListIsReduceShiftRepeat(entry.actions)) {
+            counts.reduce_shift_repeat += 1;
+        } else if (entry.actions.len == 1) {
+            counts.other_single += 1;
+        } else {
+            counts.other_multi += 1;
+        }
+    }
+    return counts;
+}
+
+fn actionListIsReduceShiftRepeat(actions: []const parse_table_serialize.SerializedParseAction) bool {
+    if (actions.len != 2) return false;
+    return actions[0].kind == .reduce and
+        actions[1].kind == .shift and
+        actions[1].repetition and
+        !actions[1].extra;
+}
+
+fn countRepeatSingletonOwners(serialized: parse_table_serialize.SerializedTable) usize {
+    var count: usize = 0;
+    for (serialized.states) |serialized_state| {
+        for (serialized_state.actions) |entry| {
+            if (serializedActionEntryIsRepeatSingleton(entry)) count += 1;
+        }
+    }
+    return count;
+}
+
+fn countRepeatSingletonsWithDiscardedReductions(
+    serialized: parse_table_serialize.SerializedTable,
+    result: parse_table_build.BuildResult,
+    raw_grouped_actions: parse_table_actions.GroupedActionTable,
+) usize {
+    var count: usize = 0;
+    for (serialized.states) |serialized_state| {
+        for (serialized_state.actions) |entry| {
+            if (!serializedActionEntryIsRepeatSingleton(entry)) continue;
+            if (rawCandidateReduceCount(result, raw_grouped_actions, serialized_state.id, entry.symbol) > postFilterCandidateReduceCount(entry)) {
+                count += 1;
+            }
+        }
+    }
+    return count;
+}
+
+fn serializedActionEntryIsRepeatSingleton(entry: parse_table_serialize.SerializedActionEntry) bool {
+    return entry.action == .shift and
+        entry.repetition and
+        entry.candidate_actions.len <= 1;
+}
+
+fn writeRepeatSingletonOwnersJson(
+    writer: anytype,
+    serialized: parse_table_serialize.SerializedTable,
+    result: parse_table_build.BuildResult,
+    raw_grouped_actions: parse_table_actions.GroupedActionTable,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("\"repeat_singleton_owners\": [");
+    const owner_count = countRepeatSingletonOwners(serialized);
+    if (owner_count != 0) try writer.writeByte('\n');
+    var owner_index: usize = 0;
+    for (serialized.states) |serialized_state| {
+        for (serialized_state.actions) |entry| {
+            if (!serializedActionEntryIsRepeatSingleton(entry)) continue;
+            try writeRepeatSingletonOwnerJson(writer, serialized, result, raw_grouped_actions, serialized_state.id, entry, indent + 2);
+            owner_index += 1;
+            if (owner_index != owner_count) try writer.writeByte(',');
+            try writer.writeByte('\n');
+        }
+    }
+    if (owner_count != 0) try writeIndent(writer, indent);
+    try writer.writeByte(']');
+}
+
+fn writeRepeatSingletonOwnerJson(
+    writer: anytype,
+    serialized: parse_table_serialize.SerializedTable,
+    result: parse_table_build.BuildResult,
+    raw_grouped_actions: parse_table_actions.GroupedActionTable,
+    state_id: u32,
+    entry: parse_table_serialize.SerializedActionEntry,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, indent + 2, "state_id", @intCast(state_id), true);
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"symbol\": ");
+    try writeNamedSymbolRef(writer, serialized, entry.symbol);
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"action_index\": ");
+    if (parse_table_serialize.parseActionListIndexForActionEntry(serialized.parse_action_list, entry, serialized.productions)) |index| {
+        try writer.print("{d}", .{index});
+    } else {
+        try writer.writeAll("null");
+    }
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"chosen_action\": ");
+    try writeParseActionJson(writer, entry.action);
+    try writer.writeAll(",\n");
+    try writeBoolField(writer, indent + 2, "repetition", entry.repetition, true);
+    try writeUsizeField(writer, indent + 2, "post_filter_candidate_count", entry.candidate_actions.len, true);
+    try writeUsizeField(writer, indent + 2, "post_filter_reduce_count", postFilterCandidateReduceCount(entry), true);
+    try writeUsizeField(writer, indent + 2, "raw_candidate_count", rawCandidateCount(raw_grouped_actions, state_id, entry.symbol), true);
+    try writeUsizeField(writer, indent + 2, "raw_reduce_count", rawCandidateReduceCount(result, raw_grouped_actions, state_id, entry.symbol), true);
+    try writeUsizeField(writer, indent + 2, "raw_repeat_aux_reduce_count", rawRepeatAuxReduceCount(result, raw_grouped_actions, state_id, entry.symbol), true);
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"post_filter_candidates\": ");
+    try writeParseActionArrayJson(writer, entry.candidate_actions);
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"raw_candidates\": ");
+    try writeRawCandidateActionsJson(writer, result, raw_grouped_actions, state_id, entry.symbol);
+    try writer.writeByte('\n');
+    try writeIndent(writer, indent);
+    try writer.writeByte('}');
+}
+
+fn rawCandidateCount(
+    raw_grouped_actions: parse_table_actions.GroupedActionTable,
+    state_id: u32,
+    symbol: syntax_ir.SymbolRef,
+) usize {
+    const group = rawActionGroupForSymbol(raw_grouped_actions, state_id, symbol) orelse return 0;
+    return group.actions.len;
+}
+
+fn rawCandidateReduceCount(
+    result: parse_table_build.BuildResult,
+    raw_grouped_actions: parse_table_actions.GroupedActionTable,
+    state_id: u32,
+    symbol: syntax_ir.SymbolRef,
+) usize {
+    var count: usize = 0;
+    const group = rawActionGroupForSymbol(raw_grouped_actions, state_id, symbol) orelse return 0;
+    for (group.actions) |action| {
+        _ = result;
+        if (action != .reduce) continue;
+        count += 1;
+    }
+    return count;
+}
+
+fn rawRepeatAuxReduceCount(
+    result: parse_table_build.BuildResult,
+    raw_grouped_actions: parse_table_actions.GroupedActionTable,
+    state_id: u32,
+    symbol: syntax_ir.SymbolRef,
+) usize {
+    var count: usize = 0;
+    const group = rawActionGroupForSymbol(raw_grouped_actions, state_id, symbol) orelse return 0;
+    for (group.actions) |action| {
+        const production_id = switch (action) {
+            .reduce => |value| value,
+            else => continue,
+        };
+        if (production_id < result.productions.len and result.productions[production_id].lhs_is_repeat_auxiliary) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+fn postFilterCandidateReduceCount(entry: parse_table_serialize.SerializedActionEntry) usize {
+    var count: usize = 0;
+    for (entry.candidate_actions) |candidate| {
+        if (candidate == .reduce) count += 1;
+    }
+    return count;
+}
+
+fn writeRawCandidateActionsJson(
+    writer: anytype,
+    result: parse_table_build.BuildResult,
+    raw_grouped_actions: parse_table_actions.GroupedActionTable,
+    state_id: u32,
+    symbol: syntax_ir.SymbolRef,
+) !void {
+    try writer.writeByte('[');
+    if (rawActionGroupForSymbol(raw_grouped_actions, state_id, symbol)) |group| {
+        for (group.actions, 0..) |action, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try writeParseActionWithProductionJson(writer, result, action);
+        }
+    }
+    try writer.writeByte(']');
+}
+
+fn rawActionGroupForSymbol(
+    raw_grouped_actions: parse_table_actions.GroupedActionTable,
+    state_id: u32,
+    symbol: syntax_ir.SymbolRef,
+) ?parse_table_actions.ActionGroup {
+    for (raw_grouped_actions.groupsForState(state_id)) |group| {
+        if (symbolRefEql(group.symbol, symbol)) return group;
+    }
+    return null;
+}
+
+fn writeParseActionArrayJson(writer: anytype, values: []const parse_table_actions.ParseAction) !void {
+    try writer.writeByte('[');
+    for (values, 0..) |value, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writeParseActionJson(writer, value);
+    }
+    try writer.writeByte(']');
+}
+
+fn writeParseActionWithProductionJson(
+    writer: anytype,
+    result: parse_table_build.BuildResult,
+    action: parse_table_actions.ParseAction,
+) !void {
+    switch (action) {
+        .reduce => |production_id| {
+            try writer.writeAll("{ \"kind\": ");
+            try writeJsonString(writer, "reduce");
+            try writer.print(", \"production_id\": {d}", .{production_id});
+            if (production_id < result.productions.len) {
+                const production = result.productions[production_id];
+                try writer.print(
+                    ", \"lhs\": {d}, \"lhs_is_repeat_auxiliary\": {s}",
+                    .{ production.lhs, if (production.lhs_is_repeat_auxiliary) "true" else "false" },
+                );
+            }
+            try writer.writeAll(" }");
+        },
+        else => try writeParseActionJson(writer, action),
+    }
+}
+
+fn writeParseActionJson(writer: anytype, action: parse_table_actions.ParseAction) !void {
+    try writer.writeAll("{ \"kind\": ");
+    switch (action) {
+        .shift => |state_id| {
+            try writeJsonString(writer, "shift");
+            try writer.print(", \"state\": {d}", .{state_id});
+        },
+        .shift_extra => {
+            try writeJsonString(writer, "shift_extra");
+        },
+        .reduce => |production_id| {
+            try writeJsonString(writer, "reduce");
+            try writer.print(", \"production_id\": {d}", .{production_id});
+        },
+        .accept => {
+            try writeJsonString(writer, "accept");
+        },
+    }
+    try writer.writeAll(" }");
+}
+
+fn writeNamedSymbolRef(
+    writer: anytype,
+    serialized: parse_table_serialize.SerializedTable,
+    symbol: syntax_ir.SymbolRef,
+) !void {
+    try writer.writeAll("{ \"ref\": ");
+    try writeSymbolRef(writer, symbol);
+    if (symbolNameForRef(serialized, symbol)) |name| {
+        try writer.writeAll(", \"name\": ");
+        try writeJsonString(writer, name);
+    }
+    try writer.writeAll(" }");
+}
+
+fn symbolNameForRef(
+    serialized: parse_table_serialize.SerializedTable,
+    symbol: syntax_ir.SymbolRef,
+) ?[]const u8 {
+    for (serialized.symbols) |info| {
+        if (symbolRefEql(info.ref, symbol)) return info.name;
+    }
+    return null;
 }
 
 fn writeProductionInfoSummaryJson(

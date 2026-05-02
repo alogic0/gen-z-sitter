@@ -144,6 +144,7 @@ const LocalArtifacts = struct {
     conflict_summary_path: ?[]const u8 = null,
     token_conflicts_path: ?[]const u8 = null,
     minimization_summary_path: ?[]const u8 = null,
+    action_list_summary_path: ?[]const u8 = null,
     production_info_summary_path: ?[]const u8 = null,
     regex_surface_path: ?[]const u8 = null,
     lex_table_summary_path: ?[]const u8 = null,
@@ -160,6 +161,7 @@ const LocalArtifacts = struct {
         if (self.conflict_summary_path) |value| allocator.free(value);
         if (self.token_conflicts_path) |value| allocator.free(value);
         if (self.minimization_summary_path) |value| allocator.free(value);
+        if (self.action_list_summary_path) |value| allocator.free(value);
         if (self.production_info_summary_path) |value| allocator.free(value);
         if (self.regex_surface_path) |value| allocator.free(value);
         if (self.lex_table_summary_path) |value| allocator.free(value);
@@ -397,6 +399,8 @@ fn writeLocalArtifactsAlloc(
     errdefer allocator.free(local_token_conflicts_path);
     const local_minimization_summary_path = try std.fs.path.join(allocator, &.{ local_dir, "minimization-summary.json" });
     errdefer allocator.free(local_minimization_summary_path);
+    const local_action_list_summary_path = try std.fs.path.join(allocator, &.{ local_dir, "action-list-summary.json" });
+    errdefer allocator.free(local_action_list_summary_path);
     const local_production_info_summary_path = try std.fs.path.join(allocator, &.{ local_dir, "production-info-summary.json" });
     errdefer allocator.free(local_production_info_summary_path);
     const local_regex_surface_path = try std.fs.path.join(allocator, &.{ local_dir, "regex-surface.json" });
@@ -459,6 +463,12 @@ fn writeLocalArtifactsAlloc(
     });
     defer allocator.free(local_minimization_summary);
     try fs_support.writeFile(local_minimization_summary_path, local_minimization_summary);
+    const local_action_list_summary = try upstream_summary.generateLocalActionListSummaryJsonAlloc(allocator, opts.grammar_path, .{
+        .js_runtime = opts.js_runtime orelse "node",
+        .minimize_states = opts.minimize_states,
+    });
+    defer allocator.free(local_action_list_summary);
+    try fs_support.writeFile(local_action_list_summary_path, local_action_list_summary);
     const local_production_info_summary = try upstream_summary.generateLocalProductionInfoSummaryJsonAlloc(allocator, opts.grammar_path, .{
         .js_runtime = opts.js_runtime orelse "node",
         .minimize_states = opts.minimize_states,
@@ -498,6 +508,7 @@ fn writeLocalArtifactsAlloc(
     local_artifacts.conflict_summary_path = local_conflict_summary_path;
     local_artifacts.token_conflicts_path = local_token_conflicts_path;
     local_artifacts.minimization_summary_path = local_minimization_summary_path;
+    local_artifacts.action_list_summary_path = local_action_list_summary_path;
     local_artifacts.production_info_summary_path = local_production_info_summary_path;
     local_artifacts.regex_surface_path = local_regex_surface_path;
     local_artifacts.lex_table_summary_path = local_lex_table_summary_path;
@@ -831,6 +842,9 @@ fn renderReportAlloc(
     try writer.writeAll(",\n");
     try writer.writeAll("    \"minimization_summary_path\": ");
     try writeOptionalJsonString(writer, local_artifacts.minimization_summary_path);
+    try writer.writeAll(",\n");
+    try writer.writeAll("    \"action_list_summary_path\": ");
+    try writeOptionalJsonString(writer, local_artifacts.action_list_summary_path);
     try writer.writeAll(",\n");
     try writer.writeAll("    \"production_info_summary_path\": ");
     try writeOptionalJsonString(writer, local_artifacts.production_info_summary_path);

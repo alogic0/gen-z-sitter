@@ -170,6 +170,16 @@ experiments were rejected: ignoring EOF-target presence in the runtime lexer
 initial signature did not move the count, and a canonical fixed-point runtime
 partitioning pass also left `281/279` unchanged.
 
+Immediate lexer diagnostic: the current state-0 `ts_lex` body is structurally
+different from upstream even though the state and lex-mode counts now match.
+Local emits explicit skip/identifier ranges in case 0, including space, `_`,
+NBSP, zero-width, word-joiner, and BOM branches, while upstream uses
+`extras_character_set_1` plus a broad identifier transition from the recovery
+entry. The next lexer batch should diff local/upstream runtime DFA cases by
+start-mode owner and transition set, starting with state 0 and the two extra
+reachable local cases. This is a state-0 recovery lex-table shape issue until
+proven otherwise, not a lex-mode start-count issue.
+
 Rejected NFA diagnostic: local regex one-or-more expansion appears to permit an
 invalid zero-repeat path in isolated token-sequence inspection, but the focused
 fix worsened JavaScript action-list parity (`3568/3588`) and did not move the
@@ -295,6 +305,18 @@ keeps paired.
 
 Current status: partially classified, deferred. This plan's Phase 3 gate
 (`3588`) remains unmet; broad repeat-preservation was disproved as a fix.
+
+Action-list instrumentation note: `compare-upstream` now writes
+`local/action-list-summary.json`. The minimized JavaScript artifact confirms
+the emitted local action-list shape still has 61 unique `SHIFT_REPEAT`
+singleton rows and 22 `REDUCE+SHIFT_REPEAT` rows. It also records 80 owner
+state/symbol entries whose raw minimized action group contained a shift plus a
+repeat-auxiliary reduce, but whose post-filter serialized entry retained only
+the repeated shift. The dominant class is state 62 reducing production 587
+(`program_repeat142 -> program_repeat142 program_repeat142`) across 55
+statement-start symbols. This narrows the next fix to the exact repeat
+reduction filtering/serialization class; do not retry the already-rejected
+"preserve every repeat reduce" change.
 
 ## Phase 4 — Keyword Lex Residual
 
@@ -454,9 +476,12 @@ The current closure audit records the exact residuals and promotion blockers.
 1. Action-list residual instrumentation and targeted fix for
    `parse_action_list_count=3592/3588`.
 2. Runtime lex minimization diagnostics and targeted fix for the current
-   JavaScript two-case excess: `lex_function_case_count=281/279`. Re-check
-   Python before using it as a same-class signal, because JavaScript's residual
-   direction has flipped since the earlier Python measurement.
+   JavaScript two-case excess: `lex_function_case_count=281/279`. Start with
+   state-0 runtime DFA shape: local emits explicit recovery whitespace and
+   identifier ranges where upstream routes through an extras set and broad
+   identifier transition. Re-check Python before using it as a same-class
+   signal, because JavaScript's residual direction has flipped since the
+   earlier Python measurement.
 3. Bounded comparison/profile path for TypeScript and Rust.
 4. Python promotion blocker investigation, starting with `symbol_count=275/273`
    and corpus runner compilation.
