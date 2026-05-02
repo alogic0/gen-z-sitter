@@ -318,6 +318,30 @@ statement-start symbols. This narrows the next fix to the exact repeat
 reduction filtering/serialization class; do not retry the already-rejected
 "preserve every repeat reduce" change.
 
+Successor diagnostic note: `compare-upstream` now also writes
+`upstream/action-list-summary.json` so the upstream `ts_parse_actions[]` shape
+is available beside the local owner-level artifact. Current upstream shape is
+1,794 rows, 3,588 initializer braces, 3,738 flat entries, zero
+`SHIFT_REPEAT` singleton rows, and 83 `REDUCE+SHIFT_REPEAT` rows. Current local
+shape is 1,796 rows, 3,592 initializer braces, 3,695 flat entries, 61
+`SHIFT_REPEAT` singleton rows, and 22 `REDUCE+SHIFT_REPEAT` rows.
+
+Rejected minimizer diagnostic: merging duplicate resolved action groups during
+state minimization can force the brace counter to `3588`, but the broad version
+turns the grammar `blocked=true` by creating blocking merged decisions, and the
+narrow auxiliary-repeat-only version keeps `blocked=false` while overshooting to
+`3652/3588`. The action-list residual therefore should not be fixed by
+unioning duplicate action groups in the minimizer. The next attempt should use
+the paired local/upstream action-list artifacts to identify whether the two-row
+residual comes from reusable classification, repeat conflict preservation at
+construction time, or runtime action-list pooling after parse-table emission.
+
+Rejected construction fallback diagnostic: removing the
+`productionIsRepeatAuxiliary` shift preference in `resolveShiftReduce` breaks
+the focused repeat-resolution fixture and leaves JavaScript unchanged at
+`parse_action_list_count=3592/3588`. The JavaScript repeat-singleton residual is
+therefore not caused by that fallback alone.
+
 ## Phase 4 — Keyword Lex Residual
 
 Goal: close the one-entry `keyword_lex_function_case_count` delta:

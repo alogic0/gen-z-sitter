@@ -69,6 +69,7 @@ const ReferenceStatus = struct {
     output_dir: ?[]const u8 = null,
     parser_c_path: ?[]const u8 = null,
     node_types_path: ?[]const u8 = null,
+    action_list_summary_path: ?[]const u8 = null,
     summary: ?upstream_summary.Summary = null,
 
     fn deinit(self: ReferenceStatus, allocator: std.mem.Allocator) void {
@@ -78,6 +79,7 @@ const ReferenceStatus = struct {
         if (self.output_dir) |value| allocator.free(value);
         if (self.parser_c_path) |value| allocator.free(value);
         if (self.node_types_path) |value| allocator.free(value);
+        if (self.action_list_summary_path) |value| allocator.free(value);
         if (self.summary) |summary| upstream_summary.deinitSummary(allocator, summary);
     }
 };
@@ -243,11 +245,16 @@ fn runUpstreamSnapshotAlloc(
     errdefer allocator.free(parser_c_path);
     const node_types_path = try std.fs.path.join(allocator, &.{ snapshot_root, "node-types.json" });
     errdefer allocator.free(node_types_path);
+    const action_list_summary_path = try std.fs.path.join(allocator, &.{ snapshot_root, "action-list-summary.json" });
+    errdefer allocator.free(action_list_summary_path);
     const parser_c = try fs_support.readFileAlloc(allocator, parser_c_path, 64 * 1024 * 1024);
     defer allocator.free(parser_c);
     const node_types = std.Io.Dir.cwd().readFileAlloc(runtime_io.get(), node_types_path, allocator, .limited(64 * 1024 * 1024)) catch null;
     defer if (node_types) |contents| allocator.free(contents);
     const summary = try upstream_summary.parseUpstreamParserCSummaryAlloc(allocator, grammar_name, parser_c, node_types);
+    const action_list_summary = try upstream_summary.generateParserCActionListSummaryJsonAlloc(allocator, parser_c);
+    defer allocator.free(action_list_summary);
+    try fs_support.writeFile(action_list_summary_path, action_list_summary);
 
     return .{
         .tree_sitter_dir = try allocator.dupe(u8, opts.tree_sitter_dir),
@@ -257,6 +264,7 @@ fn runUpstreamSnapshotAlloc(
         .output_dir = snapshot_root,
         .parser_c_path = parser_c_path,
         .node_types_path = node_types_path,
+        .action_list_summary_path = action_list_summary_path,
         .summary = summary,
     };
 }
@@ -888,6 +896,11 @@ fn renderReportAlloc(
     if (reference.node_types_path) |value| {
         try writer.writeAll(",\n");
         try writer.writeAll("    \"node_types_path\": ");
+        try writeJsonString(writer, value);
+    }
+    if (reference.action_list_summary_path) |value| {
+        try writer.writeAll(",\n");
+        try writer.writeAll("    \"action_list_summary_path\": ");
         try writeJsonString(writer, value);
     }
     if (reference.summary) |summary| {

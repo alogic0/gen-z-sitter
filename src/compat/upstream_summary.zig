@@ -546,6 +546,16 @@ pub fn generateLocalActionListSummaryJsonAlloc(
     return try out.toOwnedSlice();
 }
 
+pub fn generateParserCActionListSummaryJsonAlloc(
+    allocator: std.mem.Allocator,
+    parser_c: []const u8,
+) ![]const u8 {
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeParserCActionListSummaryJson(&out.writer, parser_c);
+    return try out.toOwnedSlice();
+}
+
 pub fn generateLocalRegexSurfaceSummaryJsonAlloc(
     allocator: std.mem.Allocator,
     grammar_path: []const u8,
@@ -2181,6 +2191,19 @@ fn writeActionListSummaryJson(
     try writer.writeAll("\n}\n");
 }
 
+fn writeParserCActionListSummaryJson(writer: anytype, parser_c: []const u8) !void {
+    const body = initializerBody(parser_c, "static const TSParseActionEntry ts_parse_actions[]") orelse "";
+    const counts = countParserCActionListShapes(body);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, 2, "parse_action_list_brace_count", countBytes(body, '{'), true);
+    try writeUsizeField(writer, 2, "parse_action_list_entry_count", countParserCActionListRows(body), true);
+    try writeUsizeField(writer, 2, "parse_action_list_flat_width", parserCActionListFlatWidth(body), true);
+    try writer.writeAll("  \"shape_counts\": {\n");
+    try writeActionListShapeCountsJson(writer, counts, 4);
+    try writer.writeAll("  }\n");
+    try writer.writeAll("}\n");
+}
+
 fn writeActionListShapeCountsJson(writer: anytype, counts: ActionListShapeCounts, indent: usize) !void {
     try writeUsizeField(writer, indent, "empty", counts.empty, true);
     try writeUsizeField(writer, indent, "SHIFT", counts.shift, true);
@@ -2192,6 +2215,127 @@ fn writeActionListShapeCountsJson(writer: anytype, counts: ActionListShapeCounts
     try writeUsizeField(writer, indent, "REDUCE+SHIFT_REPEAT", counts.reduce_shift_repeat, true);
     try writeUsizeField(writer, indent, "OTHER_SINGLE", counts.other_single, true);
     try writeUsizeField(writer, indent, "OTHER_MULTI", counts.other_multi, false);
+}
+
+fn countParserCActionListShapes(body: []const u8) ActionListShapeCounts {
+    var counts = ActionListShapeCounts{};
+    var lines = std.mem.splitScalar(u8, body, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.indexOfScalar(u8, line, '[') == null) continue;
+        const action_count = parseParserCActionCount(line) orelse 0;
+        const kinds = parserCActionKinds(line);
+        if (action_count == 0) {
+            counts.empty += 1;
+        } else if (action_count == 1) {
+            switch (kinds[0]) {
+                .shift => counts.shift += 1,
+                .shift_repeat => counts.shift_repeat += 1,
+                .shift_extra => counts.shift_extra += 1,
+                .reduce => counts.reduce += 1,
+                .accept => counts.accept += 1,
+                .recover => counts.recover += 1,
+                .unknown => counts.other_single += 1,
+            }
+        } else if (action_count == 2 and kinds[0] == .reduce and kinds[1] == .shift_repeat) {
+            counts.reduce_shift_repeat += 1;
+        } else {
+            counts.other_multi += 1;
+        }
+    }
+    return counts;
+}
+
+fn countParserCActionListRows(body: []const u8) usize {
+    var count: usize = 0;
+    var lines = std.mem.splitScalar(u8, body, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.indexOfScalar(u8, line, '[') != null) count += 1;
+    }
+    return count;
+}
+
+fn parserCActionListFlatWidth(body: []const u8) usize {
+    var width: usize = 0;
+    var lines = std.mem.splitScalar(u8, body, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.indexOfScalar(u8, line, '[') == null) continue;
+        width += 1 + (parseParserCActionCount(line) orelse 0);
+    }
+    return width;
+}
+
+fn parseParserCActionCount(line: []const u8) ?usize {
+    const marker = ".count =";
+    const marker_index = std.mem.indexOf(u8, line, marker) orelse return null;
+    var index = marker_index + marker.len;
+    while (index < line.len and line[index] == ' ') index += 1;
+    const start = index;
+    while (index < line.len and std.ascii.isDigit(line[index])) index += 1;
+    if (index == start) return null;
+    return std.fmt.parseUnsigned(usize, line[start..index], 10) catch null;
+}
+
+const ParserCActionKind = enum {
+    shift,
+    shift_repeat,
+    shift_extra,
+    reduce,
+    accept,
+    recover,
+    unknown,
+};
+
+fn parserCActionKinds(line: []const u8) [4]ParserCActionKind {
+    var result = [_]ParserCActionKind{ .unknown, .unknown, .unknown, .unknown };
+    var count: usize = 0;
+    var offset: usize = 0;
+    while (offset < line.len and count < result.len) {
+        const next = nextParserCActionKind(line[offset..]) orelse break;
+        result[count] = next.kind;
+        count += 1;
+        offset += next.end;
+    }
+    return result;
+}
+
+const ParserCActionKindMatch = struct {
+    kind: ParserCActionKind,
+    end: usize,
+};
+
+fn nextParserCActionKind(source: []const u8) ?ParserCActionKindMatch {
+    const candidates = [_]struct {
+        text: []const u8,
+        kind: ParserCActionKind,
+    }{
+        .{ .text = "SHIFT_REPEAT(", .kind = .shift_repeat },
+        .{ .text = "SHIFT_EXTRA(", .kind = .shift_extra },
+        .{ .text = "SHIFT(", .kind = .shift },
+        .{ .text = "REDUCE(", .kind = .reduce },
+        .{ .text = "ACCEPT_INPUT(", .kind = .accept },
+        .{ .text = "RECOVER(", .kind = .recover },
+    };
+    var best_index: ?usize = null;
+    var best_kind: ParserCActionKind = .unknown;
+    var best_len: usize = 0;
+    for (candidates) |candidate| {
+        const index = std.mem.indexOf(u8, source, candidate.text) orelse continue;
+        if (best_index == null or index < best_index.?) {
+            best_index = index;
+            best_kind = candidate.kind;
+            best_len = candidate.text.len;
+        }
+    }
+    const index = best_index orelse return null;
+    return .{ .kind = best_kind, .end = index + best_len };
+}
+
+fn countBytes(source: []const u8, byte: u8) usize {
+    var count: usize = 0;
+    for (source) |value| {
+        if (value == byte) count += 1;
+    }
+    return count;
 }
 
 fn parseActionListFlatCount(entries: []const parse_table_serialize.SerializedParseActionListEntry) usize {
@@ -5775,6 +5919,25 @@ test "generateLocalLexTableSummaryJsonAlloc writes lexer table counts" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"upstream_oracle_missing\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_unmapped_reserved_word_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"keyword_table\": null") != null);
+}
+
+test "generateParserCActionListSummaryJsonAlloc writes parser C action shapes" {
+    const parser_c =
+        \\static const TSParseActionEntry ts_parse_actions[] = {
+        \\  [0] = {.entry = {.count = 0, .reusable = false}},
+        \\  [1] = {.entry = {.count = 1, .reusable = true}}, SHIFT(2),
+        \\  [3] = {.entry = {.count = 2, .reusable = false}}, REDUCE(sym_repeat, 2, 0, 0), SHIFT_REPEAT(4),
+        \\};
+    ;
+
+    const json = try generateParserCActionListSummaryJsonAlloc(std.testing.allocator, parser_c);
+    defer std.testing.allocator.free(json);
+
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"parse_action_list_brace_count\": 6") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"parse_action_list_entry_count\": 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"parse_action_list_flat_width\": 6") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"SHIFT\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"REDUCE+SHIFT_REPEAT\": 1") != null);
 }
 
 test "writeLexTableSummaryJson writes keyword table counts" {
