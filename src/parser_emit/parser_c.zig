@@ -292,10 +292,20 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("};\n\n");
 
-    try writer.writeAll("static const char * const ts_field_names[FIELD_COUNT + 1] = {\n");
-    try writer.writeAll("  [0] = \"\",\n");
+    try writer.writeAll("enum {\n");
     for (compacted.field_map.names) |field| {
-        try writer.print("  [{d}] = \"", .{field.id});
+        try writer.writeAll("  field_");
+        try writeCIdentifierFragment(writer, field.name);
+        try writer.print(" = {d},\n", .{field.id});
+    }
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("static const char * const ts_field_names[] = {\n");
+    try writer.writeAll("  [0] = NULL,\n");
+    for (compacted.field_map.names) |field| {
+        try writer.writeAll("  [field_");
+        try writeCIdentifierFragment(writer, field.name);
+        try writer.writeAll("] = \"");
         try writeCStringLiteralContents(writer, field.name);
         try writer.writeAll("\",\n");
     }
@@ -2672,10 +2682,13 @@ test "emitParserCAlloc emits serialized field map tables" {
     defer allocator.free(emitted);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define FIELD_COUNT 2\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const char * const ts_field_names[FIELD_COUNT + 1] = {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = \"\",\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = \"left\",\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = \"right\\\"field\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "enum {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  field_left = 1,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  field_right_field = 2,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const char * const ts_field_names[] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = NULL,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [field_left] = \"left\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [field_right_field] = \"right\\\"field\",\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSFieldMapEntry ts_field_map_entries[] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .field_id = 1, .child_index = 0, .inherited = false },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .field_id = 2, .child_index = 2, .inherited = true },\n"));

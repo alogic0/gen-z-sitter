@@ -26,7 +26,7 @@ Remaining closure targets:
 | parse_action_list_count | 3,592 | 3,588 |
 | keyword_lex_function_case_count | 201 | 200 |
 | symbol_order_hash | mismatch | match |
-| field_names_hash | mismatch | match |
+| field_names_hash | matched in Batch 2 | match |
 | Python/TypeScript/Rust scope gates | serialize_only | measured promotion decision |
 
 ## Ground Rules
@@ -178,11 +178,16 @@ Investigation note: the audit's "ordering only" classification is incomplete.
 For JavaScript, the symbol hash includes emitted C initializer shape and labels,
 not just set/order. Local emits numeric indices and local symbol names such as
 `jsx_identifier`, while upstream emits enum labels and runtime names such as
-`identifier` for that symbol. Field names are also not just ordered
-differently: local currently includes `label` where the upstream JavaScript
-field-name list does not. The next implementation batch should first split the
-comparison into normalized field/symbol set diffs versus emitted-C-shape diffs
-before changing ordering code.
+`identifier` for that symbol. The field-name set and order were already
+semantic matches; the hash differed because local emitted numeric indices and
+an empty-string sentinel while upstream emits field enum constants and a `NULL`
+sentinel.
+
+Batch 2 implementation note: parser C field-name emission now uses upstream-
+shaped field enum constants and `NULL` at index zero. JavaScript now reports
+`field_names_hash` as matched while `node_types_hash`, `token_count`,
+`serialized_state_count`, `external_lex_state_count`, and bounded corpus samples
+remain matched. `symbol_order_hash` remains the Phase 2 implementation target.
 
 ## Phase 3 — Parse Action List Residual
 
