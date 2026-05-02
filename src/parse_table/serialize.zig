@@ -1062,7 +1062,7 @@ pub fn attachKeywordLexTableAlloc(
     prepared: grammar_ir.PreparedGrammar,
     lexical: lexical_ir.LexicalGrammar,
 ) (std.mem.Allocator.Error || lexer_serialize.SerializeError)!SerializedTable {
-    if (prepared.word_token == null or prepared.reserved_word_sets.len == 0) return serialized;
+    if (prepared.word_token == null) return serialized;
 
     var result = serialized;
     const keyword_lexical = try buildKeywordLexicalGrammarAlloc(allocator, prepared, lexical);
@@ -3998,6 +3998,48 @@ test "attachKeywordLexTableAlloc builds keyword table from reserved string-only 
     try std.testing.expect(serialized.keyword_lex_table != null);
     try std.testing.expectEqual(@as(usize, 0), serialized.keyword_unmapped_reserved_word_count);
     try std.testing.expect(lexTableAcceptsSymbol(serialized.keyword_lex_table.?, .{ .terminal = 1 }));
+}
+
+test "attachKeywordLexTableAlloc builds keyword table for word-token string keywords without reserved sets" {
+    const allocator = std.testing.allocator;
+    const rules = [_]ir_rules.Rule{
+        .{ .string = "root" },
+        .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
+    };
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "keyword_without_reserved_fixture",
+        .variables = &.{},
+        .external_tokens = &.{},
+        .rules = rules[0..],
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = .{ .kind = .non_terminal, .index = 0 },
+        .reserved_word_sets = &.{},
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "root", .kind = .anonymous, .rule = 0, .source_kind = .string },
+            .{ .name = "identifier", .kind = .named, .rule = 1, .source_kind = .pattern },
+        },
+        .separators = &.{},
+    };
+
+    const serialized = try attachKeywordLexTableAlloc(allocator, .{
+        .states = &.{},
+        .blocked = false,
+    }, prepared, lexical);
+    defer if (serialized.keyword_lex_table) |keyword_lex_table| {
+        lexer_serialize.deinitSerializedLexTable(allocator, keyword_lex_table);
+    };
+
+    try std.testing.expectEqual(@as(usize, 0), serialized.keyword_unmapped_reserved_word_count);
+    try std.testing.expect(serialized.keyword_lex_table != null);
+    try std.testing.expect(lexTableAcceptsSymbol(serialized.keyword_lex_table.?, .{ .terminal = 0 }));
+    try std.testing.expect(!lexTableAcceptsSymbol(serialized.keyword_lex_table.?, .{ .terminal = 1 }));
 }
 
 fn lexTableAcceptsSymbol(
