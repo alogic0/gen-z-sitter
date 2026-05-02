@@ -11,6 +11,7 @@ const ir_symbols = @import("../ir/symbols.zig");
 const lexical_ir = @import("../ir/lexical_grammar.zig");
 const lexer_model = @import("../lexer/model.zig");
 const lexer_serialize = @import("../lexer/serialize.zig");
+const alias_ir = @import("../ir/aliases.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 const runtime_io = @import("../support/runtime_io.zig");
 
@@ -454,6 +455,7 @@ pub fn attachExtractedMetadataAlloc(
     prepared: grammar_ir.PreparedGrammar,
     syntax: syntax_ir.SyntaxGrammar,
     lexical: lexical_ir.LexicalGrammar,
+    default_aliases: alias_ir.AliasMap,
 ) ParseActionListError!SerializedTable {
     const external_symbol_count = countExternalOnlyTokens(syntax.external_tokens);
     const syntax_symbol_count = countSerializedSyntaxVariables(syntax);
@@ -462,40 +464,46 @@ pub fn attachExtractedMetadataAlloc(
     var index: usize = 0;
 
     for (lexical.variables, 0..) |variable, terminal| {
-        serialized_symbols[index] = .{
-            .ref = .{ .terminal = @intCast(terminal) },
-            .name = variable.name,
-            .named = lexicalKindIsNamed(variable.kind),
-            .visible = lexicalKindIsVisible(variable.kind),
-            .supertype = false,
-            .public_symbol = @intCast(index),
-        };
+        const symbol_ref = syntax_ir.SymbolRef{ .terminal = @intCast(terminal) };
+        serialized_symbols[index] = serializedSymbolInfoWithDefaultAlias(
+            symbol_ref,
+            variable.name,
+            lexicalKindIsNamed(variable.kind),
+            lexicalKindIsVisible(variable.kind),
+            false,
+            @intCast(index),
+            default_aliases,
+        );
         index += 1;
     }
 
     for (syntax.external_tokens, 0..) |token, external| {
         if (token.corresponding_internal_token != null) continue;
-        serialized_symbols[index] = .{
-            .ref = .{ .external = @intCast(external) },
-            .name = token.name,
-            .named = syntaxKindIsNamed(token.kind),
-            .visible = syntaxKindIsVisible(token.kind),
-            .supertype = false,
-            .public_symbol = @intCast(index),
-        };
+        const symbol_ref = syntax_ir.SymbolRef{ .external = @intCast(external) };
+        serialized_symbols[index] = serializedSymbolInfoWithDefaultAlias(
+            symbol_ref,
+            token.name,
+            syntaxKindIsNamed(token.kind),
+            syntaxKindIsVisible(token.kind),
+            false,
+            @intCast(index),
+            default_aliases,
+        );
         index += 1;
     }
 
     for (syntax.variables, 0..) |variable, non_terminal| {
         if (symbolRefIn(syntax.variables_to_inline, .{ .non_terminal = @intCast(non_terminal) })) continue;
-        serialized_symbols[index] = .{
-            .ref = .{ .non_terminal = @intCast(non_terminal) },
-            .name = variable.name,
-            .named = syntaxKindIsNamed(variable.kind),
-            .visible = syntaxKindIsVisible(variable.kind),
-            .supertype = symbolRefIn(syntax.supertype_symbols, .{ .non_terminal = @intCast(non_terminal) }),
-            .public_symbol = @intCast(index),
-        };
+        const symbol_ref = syntax_ir.SymbolRef{ .non_terminal = @intCast(non_terminal) };
+        serialized_symbols[index] = serializedSymbolInfoWithDefaultAlias(
+            symbol_ref,
+            variable.name,
+            syntaxKindIsNamed(variable.kind),
+            syntaxKindIsVisible(variable.kind),
+            symbolRefIn(syntax.supertype_symbols, symbol_ref),
+            @intCast(index),
+            default_aliases,
+        );
         index += 1;
     }
 
@@ -511,6 +519,36 @@ pub fn attachExtractedMetadataAlloc(
     }
     result.word_token = syntax.word_token;
     return result;
+}
+
+fn serializedSymbolInfoWithDefaultAlias(
+    symbol_ref: syntax_ir.SymbolRef,
+    name: []const u8,
+    named: bool,
+    visible: bool,
+    supertype: bool,
+    public_symbol: u16,
+    default_aliases: alias_ir.AliasMap,
+) SerializedSymbolInfo {
+    if (default_aliases.findForSymbol(symbol_ref)) |alias| {
+        return .{
+            .ref = symbol_ref,
+            .name = alias.value,
+            .named = alias.named,
+            .visible = true,
+            .supertype = supertype,
+            .public_symbol = public_symbol,
+        };
+    }
+
+    return .{
+        .ref = symbol_ref,
+        .name = name,
+        .named = named,
+        .visible = visible,
+        .supertype = supertype,
+        .public_symbol = public_symbol,
+    };
 }
 
 pub fn attachReservedWordsAlloc(

@@ -760,6 +760,7 @@ fn serializePreparedBuildResultAlloc(
         prepared,
         extracted.syntax,
         extracted.lexical,
+        default_aliases.defaults,
     );
     logProfileDone("serialize.build_result_and_metadata", stage_profile_timer);
     stage_profile_timer = profileTimer(profile_log);

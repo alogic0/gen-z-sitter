@@ -575,7 +575,7 @@ pub fn parseUpstreamParserCSummaryAlloc(
         .external_count = external_count,
         .extra_count = 0,
         .symbol_count = symbol_count,
-        .symbol_order_hash = initializerBodyHash(parser_c, "static const char * const ts_symbol_names"),
+        .symbol_order_hash = symbolNamesHash(parser_c),
         .token_count = defineValue(parser_c, "TOKEN_COUNT") orelse 0,
         .field_count = defineValue(parser_c, "FIELD_COUNT") orelse 0,
         .field_names_hash = initializerBodyHash(parser_c, "static const char * const ts_field_names"),
@@ -619,6 +619,46 @@ fn initializerBodyHash(source: []const u8, header: []const u8) u64 {
     const end_rel = std.mem.indexOf(u8, source[body_start..], "\n};") orelse return 0;
     const body = std.mem.trim(u8, source[body_start..][0..end_rel], " \n\r\t");
     return std.hash.Wyhash.hash(0, body);
+}
+
+fn symbolNamesHash(source: []const u8) u64 {
+    const body = initializerBody(source, "static const char * const ts_symbol_names") orelse return 0;
+    var hasher = std.hash.Wyhash.init(0);
+    var offset: usize = 0;
+    while (std.mem.indexOfScalarPos(u8, body, offset, '"')) |quote_start| {
+        var index = quote_start + 1;
+        while (index < body.len) : (index += 1) {
+            const byte = body[index];
+            if (byte == '"') {
+                index += 1;
+                break;
+            }
+            if (byte == '\\' and index + 1 < body.len) {
+                index += 1;
+                const escaped = switch (body[index]) {
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    '?', '"', '\\' => body[index],
+                    else => body[index],
+                };
+                hasher.update(&.{escaped});
+                continue;
+            }
+            hasher.update(&.{byte});
+        }
+        hasher.update(&.{0});
+        offset = index;
+    }
+    return hasher.final();
+}
+
+fn initializerBody(source: []const u8, header: []const u8) ?[]const u8 {
+    const start = std.mem.indexOf(u8, source, header) orelse return null;
+    const open_brace = std.mem.indexOfScalarPos(u8, source, start + header.len, '{') orelse return null;
+    const body_start = open_brace + 1;
+    const end_rel = std.mem.indexOf(u8, source[body_start..], "\n};") orelse return null;
+    return std.mem.trim(u8, source[body_start..][0..end_rel], " \n\r\t");
 }
 
 fn normalizedJsonHash(source: []const u8) u64 {
@@ -4475,6 +4515,41 @@ test "parseUpstreamParserCSummaryAlloc reads generated parser defines" {
     try std.testing.expectEqual(@as(usize, 2), summary.lex_function_case_count);
     try std.testing.expectEqual(@as(usize, 1), summary.keyword_lex_function_case_count);
     try std.testing.expectEqual(@as(usize, 1), summary.large_character_set_count);
+}
+
+test "parseUpstreamParserCSummaryAlloc hashes symbol values independent of designators" {
+    const common_prefix =
+        \\#define LANGUAGE_VERSION 15
+        \\#define STATE_COUNT 1
+        \\#define LARGE_STATE_COUNT 1
+        \\#define SYMBOL_COUNT 3
+        \\#define ALIAS_COUNT 0
+        \\#define TOKEN_COUNT 3
+        \\#define EXTERNAL_TOKEN_COUNT 0
+        \\#define FIELD_COUNT 0
+        \\#define PRODUCTION_ID_COUNT 0
+    ;
+    const numeric_parser_c = common_prefix ++
+        \\static const char * const ts_symbol_names[] = {
+        \\  [0] = "end",
+        \\  [1] = "??",
+        \\  [2] = "\"",
+        \\};
+    ;
+    const enum_parser_c = common_prefix ++
+        \\static const char * const ts_symbol_names[] = {
+        \\  [ts_builtin_sym_end] = "end",
+        \\  [anon_sym_QMARK_QMARK] = "\?\?",
+        \\  [anon_sym_DQUOTE] = "\"",
+        \\};
+    ;
+
+    const numeric = try parseUpstreamParserCSummaryAlloc(std.testing.allocator, "demo", numeric_parser_c, null);
+    defer deinitSummary(std.testing.allocator, numeric);
+    const enum_named = try parseUpstreamParserCSummaryAlloc(std.testing.allocator, "demo", enum_parser_c, null);
+    defer deinitSummary(std.testing.allocator, enum_named);
+
+    try std.testing.expectEqual(numeric.symbol_order_hash, enum_named.symbol_order_hash);
 }
 
 test "parseUpstreamParserCSummaryAlloc hashes node-types JSON ignoring whitespace" {

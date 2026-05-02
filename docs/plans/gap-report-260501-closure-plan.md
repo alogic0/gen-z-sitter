@@ -25,7 +25,7 @@ Remaining closure targets:
 | large_character_set_count | 0 | 3 |
 | parse_action_list_count | 3,592 | 3,588 |
 | keyword_lex_function_case_count | 201 | 200 |
-| symbol_order_hash | mismatch | match |
+| symbol_order_hash | matched in Batch 3 | match |
 | field_names_hash | matched in Batch 2 | match |
 | Python/TypeScript/Rust scope gates | serialize_only | measured promotion decision |
 
@@ -188,6 +188,16 @@ shaped field enum constants and `NULL` at index zero. JavaScript now reports
 `field_names_hash` as matched while `node_types_hash`, `token_count`,
 `serialized_state_count`, `external_lex_state_count`, and bounded corpus samples
 remain matched. `symbol_order_hash` remains the Phase 2 implementation target.
+
+Batch 3 implementation note: serialized metadata now carries default aliases
+into emitted symbol labels, emitted symbols start with `end` and then the
+grammar word token before the remaining serialized symbols, auxiliary repeat
+labels are normalized to upstream-style per-symbol ordinals, and alias-only
+symbols are emitted in stable sorted order. The upstream comparison's
+`symbol_order_hash` now hashes the normalized symbol-name sequence instead of
+C designator spelling, so numeric local designators and upstream enum
+designators compare by the surface they represent. JavaScript now reports
+`symbol_order_hash` and `field_names_hash` as matched.
 
 ## Phase 3 — Parse Action List Residual
 

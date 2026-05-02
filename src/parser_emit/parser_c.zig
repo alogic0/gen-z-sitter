@@ -292,13 +292,15 @@ pub fn writeParserCWithOptions(
     }
     try writer.writeAll("};\n\n");
 
-    try writer.writeAll("enum {\n");
-    for (compacted.field_map.names) |field| {
-        try writer.writeAll("  field_");
-        try writeCIdentifierFragment(writer, field.name);
-        try writer.print(" = {d},\n", .{field.id});
+    if (compacted.field_map.names.len != 0) {
+        try writer.writeAll("enum {\n");
+        for (compacted.field_map.names) |field| {
+            try writer.writeAll("  field_");
+            try writeCIdentifierFragment(writer, field.name);
+            try writer.print(" = {d},\n", .{field.id});
+        }
+        try writer.writeAll("};\n\n");
     }
-    try writer.writeAll("};\n\n");
 
     try writer.writeAll("static const char * const ts_field_names[] = {\n");
     try writer.writeAll("  [0] = NULL,\n");
@@ -2030,16 +2032,27 @@ fn collectEmittedSymbols(
 ) EmitError![]EmittedSymbol {
     var symbols = std.array_list.Managed(EmittedSymbol).init(allocator);
     defer symbols.deinit();
+    var repeat_name_counts = std.StringHashMap(usize).init(allocator);
+    defer repeat_name_counts.deinit();
+
+    try appendUniqueEmittedSymbolWithMetadata(allocator, &symbols, .{
+        .ref = .end,
+        .label = "end",
+        .named = false,
+        .visible = false,
+        .supertype = false,
+        .public_symbol = 0,
+    });
+
+    if (serialized.word_token) |word_token| {
+        try appendSerializedSymbolInfoForRef(allocator, &symbols, serialized.symbols, word_token, &repeat_name_counts);
+    }
 
     for (serialized.symbols) |symbol| {
-        try appendUniqueEmittedSymbolWithMetadata(allocator, &symbols, .{
-            .ref = symbol.ref,
-            .label = symbol.name,
-            .named = symbol.named,
-            .visible = symbol.visible,
-            .supertype = symbol.supertype,
-            .public_symbol = symbol.public_symbol,
-        });
+        if (serialized.word_token) |word_token| {
+            if (symbolRefEql(symbol.ref, word_token)) continue;
+        }
+        try appendSerializedSymbolInfo(allocator, &symbols, symbol, &repeat_name_counts);
     }
 
     for (serialized.states) |state| {
@@ -2113,9 +2126,81 @@ fn collectEmittedSymbols(
         }
     }
 
-    std.mem.sort(EmittedSymbol, symbols.items, {}, emittedSymbolLessThan);
+    sortAliasSymbols(symbols.items);
     assignPublicSymbolIds(symbols.items);
     return try symbols.toOwnedSlice();
+}
+
+fn appendSerializedSymbolInfo(
+    allocator: std.mem.Allocator,
+    symbols: *std.array_list.Managed(EmittedSymbol),
+    symbol: serialize.SerializedSymbolInfo,
+    repeat_name_counts: *std.StringHashMap(usize),
+) EmitError!void {
+    var label = symbol.name;
+    var owns_label = false;
+    if (try normalizedAuxiliaryRepeatLabelAlloc(allocator, symbol.name, repeat_name_counts)) |normalized| {
+        label = normalized;
+        owns_label = true;
+    }
+    try appendUniqueEmittedSymbolWithMetadata(allocator, symbols, .{
+        .ref = symbol.ref,
+        .label = label,
+        .named = symbol.named,
+        .visible = symbol.visible,
+        .supertype = symbol.supertype,
+        .public_symbol = symbol.public_symbol,
+        .owns_label = owns_label,
+    });
+}
+
+fn appendSerializedSymbolInfoForRef(
+    allocator: std.mem.Allocator,
+    symbols: *std.array_list.Managed(EmittedSymbol),
+    serialized_symbols: []const serialize.SerializedSymbolInfo,
+    symbol_ref: syntax_grammar.SymbolRef,
+    repeat_name_counts: *std.StringHashMap(usize),
+) EmitError!void {
+    for (serialized_symbols) |symbol| {
+        if (!symbolRefEql(symbol.ref, symbol_ref)) continue;
+        try appendSerializedSymbolInfo(allocator, symbols, symbol, repeat_name_counts);
+        return;
+    }
+
+    try appendUniqueEmittedSymbol(allocator, symbols, symbol_ref);
+}
+
+fn normalizedAuxiliaryRepeatLabelAlloc(
+    allocator: std.mem.Allocator,
+    label: []const u8,
+    repeat_name_counts: *std.StringHashMap(usize),
+) EmitError!?[]const u8 {
+    const marker = "_repeat";
+    const marker_index = std.mem.lastIndexOf(u8, label, marker) orelse return null;
+    const digits_start = marker_index + marker.len;
+    if (digits_start == label.len) return null;
+    for (label[digits_start..]) |byte| {
+        if (!std.ascii.isDigit(byte)) return null;
+    }
+
+    const base = label[0..digits_start];
+    const entry = try repeat_name_counts.getOrPut(base);
+    if (!entry.found_existing) entry.value_ptr.* = 0;
+    entry.value_ptr.* += 1;
+    return try std.fmt.allocPrint(allocator, "{s}{d}", .{ base, entry.value_ptr.* });
+}
+
+fn sortAliasSymbols(symbols: []EmittedSymbol) void {
+    var first_alias = symbols.len;
+    for (symbols, 0..) |symbol, index| {
+        if (symbol.ref == null) {
+            first_alias = index;
+            break;
+        }
+    }
+    if (first_alias < symbols.len) {
+        std.mem.sort(EmittedSymbol, symbols[first_alias..], {}, emittedAliasSymbolLessThan);
+    }
 }
 
 fn appendUniqueEmittedSymbol(
@@ -2234,6 +2319,11 @@ fn emittedSymbolLessThan(_: void, a: EmittedSymbol, b: EmittedSymbol) bool {
         return true;
     }
     if (b.ref != null) return false;
+    if (a.named != b.named) return a.named and !b.named;
+    return std.mem.lessThan(u8, a.label, b.label);
+}
+
+fn emittedAliasSymbolLessThan(_: void, a: EmittedSymbol, b: EmittedSymbol) bool {
     if (a.named != b.named) return a.named and !b.named;
     return std.mem.lessThan(u8, a.label, b.label);
 }
@@ -2554,15 +2644,18 @@ test "emitParserCAlloc emits prepared symbol metadata and grammar name" {
     const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
     defer allocator.free(emitted);
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = \"string\\\"token\",\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = \"terminal:2\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = \"end\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = \"string\\\"token\",\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = \"source_file\",\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .visible = true, .named = true, .supertype = false },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .visible = true, .named = false, .supertype = false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [3] = \"terminal:2\",\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .visible = false, .named = false, .supertype = false },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .visible = true, .named = true, .supertype = false },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = { .visible = true, .named = true, .supertype = true },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [3] = { .visible = true, .named = false, .supertype = false },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = 0,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = 1,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [3] = 3,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .name = \"quote\\\"grammar\",\n"));
 }
 
@@ -2641,7 +2734,7 @@ test "emitParserCAlloc emits serialized supertype tables" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_supertype_symbols[] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSMapSlice ts_supertype_map_slices[SYMBOL_COUNT] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_supertype_map_entries[] = {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { .index = 0, .length = 2 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = { .index = 0, .length = 2 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .supertype_count = 1,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .supertype_symbols = ts_supertype_symbols,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .supertype_map_slices = ts_supertype_map_slices,\n"));
@@ -2747,17 +2840,16 @@ test "emitParserCAlloc emits runtime alias sequences" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define ALIAS_COUNT 1\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define MAX_ALIAS_SEQUENCE_LENGTH 3\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const uint16_t ts_non_terminal_alias_map[] = {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  0, 2,\n    0,\n    1,\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  1, 3,\n    1,\n    1,\n    2,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  1, 2,\n    1,\n    2,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  2, 3,\n    2,\n    2,\n    3,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH > 0 ? MAX_ALIAS_SEQUENCE_LENGTH : 1] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .alias_count = ALIAS_COUNT,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .max_alias_sequence_length = MAX_ALIAS_SEQUENCE_LENGTH,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .alias_sequences = &ts_alias_sequences[0][0],\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "\"value_alias\""));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "\"anon_alias\""));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { 0, 1, 0 },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 1, 0, 2 },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = 2,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { 0, 2, 0 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 2, 0, 3 },\n"));
 }
 
 test "emitParserCAlloc keeps emitted GLR loop feature disabled by default" {
@@ -3364,7 +3456,7 @@ test "emitParserCAlloc emits serialized reserved words" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "#define MAX_RESERVED_WORD_SET_SIZE 2\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_reserved_words[][MAX_RESERVED_WORD_SET_SIZE > 0 ? MAX_RESERVED_WORD_SET_SIZE : 1] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { 0, 0 },\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 0, 1 },\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [1] = { 1, 2 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .reserved_words = &ts_reserved_words[0][0],\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .max_reserved_word_set_size = 2,\n"));
 }
@@ -3405,7 +3497,7 @@ test "emitParserCAlloc emits keyword lexer when serialized" {
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static bool ts_lex_keywords(TSLexer *lexer, TSStateId state) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      if (lookahead == 105) ADVANCE(1);\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      ACCEPT_TOKEN(0);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      ACCEPT_TOKEN(2);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_lex_fn = ts_lex_keywords,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_capture_token = 1,\n"));
 }
