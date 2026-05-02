@@ -1746,6 +1746,7 @@ fn formatCandidateActionsAlloc(
         if (index > 0) try out.writer.writeAll(", ");
         switch (action) {
             .shift => |state_id| try out.writer.print("shift:{d}", .{state_id}),
+            .shift_extra => try out.writer.writeAll("shift_extra"),
             .reduce => |production_id| {
                 const label = productionLabelFor(extracted, build_result, production_id);
                 try out.writer.print("reduce:{d}({s})", .{ production_id, label });

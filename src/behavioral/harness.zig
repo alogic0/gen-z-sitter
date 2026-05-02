@@ -596,6 +596,16 @@ fn versionShift(
     version.shifted_tokens += 1;
 }
 
+fn versionShiftExtra(
+    version: *ParseVersion,
+    token_len: usize,
+    external_effect: SampledExternalEffect,
+) std.mem.Allocator.Error!void {
+    try version.external_state.applyEffect(external_effect);
+    version.cursor += token_len;
+    version.shifted_tokens += 1;
+}
+
 // Apply one reduce action to a version. Returns the reject reason on failure, null on success.
 fn versionReduce(
     allocator: std.mem.Allocator,
@@ -1125,6 +1135,11 @@ fn simulateBuiltScannerFreeWithIncremental(
                                         vi += 1;
                                         break :inner;
                                     },
+                                    .shift_extra => {
+                                        try versionShiftExtra(&versions.items[vi], matched.len, matched.external_effect);
+                                        vi += 1;
+                                        break :inner;
+                                    },
                                     .reduce => |prod_id| {
                                         if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
                                             updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
@@ -1158,6 +1173,11 @@ fn simulateBuiltScannerFreeWithIncremental(
                             killVersion(allocator, &versions, vi);
                             break :inner;
                         },
+                        .shift_extra => {
+                            updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .missing_action);
+                            killVersion(allocator, &versions, vi);
+                            break :inner;
+                        },
                     };
                     if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
                         .accept => return acceptedResult(versions.items[vi]),
@@ -1170,6 +1190,11 @@ fn simulateBuiltScannerFreeWithIncremental(
                             continue :inner;
                         },
                         .shift => {
+                            updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .missing_action);
+                            killVersion(allocator, &versions, vi);
+                            break :inner;
+                        },
+                        .shift_extra => {
                             updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, .missing_action);
                             killVersion(allocator, &versions, vi);
                             break :inner;
@@ -1257,6 +1282,11 @@ fn simulateBuiltScannerFreeWithIncremental(
                             vi += 1;
                             break :inner;
                         },
+                        .shift_extra => {
+                            try versionShiftExtra(&versions.items[vi], matched.len, matched.external_effect);
+                            vi += 1;
+                            break :inner;
+                        },
                         .reduce => |prod_id| {
                             if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
                                 updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
@@ -1291,6 +1321,13 @@ fn simulateBuiltScannerFreeWithIncremental(
                                     };
                                     versions.appendAssumeCapacity(fork);
                                 },
+                                .shift_extra => {
+                                    versionShiftExtra(&fork, matched.len, matched.external_effect) catch {
+                                        fork.deinit(allocator);
+                                        return error.OutOfMemory;
+                                    };
+                                    versions.appendAssumeCapacity(fork);
+                                },
                                 .reduce => |prod_id| {
                                     const dead = versionReduce(allocator, result, &fork, prod_id) catch {
                                         fork.deinit(allocator);
@@ -1314,6 +1351,11 @@ fn simulateBuiltScannerFreeWithIncremental(
                         switch (candidates[0]) {
                             .shift => |target| {
                                 try versionShift(allocator, &versions.items[vi], state_id, target, matched.symbol, matched.len, matched.external_effect);
+                                vi += 1;
+                                break :inner;
+                            },
+                            .shift_extra => {
+                                try versionShiftExtra(&versions.items[vi], matched.len, matched.external_effect);
                                 vi += 1;
                                 break :inner;
                             },
@@ -1409,6 +1451,11 @@ fn simulateBuiltWithFirstExternalBoundary(
                             try external_state.applyEffect(matched.external_effect);
                             continue;
                         },
+                        .shift_extra => {
+                            shifted_tokens += 1;
+                            try external_state.applyEffect(matched.external_effect);
+                            continue;
+                        },
                         .reduce => |production_id| {
                             const production = result.productions[production_id];
                             if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
@@ -1449,6 +1496,15 @@ fn simulateBuiltWithFirstExternalBoundary(
                         .reason = .missing_action,
                     } };
                     if (progress) logSimulationResult("simulate_external_boundary eof_fallback_shift", rejected);
+                    return rejected;
+                },
+                .shift_extra => {
+                    const rejected: SimulationResult = .{ .rejected = .{
+                        .consumed_bytes = cursor,
+                        .shifted_tokens = shifted_tokens,
+                        .reason = .missing_action,
+                    } };
+                    if (progress) logSimulationResult("simulate_external_boundary eof_fallback_shift_extra", rejected);
                     return rejected;
                 },
                 .reduce => |production_id| {
@@ -1509,6 +1565,15 @@ fn simulateBuiltWithFirstExternalBoundary(
                         .reason = .tokenization_failed,
                     } };
                     if (progress) logSimulationResult("simulate_external_boundary tokenization_failed_shift", rejected);
+                    return rejected;
+                },
+                .shift_extra => {
+                    const rejected: SimulationResult = .{ .rejected = .{
+                        .consumed_bytes = cursor,
+                        .shifted_tokens = shifted_tokens,
+                        .reason = .tokenization_failed,
+                    } };
+                    if (progress) logSimulationResult("simulate_external_boundary tokenization_failed_shift_extra", rejected);
                     return rejected;
                 },
                 .reduce => |production_id| {
@@ -1576,6 +1641,11 @@ fn simulateBuiltWithFirstExternalBoundary(
             .chosen => |action| switch (action) {
                 .shift => |target| {
                     try stack.append(target);
+                    cursor += matched.len;
+                    shifted_tokens += 1;
+                    try external_state.applyEffect(matched.external_effect);
+                },
+                .shift_extra => {
                     cursor += matched.len;
                     shifted_tokens += 1;
                     try external_state.applyEffect(matched.external_effect);
@@ -2248,7 +2318,7 @@ fn selectFallbackAction(result: build.BuildResult, state_id: u32) ?actions.Parse
                                 selected = a;
                             }
                         },
-                        .shift => {},
+                        .shift, .shift_extra => {},
                     };
                     continue;
                 },
@@ -2257,7 +2327,7 @@ fn selectFallbackAction(result: build.BuildResult, state_id: u32) ?actions.Parse
                 else => return null,
             },
             .chosen => |action| switch (action) {
-                .shift => {},
+                .shift, .shift_extra => {},
                 .reduce, .accept => {
                     if (selected) |existing| {
                         if (!parseActionEql(existing, action)) return null;
@@ -2288,7 +2358,7 @@ fn selectEofAction(result: build.BuildResult, state_id: u32) ?actions.ParseActio
                                 selected = action;
                             }
                         },
-                        .shift => {},
+                        .shift, .shift_extra => {},
                     }
                 }
                 break :blk selected;
@@ -2302,6 +2372,10 @@ fn parseActionEql(a: actions.ParseAction, b: actions.ParseAction) bool {
     return switch (a) {
         .shift => |left| switch (b) {
             .shift => |right| left == right,
+            else => false,
+        },
+        .shift_extra => switch (b) {
+            .shift_extra => true,
             else => false,
         },
         .reduce => |left| switch (b) {

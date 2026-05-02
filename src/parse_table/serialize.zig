@@ -3356,7 +3356,7 @@ test "attachExtractedMetadataAlloc marks external extras valid for scanner state
         },
         .blocked = false,
         .lex_modes = lex_modes[0..],
-    }, prepared, syntax, lexical);
+    }, prepared, syntax, lexical, .{ .entries = &.{} });
     const recovery_actions = serialized.states[0].actions;
     defer allocator.free(serialized.symbols);
     defer allocator.free(recovery_actions);
@@ -3421,7 +3421,7 @@ test "attachExtractedMetadataAlloc gives state zero a recovery external scanner 
         },
         .blocked = false,
         .lex_modes = lex_modes[0..],
-    }, prepared, syntax, lexical);
+    }, prepared, syntax, lexical, .{ .entries = &.{} });
     const recovery_actions = serialized.states[0].actions;
     defer allocator.free(serialized.symbols);
     defer allocator.free(recovery_actions);
