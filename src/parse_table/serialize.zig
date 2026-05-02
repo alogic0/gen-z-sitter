@@ -1398,6 +1398,43 @@ pub fn buildLexStateTerminalSetsAlloc(
     return serialized;
 }
 
+pub fn buildKeywordCaptureLexTerminalSetsAlloc(
+    allocator: std.mem.Allocator,
+    terminal_sets: []const []const bool,
+    prepared: grammar_ir.PreparedGrammar,
+    lexical: lexical_ir.LexicalGrammar,
+    word_token: ?syntax_ir.SymbolRef,
+) std.mem.Allocator.Error![]const []const bool {
+    const word_index = switch (word_token orelse syntax_ir.SymbolRef{ .end = {} }) {
+        .terminal => |index| index,
+        .end, .non_terminal, .external => return buildLexStateTerminalSetsAlloc(allocator, terminal_sets),
+    };
+
+    const keyword_tokens = try buildKeywordLexTableTerminalSetAlloc(allocator, prepared, lexical);
+    defer allocator.free(keyword_tokens);
+
+    const serialized = try allocator.alloc([]const bool, terminal_sets.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (serialized[0..initialized]) |terminal_set| allocator.free(terminal_set);
+        allocator.free(serialized);
+    }
+
+    for (terminal_sets, 0..) |terminal_set, index| {
+        const normalized = try allocator.dupe(bool, terminal_set);
+        var saw_keyword = false;
+        for (keyword_tokens, 0..) |is_keyword, token_index| {
+            if (!is_keyword or token_index >= normalized.len or !normalized[token_index]) continue;
+            normalized[token_index] = false;
+            saw_keyword = true;
+        }
+        if (saw_keyword and word_index < normalized.len) normalized[word_index] = true;
+        serialized[index] = normalized;
+        initialized += 1;
+    }
+    return serialized;
+}
+
 pub fn buildPrimaryStateIdsAlloc(
     allocator: std.mem.Allocator,
     states: []const SerializedState,
@@ -4766,6 +4803,54 @@ test "buildLexStateTerminalSetsAlloc preserves lex-state terminal sets by id" {
     try std.testing.expectEqual(@as(usize, 2), terminal_sets.len);
     try std.testing.expectEqualSlices(bool, source[0], terminal_sets[0]);
     try std.testing.expectEqualSlices(bool, source[1], terminal_sets[1]);
+}
+
+test "buildKeywordCaptureLexTerminalSetsAlloc maps keyword strings to word token" {
+    const allocator = std.testing.allocator;
+    const rules = [_]ir_rules.Rule{
+        .{ .string = "if" },
+        .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
+    };
+    const prepared = grammar_ir.PreparedGrammar{
+        .grammar_name = "keyword_capture_fixture",
+        .variables = &.{},
+        .external_tokens = &.{},
+        .rules = rules[0..],
+        .symbols = &.{},
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = .{ .kind = .non_terminal, .index = 0 },
+        .reserved_word_sets = &.{
+            .{ .context_name = "default", .members = &.{0} },
+        },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "if", .kind = .anonymous, .rule = 0, .source_kind = .string },
+            .{ .name = "identifier", .kind = .named, .rule = 1, .source_kind = .pattern },
+        },
+        .separators = &.{},
+    };
+    const source = [_][]const bool{
+        &.{ true, false },
+        &.{ true, true },
+    };
+
+    const terminal_sets = try buildKeywordCaptureLexTerminalSetsAlloc(
+        allocator,
+        source[0..],
+        prepared,
+        lexical,
+        .{ .terminal = 1 },
+    );
+    defer deinitLexStateTerminalSets(allocator, terminal_sets);
+
+    try std.testing.expectEqual(@as(usize, 2), terminal_sets.len);
+    try std.testing.expectEqualSlices(bool, &.{ false, true }, terminal_sets[0]);
+    try std.testing.expectEqualSlices(bool, &.{ false, true }, terminal_sets[1]);
 }
 
 test "buildProductionSerializationAlloc records original alias step symbols" {

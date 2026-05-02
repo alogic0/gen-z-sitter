@@ -138,6 +138,16 @@ number of runtime `ts_lex` state cases, not the number of emitted character
 range branches. The surviving `525/279` gap is therefore a runtime lexer-state
 minimization/construction gap, not a large-character-set declaration gap.
 
+Batch 5 implementation note: main lex-table construction now follows upstream's
+keyword-capture shape by replacing identifier-shaped keyword terminals with the
+grammar word token before building runtime lex tables. JavaScript main
+`lex_function_case_count` moved from `521/279` to `264/279`, with
+`keyword_lex_function_case_count=200/200`, `large_character_set_count=3/3`,
+and bounded corpus samples still matched. The remaining `264/279` delta is now
+an over-merge/local runtime-lex minimization difference: local emits 10 unique
+lex mode start states while upstream emits 16, so exact parity requires a
+lex-mode-start compatibility barrier rather than more keyword-token removal.
+
 ## Phase 2 — Symbol And Field Ordering
 
 Goal: make `symbol_order_hash` and `field_names_hash` match upstream without

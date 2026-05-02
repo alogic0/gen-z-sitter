@@ -661,11 +661,19 @@ fn serializeRuntimeTableFromGrammarPathMaybeProfile(
     logRuntimeProfile(profile_label, "eof_valids", eof_timer);
 
     const lex_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+    const runtime_lex_terminal_sets = try serialize.buildKeywordCaptureLexTerminalSetsAlloc(
+        allocator,
+        serialized.lex_state_terminal_sets,
+        prepared,
+        extracted.lexical,
+        extracted.syntax.word_token,
+    );
+    defer serialize.deinitLexStateTerminalSets(allocator, runtime_lex_terminal_sets);
     serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesWithEofAlloc(
         allocator,
         prepared.rules,
         extracted.lexical,
-        serialized.lex_state_terminal_sets,
+        runtime_lex_terminal_sets,
         eof_valids,
     );
     logRuntimeProfile(profile_label, "build_lex_tables", lex_timer);
@@ -814,11 +822,19 @@ fn serializePreparedBuildResultAlloc(
     );
     logProfileDone("serialize.keyword_lex_table", stage_profile_timer);
     stage_profile_timer = profileTimer(profile_log);
+    const lex_terminal_sets = try serialize.buildKeywordCaptureLexTerminalSetsAlloc(
+        allocator,
+        serialized.lex_state_terminal_sets,
+        prepared,
+        extracted.lexical,
+        extracted.syntax.word_token,
+    );
+    defer serialize.deinitLexStateTerminalSets(allocator, lex_terminal_sets);
     serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesAlloc(
         allocator,
         prepared.rules,
         extracted.lexical,
-        serialized.lex_state_terminal_sets,
+        lex_terminal_sets,
     );
     logProfileDone("serialize.lex_tables", stage_profile_timer);
     return serialized;
