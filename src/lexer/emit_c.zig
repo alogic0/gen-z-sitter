@@ -30,7 +30,7 @@ pub fn emitLexFunctionWithResolver(
     resolver: ?SymbolResolver,
 ) EmitError!void {
     const large_sets = LargeCharacterSets{ .lex_table = lex_table };
-    try emitLexFunctionWithLargeSets(writer, fn_name, lex_table, resolver, large_sets);
+    try emitLexFunctionWithLargeSets(null, writer, fn_name, lex_table, resolver, large_sets);
 }
 
 pub fn emitLexFunctionWithResolverAlloc(
@@ -42,10 +42,11 @@ pub fn emitLexFunctionWithResolverAlloc(
 ) EmitError!void {
     const large_sets = try LargeCharacterSetIndex.initAlloc(allocator, lex_table);
     defer large_sets.deinit(allocator);
-    try emitLexFunctionWithLargeSets(writer, fn_name, lex_table, resolver, large_sets);
+    try emitLexFunctionWithLargeSets(allocator, writer, fn_name, lex_table, resolver, large_sets);
 }
 
 fn emitLexFunctionWithLargeSets(
+    allocator: ?std.mem.Allocator,
     writer: anytype,
     fn_name: []const u8,
     lex_table: lexical_serialize.SerializedLexTable,
@@ -74,8 +75,15 @@ fn emitLexFunctionWithLargeSets(
         for (state_value.transitions[advance_map_end..]) |transition| {
             if (transition.ranges.len == 0) continue;
             try writer.writeAll("      if (");
-            if (large_sets.find(transition.ranges)) |set_id| {
-                try writeLargeSetCondition(writer, fn_name, set_id, transition.ranges);
+            if (allocator) |alloc| {
+                if (try large_sets.findBestAlloc(alloc, transition.ranges)) |match| {
+                    defer match.deinit(alloc);
+                    try writeLargeSetMatchCondition(writer, fn_name, large_sets.entryRanges(match.set_id), match);
+                } else {
+                    try writeTransitionCondition(writer, transition.ranges);
+                }
+            } else if (large_sets.find(transition.ranges)) |set_id| {
+                try writeLargeSetCondition(writer, fn_name, set_id, large_sets.entryRanges(set_id));
             } else {
                 try writeTransitionCondition(writer, transition.ranges);
             }
@@ -108,12 +116,19 @@ const LargeCharacterSetIndex = struct {
         var entries = std.array_list.Managed(LargeCharacterSetEntry).init(allocator);
         errdefer entries.deinit();
 
-        for (lex_table.states) |state_value| {
-            const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
-            for (state_value.transitions[advance_map_end..]) |transition| {
-                if (!isLargeCharacterSet(transition.ranges)) continue;
-                if (findInEntries(entries.items, transition.ranges) != null) continue;
-                try entries.append(.{ .ranges = transition.ranges });
+        if (lex_table.large_character_sets.len != 0) {
+            for (lex_table.large_character_sets) |set| {
+                if (findInEntries(entries.items, set.ranges) != null) continue;
+                try entries.append(.{ .ranges = set.ranges });
+            }
+        } else {
+            for (lex_table.states) |state_value| {
+                const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
+                for (state_value.transitions[advance_map_end..]) |transition| {
+                    if (!isLargeCharacterSet(transition.ranges)) continue;
+                    if (findInEntries(entries.items, transition.ranges) != null) continue;
+                    try entries.append(.{ .ranges = transition.ranges });
+                }
             }
         }
 
@@ -140,6 +155,56 @@ const LargeCharacterSetIndex = struct {
 
     fn find(self: LargeCharacterSetIndex, ranges: []const lexical_serialize.SerializedCharacterRange) ?usize {
         return findInEntries(self.entries, ranges);
+    }
+
+    fn entryRanges(self: LargeCharacterSetIndex, set_id: usize) []const lexical_serialize.SerializedCharacterRange {
+        return self.entries[set_id].ranges;
+    }
+
+    fn findBestAlloc(
+        self: LargeCharacterSetIndex,
+        allocator: std.mem.Allocator,
+        ranges: []const lexical_serialize.SerializedCharacterRange,
+    ) std.mem.Allocator.Error!?LargeCharacterSetMatch {
+        if (!isLargeCharacterSet(ranges)) return null;
+
+        var best: ?LargeCharacterSetMatch = null;
+        errdefer if (best) |match| match.deinit(allocator);
+
+        for (self.entries, 0..) |entry, set_id| {
+            const intersection = try intersectRangeSetsAlloc(allocator, ranges, entry.ranges);
+            defer allocator.free(intersection);
+            if (intersection.len == 0) continue;
+
+            const additions = try subtractRangeSetsAlloc(allocator, ranges, entry.ranges);
+            errdefer allocator.free(additions);
+            const removals = try subtractRangeSetsAlloc(allocator, entry.ranges, ranges);
+            errdefer allocator.free(removals);
+            const correction_count = additions.len + removals.len;
+            if (correction_count >= ranges.len) {
+                allocator.free(additions);
+                allocator.free(removals);
+                continue;
+            }
+
+            if (best) |current| {
+                const current_count = current.additions.len + current.removals.len;
+                if (current_count < correction_count) {
+                    allocator.free(additions);
+                    allocator.free(removals);
+                    continue;
+                }
+                current.deinit(allocator);
+            }
+
+            best = .{
+                .set_id = set_id,
+                .additions = additions,
+                .removals = removals,
+            };
+        }
+
+        return best;
     }
 };
 
@@ -213,6 +278,44 @@ const LargeCharacterSets = struct {
         }
         return false;
     }
+
+    fn entryRanges(self: *const LargeCharacterSets, set_id: usize) []const lexical_serialize.SerializedCharacterRange {
+        var next_id: usize = 0;
+        for (self.lex_table.states, 0..) |state_value, state_index| {
+            const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
+            for (state_value.transitions[advance_map_end..], advance_map_end..) |transition, transition_index| {
+                if (!isLargeCharacterSet(transition.ranges)) continue;
+                if (self.hasPrevious(transition.ranges, state_index, transition_index)) continue;
+                if (next_id == set_id) return transition.ranges;
+                next_id += 1;
+            }
+        }
+        return &.{};
+    }
+
+    fn findBestAlloc(
+        self: *const LargeCharacterSets,
+        allocator: std.mem.Allocator,
+        ranges: []const lexical_serialize.SerializedCharacterRange,
+    ) std.mem.Allocator.Error!?LargeCharacterSetMatch {
+        const set_id = self.find(ranges) orelse return null;
+        return .{
+            .set_id = set_id,
+            .additions = try allocator.alloc(lexical_serialize.SerializedCharacterRange, 0),
+            .removals = try allocator.alloc(lexical_serialize.SerializedCharacterRange, 0),
+        };
+    }
+};
+
+const LargeCharacterSetMatch = struct {
+    set_id: usize,
+    additions: []const lexical_serialize.SerializedCharacterRange,
+    removals: []const lexical_serialize.SerializedCharacterRange,
+
+    fn deinit(self: LargeCharacterSetMatch, allocator: std.mem.Allocator) void {
+        allocator.free(self.additions);
+        allocator.free(self.removals);
+    }
 };
 
 pub fn isLargeCharacterSet(ranges: []const lexical_serialize.SerializedCharacterRange) bool {
@@ -235,11 +338,32 @@ fn writeLargeSetCondition(
     writer: anytype,
     fn_name: []const u8,
     set_id: usize,
-    ranges: []const lexical_serialize.SerializedCharacterRange,
+    set_ranges: []const lexical_serialize.SerializedCharacterRange,
 ) EmitError!void {
-    if (rangesIncludeNull(ranges)) try writer.writeAll("(!eof && ");
-    try writer.print("set_contains({s}_character_set_{d}, {d}, lookahead)", .{ fn_name, set_id, ranges.len });
-    if (rangesIncludeNull(ranges)) try writer.writeByte(')');
+    if (rangesIncludeNull(set_ranges)) try writer.writeAll("(!eof && ");
+    try writer.print("set_contains({s}_character_set_{d}, {d}, lookahead)", .{ fn_name, set_id, set_ranges.len });
+    if (rangesIncludeNull(set_ranges)) try writer.writeByte(')');
+}
+
+fn writeLargeSetMatchCondition(
+    writer: anytype,
+    fn_name: []const u8,
+    set_ranges: []const lexical_serialize.SerializedCharacterRange,
+    match: LargeCharacterSetMatch,
+) EmitError!void {
+    const has_additions = match.additions.len != 0;
+    const has_removals = match.removals.len != 0;
+    if (has_removals) try writer.writeByte('(');
+    try writeLargeSetCondition(writer, fn_name, match.set_id, set_ranges);
+    if (has_additions) {
+        try writer.writeAll(" || ");
+        try writeTransitionCondition(writer, match.additions);
+    }
+    if (has_removals) {
+        try writer.writeAll(") && !(");
+        try writeTransitionCondition(writer, match.removals);
+        try writer.writeByte(')');
+    }
 }
 
 fn rangesIncludeNull(ranges: []const lexical_serialize.SerializedCharacterRange) bool {
@@ -306,6 +430,64 @@ fn writeTransitionCondition(
         if (index > 0) try writer.writeAll(" || ");
         try writeRangeCondition(writer, range);
     }
+}
+
+fn intersectRangeSetsAlloc(
+    allocator: std.mem.Allocator,
+    lhs: []const lexical_serialize.SerializedCharacterRange,
+    rhs: []const lexical_serialize.SerializedCharacterRange,
+) std.mem.Allocator.Error![]const lexical_serialize.SerializedCharacterRange {
+    var result = std.array_list.Managed(lexical_serialize.SerializedCharacterRange).init(allocator);
+    defer result.deinit();
+    var left_index: usize = 0;
+    var right_index: usize = 0;
+    while (left_index < lhs.len and right_index < rhs.len) {
+        const left = lhs[left_index];
+        const right = rhs[right_index];
+        const start = @max(left.start, right.start);
+        const end = @min(left.end_inclusive, right.end_inclusive);
+        if (start <= end) try result.append(.{ .start = start, .end_inclusive = end });
+        if (left.end_inclusive < right.end_inclusive) {
+            left_index += 1;
+        } else {
+            right_index += 1;
+        }
+    }
+    return try result.toOwnedSlice();
+}
+
+fn subtractRangeSetsAlloc(
+    allocator: std.mem.Allocator,
+    lhs: []const lexical_serialize.SerializedCharacterRange,
+    rhs: []const lexical_serialize.SerializedCharacterRange,
+) std.mem.Allocator.Error![]const lexical_serialize.SerializedCharacterRange {
+    var result = std.array_list.Managed(lexical_serialize.SerializedCharacterRange).init(allocator);
+    defer result.deinit();
+    var right_index: usize = 0;
+    for (lhs) |left| {
+        var cursor = left.start;
+        while (right_index < rhs.len and rhs[right_index].end_inclusive < cursor) right_index += 1;
+        var scan_index = right_index;
+        while (scan_index < rhs.len and rhs[scan_index].start <= left.end_inclusive) : (scan_index += 1) {
+            const right = rhs[scan_index];
+            if (right.start > cursor) {
+                try result.append(.{
+                    .start = cursor,
+                    .end_inclusive = @min(left.end_inclusive, right.start - 1),
+                });
+            }
+            if (right.end_inclusive == std.math.maxInt(u32)) {
+                cursor = right.end_inclusive;
+                break;
+            }
+            cursor = @max(cursor, right.end_inclusive + 1);
+            if (cursor > left.end_inclusive) break;
+        }
+        if (cursor <= left.end_inclusive) {
+            try result.append(.{ .start = cursor, .end_inclusive = left.end_inclusive });
+        }
+    }
+    return try result.toOwnedSlice();
 }
 
 fn writeRangeCondition(

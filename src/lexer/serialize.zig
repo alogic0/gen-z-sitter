@@ -93,6 +93,12 @@ pub const SerializedLexTransition = struct {
     skip: bool,
 };
 
+/// One precomputed large character set available to lexer C emission.
+pub const SerializedLargeCharacterSet = struct {
+    symbol: ?syntax_ir.SymbolRef = null,
+    ranges: []const SerializedCharacterRange,
+};
+
 /// One serialized lexer state.
 pub const SerializedLexState = struct {
     accept_symbol: ?syntax_ir.SymbolRef = null,
@@ -104,6 +110,7 @@ pub const SerializedLexState = struct {
 pub const SerializedLexTable = struct {
     start_state_id: u32,
     states: []const SerializedLexState,
+    large_character_sets: []const SerializedLargeCharacterSet = &.{},
 };
 
 /// Build parser-state-indexed lexer modes from serialized parse states.
@@ -187,6 +194,10 @@ pub fn buildSerializedLexTablesWithEofAlloc(
         initialized += 1;
     }
 
+    if (tables.len != 0) {
+        tables[0].large_character_sets = try buildLargeCharacterSetsAlloc(allocator, expanded);
+    }
+
     if (profile_log) {
         std.debug.print(
             "[lexer_serialize_profile] tables={d} built_states={d} built_transitions={d} serialized_states={d} serialized_transitions={d} serialized_ranges={d} token_set_ms={d:.2} build_table_ms={d:.2} serialize_table_ms={d:.2} total_ms={d:.2}\n",
@@ -239,6 +250,15 @@ pub fn deinitSerializedLexTable(
         allocator.free(state.transitions);
     }
     allocator.free(table.states);
+    deinitLargeCharacterSets(allocator, table.large_character_sets);
+}
+
+pub fn deinitLargeCharacterSets(
+    allocator: std.mem.Allocator,
+    large_character_sets: []const SerializedLargeCharacterSet,
+) void {
+    for (large_character_sets) |set| allocator.free(set.ranges);
+    allocator.free(large_character_sets);
 }
 
 fn tokenIndexSetFromTerminalSet(
@@ -324,6 +344,105 @@ fn serializeLexTransitionAlloc(
         .next_state_id = @intCast(transition.next_state_id),
         .skip = transition.is_separator,
     };
+}
+
+fn buildLargeCharacterSetsAlloc(
+    allocator: std.mem.Allocator,
+    expanded: lexer_model.ExpandedLexicalGrammar,
+) std.mem.Allocator.Error![]const SerializedLargeCharacterSet {
+    var result = std.array_list.Managed(SerializedLargeCharacterSet).init(allocator);
+    defer result.deinit();
+    errdefer {
+        for (result.items) |set| allocator.free(set.ranges);
+    }
+
+    for (expanded.variables, 0..) |_, variable_index| {
+        var allowed = try lexer_model.TokenIndexSet.initEmpty(allocator, expanded.variables.len);
+        defer allowed.deinit(allocator);
+        allowed.values[variable_index] = true;
+
+        var table = try lexer_table.buildLexTableForSetWithOptions(allocator, expanded, allowed, .{});
+        defer table.deinit();
+
+        for (table.states) |state| {
+            var main_chars = lexer_model.CharacterSet.empty();
+            defer main_chars.deinit(allocator);
+
+            for (state.transitions) |transition| {
+                if (transition.is_separator) {
+                    if (transition.chars.ranges.items.len > 8) {
+                        try appendLargeCharacterSetIfNew(
+                            allocator,
+                            &result,
+                            null,
+                            transition.chars.ranges.items,
+                        );
+                    }
+                } else {
+                    try main_chars.addSet(allocator, transition.chars);
+                }
+            }
+
+            if (main_chars.ranges.items.len > 8) {
+                try appendLargeCharacterSetIfNew(
+                    allocator,
+                    &result,
+                    .{ .terminal = @intCast(variable_index) },
+                    main_chars.ranges.items,
+                );
+            }
+        }
+    }
+
+    return try result.toOwnedSlice();
+}
+
+fn appendLargeCharacterSetIfNew(
+    allocator: std.mem.Allocator,
+    result: *std.array_list.Managed(SerializedLargeCharacterSet),
+    symbol: ?syntax_ir.SymbolRef,
+    ranges: []const lexer_model.CharacterSet.Range,
+) std.mem.Allocator.Error!void {
+    const serialized_ranges = try serializeCharacterRangesAlloc(allocator, ranges);
+    errdefer allocator.free(serialized_ranges);
+
+    for (result.items) |entry| {
+        if (rangeSetsEqual(entry.ranges, serialized_ranges)) {
+            allocator.free(serialized_ranges);
+            return;
+        }
+    }
+
+    try result.append(.{
+        .symbol = symbol,
+        .ranges = serialized_ranges,
+    });
+}
+
+fn serializeCharacterRangesAlloc(
+    allocator: std.mem.Allocator,
+    ranges: []const lexer_model.CharacterSet.Range,
+) std.mem.Allocator.Error![]const SerializedCharacterRange {
+    const result = try allocator.alloc(SerializedCharacterRange, ranges.len);
+    for (ranges, 0..) |range, index| {
+        result[index] = .{
+            .start = range.start,
+            .end_inclusive = range.end - 1,
+        };
+    }
+    return result;
+}
+
+fn rangeSetsEqual(
+    lhs: []const SerializedCharacterRange,
+    rhs: []const SerializedCharacterRange,
+) bool {
+    if (lhs.len != rhs.len) return false;
+    for (lhs, rhs) |left, right| {
+        if (left.start != right.start) return false;
+        if (left.end_inclusive != right.end_inclusive) return false;
+    }
+    return true;
 }
 
 /// Serialized lexical grammar plus boundary blockers.

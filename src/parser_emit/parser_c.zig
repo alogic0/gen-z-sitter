@@ -1520,7 +1520,48 @@ fn buildRuntimeLexTableAlloc(
         offset += @intCast(table.states.len);
     }
 
-    return try minimizeRuntimeLexTableAlloc(allocator, states, starts);
+    var runtime = try minimizeRuntimeLexTableAlloc(allocator, states, starts);
+    runtime.table.large_character_sets = try collectRuntimeLargeCharacterSetsAlloc(allocator, lex_tables);
+    return runtime;
+}
+
+fn collectRuntimeLargeCharacterSetsAlloc(
+    allocator: std.mem.Allocator,
+    lex_tables: []const lexer_serialize.SerializedLexTable,
+) std.mem.Allocator.Error![]const lexer_serialize.SerializedLargeCharacterSet {
+    var result = std.array_list.Managed(lexer_serialize.SerializedLargeCharacterSet).init(allocator);
+    defer result.deinit();
+
+    for (lex_tables) |table| {
+        for (table.large_character_sets) |set| {
+            if (containsLargeCharacterSet(result.items, set.ranges)) continue;
+            try result.append(set);
+        }
+    }
+
+    return try result.toOwnedSlice();
+}
+
+fn containsLargeCharacterSet(
+    sets: []const lexer_serialize.SerializedLargeCharacterSet,
+    ranges: []const lexer_serialize.SerializedCharacterRange,
+) bool {
+    for (sets) |set| {
+        if (serializedRangeSetsEqual(set.ranges, ranges)) return true;
+    }
+    return false;
+}
+
+fn serializedRangeSetsEqual(
+    lhs: []const lexer_serialize.SerializedCharacterRange,
+    rhs: []const lexer_serialize.SerializedCharacterRange,
+) bool {
+    if (lhs.len != rhs.len) return false;
+    for (lhs, rhs) |left, right| {
+        if (left.start != right.start) return false;
+        if (left.end_inclusive != right.end_inclusive) return false;
+    }
+    return true;
 }
 
 fn minimizeRuntimeLexTableAlloc(

@@ -1051,7 +1051,10 @@ pub fn attachKeywordLexTableAlloc(
     );
     defer allocator.free(tables);
 
-    result.keyword_lex_table = tables[0];
+    var keyword_table = tables[0];
+    lexer_serialize.deinitLargeCharacterSets(allocator, keyword_table.large_character_sets);
+    keyword_table.large_character_sets = &.{};
+    result.keyword_lex_table = keyword_table;
     return result;
 }
 
