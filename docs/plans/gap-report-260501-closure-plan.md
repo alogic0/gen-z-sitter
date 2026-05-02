@@ -150,6 +150,15 @@ difference: local emits 10 unique lex mode start states while upstream emits
 16, and preserving start rows accounts for 2 of the 15 previously over-merged
 runtime cases.
 
+Gate-fix note: the keyword-capture split exposed a runtime-link regression for
+word-token grammars that have identifier-shaped string keywords but no reserved
+word sets. Local skipped keyword-table emission in that case, so samples such as
+Ziggy schema `root = bytes` lexed `root` as the word token rather than the
+literal keyword. Keyword lex tables are now emitted whenever a word token exists
+and keyword-shaped string terminals are present. The JavaScript comparison
+remained unchanged (`266/279`, `200/200`, `3/3`, corpus matched), and
+`zig build test-release --summary all` passed.
+
 ## Phase 2 — Symbol And Field Ordering
 
 Goal: make `symbol_order_hash` and `field_names_hash` match upstream without
@@ -352,13 +361,15 @@ Gate:
     correct yet.
 
 Measurement note: Python is not ready for promotion. The minimized comparison
-completed unblocked, but local/upstream state counts diverge substantially:
-`serialized_state_count=3878/2788`, `emitted_state_count=3877/2788`,
-`large_state_count=283/185`, and `parse_action_list_count=6238/4864`.
-TypeScript and Rust minimized comparisons exceeded the bounded batch budget and
-were stopped; both need a cheaper comparison/profile path before they can be
-used as promotion gates. This means Phase 5 is currently a measurement-gated
-blocker, not a simple scope-gate lift.
+completed unblocked, but local/upstream state and surface counts still diverge:
+`symbol_count=275/273`, `serialized_state_count=2812/2788`,
+`emitted_state_count=2811/2788`, `large_state_count=193/185`,
+`parse_action_list_count=4900/4864`, and `lex_function_case_count=128/150`.
+The Python corpus runner also failed to compile, so there is no runtime proof
+for promotion. TypeScript and Rust minimized comparisons both exceeded the
+bounded batch budget and were stopped; both need a cheaper comparison/profile
+path before they can be used as promotion gates. This means Phase 5 is currently
+a measurement-gated blocker, not a simple scope-gate lift.
 
 ## Phase 6 — Final Audit Closure
 
@@ -367,21 +378,29 @@ known residual is being hidden by stale artifacts.
 
 Tasks:
 
-- [ ] Re-run the primary JavaScript comparison after Phases 1-4.
-- [ ] Re-run the promoted grammar comparisons from Phase 5.
-- [ ] Refresh only checked-in artifacts whose source evidence changed.
-- [ ] Add a closure audit under `docs/audits` summarizing:
+- [x] Re-run the primary JavaScript comparison after Phases 1-4.
+- [x] Re-run the promoted grammar comparisons from Phase 5.
+- [x] Refresh only checked-in artifacts whose source evidence changed.
+- [x] Add a closure audit under `docs/audits` summarizing:
   - all six JavaScript suspected algorithm gaps;
   - Python/TypeScript/Rust promotion decisions;
   - any known unsupported surface that remains outside this plan;
   - exact commands and bounded gates run.
-- [ ] Update `docs/plans/tree-sitter-parity-2026-04-29.md` with a short pointer
+- [x] Update `docs/plans/tree-sitter-parity-2026-04-29.md` with a short pointer
   to this closure plan and the final status.
 
 Gate:
 
 - No `suspected_algorithm_gap` remains from `docs/audits/gap-report-260501.md`
   without either a fix or a checked-in, evidence-backed successor task.
+
+Closure note: the original six JavaScript audit gaps are no longer all active
+algorithm gaps. Four are closed (`large_character_set_count`,
+`keyword_lex_function_case_count`, `symbol_order_hash`, and
+`field_names_hash`). Two remain as evidence-backed successor tasks:
+`parse_action_list_count=3592/3588` and `lex_function_case_count=266/279`.
+Both preserve JavaScript parser state parity and bounded corpus equivalence.
+The current closure audit records the exact residuals and promotion blockers.
 
 ## Expected Batch Order
 

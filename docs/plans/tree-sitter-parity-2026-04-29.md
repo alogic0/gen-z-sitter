@@ -337,6 +337,20 @@ keyword-to-word-token split reduced main lex cases further but still broke
 `declaration.js`; the remaining task is therefore exact keyword classification
 plus runtime keyword remapping before enabling the upstream main-lexer split.
 
+Batch 14 note: `docs/plans/gap-report-260501-closure-plan.md` and
+`docs/audits/gap-report-260501-closure-2026-05-02.md` now supersede the
+2026-05-01 gap audit. The original six JavaScript suspected algorithm gaps are
+four closed items plus two checked successor tasks. Closed: large character sets
+now report `3/3`, keyword lex cases report `200/200`, and both symbol and field
+hashes match. Remaining: JavaScript `parse_action_list_count=3592/3588` and
+main `lex_function_case_count=266/279`. The parser table surface remains
+matched (`1870/1870` states, `387/387` large states, `1483/1483` small rows,
+`10/10` external lex states, `134/134` tokens, `121/121` production IDs), and
+bounded JavaScript corpus samples still match. Python is not promotable
+(`2812/2788` serialized states and no corpus proof), while TypeScript and Rust
+need bounded profile paths because minimized comparisons exceeded the batch
+budget.
+
 Gate:
 
 - The primary grammar has either advanced one parser-table boundary or has a
