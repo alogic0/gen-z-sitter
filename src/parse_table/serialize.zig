@@ -1638,6 +1638,7 @@ fn buildSingleParseActionIndexMapAlloc(
 ) std.mem.Allocator.Error!ParseActionListIndexMap {
     var indexes = ParseActionListIndexMap.init(allocator);
     for (entries) |entry| {
+        if (!entry.reusable) continue;
         if (entry.actions.len != 1) continue;
         try indexes.put(entry.actions[0], entry.index);
     }
@@ -4773,6 +4774,50 @@ test "buildParseActionListAlloc keeps reductions before expected conflict shifts
         list[1].index,
         parseActionListIndexForActionEntry(list, states[0].actions[0], productions[0..]).?,
     );
+}
+
+test "buildSmallParseTableAlloc keeps reusable singleton action indexes reusable" {
+    const allocator = std.testing.allocator;
+    const productions = [_]SerializedProductionInfo{};
+    const states = [_]SerializedState{
+        .{
+            .id = 0,
+            .actions = &[_]SerializedActionEntry{
+                .{
+                    .symbol = .{ .terminal = 0 },
+                    .action = .{ .shift = 4 },
+                    .reusable = false,
+                },
+            },
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+        .{
+            .id = 1,
+            .actions = &[_]SerializedActionEntry{
+                .{
+                    .symbol = .{ .terminal = 0 },
+                    .action = .{ .shift = 4 },
+                    .reusable = true,
+                },
+            },
+            .gotos = &.{},
+            .unresolved = &.{},
+        },
+    };
+
+    const list = try buildRuntimeParseActionListAlloc(allocator, states[0..], productions[0..]);
+    defer deinitParseActionList(allocator, list);
+    const table = try buildSmallParseTableAlloc(allocator, states[0..], 0, list, productions[0..]);
+    defer deinitSmallParseTable(allocator, table);
+
+    try std.testing.expectEqual(@as(u16, 1), list[1].index);
+    try std.testing.expect(!list[1].reusable);
+    try std.testing.expectEqual(@as(u16, 3), list[2].index);
+    try std.testing.expect(list[2].reusable);
+    try std.testing.expectEqual(@as(usize, 1), table.rows[1].groups.len);
+    try std.testing.expectEqual(SerializedSmallParseValueKind.action, table.rows[1].groups[0].kind);
+    try std.testing.expectEqual(@as(u16, 3), table.rows[1].groups[0].value);
 }
 
 test "buildParseActionListAlloc indexes rows by flattened action width" {

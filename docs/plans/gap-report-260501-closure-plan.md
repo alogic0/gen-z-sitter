@@ -342,6 +342,15 @@ the focused repeat-resolution fixture and leaves JavaScript unchanged at
 `parse_action_list_count=3592/3588`. The JavaScript repeat-singleton residual is
 therefore not caused by that fallback alone.
 
+Batch diagnostic fix: local small-parse-table action lookup had a singleton
+fast path that ignored the `reusable` bit, so reusable terminal entries could
+reference a non-reusable singleton action row when both rows had the same
+runtime action. That left 163 local `ts_parse_actions[]` rows unreferenced,
+while upstream only leaves row 0 unreferenced. The lookup now indexes only
+reusable singleton rows for reusable fast-path use; JavaScript still reports
+`parse_action_list_count=3592/3588`, but local and upstream now both have only
+row 0 unreferenced. `zig build test-release --summary all` passed.
+
 ## Phase 4 — Keyword Lex Residual
 
 Goal: close the one-entry `keyword_lex_function_case_count` delta:
