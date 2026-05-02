@@ -1606,10 +1606,21 @@ fn minimizeRuntimeLexTableAlloc(
     defer {
         for (groups.items) |group| allocator.free(group);
     }
+    const start_rank_by_state = try allocator.alloc(usize, states.len);
+    defer allocator.free(start_rank_by_state);
+    @memset(start_rank_by_state, std.math.maxInt(usize));
+    for (starts, 0..) |start, start_rank| {
+        if (start < start_rank_by_state.len) start_rank_by_state[start] = start_rank;
+    }
     for (states, 0..) |state_value, state_id| {
         var matched: ?usize = null;
         for (groups.items, 0..) |group, group_id| {
-            if (lexInitialSignaturesEql(states[group[0]], state_value, group[0] == 0, state_id == 0)) {
+            if (lexInitialSignaturesEql(
+                states[group[0]],
+                state_value,
+                start_rank_by_state[group[0]],
+                start_rank_by_state[state_id],
+            )) {
                 matched = group_id;
                 break;
             }
@@ -1706,10 +1717,10 @@ fn assignLexGroupIds(groups: []const []usize, group_ids: []usize) void {
 fn lexInitialSignaturesEql(
     left: lexer_serialize.SerializedLexState,
     right: lexer_serialize.SerializedLexState,
-    left_is_zero: bool,
-    right_is_zero: bool,
+    left_start_rank: usize,
+    right_start_rank: usize,
 ) bool {
-    if (left_is_zero != right_is_zero) return false;
+    if (left_start_rank != right_start_rank) return false;
     if (!optionalSymbolRefEql(left.accept_symbol, right.accept_symbol)) return false;
     if ((left.eof_target != null) != (right.eof_target != null)) return false;
     if (left.transitions.len != right.transitions.len) return false;

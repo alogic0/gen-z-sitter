@@ -140,13 +140,15 @@ minimization/construction gap, not a large-character-set declaration gap.
 
 Batch 5 implementation note: main lex-table construction now follows upstream's
 keyword-capture shape by replacing identifier-shaped keyword terminals with the
-grammar word token before building runtime lex tables. JavaScript main
-`lex_function_case_count` moved from `521/279` to `264/279`, with
-`keyword_lex_function_case_count=200/200`, `large_character_set_count=3/3`,
-and bounded corpus samples still matched. The remaining `264/279` delta is now
-an over-merge/local runtime-lex minimization difference: local emits 10 unique
-lex mode start states while upstream emits 16, so exact parity requires a
-lex-mode-start compatibility barrier rather than more keyword-token removal.
+grammar word token before building runtime lex tables. Runtime lex minimization
+also preserves distinct lex-mode start rows instead of merging them with
+ordinary successor states. JavaScript main `lex_function_case_count` moved from
+`521/279` to `266/279`, with `keyword_lex_function_case_count=200/200`,
+`large_character_set_count=3/3`, and bounded corpus samples still matched. The
+remaining `266/279` delta is now a narrower local runtime-lex minimization
+difference: local emits 10 unique lex mode start states while upstream emits
+16, and preserving start rows accounts for 2 of the 15 previously over-merged
+runtime cases.
 
 ## Phase 2 — Symbol And Field Ordering
 
