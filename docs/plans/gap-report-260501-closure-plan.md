@@ -21,7 +21,7 @@ Current closure status:
 
 | Gap | Start | Current | Target | Status |
 |---|---:|---:|---:|---|
-| lex_function_case_count | 525 | 266 | 279 | successor task |
+| lex_function_case_count | 525 | 266 | 279 | successor task; local too low |
 | large_character_set_count | 0 | 3 | 3 | closed |
 | parse_action_list_count | 3,592 | 3,592 | 3,588 | successor task |
 | keyword_lex_function_case_count | 201 | 200 | 200 | closed |
@@ -129,7 +129,9 @@ Gate:
 
 - JavaScript comparison reports `large_character_set_count=3`.
 - `lex_function_case_count` converges to upstream or the residual delta is
-  explained by a checked-in artifact.
+  explained by a checked-in artifact. Track the direction explicitly: the
+  current residual is local too low (`266/279`), so the next diagnosis is
+  runtime lex over-merge or missing start-row separation, not excess emission.
 - JavaScript corpus samples remain `matched`.
 
 Batch 1 implementation note: per-token large character sets are now collected
@@ -148,19 +150,23 @@ also preserves distinct lex-mode start rows instead of merging them with
 ordinary successor states. JavaScript main `lex_function_case_count` moved from
 `521/279` to `266/279`, with `keyword_lex_function_case_count=200/200`,
 `large_character_set_count=3/3`, and bounded corpus samples still matched. The
-remaining `266/279` delta is now a narrower local runtime-lex minimization
-difference: local emits 10 unique lex mode start states while upstream emits
-16, and preserving start rows accounts for 2 of the 15 previously over-merged
-runtime cases.
+residual direction has flipped from local over-emission to local under-emission:
+local is now lower than upstream (`266/279`). The remaining delta is therefore a
+narrower local runtime-lex over-merge/minimization difference: local emits 10
+unique lex mode start states while upstream emits 16, and preserving start rows
+accounts for 2 of the 15 previously over-merged runtime cases.
 
 Gate-fix note: the keyword-capture split exposed a runtime-link regression for
 word-token grammars that have identifier-shaped string keywords but no reserved
 word sets. Local skipped keyword-table emission in that case, so samples such as
-Ziggy schema `root = bytes` lexed `root` as the word token rather than the
-literal keyword. Keyword lex tables are now emitted whenever a word token exists
-and keyword-shaped string terminals are present. The JavaScript comparison
-remained unchanged (`266/279`, `200/200`, `3/3`, corpus matched), and
-`zig build test-release --summary all` passed.
+Ziggy schema `root = bytes` and the Zig accepted runtime-link sample could lex
+keyword-shaped strings as the word token rather than the literal keyword.
+Keyword lex tables are now emitted whenever a word token exists and
+keyword-shaped string terminals are present. The JavaScript comparison remained
+unchanged (`266/279`, `200/200`, `3/3`, corpus matched), and
+`zig build test-release --summary all` passed. There is no intentionally open
+Zig word-token runtime-link failure in this plan; if that gate regresses, stop
+before action-list work and fix the runtime boundary first.
 
 ## Phase 2 — Symbol And Field Ordering
 
@@ -234,6 +240,10 @@ case, not a broad minimizer or parser-table bug.
 
 Tasks:
 
+- [ ] Before adding action-list instrumentation, rerun
+  `zig build test-release --summary all` and confirm the Ziggy schema and Zig
+  word-token runtime-link accepted samples still pass. Do not update action-list
+  goldens or diagnostics on top of a broken release gate.
 - [ ] Add an action-list comparison artifact that records, for each emitted
   action-list offset:
   - owning states;
@@ -263,7 +273,10 @@ Gate:
 Current status: still open. The latest JavaScript comparison reports
 `parse_action_list_count=3592/3588` while parser state counts, large/small parse
 table shape, and bounded corpus samples remain matched. This is the first
-successor implementation task after this closure plan.
+successor implementation task after this closure plan. Current gate evidence:
+`zig build test-release --summary all` passes `1520/1520`; rerun it at the start
+of the action-list batch so the diagnostic diff is not measured on top of a
+runtime-link regression.
 
 ## Phase 4 — Keyword Lex Residual
 
@@ -375,11 +388,13 @@ completed unblocked, but local/upstream state and surface counts still diverge:
 `symbol_count=275/273`, `serialized_state_count=2812/2788`,
 `emitted_state_count=2811/2788`, `large_state_count=193/185`,
 `parse_action_list_count=4900/4864`, and `lex_function_case_count=128/150`.
-The Python corpus runner also failed to compile, so there is no runtime proof
-for promotion. TypeScript and Rust minimized comparisons both exceeded the
-bounded batch budget and were stopped; both need a cheaper comparison/profile
-path before they can be used as promotion gates. This means Phase 5 is currently
-a measurement-gated blocker, not a simple scope-gate lift.
+The Python lex case direction matches the current JavaScript residual pattern:
+local is lower than upstream, which points at runtime lex over-merge rather than
+excess emission. The Python corpus runner also failed to compile, so there is no
+runtime proof for promotion. TypeScript and Rust minimized comparisons both
+exceeded the bounded batch budget and were stopped; both need a cheaper
+comparison/profile path before they can be used as promotion gates. This means
+Phase 5 is currently a measurement-gated blocker, not a simple scope-gate lift.
 
 No compatibility metadata was promoted in this phase because none of the three
 targets met the stability and proof requirements.
@@ -419,8 +434,9 @@ The current closure audit records the exact residuals and promotion blockers.
 
 1. Action-list residual instrumentation and targeted fix for
    `parse_action_list_count=3592/3588`.
-2. Runtime lex minimization diagnostics and targeted fix for
-   `lex_function_case_count=266/279`.
+2. Runtime lex minimization diagnostics and targeted fix for local-under-upstream
+   lex cases: JavaScript `lex_function_case_count=266/279`, with Python
+   `128/150` as a second signal for the same over-merge class.
 3. Bounded comparison/profile path for TypeScript and Rust.
 4. Python promotion blocker investigation, starting with `symbol_count=275/273`
    and corpus runner compilation.
