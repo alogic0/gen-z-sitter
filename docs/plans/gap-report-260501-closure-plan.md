@@ -129,6 +129,15 @@ Gate:
   explained by a checked-in artifact.
 - JavaScript corpus samples remain `matched`.
 
+Batch 1 implementation note: per-token large character sets are now collected
+during serialized lex-table construction and carried into main runtime lexer C
+emission. JavaScript now reports `large_character_set_count=3/3` and bounded
+corpus samples still match. This also disproved the audit's direct causal
+claim for the remaining `lex_function_case_count` delta: that counter is the
+number of runtime `ts_lex` state cases, not the number of emitted character
+range branches. The surviving `525/279` gap is therefore a runtime lexer-state
+minimization/construction gap, not a large-character-set declaration gap.
+
 ## Phase 2 — Symbol And Field Ordering
 
 Goal: make `symbol_order_hash` and `field_names_hash` match upstream without
@@ -164,6 +173,16 @@ Gate:
 - `field_names_hash` matches upstream.
 - `symbol_count`, `token_count`, `alias_count`, and `node_types_hash` remain
   matched.
+
+Investigation note: the audit's "ordering only" classification is incomplete.
+For JavaScript, the symbol hash includes emitted C initializer shape and labels,
+not just set/order. Local emits numeric indices and local symbol names such as
+`jsx_identifier`, while upstream emits enum labels and runtime names such as
+`identifier` for that symbol. Field names are also not just ordered
+differently: local currently includes `label` where the upstream JavaScript
+field-name list does not. The next implementation batch should first split the
+comparison into normalized field/symbol set diffs versus emitted-C-shape diffs
+before changing ordering code.
 
 ## Phase 3 — Parse Action List Residual
 
@@ -294,6 +313,15 @@ Gate:
     coverage; or
   - a checked-in explanation of the remaining blocker and why promotion is not
     correct yet.
+
+Measurement note: Python is not ready for promotion. The minimized comparison
+completed unblocked, but local/upstream state counts diverge substantially:
+`serialized_state_count=3878/2788`, `emitted_state_count=3877/2788`,
+`large_state_count=283/185`, and `parse_action_list_count=6238/4864`.
+TypeScript and Rust minimized comparisons exceeded the bounded batch budget and
+were stopped; both need a cheaper comparison/profile path before they can be
+used as promotion gates. This means Phase 5 is currently a measurement-gated
+blocker, not a simple scope-gate lift.
 
 ## Phase 6 — Final Audit Closure
 
