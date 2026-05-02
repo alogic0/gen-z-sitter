@@ -17,17 +17,20 @@ start of the audit, local and upstream already match on:
 | token_count | 134 / 134 |
 | corpus_samples | matched |
 
-Remaining closure targets:
+Current closure status:
 
-| Gap | Start | Target |
-|---|---:|---:|
-| lex_function_case_count | 525 | 279 |
-| large_character_set_count | 0 | 3 |
-| parse_action_list_count | 3,592 | 3,588 |
-| keyword_lex_function_case_count | 201 | 200 |
-| symbol_order_hash | matched in Batch 3 | match |
-| field_names_hash | matched in Batch 2 | match |
-| Python/TypeScript/Rust scope gates | serialize_only | measured promotion decision |
+| Gap | Start | Current | Target | Status |
+|---|---:|---:|---:|---|
+| lex_function_case_count | 525 | 266 | 279 | successor task |
+| large_character_set_count | 0 | 3 | 3 | closed |
+| parse_action_list_count | 3,592 | 3,592 | 3,588 | successor task |
+| keyword_lex_function_case_count | 201 | 200 | 200 | closed |
+| symbol_order_hash | mismatch | match | match | closed |
+| field_names_hash | mismatch | match | match | closed |
+| Python scope gate | serialize_only | measured, not promotable | promotion decision | blocked |
+| TypeScript/Rust scope gates | serialize_only | timed out in bounded compare | promotion decision | measurement-gated |
+
+Closure audit: `docs/audits/gap-report-260501-closure-2026-05-02.md`.
 
 ## Ground Rules
 
@@ -95,12 +98,12 @@ matching during C emission.
 
 Tasks:
 
-- [ ] Add focused diagnostics for JavaScript large character set discovery:
+- [x] Add focused diagnostics for JavaScript large character set discovery:
   record candidate count, range counts, optional token identity, and whether a
   candidate comes from main-token or skip/separator transitions.
-- [ ] Add a focused lexer emission fixture that reproduces the missing large
+- [x] Add a focused lexer emission fixture that reproduces the missing large
   character set behavior without requiring the full JavaScript grammar.
-- [ ] Implement upstream-shaped per-token large-set pre-computation after the
+- [x] Implement upstream-shaped per-token large-set pre-computation after the
   final lex table is available:
   - iterate grammar terminals;
   - rebuild or evaluate each terminal in single-token mode;
@@ -108,7 +111,7 @@ Tasks:
     threshold;
   - collect skip/separator large sets when applicable;
   - deduplicate by range content while preserving optional token identity.
-- [ ] Replace exact-only large-set lookup in `src/lexer/emit_c.zig` with a
+- [x] Replace exact-only large-set lookup in `src/lexer/emit_c.zig` with a
   best-fit resolver:
   - compute intersection between the transition set and each precomputed large
     set;
@@ -116,9 +119,9 @@ Tasks:
     surface;
   - emit `set_contains(...)` plus explicit additions and removals;
   - keep exact matching as the trivial best-fit case.
-- [ ] Add unit tests for exact match, additions, removals, and no-match
+- [x] Add unit tests for exact match, additions, removals, and no-match
   fallback.
-- [ ] Re-run the JavaScript comparison and record before/after values for
+- [x] Re-run the JavaScript comparison and record before/after values for
   `lex_function_case_count`, `large_character_set_count`, corpus status, and
   parser table counts.
 
@@ -171,22 +174,22 @@ collection order rather than an incidental local sort.
 
 Tasks:
 
-- [ ] Add a comparison artifact that writes local and upstream symbol names with
+- [x] Add a comparison artifact that writes local and upstream symbol names with
   emitted numeric IDs in order, plus a first-difference summary.
-- [ ] Add a similar artifact for field names and field IDs.
-- [ ] Determine whether parse-table insertion order is already available in the
+- [x] Add a similar artifact for field names and field IDs.
+- [x] Determine whether parse-table insertion order is already available in the
   serialized representation. If not, thread an explicit emitted-symbol order
   from parse-table construction through serialization.
-- [ ] Replace type-group sorting in parser C emission with upstream-shaped
+- [x] Replace type-group sorting in parser C emission with upstream-shaped
   first-appearance order:
   - `$end` remains ID 0;
   - primary symbols follow parse-table insertion order;
   - aliases follow after primary symbols in upstream order.
-- [ ] Align field-name collection with grammar production / field-sequence
+- [x] Align field-name collection with grammar production / field-sequence
   collection order.
-- [ ] Add focused tests that prove symbol sets can be identical while emitted
+- [x] Add focused tests that prove symbol sets can be identical while emitted
   order differs, and that the new ordering is stable.
-- [ ] Re-run JavaScript comparison and verify the two hashes match.
+- [x] Re-run JavaScript comparison and verify the two hashes match.
 
 Gate:
 
@@ -257,6 +260,11 @@ Gate:
 - `serialized_state_count`, `emitted_state_count`, `large_state_count`,
   `small_parse_row_count`, and corpus status remain matched.
 
+Current status: still open. The latest JavaScript comparison reports
+`parse_action_list_count=3592/3588` while parser state counts, large/small parse
+table shape, and bounded corpus samples remain matched. This is the first
+successor implementation task after this closure plan.
+
 ## Phase 4 — Keyword Lex Residual
 
 Goal: close the one-entry `keyword_lex_function_case_count` delta:
@@ -311,7 +319,7 @@ shift/reduce conflict failure.
 
 Tasks:
 
-- [ ] Run minimized compare-upstream for Python:
+- [x] Run minimized compare-upstream for Python:
 
 ```bash
 zig build run -- compare-upstream --minimize \
@@ -320,7 +328,8 @@ zig build run -- compare-upstream --minimize \
   compat_targets/tree_sitter_python/grammar.json
 ```
 
-- [ ] Run minimized compare-upstream for TypeScript:
+- [x] Attempt minimized compare-upstream for TypeScript within the bounded
+  batch budget:
 
 ```bash
 zig build run -- compare-upstream --minimize \
@@ -329,7 +338,8 @@ zig build run -- compare-upstream --minimize \
   compat_targets/tree_sitter_typescript/grammar.json
 ```
 
-- [ ] Run minimized compare-upstream for Rust:
+- [x] Attempt minimized compare-upstream for Rust within the bounded batch
+  budget:
 
 ```bash
 zig build run -- compare-upstream --minimize \
@@ -338,18 +348,18 @@ zig build run -- compare-upstream --minimize \
   compat_targets/tree_sitter_rust/grammar.json
 ```
 
-- [ ] Record for each grammar:
+- [x] Record for each grammar:
   - local and upstream minimized state count;
   - unresolved entry count;
   - blocked boundary;
   - lex emission residuals;
   - node-types and symbol/field hash status;
   - corpus/runtime proof availability.
-- [ ] If minimized state counts converge within the audit threshold, promote
+- [x] If minimized state counts converge within the audit threshold, promote
   the target to `emit_parser_c` or `full_pipeline` as appropriate.
-- [ ] If a grammar diverges by more than the audit threshold, classify whether
+- [x] If a grammar diverges by more than the audit threshold, classify whether
   it is explained by Phases 1-4 or is a new construction gap.
-- [ ] Update checked-in compatibility metadata only for targets with stable
+- [x] Update checked-in compatibility metadata only for targets with stable
   time, memory, and proof behavior.
 
 Gate:
@@ -370,6 +380,9 @@ for promotion. TypeScript and Rust minimized comparisons both exceeded the
 bounded batch budget and were stopped; both need a cheaper comparison/profile
 path before they can be used as promotion gates. This means Phase 5 is currently
 a measurement-gated blocker, not a simple scope-gate lift.
+
+No compatibility metadata was promoted in this phase because none of the three
+targets met the stability and proof requirements.
 
 ## Phase 6 — Final Audit Closure
 
@@ -402,16 +415,17 @@ algorithm gaps. Four are closed (`large_character_set_count`,
 Both preserve JavaScript parser state parity and bounded corpus equivalence.
 The current closure audit records the exact residuals and promotion blockers.
 
-## Expected Batch Order
+## Successor Batch Order
 
-1. Large character set diagnostics and fixture.
-2. Per-token large character set collection and best-fit emission.
-3. Symbol and field ordering artifacts plus ordering fix.
-4. Action-list residual instrumentation and targeted fix.
-5. Keyword lex residual instrumentation and targeted fix.
-6. Python/TypeScript/Rust comparison and scope-promotion decisions.
-7. Final audit closure note.
+1. Action-list residual instrumentation and targeted fix for
+   `parse_action_list_count=3592/3588`.
+2. Runtime lex minimization diagnostics and targeted fix for
+   `lex_function_case_count=266/279`.
+3. Bounded comparison/profile path for TypeScript and Rust.
+4. Python promotion blocker investigation, starting with `symbol_count=275/273`
+   and corpus runner compilation.
+5. Refresh the closure audit after either JavaScript residual closes.
 
-Phases 1 and 2 are independent enough to investigate separately, but Phase 1
-should land before finalizing Phase 4 because keyword lex shape may change after
-large character set emission is upstream-shaped.
+The original large-character-set, symbol/field ordering, and keyword lex tasks
+are closed. Do not reopen them unless a new comparison shows a concrete
+regression.
