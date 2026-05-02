@@ -333,27 +333,24 @@ pub fn parseTableTinyDump() Fixture {
         .contents =
         \\state 0
         \\  items:
-        \\    #0@0 [end]
-        \\    #1@0 [end]
-        \\    #2@0 [end]
         \\  transitions:
-        \\    non_terminal:0 -> 1
-        \\    non_terminal:1 -> 2
-        \\    terminal:0 -> 3
         \\
         \\state 1
+        \\  items:
+        \\    #0@0 [end]
+        \\    #1@0 [end]
+        \\  transitions:
+        \\    non_terminal:0 -> 2
+        \\    terminal:0 -> 3
+        \\
+        \\state 2
         \\  items:
         \\    #0@1 [end]
         \\  transitions:
         \\
-        \\state 2
-        \\  items:
-        \\    #1@1 [end]
-        \\  transitions:
-        \\
         \\state 3
         \\  items:
-        \\    #2@1 [end]
+        \\    #1@1 [end]
         \\  transitions:
         \\
         ,
@@ -400,47 +397,51 @@ pub fn parseTableConflictDump() Fixture {
         .contents =
         \\state 0
         \\  items:
+        \\  transitions:
+        \\
+        \\state 1
+        \\  items:
         \\    #0@0 [end]
         \\    #1@0 [end]
         \\    #2@0 [terminal:0, end]
         \\    #3@0 [terminal:0, end]
         \\  transitions:
-        \\    non_terminal:0 -> 1
-        \\    non_terminal:1 -> 2
-        \\    terminal:1 -> 3
+        \\    non_terminal:0 -> 2
+        \\    non_terminal:1 -> 3
+        \\    terminal:1 -> 4
         \\
-        \\state 1
+        \\state 2
         \\  items:
         \\    #0@1 [end]
         \\  transitions:
         \\
-        \\state 2
+        \\state 3
         \\  items:
         \\    #1@1 [end]
         \\    #2@1 [terminal:0, end]
         \\  transitions:
-        \\    terminal:0 -> 4
+        \\    terminal:0 -> 5
         \\
-        \\state 3
+        \\state 4
         \\  items:
         \\    #3@1 [terminal:0, end]
         \\  transitions:
         \\
-        \\state 4
+        \\state 5
         \\  items:
         \\    #2@0 [terminal:0, end]
         \\    #2@2 [terminal:0, end]
         \\    #3@0 [terminal:0, end]
         \\  transitions:
-        \\    non_terminal:1 -> 5
-        \\    terminal:1 -> 3
+        \\    non_terminal:1 -> 6
+        \\    terminal:1 -> 4
         \\
-        \\state 5
+        \\state 6
         \\  items:
         \\    #2@1 [terminal:0, end]
         \\    #2@3 [terminal:0, end]
         \\  transitions:
-        \\    terminal:0 -> 4
+        \\    terminal:0 -> 5
         \\  conflicts:
         \\    shift_reduce on terminal:0
         \\      #2@1
@@ -456,35 +457,40 @@ pub fn parseTableConflictActionDump() Fixture {
         .contents =
         \\state 0
         \\  items:
+        \\  transitions:
+        \\  actions:
+        \\
+        \\state 1
+        \\  items:
         \\    #0@0 [end]
         \\    #1@0 [end]
         \\    #2@0 [terminal:0, end]
         \\    #3@0 [terminal:0, end]
         \\  transitions:
-        \\    non_terminal:0 -> 1
-        \\    non_terminal:1 -> 2
-        \\    terminal:1 -> 3
+        \\    non_terminal:0 -> 2
+        \\    non_terminal:1 -> 3
+        \\    terminal:1 -> 4
         \\  actions:
-        \\    terminal:1 => shift 3
+        \\    terminal:1 => shift 4
         \\
-        \\state 1
+        \\state 2
         \\  items:
         \\    #0@1 [end]
         \\  transitions:
         \\  actions:
         \\    end => accept
         \\
-        \\state 2
+        \\state 3
         \\  items:
         \\    #1@1 [end]
         \\    #2@1 [terminal:0, end]
         \\  transitions:
-        \\    terminal:0 -> 4
+        \\    terminal:0 -> 5
         \\  actions:
         \\    end => reduce 1
-        \\    terminal:0 => shift 4
+        \\    terminal:0 => shift 5
         \\
-        \\state 3
+        \\state 4
         \\  items:
         \\    #3@1 [terminal:0, end]
         \\  transitions:
@@ -492,26 +498,26 @@ pub fn parseTableConflictActionDump() Fixture {
         \\    end => reduce 3
         \\    terminal:0 => reduce 3
         \\
-        \\state 4
+        \\state 5
         \\  items:
         \\    #2@0 [terminal:0, end]
         \\    #2@2 [terminal:0, end]
         \\    #3@0 [terminal:0, end]
         \\  transitions:
-        \\    non_terminal:1 -> 5
-        \\    terminal:1 -> 3
+        \\    non_terminal:1 -> 6
+        \\    terminal:1 -> 4
         \\  actions:
-        \\    terminal:1 => shift 3
+        \\    terminal:1 => shift 4
         \\
-        \\state 5
+        \\state 6
         \\  items:
         \\    #2@1 [terminal:0, end]
         \\    #2@3 [terminal:0, end]
         \\  transitions:
-        \\    terminal:0 -> 4
+        \\    terminal:0 -> 5
         \\  actions:
         \\    end => reduce 2
-        \\    terminal:0 => shift 4
+        \\    terminal:0 => shift 5
         \\    terminal:0 => reduce 2
         \\  conflicts:
         \\    shift_reduce on terminal:0
@@ -528,31 +534,34 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         .contents =
         \\state 0
         \\  items:
+        \\  transitions:
+        \\  actions:
+        \\
+        \\state 1
+        \\  items:
         \\    #0@0 [end]
         \\    #1@0 [end]
         \\    #2@0 [terminal:0]
         \\    #3@0 [terminal:0]
         \\    #4@0 [terminal:0]
         \\    #5@0 [terminal:0]
-        \\    #6@0 [terminal:0]
         \\  transitions:
-        \\    non_terminal:0 -> 1
-        \\    non_terminal:1 -> 2
-        \\    non_terminal:2 -> 3
-        \\    non_terminal:3 -> 3
-        \\    non_terminal:4 -> 4
+        \\    non_terminal:0 -> 2
+        \\    non_terminal:1 -> 3
+        \\    non_terminal:2 -> 4
+        \\    non_terminal:3 -> 4
         \\    terminal:1 -> 5
         \\  actions:
         \\    terminal:1 => shift 5
         \\
-        \\state 1
+        \\state 2
         \\  items:
         \\    #0@1 [end]
         \\  transitions:
         \\  actions:
         \\    end => accept
         \\
-        \\state 2
+        \\state 3
         \\  items:
         \\    #1@1 [end]
         \\  transitions:
@@ -560,14 +569,14 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         \\  actions:
         \\    terminal:0 => shift 6
         \\
-        \\state 3
+        \\state 4
         \\  items:
         \\    #2@1 [terminal:0]
         \\  transitions:
         \\  actions:
         \\    terminal:0 => reduce 2
         \\
-        \\state 4
+        \\state 5
         \\  items:
         \\    #4@1 [terminal:0]
         \\    #5@1 [terminal:0]
@@ -579,13 +588,6 @@ pub fn parseTableReduceReduceActionDump() Fixture {
         \\    reduce_reduce on terminal:0
         \\      #4@1
         \\      #5@1
-        \\
-        \\state 5
-        \\  items:
-        \\    #6@1 [terminal:0]
-        \\  transitions:
-        \\  actions:
-        \\    terminal:0 => reduce 6
         \\
         \\state 6
         \\  items:
@@ -604,24 +606,27 @@ pub fn parseTableMetadataActionDump() Fixture {
         .contents =
         \\state 0
         \\  items:
+        \\  transitions:
+        \\  actions:
+        \\
+        \\state 1
+        \\  items:
         \\    #0@0 [end]
         \\    #1@0 [end]
-        \\    #2@0 [terminal:0]
         \\  transitions:
-        \\    non_terminal:0 -> 1
-        \\    non_terminal:1 -> 2
+        \\    non_terminal:0 -> 2
         \\    terminal:1 -> 3
         \\  actions:
         \\    terminal:1 => shift 3
         \\
-        \\state 1
+        \\state 2
         \\  items:
         \\    #0@1 [end]
         \\  transitions:
         \\  actions:
         \\    end => accept
         \\
-        \\state 2
+        \\state 3
         \\  items:
         \\    #1@1 [end]
         \\  transitions:
@@ -629,22 +634,13 @@ pub fn parseTableMetadataActionDump() Fixture {
         \\  actions:
         \\    terminal:0 => shift 4
         \\
-        \\state 3
-        \\  items:
-        \\    #2@1 [terminal:0]
-        \\  transitions:
-        \\  actions:
-        \\    terminal:0 => reduce 2
-        \\
         \\state 4
         \\  items:
         \\    #1@2 [end]
-        \\    #2@0 [end]
         \\  transitions:
-        \\    non_terminal:1 -> 5
-        \\    terminal:1 -> 6
+        \\    terminal:1 -> 5
         \\  actions:
-        \\    terminal:1 => shift 6
+        \\    terminal:1 => shift 5
         \\
         \\state 5
         \\  items:
@@ -652,13 +648,6 @@ pub fn parseTableMetadataActionDump() Fixture {
         \\  transitions:
         \\  actions:
         \\    end => reduce 1
-        \\
-        \\state 6
-        \\  items:
-        \\    #2@1 [end]
-        \\  transitions:
-        \\  actions:
-        \\    end => reduce 2
         \\
         ,
     };
@@ -671,40 +660,35 @@ pub fn parseTableMetadataSerializedDump() Fixture {
         \\serialized_table blocked=false
         \\state 0
         \\  actions:
-        \\    terminal:1 => shift 3
+        \\    end => accept
+        \\    terminal:0 => accept
+        \\    terminal:1 => accept
         \\  gotos:
-        \\    non_terminal:0 -> 1
-        \\    non_terminal:1 -> 2
         \\
         \\state 1
+        \\  actions:
+        \\    terminal:1 => shift 3
+        \\  gotos:
+        \\    non_terminal:0 -> 2
+        \\
+        \\state 2
         \\  actions:
         \\    end => accept
         \\  gotos:
         \\
-        \\state 2
+        \\state 3
         \\  actions:
         \\    terminal:0 => shift 4
         \\  gotos:
         \\
-        \\state 3
-        \\  actions:
-        \\    terminal:0 => reduce 2
-        \\  gotos:
-        \\
         \\state 4
         \\  actions:
-        \\    terminal:1 => shift 6
+        \\    terminal:1 => shift 5
         \\  gotos:
-        \\    non_terminal:1 -> 5
         \\
         \\state 5
         \\  actions:
         \\    end => reduce 1
-        \\  gotos:
-        \\
-        \\state 6
-        \\  actions:
-        \\    end => reduce 2
         \\  gotos:
         \\
         ,
@@ -718,41 +702,48 @@ pub fn parseTableConflictSerializedDump() Fixture {
         \\serialized_table blocked=true
         \\state 0
         \\  actions:
-        \\    terminal:1 => shift 3
+        \\    end => accept
+        \\    terminal:0 => accept
+        \\    terminal:1 => accept
         \\  gotos:
-        \\    non_terminal:0 -> 1
-        \\    non_terminal:1 -> 2
         \\
         \\state 1
+        \\  actions:
+        \\    terminal:1 => shift 4
+        \\  gotos:
+        \\    non_terminal:0 -> 2
+        \\    non_terminal:1 -> 3
+        \\
+        \\state 2
         \\  actions:
         \\    end => accept
         \\  gotos:
         \\
-        \\state 2
+        \\state 3
         \\  actions:
         \\    end => reduce 1
-        \\    terminal:0 => shift 4
+        \\    terminal:0 => shift 5
         \\  gotos:
         \\
-        \\state 3
+        \\state 4
         \\  actions:
         \\    end => reduce 3
         \\    terminal:0 => reduce 3
         \\  gotos:
         \\
-        \\state 4
-        \\  actions:
-        \\    terminal:1 => shift 3
-        \\  gotos:
-        \\    non_terminal:1 -> 5
-        \\
         \\state 5
+        \\  actions:
+        \\    terminal:1 => shift 4
+        \\  gotos:
+        \\    non_terminal:1 -> 6
+        \\
+        \\state 6
         \\  actions:
         \\    end => reduce 2
         \\  gotos:
         \\  unresolved:
         \\    terminal:0 (shift_reduce)
-        \\      candidate shift 4
+        \\      candidate shift 5
         \\      candidate reduce 2
         \\
         ,
@@ -764,36 +755,32 @@ pub fn parseTableMetadataEmitterDump() Fixture {
         .name = "parse_table_metadata_emitter_dump",
         .contents =
         \\parser_tables blocked=false
-        \\state_count=7
+        \\state_count=6
         \\state 0 {
-        \\  action terminal:1 shift 3
-        \\  goto non_terminal:0 1
-        \\  goto non_terminal:1 2
+        \\  action end accept
+        \\  action terminal:0 accept
+        \\  action terminal:1 accept
         \\}
         \\
         \\state 1 {
-        \\  action end accept
+        \\  action terminal:1 shift 3
+        \\  goto non_terminal:0 2
         \\}
         \\
         \\state 2 {
-        \\  action terminal:0 shift 4
+        \\  action end accept
         \\}
         \\
         \\state 3 {
-        \\  action terminal:0 reduce 2
+        \\  action terminal:0 shift 4
         \\}
         \\
         \\state 4 {
-        \\  action terminal:1 shift 6
-        \\  goto non_terminal:1 5
+        \\  action terminal:1 shift 5
         \\}
         \\
         \\state 5 {
         \\  action end reduce 1
-        \\}
-        \\
-        \\state 6 {
-        \\  action end reduce 2
         \\}
         ,
     };
@@ -804,33 +791,39 @@ pub fn parseTableConflictEmitterDump() Fixture {
         .name = "parse_table_conflict_emitter_dump",
         .contents =
         \\parser_tables blocked=true
-        \\state_count=6
+        \\state_count=7
         \\state 0 {
-        \\  action terminal:1 shift 3
-        \\  goto non_terminal:0 1
-        \\  goto non_terminal:1 2
+        \\  action end accept
+        \\  action terminal:0 accept
+        \\  action terminal:1 accept
         \\}
         \\
         \\state 1 {
-        \\  action end accept
+        \\  action terminal:1 shift 4
+        \\  goto non_terminal:0 2
+        \\  goto non_terminal:1 3
         \\}
         \\
         \\state 2 {
-        \\  action end reduce 1
-        \\  action terminal:0 shift 4
+        \\  action end accept
         \\}
         \\
         \\state 3 {
+        \\  action end reduce 1
+        \\  action terminal:0 shift 5
+        \\}
+        \\
+        \\state 4 {
         \\  action end reduce 3
         \\  action terminal:0 reduce 3
         \\}
         \\
-        \\state 4 {
-        \\  action terminal:1 shift 3
-        \\  goto non_terminal:1 5
+        \\state 5 {
+        \\  action terminal:1 shift 4
+        \\  goto non_terminal:1 6
         \\}
         \\
-        \\state 5 {
+        \\state 6 {
         \\  action end reduce 2
         \\  unresolved terminal:0 shift_reduce candidates=2
         \\}
@@ -1002,6 +995,13 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\#define STATE(id) id
         \\#define ACTIONS(id) id
         \\
+        \\#define SHIFT(state_value) {{ .shift = { .type = TSParseActionTypeShift, .state = (state_value) } }}
+        \\#define SHIFT_REPEAT(state_value) {{ .shift = { .type = TSParseActionTypeShift, .state = (state_value), .repetition = true } }}
+        \\#define SHIFT_EXTRA() {{ .shift = { .type = TSParseActionTypeShift, .extra = true } }}
+        \\#define REDUCE(symbol_name, children, precedence, prod_id) {{ .reduce = { .type = TSParseActionTypeReduce, .symbol = symbol_name, .child_count = children, .dynamic_precedence = precedence, .production_id = prod_id } }}
+        \\#define RECOVER() {{ .type = TSParseActionTypeRecover }}
+        \\#define ACCEPT_INPUT() {{ .type = TSParseActionTypeAccept }}
+        \\
         \\#ifdef _MSC_VER
         \\#define UNUSED __pragma(warning(suppress : 4101))
         \\#else
@@ -1074,12 +1074,12 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\  return GEN_Z_SITTER_EXTERNAL_SCANNER_STATUS;
         \\}
         \\
-        \\#define STATE_COUNT 7
+        \\#define STATE_COUNT 6
         \\#define LARGE_STATE_COUNT 2
-        \\#define SYMBOL_COUNT 6
+        \\#define SYMBOL_COUNT 4
         \\#define TOKEN_COUNT 3
         \\#define EXTERNAL_TOKEN_COUNT 0
-        \\#define PRODUCTION_ID_COUNT 3
+        \\#define PRODUCTION_ID_COUNT 2
         \\#define FIELD_COUNT 1
         \\#define ALIAS_COUNT 1
         \\#define MAX_ALIAS_SEQUENCE_LENGTH 3
@@ -1090,52 +1090,51 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\  eof = lexer->eof(lexer);
         \\  switch (state) {
         \\    case 0:
-        \\      if (lookahead == 120) ADVANCE(1);
+        \\      if (lookahead == 43) ADVANCE(1);
+        \\      if (lookahead == 120) ADVANCE(2);
         \\      END_STATE();
         \\    case 1:
-        \\      ACCEPT_TOKEN(2);
+        \\      ACCEPT_TOKEN(1);
         \\      END_STATE();
         \\    case 2:
-        \\      if (lookahead == 43) ADVANCE(3);
-        \\      END_STATE();
-        \\    case 3:
-        \\      ACCEPT_TOKEN(1);
+        \\      ACCEPT_TOKEN(2);
         \\      END_STATE();
         \\    default:
         \\      return false;
         \\  }
         \\}
         \\
-        \\static const char * const ts_symbol_names[SYMBOL_COUNT] = {
+        \\static const char * const ts_symbol_names[SYMBOL_COUNT + ALIAS_COUNT] = {
         \\  [0] = "end",
-        \\  [1] = "terminal:0",
-        \\  [2] = "terminal:1",
+        \\  [1] = "+",
+        \\  [2] = "expr",
         \\  [3] = "source_file",
-        \\  [4] = "expr",
-        \\  [5] = "rhs",
+        \\  [4] = "rhs",
         \\};
         \\
-        \\static const TSSymbolMetadata ts_symbol_metadata[SYMBOL_COUNT] = {
+        \\static const TSSymbolMetadata ts_symbol_metadata[SYMBOL_COUNT + ALIAS_COUNT] = {
         \\  [0] = { .visible = false, .named = false, .supertype = false },
         \\  [1] = { .visible = true, .named = false, .supertype = false },
-        \\  [2] = { .visible = true, .named = false, .supertype = false },
+        \\  [2] = { .visible = true, .named = true, .supertype = false },
         \\  [3] = { .visible = true, .named = true, .supertype = false },
         \\  [4] = { .visible = true, .named = true, .supertype = false },
-        \\  [5] = { .visible = true, .named = true, .supertype = false },
         \\};
         \\
-        \\static const TSSymbol ts_symbol_map[SYMBOL_COUNT] = {
+        \\static const TSSymbol ts_symbol_map[SYMBOL_COUNT + ALIAS_COUNT] = {
         \\  [0] = 0,
         \\  [1] = 1,
         \\  [2] = 2,
         \\  [3] = 3,
         \\  [4] = 4,
-        \\  [5] = 5,
         \\};
         \\
-        \\static const char * const ts_field_names[FIELD_COUNT + 1] = {
-        \\  [0] = "",
-        \\  [1] = "lhs",
+        \\enum {
+        \\  field_lhs = 1,
+        \\};
+        \\
+        \\static const char * const ts_field_names[] = {
+        \\  [0] = NULL,
+        \\  [field_lhs] = "lhs",
         \\};
         \\
         \\static const TSFieldMapEntry ts_field_map_entries[] = {
@@ -1145,19 +1144,14 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\static const TSMapSlice ts_field_map_slices[] = {
         \\  [0] = { .index = 0, .length = 0 },
         \\  [1] = { .index = 0, .length = 1 },
-        \\  [2] = { .index = 1, .length = 0 },
         \\};
         \\
         \\static const uint16_t ts_non_terminal_alias_map[] = {
-        \\  4, 2,
-        \\    4,
-        \\    5,
         \\  0,
         \\};
         \\static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH > 0 ? MAX_ALIAS_SEQUENCE_LENGTH : 1] = {
         \\  [0] = { 0, 0, 0 },
-        \\  [1] = { 0, 0, 5 },
-        \\  [2] = { 0, 0, 0 },
+        \\  [1] = { 0, 0, 4 },
         \\};
         \\
         \\static const TSStateId ts_primary_state_ids[STATE_COUNT] = {
@@ -1167,60 +1161,55 @@ pub fn parseTableMetadataParserCDump() Fixture {
         \\  [3] = 3,
         \\  [4] = 4,
         \\  [5] = 5,
-        \\  [6] = 3,
         \\};
         \\
         \\static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {
         \\  [STATE(0)] = {
-        \\    [3] = STATE(1),
-        \\    [4] = STATE(2),
+        \\    [0] = ACTIONS(1),
+        \\    [1] = ACTIONS(1),
         \\    [2] = ACTIONS(1),
         \\  },
         \\  [STATE(1)] = {
-        \\    [0] = ACTIONS(3),
+        \\    [3] = STATE(2),
+        \\    [2] = ACTIONS(3),
         \\  },
         \\};
         \\
         \\static const uint16_t ts_small_parse_table[] = {
         \\  [0] = 1,
-        \\  ACTIONS(5), 1, 1,
+        \\  ACTIONS(5), 1, 0,
         \\  [4] = 1,
         \\  ACTIONS(7), 1, 1,
-        \\  [8] = 2,
-        \\  STATE(5), 1, 4,
+        \\  [8] = 1,
         \\  ACTIONS(9), 1, 2,
-        \\  [15] = 1,
+        \\  [12] = 1,
         \\  ACTIONS(11), 1, 0,
-        \\  [19] = 1,
-        \\  ACTIONS(7), 1, 0,
         \\};
         \\
         \\static const uint32_t ts_small_parse_table_map[] = {
         \\  [SMALL_STATE(2)] = 0,
         \\  [SMALL_STATE(3)] = 4,
         \\  [SMALL_STATE(4)] = 8,
-        \\  [SMALL_STATE(5)] = 15,
-        \\  [SMALL_STATE(6)] = 19,
+        \\  [SMALL_STATE(5)] = 12,
         \\};
         \\
         \\static const TSParseActionEntry ts_parse_actions[] = {
         \\  [0] = { .entry = { .count = 0, .reusable = false } },
-        \\  [1] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 3, .extra = false, .repetition = false } } },
-        \\  [3] = { .entry = { .count = 1, .reusable = true } }, { .action = { .type = TSParseActionTypeAccept } },
-        \\  [5] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 4, .extra = false, .repetition = false } } },
-        \\  [7] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 1, .symbol = 4, .dynamic_precedence = 0, .production_id = 2 } } },
-        \\  [9] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 6, .extra = false, .repetition = false } } },
-        \\  [11] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 3, .symbol = 3, .dynamic_precedence = 0, .production_id = 1 } } },
+        \\  [1] = { .entry = { .count = 1, .reusable = false } }, RECOVER(),
+        \\  [3] = { .entry = { .count = 1, .reusable = true } }, SHIFT(3),
+        \\  [5] = { .entry = { .count = 1, .reusable = true } }, ACCEPT_INPUT(),
+        \\  [7] = { .entry = { .count = 1, .reusable = true } }, SHIFT(4),
+        \\  [9] = { .entry = { .count = 1, .reusable = true } }, SHIFT(5),
+        \\  [11] = { .entry = { .count = 1, .reusable = true } }, REDUCE(3, 3, 0, 1),
         \\};
         \\
         \\static const TSLexerMode ts_lex_modes[STATE_COUNT] = {
         \\  [0] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\  [1] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [2] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [3] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [2] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [3] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\  [4] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\  [5] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [6] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\};
         \\
         \\static const TSLanguage ts_language = {
@@ -1435,6 +1424,13 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\#define STATE(id) id
         \\#define ACTIONS(id) id
         \\
+        \\#define SHIFT(state_value) {{ .shift = { .type = TSParseActionTypeShift, .state = (state_value) } }}
+        \\#define SHIFT_REPEAT(state_value) {{ .shift = { .type = TSParseActionTypeShift, .state = (state_value), .repetition = true } }}
+        \\#define SHIFT_EXTRA() {{ .shift = { .type = TSParseActionTypeShift, .extra = true } }}
+        \\#define REDUCE(symbol_name, children, precedence, prod_id) {{ .reduce = { .type = TSParseActionTypeReduce, .symbol = symbol_name, .child_count = children, .dynamic_precedence = precedence, .production_id = prod_id } }}
+        \\#define RECOVER() {{ .type = TSParseActionTypeRecover }}
+        \\#define ACCEPT_INPUT() {{ .type = TSParseActionTypeAccept }}
+        \\
         \\#ifdef _MSC_VER
         \\#define UNUSED __pragma(warning(suppress : 4101))
         \\#else
@@ -1514,12 +1510,12 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  uint16_t action_count;
         \\} TSUnresolvedEntry;
         \\
-        \\#define STATE_COUNT 6
+        \\#define STATE_COUNT 7
         \\#define LARGE_STATE_COUNT 2
         \\#define SYMBOL_COUNT 5
         \\#define TOKEN_COUNT 3
         \\#define EXTERNAL_TOKEN_COUNT 0
-        \\#define PRODUCTION_ID_COUNT 4
+        \\#define PRODUCTION_ID_COUNT 1
         \\#define FIELD_COUNT 0
         \\#define ALIAS_COUNT 0
         \\#define MAX_ALIAS_SEQUENCE_LENGTH 0
@@ -1530,31 +1526,29 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  eof = lexer->eof(lexer);
         \\  switch (state) {
         \\    case 0:
-        \\      if (lookahead == 120) ADVANCE(1);
+        \\      if (lookahead == 43) ADVANCE(1);
+        \\      if (lookahead == 120) ADVANCE(2);
         \\      END_STATE();
         \\    case 1:
-        \\      ACCEPT_TOKEN(2);
+        \\      ACCEPT_TOKEN(1);
         \\      END_STATE();
         \\    case 2:
-        \\      if (lookahead == 43) ADVANCE(3);
-        \\      END_STATE();
-        \\    case 3:
-        \\      ACCEPT_TOKEN(1);
+        \\      ACCEPT_TOKEN(2);
         \\      END_STATE();
         \\    default:
         \\      return false;
         \\  }
         \\}
         \\
-        \\static const char * const ts_symbol_names[SYMBOL_COUNT] = {
+        \\static const char * const ts_symbol_names[SYMBOL_COUNT + ALIAS_COUNT] = {
         \\  [0] = "end",
-        \\  [1] = "terminal:0",
-        \\  [2] = "terminal:1",
+        \\  [1] = "+",
+        \\  [2] = "x",
         \\  [3] = "source_file",
         \\  [4] = "expr",
         \\};
         \\
-        \\static const TSSymbolMetadata ts_symbol_metadata[SYMBOL_COUNT] = {
+        \\static const TSSymbolMetadata ts_symbol_metadata[SYMBOL_COUNT + ALIAS_COUNT] = {
         \\  [0] = { .visible = false, .named = false, .supertype = false },
         \\  [1] = { .visible = true, .named = false, .supertype = false },
         \\  [2] = { .visible = true, .named = false, .supertype = false },
@@ -1562,7 +1556,7 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  [4] = { .visible = true, .named = true, .supertype = false },
         \\};
         \\
-        \\static const TSSymbol ts_symbol_map[SYMBOL_COUNT] = {
+        \\static const TSSymbol ts_symbol_map[SYMBOL_COUNT + ALIAS_COUNT] = {
         \\  [0] = 0,
         \\  [1] = 1,
         \\  [2] = 2,
@@ -1570,8 +1564,8 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  [4] = 4,
         \\};
         \\
-        \\static const char * const ts_field_names[FIELD_COUNT + 1] = {
-        \\  [0] = "",
+        \\static const char * const ts_field_names[] = {
+        \\  [0] = NULL,
         \\};
         \\
         \\static const TSFieldMapEntry ts_field_map_entries[] = {
@@ -1580,9 +1574,6 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\
         \\static const TSMapSlice ts_field_map_slices[] = {
         \\  [0] = { .index = 0, .length = 0 },
-        \\  [1] = { .index = 0, .length = 0 },
-        \\  [2] = { .index = 0, .length = 0 },
-        \\  [3] = { .index = 0, .length = 0 },
         \\};
         \\
         \\static const uint16_t ts_non_terminal_alias_map[] = {
@@ -1590,9 +1581,6 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\};
         \\static const TSSymbol ts_alias_sequences[][MAX_ALIAS_SEQUENCE_LENGTH > 0 ? MAX_ALIAS_SEQUENCE_LENGTH : 1] = {
         \\  [0] = { 0 },
-        \\  [1] = { 0 },
-        \\  [2] = { 0 },
-        \\  [3] = { 0 },
         \\};
         \\
         \\static const TSStateId ts_primary_state_ids[STATE_COUNT] = {
@@ -1602,60 +1590,68 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  [3] = 3,
         \\  [4] = 4,
         \\  [5] = 5,
+        \\  [6] = 6,
         \\};
         \\
         \\static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {
         \\  [STATE(0)] = {
-        \\    [3] = STATE(1),
-        \\    [4] = STATE(2),
+        \\    [0] = ACTIONS(1),
+        \\    [1] = ACTIONS(1),
         \\    [2] = ACTIONS(1),
         \\  },
         \\  [STATE(1)] = {
-        \\    [0] = ACTIONS(3),
+        \\    [3] = STATE(2),
+        \\    [4] = STATE(3),
+        \\    [2] = ACTIONS(3),
         \\  },
         \\};
         \\
         \\static const uint16_t ts_small_parse_table[] = {
-        \\  [0] = 2,
+        \\  [0] = 1,
         \\  ACTIONS(5), 1, 0,
-        \\  ACTIONS(7), 1, 1,
-        \\  [7] = 1,
-        \\  ACTIONS(9), 2, 0, 1,
-        \\  [12] = 2,
-        \\  STATE(5), 1, 4,
-        \\  ACTIONS(1), 1, 2,
-        \\  [19] = 1,
-        \\  ACTIONS(11), 1, 0,
+        \\  [4] = 2,
+        \\  ACTIONS(7), 1, 0,
+        \\  ACTIONS(9), 1, 1,
+        \\  [11] = 1,
+        \\  ACTIONS(11), 2, 0, 1,
+        \\  [16] = 2,
+        \\  STATE(6), 1, 4,
+        \\  ACTIONS(3), 1, 2,
+        \\  [23] = 1,
+        \\  ACTIONS(13), 1, 0,
         \\};
         \\
         \\static const uint32_t ts_small_parse_table_map[] = {
         \\  [SMALL_STATE(2)] = 0,
-        \\  [SMALL_STATE(3)] = 7,
-        \\  [SMALL_STATE(4)] = 12,
-        \\  [SMALL_STATE(5)] = 19,
+        \\  [SMALL_STATE(3)] = 4,
+        \\  [SMALL_STATE(4)] = 11,
+        \\  [SMALL_STATE(5)] = 16,
+        \\  [SMALL_STATE(6)] = 23,
         \\};
         \\
         \\static const TSParseActionEntry ts_parse_actions[] = {
         \\  [0] = { .entry = { .count = 0, .reusable = false } },
-        \\  [1] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 3, .extra = false, .repetition = false } } },
-        \\  [3] = { .entry = { .count = 1, .reusable = true } }, { .action = { .type = TSParseActionTypeAccept } },
-        \\  [5] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 1, .symbol = 3, .dynamic_precedence = 0, .production_id = 1 } } },
-        \\  [7] = { .entry = { .count = 1, .reusable = true } }, { .action = { .shift = { .type = TSParseActionTypeShift, .state = 4, .extra = false, .repetition = false } } },
-        \\  [9] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 1, .symbol = 4, .dynamic_precedence = 0, .production_id = 3 } } },
-        \\  [11] = { .entry = { .count = 1, .reusable = true } }, { .action = { .reduce = { .type = TSParseActionTypeReduce, .child_count = 3, .symbol = 4, .dynamic_precedence = 0, .production_id = 2 } } },
+        \\  [1] = { .entry = { .count = 1, .reusable = false } }, RECOVER(),
+        \\  [3] = { .entry = { .count = 1, .reusable = true } }, SHIFT(4),
+        \\  [5] = { .entry = { .count = 1, .reusable = true } }, ACCEPT_INPUT(),
+        \\  [7] = { .entry = { .count = 1, .reusable = true } }, REDUCE(3, 1, 0, 0),
+        \\  [9] = { .entry = { .count = 1, .reusable = true } }, SHIFT(5),
+        \\  [11] = { .entry = { .count = 1, .reusable = true } }, REDUCE(4, 1, 0, 0),
+        \\  [13] = { .entry = { .count = 1, .reusable = true } }, REDUCE(4, 3, 0, 0),
         \\};
         \\
-        \\static const TSUnresolvedEntry ts_state_5_unresolved[] = {
+        \\static const TSUnresolvedEntry ts_state_6_unresolved[] = {
         \\  { .symbol_id = 1, .reason = 1, .action_index = 0, .action_count = 0 },
         \\};
         \\
         \\static const TSLexerMode ts_lex_modes[STATE_COUNT] = {
         \\  [0] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\  [1] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [2] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [3] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [2] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [3] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\  [4] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
-        \\  [5] = { .lex_state = 2, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [5] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
+        \\  [6] = { .lex_state = 0, .external_lex_state = 0, .reserved_word_set_id = 0 },
         \\};
         \\
         \\bool ts_parser_runtime_has_unresolved_states(void) {
@@ -1664,14 +1660,14 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\
         \\const TSUnresolvedEntry *ts_parser_unresolved(uint16_t state_id) {
         \\  switch (state_id) {
-        \\    case 5: return ts_state_5_unresolved;
+        \\    case 6: return ts_state_6_unresolved;
         \\    default: return NULL;
         \\  }
         \\}
         \\
         \\uint16_t ts_parser_unresolved_count(uint16_t state_id) {
         \\  switch (state_id) {
-        \\    case 5: return 1;
+        \\    case 6: return 1;
         \\    default: return 0;
         \\  }
         \\}
@@ -1750,30 +1746,33 @@ pub fn parseTableConflictActionTableDump() Fixture {
         .contents =
         \\state 0
         \\  actions:
-        \\    terminal:1 => shift 3
         \\
         \\state 1
         \\  actions:
-        \\    end => accept
+        \\    terminal:1 => shift 4
         \\
         \\state 2
         \\  actions:
-        \\    end => reduce 1
-        \\    terminal:0 => shift 4
+        \\    end => accept
         \\
         \\state 3
+        \\  actions:
+        \\    end => reduce 1
+        \\    terminal:0 => shift 5
+        \\
+        \\state 4
         \\  actions:
         \\    end => reduce 3
         \\    terminal:0 => reduce 3
         \\
-        \\state 4
-        \\  actions:
-        \\    terminal:1 => shift 3
-        \\
         \\state 5
         \\  actions:
+        \\    terminal:1 => shift 4
+        \\
+        \\state 6
+        \\  actions:
         \\    end => reduce 2
-        \\    terminal:0 => shift 4
+        \\    terminal:0 => shift 5
         \\    terminal:0 => reduce 2
         \\  conflicts:
         \\    shift_reduce on terminal:0
@@ -1790,39 +1789,42 @@ pub fn parseTableConflictGroupedActionTableDump() Fixture {
         .contents =
         \\state 0
         \\  actions:
-        \\    terminal:1:
-        \\      shift 3
         \\
         \\state 1
         \\  actions:
-        \\    end:
-        \\      accept
+        \\    terminal:1:
+        \\      shift 4
         \\
         \\state 2
         \\  actions:
         \\    end:
-        \\      reduce 1
-        \\    terminal:0:
-        \\      shift 4
+        \\      accept
         \\
         \\state 3
         \\  actions:
         \\    end:
+        \\      reduce 1
+        \\    terminal:0:
+        \\      shift 5
+        \\
+        \\state 4
+        \\  actions:
+        \\    end:
         \\      reduce 3
         \\    terminal:0:
         \\      reduce 3
         \\
-        \\state 4
+        \\state 5
         \\  actions:
         \\    terminal:1:
-        \\      shift 3
+        \\      shift 4
         \\
-        \\state 5
+        \\state 6
         \\  actions:
         \\    end:
         \\      reduce 2
         \\    terminal:0:
-        \\      shift 4
+        \\      shift 5
         \\      reduce 2
         \\  conflicts:
         \\    shift_reduce on terminal:0
@@ -1839,23 +1841,21 @@ pub fn parseTableTinyGroupedActionTableDump() Fixture {
         .contents =
         \\state 0
         \\  actions:
-        \\    terminal:0:
-        \\      shift 3
         \\
         \\state 1
         \\  actions:
-        \\    end:
-        \\      accept
+        \\    terminal:0:
+        \\      shift 3
         \\
         \\state 2
         \\  actions:
         \\    end:
-        \\      reduce 1
+        \\      accept
         \\
         \\state 3
         \\  actions:
         \\    end:
-        \\      reduce 2
+        \\      reduce 1
         \\
         ,
     };
@@ -1867,25 +1867,28 @@ pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
         .contents =
         \\state 0
         \\  actions:
+        \\
+        \\state 1
+        \\  actions:
         \\    terminal:1:
         \\      shift 5
         \\
-        \\state 1
+        \\state 2
         \\  actions:
         \\    end:
         \\      accept
         \\
-        \\state 2
+        \\state 3
         \\  actions:
         \\    terminal:0:
         \\      shift 6
         \\
-        \\state 3
+        \\state 4
         \\  actions:
         \\    terminal:0:
         \\      reduce 2
         \\
-        \\state 4
+        \\state 5
         \\  actions:
         \\    terminal:0:
         \\      reduce 4
@@ -1894,11 +1897,6 @@ pub fn parseTableReduceReduceGroupedActionTableDump() Fixture {
         \\    reduce_reduce on terminal:0
         \\      #4@1
         \\      #5@1
-        \\
-        \\state 5
-        \\  actions:
-        \\    terminal:0:
-        \\      reduce 6
         \\
         \\state 6
         \\  actions:
@@ -1915,21 +1913,24 @@ pub fn parseTableReduceReduceActionTableDump() Fixture {
         .contents =
         \\state 0
         \\  actions:
-        \\    terminal:1 => shift 5
         \\
         \\state 1
         \\  actions:
-        \\    end => accept
+        \\    terminal:1 => shift 5
         \\
         \\state 2
         \\  actions:
-        \\    terminal:0 => shift 6
+        \\    end => accept
         \\
         \\state 3
         \\  actions:
-        \\    terminal:0 => reduce 2
+        \\    terminal:0 => shift 6
         \\
         \\state 4
+        \\  actions:
+        \\    terminal:0 => reduce 2
+        \\
+        \\state 5
         \\  actions:
         \\    terminal:0 => reduce 4
         \\    terminal:0 => reduce 5
@@ -1937,10 +1938,6 @@ pub fn parseTableReduceReduceActionTableDump() Fixture {
         \\    reduce_reduce on terminal:0
         \\      #4@1
         \\      #5@1
-        \\
-        \\state 5
-        \\  actions:
-        \\    terminal:0 => reduce 6
         \\
         \\state 6
         \\  actions:
@@ -1956,38 +1953,31 @@ pub fn parseTableMetadataGroupedActionTableDump() Fixture {
         .contents =
         \\state 0
         \\  actions:
+        \\
+        \\state 1
+        \\  actions:
         \\    terminal:1:
         \\      shift 3
         \\
-        \\state 1
+        \\state 2
         \\  actions:
         \\    end:
         \\      accept
         \\
-        \\state 2
+        \\state 3
         \\  actions:
         \\    terminal:0:
         \\      shift 4
         \\
-        \\state 3
-        \\  actions:
-        \\    terminal:0:
-        \\      reduce 2
-        \\
         \\state 4
         \\  actions:
         \\    terminal:1:
-        \\      shift 6
+        \\      shift 5
         \\
         \\state 5
         \\  actions:
         \\    end:
         \\      reduce 1
-        \\
-        \\state 6
-        \\  actions:
-        \\    end:
-        \\      reduce 2
         \\
         ,
     };
@@ -1999,31 +1989,26 @@ pub fn parseTableMetadataActionTableDump() Fixture {
         .contents =
         \\state 0
         \\  actions:
-        \\    terminal:1 => shift 3
         \\
         \\state 1
         \\  actions:
-        \\    end => accept
+        \\    terminal:1 => shift 3
         \\
         \\state 2
         \\  actions:
-        \\    terminal:0 => shift 4
+        \\    end => accept
         \\
         \\state 3
         \\  actions:
-        \\    terminal:0 => reduce 2
+        \\    terminal:0 => shift 4
         \\
         \\state 4
         \\  actions:
-        \\    terminal:1 => shift 6
+        \\    terminal:1 => shift 5
         \\
         \\state 5
         \\  actions:
         \\    end => reduce 1
-        \\
-        \\state 6
-        \\  actions:
-        \\    end => reduce 2
         \\
         ,
     };
@@ -2801,27 +2786,30 @@ pub fn parseTableAssociativityResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:1: shift 3
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:1: shift 4
         \\
         \\state 2
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 3
+        \\  resolved_actions:
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
+        \\
+        \\state 4
         \\  resolved_actions:
         \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
-        \\state 4
-        \\  resolved_actions:
-        \\    terminal:1: shift 3
-        \\
         \\state 5
+        \\  resolved_actions:
+        \\    terminal:1: shift 4
+        \\
+        \\state 6
         \\  resolved_actions:
         \\    end: reduce 2
         \\    terminal:0: reduce 2
@@ -2918,30 +2906,33 @@ pub fn parseTableRightAssociativityResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:1: shift 3
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:1: shift 4
         \\
         \\state 2
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 3
+        \\  resolved_actions:
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
+        \\
+        \\state 4
         \\  resolved_actions:
         \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
-        \\state 4
-        \\  resolved_actions:
-        \\    terminal:1: shift 3
-        \\
         \\state 5
         \\  resolved_actions:
+        \\    terminal:1: shift 4
+        \\
+        \\state 6
+        \\  resolved_actions:
         \\    end: reduce 2
-        \\    terminal:0: shift 4
+        \\    terminal:0: shift 5
         \\
         ,
     };
@@ -2953,31 +2944,34 @@ pub fn parseTableConflictResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:1: shift 3
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:1: shift 4
         \\
         \\state 2
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 3
+        \\  resolved_actions:
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
+        \\
+        \\state 4
         \\  resolved_actions:
         \\    end: reduce 3
         \\    terminal:0: reduce 3
         \\
-        \\state 4
-        \\  resolved_actions:
-        \\    terminal:1: shift 3
-        \\
         \\state 5
+        \\  resolved_actions:
+        \\    terminal:1: shift 4
+        \\
+        \\state 6
         \\  resolved_actions:
         \\    end: reduce 2
         \\    terminal:0: unresolved (shift_reduce)
-        \\      candidate shift 4
+        \\      candidate shift 5
         \\      candidate reduce 2
         \\
         ,
@@ -2990,29 +2984,28 @@ pub fn parseTableReduceReduceResolvedActionDump() Fixture {
         .contents =
         \\state 0
         \\  resolved_actions:
-        \\    terminal:1: shift 5
         \\
         \\state 1
         \\  resolved_actions:
-        \\    end: accept
+        \\    terminal:1: shift 5
         \\
         \\state 2
         \\  resolved_actions:
-        \\    terminal:0: shift 6
+        \\    end: accept
         \\
         \\state 3
         \\  resolved_actions:
-        \\    terminal:0: reduce 2
+        \\    terminal:0: shift 6
         \\
         \\state 4
+        \\  resolved_actions:
+        \\    terminal:0: reduce 2
+        \\
+        \\state 5
         \\  resolved_actions:
         \\    terminal:0: unresolved (reduce_reduce_deferred)
         \\      candidate reduce 4
         \\      candidate reduce 5
-        \\
-        \\state 5
-        \\  resolved_actions:
-        \\    terminal:0: reduce 6
         \\
         \\state 6
         \\  resolved_actions:
@@ -3109,6 +3102,10 @@ pub fn fieldChildrenNodeTypesJson() Fixture {
         \\  {
         \\    "type": "expr",
         \\    "named": true
+        \\  },
+        \\  {
+        \\    "type": "rhs",
+        \\    "named": true
         \\  }
         \\]
         \\
@@ -3162,21 +3159,6 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
         .contents =
         \\[
         \\  {
-        \\    "type": "rhs",
-        \\    "named": true,
-        \\    "fields": {},
-        \\    "children": {
-        \\      "multiple": false,
-        \\      "required": true,
-        \\      "types": [
-        \\        {
-        \\          "type": "term",
-        \\          "named": true
-        \\        }
-        \\      ]
-        \\    }
-        \\  },
-        \\  {
         \\    "type": "source_file",
         \\    "named": true,
         \\    "root": true,
@@ -3212,7 +3194,7 @@ pub fn hiddenWrapperNodeTypesJson() Fixture {
         \\    "named": true
         \\  },
         \\  {
-        \\    "type": "term",
+        \\    "type": "rhs",
         \\    "named": true
         \\  }
         \\]
@@ -3327,6 +3309,25 @@ pub fn mixedSemanticsNodeTypesJson() Fixture {
         \\    }
         \\  },
         \\  {
+        \\    "type": "statement",
+        \\    "named": true,
+        \\    "fields": {},
+        \\    "children": {
+        \\      "multiple": false,
+        \\      "required": true,
+        \\      "types": [
+        \\        {
+        \\          "type": "identifier",
+        \\          "named": true
+        \\        },
+        \\        {
+        \\          "type": "number_literal",
+        \\          "named": true
+        \\        }
+        \\      ]
+        \\    }
+        \\  },
+        \\  {
         \\    "type": "identifier",
         \\    "named": true
         \\  },
@@ -3360,7 +3361,7 @@ pub fn mixedSemanticsLexicalDump() Fixture {
         \\  kind named
         \\  form pattern [a-z]+
         \\  flags null
-        \\  tokenized true
+        \\  tokenized false
         \\  immediate false
         \\  implicit_precedence 0
         \\  start_state 0
@@ -3517,7 +3518,7 @@ pub fn repeatChoiceSeqLexicalDump() Fixture {
         \\  kind named
         \\  form pattern [a-z]+
         \\  flags null
-        \\  tokenized true
+        \\  tokenized false
         \\  immediate false
         \\  implicit_precedence 0
         \\  start_state 0
@@ -3695,21 +3696,6 @@ pub fn hiddenAlternativeFieldsNodeTypesJson() Fixture {
         .contents =
         \\[
         \\  {
-        \\    "type": "rhs",
-        \\    "named": true,
-        \\    "fields": {},
-        \\    "children": {
-        \\      "multiple": false,
-        \\      "required": true,
-        \\      "types": [
-        \\        {
-        \\          "type": "term",
-        \\          "named": true
-        \\        }
-        \\      ]
-        \\    }
-        \\  },
-        \\  {
         \\    "type": "source_file",
         \\    "named": true,
         \\    "root": true,
@@ -3741,7 +3727,7 @@ pub fn hiddenAlternativeFieldsNodeTypesJson() Fixture {
         \\    "named": true
         \\  },
         \\  {
-        \\    "type": "term",
+        \\    "type": "rhs",
         \\    "named": true
         \\  }
         \\]
@@ -3909,26 +3895,11 @@ pub fn hiddenExternalFieldsNodeTypesJson() Fixture {
         \\    }
         \\  },
         \\  {
-        \\    "type": "statement",
-        \\    "named": true,
-        \\    "fields": {},
-        \\    "children": {
-        \\      "multiple": false,
-        \\      "required": true,
-        \\      "types": [
-        \\        {
-        \\          "type": "expr",
-        \\          "named": true
-        \\        }
-        \\      ]
-        \\    }
-        \\  },
-        \\  {
-        \\    "type": "expr",
+        \\    "type": "indent",
         \\    "named": true
         \\  },
         \\  {
-        \\    "type": "indent",
+        \\    "type": "statement",
         \\    "named": true
         \\  }
         \\]
@@ -4033,28 +4004,13 @@ pub fn extraAliasedBodyNodeTypesJson() Fixture {
         \\    }
         \\  },
         \\  {
-        \\    "type": "statement",
-        \\    "named": true,
-        \\    "fields": {},
-        \\    "children": {
-        \\      "multiple": false,
-        \\      "required": true,
-        \\      "types": [
-        \\        {
-        \\          "type": "expr",
-        \\          "named": true
-        \\        }
-        \\      ]
-        \\    }
-        \\  },
-        \\  {
-        \\    "type": "expr",
-        \\    "named": true
-        \\  },
-        \\  {
         \\    "type": "space",
         \\    "named": true,
         \\    "extra": true
+        \\  },
+        \\  {
+        \\    "type": "statement",
+        \\    "named": true
         \\  }
         \\]
         \\
@@ -4111,7 +4067,8 @@ pub fn externalCollisionNodeTypesJson() Fixture {
         \\  },
         \\  {
         \\    "type": "statement",
-        \\    "named": true
+        \\    "named": true,
+        \\    "fields": {}
         \\  }
         \\]
         \\

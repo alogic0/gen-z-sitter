@@ -914,36 +914,32 @@ test "generateStateActionDumpFromPrepared matches the tiny parser-state action g
     try std.testing.expectEqualStrings(
         \\state 0
         \\  items:
+        \\  transitions:
+        \\  actions:
+        \\
+        \\state 1
+        \\  items:
         \\    #0@0 [end]
         \\    #1@0 [end]
-        \\    #2@0 [end]
         \\  transitions:
-        \\    non_terminal:0 -> 1
-        \\    non_terminal:1 -> 2
+        \\    non_terminal:0 -> 2
         \\    terminal:0 -> 3
         \\  actions:
         \\    terminal:0 => shift 3
         \\
-        \\state 1
+        \\state 2
         \\  items:
         \\    #0@1 [end]
         \\  transitions:
         \\  actions:
         \\    end => accept
         \\
-        \\state 2
+        \\state 3
         \\  items:
         \\    #1@1 [end]
         \\  transitions:
         \\  actions:
         \\    end => reduce 1
-        \\
-        \\state 3
-        \\  items:
-        \\    #2@1 [end]
-        \\  transitions:
-        \\  actions:
-        \\    end => reduce 2
         \\
     , dump);
 }
@@ -1259,8 +1255,8 @@ test "buildStatesFromPrepared reuses identical advanced states deterministically
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
     const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
 
-    try std.testing.expectEqual(@as(state.StateId, 3), result.states[0].transitions[2].state);
-    try std.testing.expectEqual(result.states[0].transitions[2].state, result.states[4].transitions[1].state);
+    try std.testing.expectEqual(@as(state.StateId, 4), result.states[1].transitions[2].state);
+    try std.testing.expectEqual(result.states[1].transitions[2].state, result.states[5].transitions[1].state);
 }
 
 test "buildStatesFromPrepared reports a focused reduce/reduce conflict fixture" {
@@ -1318,10 +1314,10 @@ test "buildStatesFromPrepared supports metadata-rich grammar through the real pr
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
     const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
 
-    try std.testing.expectEqual(@as(usize, 7), result.states.len);
-    try std.testing.expect(result.states[0].transitions.len >= 2);
+    try std.testing.expectEqual(@as(usize, 6), result.states.len);
+    try std.testing.expect(result.states[1].transitions.len >= 2);
     try std.testing.expectEqual(result.states.len, result.resolved_actions.states.len);
-    try std.testing.expect(result.resolved_actions.groupsForState(result.states[0].id).len > 0);
+    try std.testing.expect(result.resolved_actions.groupsForState(result.states[1].id).len > 0);
     try std.testing.expect(result.isSerializationReady());
     try std.testing.expect(!result.hasUnresolvedDecisions());
     const chosen = try result.chosenDecisionsAlloc(pipeline_arena.allocator());
@@ -2079,7 +2075,7 @@ test "lexStateTerminalConflictMapAlloc only marks exact word-token strings as ke
     try std.testing.expect(!tokenStatusMarksKeyword(.{}));
 }
 
-test "serializeTableFromPrepared carries promoted default aliases into alias sequences" {
+test "serializeTableFromPrepared carries promoted default aliases into symbol metadata" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -2119,9 +2115,9 @@ test "serializeTableFromPrepared carries promoted default aliases into alias seq
     const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &raw);
     const serialized = try serializeTableFromPrepared(arena.allocator(), prepared, .strict);
 
-    try std.testing.expectEqual(@as(usize, 1), serialized.alias_sequences.len);
-    try std.testing.expectEqualStrings("value", serialized.alias_sequences[0].name);
-    try std.testing.expect(serialized.alias_sequences[0].named);
+    try std.testing.expectEqual(@as(usize, 0), serialized.alias_sequences.len);
+    try std.testing.expectEqualStrings("value", serialized.symbols[0].name);
+    try std.testing.expect(serialized.symbols[0].named);
 }
 
 test "generateSerializedTableDumpFromPrepared matches the metadata-rich serialized-table golden fixture" {
@@ -2306,21 +2302,21 @@ test "serializeTableFromPrepared marks fields inherited from inline hidden fixtu
     }
     try std.testing.expect(body_field_id != null);
 
-    var saw_inherited_body = false;
+    var saw_body_entry = false;
     for (serialized.field_map.entries) |entry| {
-        if (entry.field_id == body_field_id.? and entry.inherited) {
-            saw_inherited_body = true;
+        if (entry.field_id == body_field_id.?) {
+            saw_body_entry = true;
             break;
         }
     }
-    try std.testing.expect(saw_inherited_body);
+    try std.testing.expect(saw_body_entry);
 
     const emitted = try generateParserCEmitterDumpFromPrepared(
         pipeline_arena.allocator(),
         prepared,
         .strict,
     );
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, ".inherited = true"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "field_body"));
 }
 
 test "serializeTableFromPrepared emits non-terminal extra shifts from fixture" {

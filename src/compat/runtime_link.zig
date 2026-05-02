@@ -1320,6 +1320,8 @@ fn offsetRuntimeStartStateAlloc(
     allocator: std.mem.Allocator,
     serialized: serialize.SerializedTable,
 ) RuntimeLinkError!serialize.SerializedTable {
+    if (hasReservedRuntimeStateZero(serialized)) return serialized;
+
     const states = try allocator.alloc(serialize.SerializedState, serialized.states.len + 1);
     const error_actions = try runtimeErrorStateActionsAlloc(allocator, serialized.symbols);
     states[0] = .{
@@ -1374,6 +1376,19 @@ fn offsetRuntimeStartStateAlloc(
         serialized.productions,
     );
     return result;
+}
+
+fn hasReservedRuntimeStateZero(serialized: serialize.SerializedTable) bool {
+    if (serialized.states.len == 0) return false;
+    const state_zero = serialized.states[0];
+    if (state_zero.id != 0 or state_zero.gotos.len != 0 or state_zero.unresolved.len != 0) return false;
+    if (state_zero.actions.len == 0) return true;
+    for (state_zero.actions) |entry| {
+        if (entry.recover) continue;
+        if (entry.action == .shift_extra) continue;
+        return false;
+    }
+    return true;
 }
 
 fn runtimeErrorStateActionsAlloc(

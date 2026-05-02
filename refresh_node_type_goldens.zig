@@ -159,7 +159,6 @@ fn replaceGoldenFunctionAlloc(
     errdefer replacement.deinit();
     var lines = std.mem.splitScalar(u8, json, '\n');
     while (lines.next()) |line| {
-        if (line.len == 0 and lines.peek() == null) break;
         try replacement.writer.writeAll("        \\\\");
         try replacement.writer.writeAll(line);
         try replacement.writer.writeByte('\n');

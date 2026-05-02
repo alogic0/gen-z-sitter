@@ -647,23 +647,23 @@ test "generateJsonSummaryAlloc reports parser row-sharing stats" {
     const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{}, .{});
 
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"blocked\": true"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 6"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 6"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 6"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 7"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 7"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 7"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true, \"minimize_states\": false }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 6, \"minimized_state_count\": 6, \"merged_state_count\": 0 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 7, \"minimized_state_count\": 7, \"merged_state_count\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"expected_conflicts\": { \"declared_count\": 0, \"unused_count\": 0, \"unused_indexes\": [] }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"savings\": { \"state_count_delta\": 0, \"action_array_definitions_saved\": 0, \"goto_array_definitions_saved\": 0, \"unresolved_array_definitions_saved\": 0, \"total_array_definitions_saved\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_bytes\": { "));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_entry_count\": 8"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"action_entry_count\": 11"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"unresolved_entry_count\": 1"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 6, \"empty_rows\": 0, \"unique_non_empty_rows\": 5, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 5 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 6, \"empty_rows\": 0, \"unique_non_empty_rows\": 5, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 5 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_goto_rows\": { \"total_rows\": 6, \"empty_rows\": 4, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_goto_rows\": { \"total_rows\": 6, \"empty_rows\": 4, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_unresolved_rows\": { \"total_rows\": 6, \"empty_rows\": 5, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 1 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_unresolved_rows\": { \"total_rows\": 6, \"empty_rows\": 5, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 1 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 7, \"empty_rows\": 0, \"unique_non_empty_rows\": 6, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 6 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 7, \"empty_rows\": 0, \"unique_non_empty_rows\": 6, \"shared_non_empty_rows\": 1, \"emitted_array_definitions\": 6 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_goto_rows\": { \"total_rows\": 7, \"empty_rows\": 5, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_goto_rows\": { \"total_rows\": 7, \"empty_rows\": 5, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_unresolved_rows\": { \"total_rows\": 7, \"empty_rows\": 6, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 1 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_unresolved_rows\": { \"total_rows\": 7, \"empty_rows\": 6, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 1 }"));
 }
 
 test "generateJsonSummaryAlloc can disable duplicate-state compaction stats" {
@@ -688,17 +688,17 @@ test "generateJsonSummaryAlloc can disable duplicate-state compaction stats" {
         .compact_duplicate_states = false,
     });
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 7"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 7"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 7"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 6"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 6"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"state_count\": 6"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": false, \"minimize_states\": false }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 7, \"minimized_state_count\": 7, \"merged_state_count\": 0 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 6, \"minimized_state_count\": 6, \"merged_state_count\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"savings\": { \"state_count_delta\": 0, \"action_array_definitions_saved\": 0, \"goto_array_definitions_saved\": 0, \"unresolved_array_definitions_saved\": 0, \"total_array_definitions_saved\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parser_tables_baseline\": "));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parser_c_emitted\": "));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 7, \"empty_rows\": 0, \"unique_non_empty_rows\": 7, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 7 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 7, \"empty_rows\": 0, \"unique_non_empty_rows\": 7, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 7 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 6, \"empty_rows\": 0, \"unique_non_empty_rows\": 6, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 6 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 6, \"empty_rows\": 0, \"unique_non_empty_rows\": 6, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 6 }"));
 }
 
 test "generateJsonSummaryAlloc reports minimized parse-table option" {
@@ -728,7 +728,7 @@ test "generateJsonSummaryAlloc reports minimized parse-table option" {
     );
 
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true, \"minimize_states\": true }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 7, \"minimized_state_count\": 7, \"merged_state_count\": 0 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 6, \"minimized_state_count\": 6, \"merged_state_count\": 0 }"));
 }
 
 test "generateJsonSummaryAlloc reports serialized versus emitted state counts when compaction keeps states" {
@@ -751,16 +751,16 @@ test "generateJsonSummaryAlloc reports serialized versus emitted state counts wh
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
     const summary = try generateJsonSummaryAlloc(summary_arena.allocator(), raw, prepared, .{}, .{});
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 7"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 7"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"serialized_state_count\": 6"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_state_count\": 6"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"merged_state_count\": 0"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true, \"minimize_states\": false }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"savings\": { \"state_count_delta\": 0, \"action_array_definitions_saved\": 0, \"goto_array_definitions_saved\": 0, \"unresolved_array_definitions_saved\": 0, \"total_array_definitions_saved\": 0 }"));
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_bytes\": { "));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 7, \"empty_rows\": 0, \"unique_non_empty_rows\": 7, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 7 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 7, \"empty_rows\": 0, \"unique_non_empty_rows\": 7, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 7 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_goto_rows\": { \"total_rows\": 7, \"empty_rows\": 5, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_goto_rows\": { \"total_rows\": 7, \"empty_rows\": 5, \"unique_non_empty_rows\": 2, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 3 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_action_rows\": { \"total_rows\": 6, \"empty_rows\": 0, \"unique_non_empty_rows\": 6, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 6 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_action_rows\": { \"total_rows\": 6, \"empty_rows\": 0, \"unique_non_empty_rows\": 6, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 6 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"baseline_goto_rows\": { \"total_rows\": 6, \"empty_rows\": 5, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 2 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"emitted_goto_rows\": { \"total_rows\": 6, \"empty_rows\": 5, \"unique_non_empty_rows\": 1, \"shared_non_empty_rows\": 0, \"emitted_array_definitions\": 2 }"));
 }
 
 test "generateJsonSummaryAlloc reports unused expected conflict indexes" {

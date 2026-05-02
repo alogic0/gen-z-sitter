@@ -65,7 +65,7 @@ const Extractor = struct {
         const variables_to_inline = try self.extractVariablesToInline();
         const supertype_symbols = try self.extractSupertypeSymbols();
         try self.validateSupertypeStructures(supertype_symbols, variables);
-        const word_token = try self.extractWordToken();
+        const word_token = try self.extractWordToken(variables);
 
         return .{
             .syntax = .{
@@ -135,12 +135,19 @@ const Extractor = struct {
         }
     }
 
-    fn extractWordToken(self: *Extractor) ExtractTokensError!?syntax_ir.SymbolRef {
+    fn extractWordToken(
+        self: *Extractor,
+        variables: []const syntax_ir.SyntaxVariable,
+    ) ExtractTokensError!?syntax_ir.SymbolRef {
         const word = self.prepared.word_token orelse return null;
 
         switch (word.kind) {
             .non_terminal => return switch (try self.replacePreparedSymbol(word)) {
                 .terminal => |terminal| .{ .terminal = terminal },
+                .non_terminal => |non_terminal| if (non_terminal < variables.len)
+                    if (singlePlainTerminalProduction(variables[non_terminal])) |terminal| .{ .terminal = terminal } else error.InvalidWordToken
+                else
+                    error.InvalidWordToken,
                 else => error.InvalidWordToken,
             },
             .external => return error.InvalidWordToken,
@@ -1737,6 +1744,72 @@ test "extractTokens accepts word tokens backed by tokenized composite lexical ru
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
     try std.testing.expectEqualStrings("identifier", extracted.lexical.variables[0].name);
     try std.testing.expectEqual(@as(u32, 5), extracted.lexical.variables[0].rule);
+}
+
+test "extractTokens accepts kept single-terminal word token wrappers" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "shared-word-token-wrapper",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 0,
+            },
+            .{
+                .name = "identifier",
+                .symbol = ir_symbols.SymbolId.nonTerminal(1),
+                .kind = .named,
+                .rule = 1,
+            },
+            .{
+                .name = "_identifier",
+                .symbol = ir_symbols.SymbolId.nonTerminal(2),
+                .kind = .hidden,
+                .rule = 2,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{
+            .{ .symbol = ir_symbols.SymbolId.nonTerminal(1) },
+            .{ .symbol = ir_symbols.SymbolId.nonTerminal(2) },
+            .{ .pattern = .{ .value = "[A-Za-z_][A-Za-z0-9_]*", .flags = null } },
+        },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(1),
+                .name = "identifier",
+                .named = true,
+                .visible = true,
+            },
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(2),
+                .name = "_identifier",
+                .named = false,
+                .visible = false,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = ir_symbols.SymbolId.nonTerminal(2),
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(syntax_ir.SymbolRef{ .terminal = 0 }, extracted.syntax.word_token.?);
+    try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
 }
 
 test "extractTokens accepts blank alternatives inside tokenized lexical rules" {

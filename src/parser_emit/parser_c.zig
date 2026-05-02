@@ -235,8 +235,8 @@ pub fn writeParserCWithOptions(
     try writer.print("#define MAX_RESERVED_WORD_SET_SIZE {d}\n\n", .{compacted.reserved_words.max_size});
 
     // Grammar lowering validates `word_token`; by emission it must have a runtime symbol ID.
-    const keyword_capture_id: u16 = if (compacted.word_token) |wt|
-        symbolIdForRef(emitted_symbols, wt) orelse unreachable
+    const keyword_capture_id: u16 = if (compacted.keyword_lex_table != null)
+        if (compacted.word_token) |wt| symbolIdForRef(emitted_symbols, wt) orelse unreachable else 0
     else
         0;
 
@@ -464,7 +464,7 @@ pub fn writeParserCWithOptions(
     if (options.glr_loop) try writeGlrVersionCondenseHelpers(writer, has_external_scanner);
     if (options.glr_loop) try writeGlrInputLexerHelpers(writer, compacted.grammar_name, has_external_scanner);
     if (options.glr_loop) try writeGlrVersionStepLoop(writer, has_unresolved);
-    if (options.glr_loop) try writeGlrMainParseFunction(writer);
+    if (options.glr_loop) try writeGlrMainParseFunction(writer, generatedStartState(compacted.states));
     try writeReservedWords(writer, emitted_symbols, compacted.reserved_words);
 
     try writer.writeAll("static const TSLanguage ts_language = {\n");
@@ -1191,12 +1191,25 @@ fn writeGlrVersionStepLoop(writer: anytype, has_unresolved: bool) !void {
     try writer.writeAll("}\n\n");
 }
 
-fn writeGlrMainParseFunction(writer: anytype) !void {
+fn generatedStartState(states: []const serialize.SerializedState) u16 {
+    if (states.len == 0) return 0;
+    const state_zero = states[0];
+    if (state_zero.actions.len == 0 and state_zero.gotos.len == 0 and state_zero.unresolved.len == 0) return 1;
+    if (state_zero.gotos.len != 0 or state_zero.unresolved.len != 0) return 0;
+    for (state_zero.actions) |entry| {
+        if (entry.recover) continue;
+        if (entry.action == .shift_extra) continue;
+        return 0;
+    }
+    return 1;
+}
+
+fn writeGlrMainParseFunction(writer: anytype, start_state: u16) !void {
     try writer.writeAll("bool ts_generated_parse_result(const char *input, uint32_t length, TSGeneratedParseResult *out_result) {\n");
     try writer.writeAll("  TSGeneratedParseResult result = { 0 };\n");
     try writer.writeAll("  result.root_node = GEN_Z_SITTER_NO_NODE;\n");
     try writer.writeAll("  TSGeneratedParseVersionSet set;\n");
-    try writer.writeAll("  ts_generated_parse_versions_init(&set, 0);\n");
+    try writer.print("  ts_generated_parse_versions_init(&set, {d});\n", .{start_state});
     try writer.writeAll("  for (;;) {\n");
     try writer.writeAll("    TSGeneratedParseVersion *lead = NULL;\n");
     try writer.writeAll("    uint16_t lead_index = 0;\n");
@@ -2137,6 +2150,8 @@ fn appendSerializedSymbolInfo(
     symbol: serialize.SerializedSymbolInfo,
     repeat_name_counts: *std.StringHashMap(usize),
 ) EmitError!void {
+    if (isLegacySerializedEndSymbol(symbol)) return;
+
     var label = symbol.name;
     var owns_label = false;
     if (try normalizedAuxiliaryRepeatLabelAlloc(allocator, symbol.name, repeat_name_counts)) |normalized| {
@@ -2152,6 +2167,15 @@ fn appendSerializedSymbolInfo(
         .public_symbol = symbol.public_symbol,
         .owns_label = owns_label,
     });
+}
+
+fn isLegacySerializedEndSymbol(symbol: serialize.SerializedSymbolInfo) bool {
+    return symbol.ref == .terminal and
+        symbol.ref.terminal == 0 and
+        std.mem.eql(u8, symbol.name, "end") and
+        !symbol.named and
+        !symbol.visible and
+        symbol.public_symbol == 0;
 }
 
 fn appendSerializedSymbolInfoForRef(
@@ -2208,6 +2232,18 @@ fn appendUniqueEmittedSymbol(
     symbols: *std.array_list.Managed(EmittedSymbol),
     symbol: syntax_grammar.SymbolRef,
 ) EmitError!void {
+    if (symbol == .terminal and symbol.terminal == 0) {
+        var has_terminal_zero = false;
+        var has_end = false;
+        for (symbols.items) |existing| {
+            if (existing.ref) |existing_ref| {
+                if (existing_ref == .terminal and existing_ref.terminal == 0) has_terminal_zero = true;
+                if (existing_ref == .end) has_end = true;
+            }
+        }
+        if (!has_terminal_zero and has_end) return;
+    }
+
     const index = symbols.items.len;
     try appendUniqueEmittedSymbolWithMetadata(allocator, symbols, .{
         .ref = symbol,
@@ -2332,6 +2368,13 @@ fn symbolIdForRef(symbols: []const EmittedSymbol, symbol: syntax_grammar.SymbolR
     for (symbols, 0..) |entry, index| {
         if (entry.ref) |entry_ref| {
             if (symbolRefEql(entry_ref, symbol)) return @intCast(index);
+        }
+    }
+    if (symbol == .terminal and symbol.terminal == 0) {
+        for (symbols, 0..) |entry, index| {
+            if (entry.ref) |entry_ref| {
+                if (entry_ref == .end) return @intCast(index);
+            }
         }
     }
     return null;
@@ -3194,7 +3237,7 @@ test "emitParserCAlloc emits opt-in GLR raw input parse entry point" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "bool ts_generated_parse_result(const char *input, uint32_t length, TSGeneratedParseResult *out_result) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "TSGeneratedParseResult result = { 0 };\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "result.root_node = GEN_Z_SITTER_NO_NODE;\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_parse_versions_init(&set, 0);\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "ts_generated_parse_versions_init(&set, 1);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!lead || set.versions[i].byte_offset < lead->byte_offset) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (!ts_generated_lex_symbol(lead, input + lead->byte_offset, length - lead->byte_offset, lead->state, &lookahead_symbol, &advance_bytes)) {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "if (out_result) *out_result = result;\n"));
@@ -3500,6 +3543,26 @@ test "emitParserCAlloc emits keyword lexer when serialized" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "      ACCEPT_TOKEN(2);\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_lex_fn = ts_lex_keywords,\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_capture_token = 1,\n"));
+}
+
+test "emitParserCAlloc clears keyword capture token without keyword lexer" {
+    const allocator = std.testing.allocator;
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .symbols = &[_]serialize.SerializedSymbolInfo{
+            .{ .ref = .{ .terminal = 0 }, .name = "identifier", .named = true, .visible = true, .supertype = false, .public_symbol = 0 },
+        },
+        .word_token = .{ .terminal = 0 },
+        .states = &[_]serialize.SerializedState{
+            .{ .id = 0, .actions = &.{}, .gotos = &.{}, .unresolved = &.{} },
+        },
+    };
+
+    const emitted = try emitParserCAllocWithOptions(allocator, serialized, .{ .compact_duplicate_states = false });
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_lex_fn = NULL,\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .keyword_capture_token = 0,\n"));
 }
 
 test "emitParserCAlloc emits external scanner symbols and declarations" {

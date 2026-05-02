@@ -102,6 +102,16 @@ fn emitLexFunctionWithLargeSets(
     try writer.writeAll("}\n\n");
 }
 
+fn emitUnusedCharacterSetMacro(writer: anytype) EmitError!void {
+    try writer.writeAll("#ifndef GEN_Z_SITTER_UNUSED_CHARACTER_SET\n");
+    try writer.writeAll("#if defined(__GNUC__) || defined(__clang__)\n");
+    try writer.writeAll("#define GEN_Z_SITTER_UNUSED_CHARACTER_SET __attribute__((unused))\n");
+    try writer.writeAll("#else\n");
+    try writer.writeAll("#define GEN_Z_SITTER_UNUSED_CHARACTER_SET\n");
+    try writer.writeAll("#endif\n");
+    try writer.writeAll("#endif\n");
+}
+
 const LargeCharacterSetEntry = struct {
     ranges: []const lexical_serialize.SerializedCharacterRange,
 };
@@ -144,8 +154,9 @@ const LargeCharacterSetIndex = struct {
         writer: anytype,
         fn_name: []const u8,
     ) EmitError!void {
+        if (self.entries.len != 0) try emitUnusedCharacterSetMacro(writer);
         for (self.entries, 0..) |entry, set_id| {
-            try writer.print("static const TSCharacterRange {s}_character_set_{d}[] = {{\n", .{ fn_name, set_id });
+            try writer.print("static const TSCharacterRange {s}_character_set_{d}[] GEN_Z_SITTER_UNUSED_CHARACTER_SET = {{\n", .{ fn_name, set_id });
             for (entry.ranges) |range| {
                 try writer.print("  {{ {d}, {d} }},\n", .{ range.start, range.end_inclusive });
             }
@@ -226,6 +237,7 @@ const LargeCharacterSets = struct {
         writer: anytype,
         fn_name: []const u8,
     ) EmitError!void {
+        if (self.hasDeclarations()) try emitUnusedCharacterSetMacro(writer);
         var next_id: usize = 0;
         for (self.lex_table.states) |state_value| {
             const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
@@ -234,7 +246,7 @@ const LargeCharacterSets = struct {
                 const set_id = self.find(transition.ranges) orelse continue;
                 if (set_id != next_id) continue;
 
-                try writer.print("static const TSCharacterRange {s}_character_set_{d}[] = {{\n", .{ fn_name, set_id });
+                try writer.print("static const TSCharacterRange {s}_character_set_{d}[] GEN_Z_SITTER_UNUSED_CHARACTER_SET = {{\n", .{ fn_name, set_id });
                 for (transition.ranges) |range| {
                     try writer.print("  {{ {d}, {d} }},\n", .{ range.start, range.end_inclusive });
                 }
@@ -242,6 +254,16 @@ const LargeCharacterSets = struct {
                 next_id += 1;
             }
         }
+    }
+
+    fn hasDeclarations(self: *const LargeCharacterSets) bool {
+        for (self.lex_table.states) |state_value| {
+            const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
+            for (state_value.transitions[advance_map_end..]) |transition| {
+                if (isLargeCharacterSet(transition.ranges)) return true;
+            }
+        }
+        return false;
     }
 
     fn find(self: *const LargeCharacterSets, ranges: []const lexical_serialize.SerializedCharacterRange) ?usize {
@@ -701,7 +723,12 @@ test "emitLexFunction uses TSCharacterRange tables for large character sets" {
     try emitLexFunction(&buffer.writer, "ts_lex", table);
     const emitted = buffer.writer.buffered();
 
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSCharacterRange ts_lex_character_set_0[] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(
+        u8,
+        emitted,
+        1,
+        "static const TSCharacterRange ts_lex_character_set_0[] GEN_Z_SITTER_UNUSED_CHARACTER_SET = {\n",
+    ));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  { 70, 75 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(
         u8,
