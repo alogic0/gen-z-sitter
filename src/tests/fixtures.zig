@@ -263,10 +263,6 @@ pub fn validResolvedNodeTypesJson() Fixture {
         \\    "named": true,
         \\    "subtypes": [
         \\      {
-        \\        "type": "term",
-        \\        "named": true
-        \\      },
-        \\      {
         \\        "type": "x",
         \\        "named": false
         \\      }
@@ -3313,25 +3309,6 @@ pub fn mixedSemanticsNodeTypesJson() Fixture {
         \\    }
         \\  },
         \\  {
-        \\    "type": "statement",
-        \\    "named": true,
-        \\    "fields": {},
-        \\    "children": {
-        \\      "multiple": false,
-        \\      "required": true,
-        \\      "types": [
-        \\        {
-        \\          "type": "identifier",
-        \\          "named": true
-        \\        },
-        \\        {
-        \\          "type": "number_literal",
-        \\          "named": true
-        \\        }
-        \\      ]
-        \\    }
-        \\  },
-        \\  {
         \\    "type": "identifier",
         \\    "named": true
         \\  },
@@ -3484,7 +3461,7 @@ pub fn repeatChoiceSeqNodeTypesJson() Fixture {
         \\    "fields": {},
         \\    "children": {
         \\      "multiple": true,
-        \\      "required": false,
+        \\      "required": true,
         \\      "types": [
         \\        {
         \\          "type": "identifier",

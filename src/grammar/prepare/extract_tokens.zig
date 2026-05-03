@@ -930,7 +930,10 @@ const Extractor = struct {
             .string => .string,
             .pattern => .pattern,
             .metadata => |metadata| if (metadata.data.token or metadata.data.immediate_token)
-                .token
+                if (metadata.data.alias != null)
+                    .token
+                else
+                    self.lexicalSourceKindForRule(metadata.inner)
             else
                 self.lexicalSourceKindForRule(metadata.inner),
             else => .composite,
@@ -2333,6 +2336,52 @@ test "extractTokens uses token aliases as lexical symbol identity" {
     try std.testing.expectEqualStrings("static get", extracted.lexical.variables[0].name);
     try std.testing.expectEqual(lexical_ir.VariableKind.anonymous, extracted.lexical.variables[0].kind);
     try std.testing.expectEqual(lexical_ir.SourceKind.token, extracted.lexical.variables[0].source_kind);
+    try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables[0].productions[0].steps[0].symbol.terminal);
+}
+
+test "extractTokens keeps unaliased token pattern source kind" {
+    const prepared = prepared_ir.PreparedGrammar{
+        .grammar_name = "token-pattern-source-kind",
+        .variables = &.{
+            .{
+                .name = "source_file",
+                .symbol = ir_symbols.SymbolId.nonTerminal(0),
+                .kind = .named,
+                .rule = 2,
+            },
+        },
+        .external_tokens = &.{},
+        .rules = &.{
+            .{ .pattern = .{ .value = "[^{}\\n]+", .flags = null } },
+            .{ .metadata = .{
+                .inner = 0,
+                .data = .{ .token = true },
+            } },
+            .{ .seq = &.{1} },
+        },
+        .symbols = &.{
+            .{
+                .id = ir_symbols.SymbolId.nonTerminal(0),
+                .name = "source_file",
+                .named = true,
+                .visible = true,
+            },
+        },
+        .extra_rules = &.{},
+        .expected_conflicts = &.{},
+        .precedence_orderings = &.{},
+        .variables_to_inline = &.{},
+        .supertype_symbols = &.{},
+        .word_token = null,
+        .reserved_word_sets = &.{},
+    };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const extracted = try extractTokens(arena.allocator(), prepared);
+    try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
+    try std.testing.expectEqual(lexical_ir.SourceKind.pattern, extracted.lexical.variables[0].source_kind);
     try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables[0].productions[0].steps[0].symbol.terminal);
 }
 

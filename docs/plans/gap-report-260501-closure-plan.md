@@ -27,6 +27,7 @@ Current closure status:
 | keyword_lex_function_case_count | 201 | 200 | 200 | closed |
 | symbol_order_hash | mismatch | match | match | closed |
 | field_names_hash | mismatch | match | match | closed |
+| Python node-types surface | mismatch | match | match | closed |
 | Python scope gate | serialize_only | measured, not promotable | promotion decision | blocked |
 | TypeScript/Rust scope gates | serialize_only | timed out in bounded compare | promotion decision | measurement-gated |
 
@@ -654,6 +655,24 @@ emission now declares that table as `SYMBOL_COUNT + ALIAS_COUNT`; focused
 supertype emission tests passed and the Python comparison reports bounded
 corpus samples as `matched`.
 
+Python node-types fix note: surface extraction now matches upstream for Python
+without reopening the JavaScript reference gate. The fixes are upstream-shaped:
+unaliased `token(...)` pattern rules keep their inner pattern source kind, inline
+variables are skipped as top-level node types but remain transparent to parents,
+aliases of supertypes stay as references instead of materializing alias-only
+top-level nodes, inline supertypes remain visible, recursive auxiliary
+summaries ignore pure self-recursive alternatives for requiredness, and alias
+node merges mark fields/children optional when another alias variant lacks that
+surface. The refreshed Python comparison no longer reports `node_types_hash` or
+node-type diff mismatches. The remaining Python blockers are parser/table
+construction counts: `symbol_count=275/273`, `serialized_state_count=2938/2788`,
+`emitted_state_count=2931/2788`, `large_state_count=193/185`,
+`parse_action_list_count=5144/4864`, and `lex_function_case_count=182/150`.
+The JavaScript reference comparison still reports only the expected
+`language_version` difference, with `serialized_state_count=1870/1870`,
+`parse_action_list_count=3588/3588`, `lex_function_case_count=279/279`, and
+matched bounded corpus samples.
+
 No compatibility metadata was promoted in this phase because none of the three
 targets met the stability and proof requirements.
 
@@ -689,12 +708,12 @@ non-JavaScript promotion blockers.
 
 ## Successor Batch Order
 
-1. Investigate Python extraction/surface parity, starting with the three extra
-   node types and `symbol_count=275/273`. The count and node-type surface are
-   upstream-visible and should be resolved before state-count or lexer-count
-   conclusions.
+1. Investigate Python symbol and parse-table construction parity now that
+   node-types match upstream. Start with `symbol_count=275/273` and
+   `symbol_order_hash` before interpreting the `serialized_state_count=2938/2788`
+   and `parse_action_list_count=5144/4864` deltas.
 2. Bounded comparison/profile path for TypeScript and Rust.
-3. Re-run Python after the surface fix and then classify the remaining
+3. Re-run Python after the symbol-surface fix and then classify the remaining
    state/action/lexer deltas.
 4. Refresh the closure audit after each promoted non-JavaScript grammar
    decision.
