@@ -186,6 +186,19 @@ fix worsened JavaScript action-list parity (`3568/3588`) and did not move the
 main lexer case count (`281/279`). Keep this as a separate lexer-model
 correctness investigation, not as the current JavaScript parity fix.
 
+Rejected runtime-lexer construction diagnostic: rebuilding JavaScript's runtime
+lexer through one shared multi-start DFA builder, matching upstream's broad
+construction shape more closely than the local per-lex-mode table stitching,
+did not move the residual. JavaScript remained at `lex_function_case_count=281/279`,
+`parse_action_list_count=3592/3588`, parser-table counts matched, and corpus
+samples matched. The two-case lexer residual is therefore not explained by the
+per-table-versus-shared-table construction boundary.
+
+Rejected recovery-isolation diagnostic: allowing runtime lexer state 0 to share
+the ordinary initial-signature path also did not move JavaScript
+(`281/279`). The residual is not caused by the current error-state-only
+partition barrier in runtime lex minimization.
+
 Gate-fix note: the keyword-capture split exposed a runtime-link regression for
 word-token grammars that have identifier-shaped string keywords but no reserved
 word sets. Local skipped keyword-table emission in that case, so samples such as
@@ -350,6 +363,25 @@ while upstream only leaves row 0 unreferenced. The lookup now indexes only
 reusable singleton rows for reusable fast-path use; JavaScript still reports
 `parse_action_list_count=3592/3588`, but local and upstream now both have only
 row 0 unreferenced. `zig build test-release --summary all` passed.
+
+Successor owner finding: parsing upstream `parser.c` owner references confirms
+that upstream keeps JavaScript's `program_repeat` conflict as
+`REDUCE + SHIFT_REPEAT` rows where local emits `SHIFT_REPEAT` singleton rows.
+The local singleton action index `583` is reused by three different discarded
+repeat reductions (`587`, `589`, and `644`) for the `@` token; this explains why
+the broad serialization-side reconstruction produced `85` repeat pairs and
+overshot to `3596/3588` instead of upstream's `83` repeat pairs. The next
+action-list patch must not reconstruct repeat reductions per owner blindly; it
+needs the same owner/action-row canonicalization that upstream applies before
+parse-action-list pooling.
+
+Rejected repeat-metadata downgrade: limiting repetition metadata to entries
+that still carry multiple candidate actions removed all 61 local
+`SHIFT_REPEAT` singleton rows, but it collapsed JavaScript action-list parity
+too far (`3470/3588`) while leaving the lexer residual unchanged (`281/279`).
+This confirms the singleton repeat rows are carrying real pooling structure;
+the fix is to preserve the missing `REDUCE + SHIFT_REPEAT` conflict surface,
+not to downgrade singleton repeat shifts to ordinary `SHIFT` rows.
 
 ## Phase 4 — Keyword Lex Residual
 
