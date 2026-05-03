@@ -747,9 +747,8 @@ const Builder = struct {
         const value = pattern.value;
 
         if (std.mem.eql(u8, value, "\\p{Zs}")) {
-            var chars = CharacterSet.empty();
-            try chars.addRange(self.allocator, ' ', ' ');
-            try chars.addCodepointRange(self.allocator, 0xA0, 0xA1);
+            var chars = try unicodeSeparatorSpaceSet(self.allocator);
+            errdefer chars.deinit(self.allocator);
             try self.pushAdvance(chars, next_state_id);
             return true;
         }
@@ -974,6 +973,19 @@ fn whitespaceCharacterSet(allocator: std.mem.Allocator) !CharacterSet {
     try set.addRange(allocator, '\r', '\r');
     try set.addRange(allocator, 0x0c, 0x0c);
     try set.addRange(allocator, 0x0b, 0x0b);
+    return set;
+}
+
+fn unicodeSeparatorSpaceSet(allocator: std.mem.Allocator) !CharacterSet {
+    var set = CharacterSet.empty();
+    errdefer set.deinit(allocator);
+    try set.addRange(allocator, ' ', ' ');
+    try set.addRange(allocator, 0x00A0, 0x00A0);
+    try set.addRange(allocator, 0x1680, 0x1680);
+    try set.addCodepointRange(allocator, 0x2000, 0x200B);
+    try set.addRange(allocator, 0x202F, 0x202F);
+    try set.addRange(allocator, 0x205F, 0x205F);
+    try set.addRange(allocator, 0x3000, 0x3000);
     return set;
 }
 
@@ -1309,8 +1321,7 @@ fn parseUnicodePropertySet(
     var set = CharacterSet.empty();
     errdefer set.deinit(allocator);
     if (std.mem.eql(u8, property_name, "Zs")) {
-        try set.addRange(allocator, ' ', ' ');
-        try set.addCodepointRange(allocator, 0xA0, 0xA1);
+        set = try unicodeSeparatorSpaceSet(allocator);
         return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "Ll")) {
@@ -3215,6 +3226,31 @@ test "expandExtractedLexicalGrammar supports broader zigrep-style regex forms" {
     try std.testing.expectEqual(@as(?usize, 1), try matchVariable(std.testing.allocator, expanded, 5, "\n"));
     try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 6, "abc1"));
     try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 7, "\x0c\x0b\x00"));
+}
+
+test "unicode separator space property includes full Zs ranges" {
+    const all_rules = [_]rules.Rule{
+        .{ .pattern = .{ .value = "\\p{Zs}", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "space_separator", .kind = .anonymous, .rule = 0 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(?usize, 1), try matchVariable(std.testing.allocator, expanded, 0, " "));
+    try std.testing.expectEqual(@as(?usize, 2), try matchVariable(std.testing.allocator, expanded, 0, "\u{00a0}"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 0, "\u{1680}"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 0, "\u{2000}"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 0, "\u{200a}"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 0, "\u{202f}"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 0, "\u{205f}"));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 0, "\u{3000}"));
+    try std.testing.expectEqual(@as(?usize, null), try matchVariable(std.testing.allocator, expanded, 0, "\u{200b}"));
 }
 
 test "buildTokenConflictMapAlloc marks literal prefix and identifier continuation" {

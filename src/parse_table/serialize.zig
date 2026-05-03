@@ -337,6 +337,7 @@ pub const BuildResultSerializeOptions = struct {
 
 pub const ParseActionTableOptions = struct {
     include_unresolved_parse_actions: bool = true,
+    external_internal_tokens: []const bool = &.{},
 };
 
 const ProductionSerialization = struct {
@@ -384,6 +385,8 @@ pub fn serializeBuildResultWithOptions(
                 snapshot.unresolved,
                 parse_state,
                 if (index < result.fragile_token_sets.len) result.fragile_token_sets[index] else &.{},
+                result.external_internal_tokens,
+                result.productions,
             ),
             .gotos = try collectGotosForState(allocator, parse_state),
             .unresolved = if (mode == .diagnostic)
@@ -1065,6 +1068,9 @@ pub fn attachRepetitionShiftMetadataWithFirstSetsAndOptionsAlloc(
                 shiftHasRepeatAuxiliaryConflict(parse_states[state_index], productions, first_sets, entry.symbol))
             {
                 entries[entry_index].repetition = true;
+                if (symbolIsExternalInternalTerminal(entry.symbol, options.external_internal_tokens)) {
+                    entries[entry_index].reusable = true;
+                }
             }
         }
         states[state_index] = serialized_state;
@@ -1073,6 +1079,14 @@ pub fn attachRepetitionShiftMetadataWithFirstSetsAndOptionsAlloc(
 
     try rebuildParseActionTables(allocator, &result, options);
     return result;
+}
+
+fn symbolIsExternalInternalTerminal(symbol: syntax_ir.SymbolRef, external_internal_tokens: []const bool) bool {
+    const terminal = switch (symbol) {
+        .terminal => |index| index,
+        .end, .non_terminal, .external => return false,
+    };
+    return terminal < external_internal_tokens.len and external_internal_tokens[terminal];
 }
 
 fn rebuildParseActionTables(
@@ -3022,6 +3036,8 @@ fn collectActionsForState(
     unresolved: []const resolution.UnresolvedDecisionRef,
     parse_state: state.ParseState,
     fragile_tokens: []const bool,
+    external_internal_tokens: []const bool,
+    productions: []const build.ProductionInfo,
 ) std.mem.Allocator.Error![]const SerializedActionEntry {
     var count: usize = 0;
     for (chosen) |entry| {
@@ -3040,7 +3056,8 @@ fn collectActionsForState(
             .action = entry.action,
             .candidate_actions = entry.candidate_actions,
             .extra = shiftActionIsExtra(parse_state.transitions, entry.symbol, entry.action),
-            .reusable = serializedActionEntryIsReusable(entry.symbol, fragile_tokens),
+            .reusable = serializedActionEntryIsReusable(entry.symbol, fragile_tokens) or
+                repeatCandidateUsesExternalInternalToken(entry.symbol, entry.candidate_actions, external_internal_tokens, productions),
         };
         index += 1;
     }
@@ -3052,11 +3069,39 @@ fn collectActionsForState(
             .action = action,
             .candidate_actions = entry.candidate_actions,
             .extra = shiftCandidateIsExtra(parse_state.transitions, entry.symbol, entry.candidate_actions),
-            .reusable = serializedActionEntryIsReusable(entry.symbol, fragile_tokens),
+            .reusable = serializedActionEntryIsReusable(entry.symbol, fragile_tokens) or
+                (entry.reason == .auxiliary_repeat and
+                    repeatCandidateUsesExternalInternalToken(entry.symbol, entry.candidate_actions, external_internal_tokens, productions)),
         };
         index += 1;
     }
     return entries;
+}
+
+fn repeatCandidateUsesExternalInternalToken(
+    symbol: syntax_ir.SymbolRef,
+    candidate_actions: []const actions.ParseAction,
+    external_internal_tokens: []const bool,
+    productions: []const build.ProductionInfo,
+) bool {
+    const terminal = switch (symbol) {
+        .terminal => |index| index,
+        .end, .non_terminal, .external => return false,
+    };
+    if (terminal >= external_internal_tokens.len or !external_internal_tokens[terminal]) return false;
+
+    var saw_shift = false;
+    var saw_reduce = false;
+    for (candidate_actions) |candidate| switch (candidate) {
+        .shift => saw_shift = true,
+        .reduce => |production_id| {
+            if (production_id >= productions.len) return false;
+            if (!productions[production_id].lhs_is_repeat_auxiliary) return false;
+            saw_reduce = true;
+        },
+        else => return false,
+    };
+    return saw_shift and saw_reduce;
 }
 
 fn serializedActionEntryIsReusable(symbol: syntax_ir.SymbolRef, fragile_tokens: []const bool) bool {

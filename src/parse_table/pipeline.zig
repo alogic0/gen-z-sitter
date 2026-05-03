@@ -806,7 +806,10 @@ fn serializePreparedBuildResultAlloc(
         result.states,
         result.productions,
         first_sets,
-        .{ .include_unresolved_parse_actions = include_unresolved_parse_actions },
+        .{
+            .include_unresolved_parse_actions = include_unresolved_parse_actions,
+            .external_internal_tokens = result.external_internal_tokens,
+        },
     );
     logProfileDone("serialize.repetition_shift_metadata", stage_profile_timer);
     stage_profile_timer = profileTimer(profile_log);

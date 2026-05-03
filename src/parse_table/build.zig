@@ -2474,6 +2474,7 @@ pub const BuildResult = struct {
     lex_state_count: usize,
     lex_state_terminal_sets: []const []const bool = &.{},
     fragile_token_sets: []const []const bool = &.{},
+    external_internal_tokens: []const bool = &.{},
     recovery_coincident_tokens: []const bool = &.{},
     recovery_coincident_terminal_count: usize = 0,
     actions: actions.ActionTable,
@@ -3197,6 +3198,7 @@ pub fn buildStatesWithOptions(
             minimized.resolved_actions,
             options.lex_state_terminal_conflicts,
         );
+        const external_internal_tokens = try externalInternalTokensAlloc(allocator, options.lex_state_terminal_conflicts);
         logProfileDone("assign_lex_state_ids", stage_profile_timer);
         return .{
             .productions = item_set_builder.productions,
@@ -3206,6 +3208,7 @@ pub fn buildStatesWithOptions(
             .lex_state_count = minimized_lex_states.count,
             .lex_state_terminal_sets = minimized_lex_states.terminal_sets,
             .fragile_token_sets = fragile_token_sets,
+            .external_internal_tokens = external_internal_tokens,
             .recovery_coincident_tokens = pre_minimize_coincident_tokens,
             .recovery_coincident_terminal_count = pre_minimize_coincident_terminal_count,
             .actions = action_projection,
@@ -3231,6 +3234,7 @@ pub fn buildStatesWithOptions(
         resolved_actions_with_extras,
         options.lex_state_terminal_conflicts,
     );
+    const external_internal_tokens = try externalInternalTokensAlloc(allocator, options.lex_state_terminal_conflicts);
     logProfileDone("assign_lex_state_ids", stage_profile_timer);
 
     return .{
@@ -3241,6 +3245,7 @@ pub fn buildStatesWithOptions(
         .lex_state_count = lex_states.count,
         .lex_state_terminal_sets = lex_states.terminal_sets,
         .fragile_token_sets = fragile_token_sets,
+        .external_internal_tokens = external_internal_tokens,
         .recovery_coincident_tokens = pre_minimize_coincident_tokens,
         .recovery_coincident_terminal_count = pre_minimize_coincident_terminal_count,
         .actions = action_projection,
@@ -3296,6 +3301,15 @@ fn buildFragileTokenSetsAlloc(
     }
 
     return result;
+}
+
+fn externalInternalTokensAlloc(
+    allocator: std.mem.Allocator,
+    terminal_conflicts: ?LexStateTerminalConflictMap,
+) std.mem.Allocator.Error![]const bool {
+    const conflicts_value = terminal_conflicts orelse return &.{};
+    if (conflicts_value.external_internal_tokens.len == 0) return &.{};
+    return try allocator.dupe(bool, conflicts_value.external_internal_tokens);
 }
 
 fn addTerminalExtraActionsAlloc(

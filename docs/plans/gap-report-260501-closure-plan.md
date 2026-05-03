@@ -23,7 +23,7 @@ Current closure status:
 |---|---:|---:|---:|---|
 | lex_function_case_count | 525 | 281 | 279 | successor task; local too high by 2 |
 | large_character_set_count | 0 | 3 | 3 | closed |
-| parse_action_list_count | 3,592 | 3,592 | 3,588 | successor task |
+| parse_action_list_count | 3,592 | 3,588 | 3,588 | closed |
 | keyword_lex_function_case_count | 201 | 200 | 200 | closed |
 | symbol_order_hash | mismatch | match | match | closed |
 | field_names_hash | mismatch | match | match | closed |
@@ -181,10 +181,12 @@ reachable local cases. This is a state-0 recovery lex-table shape issue until
 proven otherwise, not a lex-mode start-count issue.
 
 Rejected NFA diagnostic: local regex one-or-more expansion appears to permit an
-invalid zero-repeat path in isolated token-sequence inspection, but the focused
-fix worsened JavaScript action-list parity (`3568/3588`) and did not move the
-main lexer case count (`281/279`). Keep this as a separate lexer-model
-correctness investigation, not as the current JavaScript parity fix.
+invalid zero-repeat path in isolated token-sequence inspection. Re-testing that
+fix after action-list canonicalization normalized most accepting-state
+differences in the main lexer, but it still left JavaScript at
+`lex_function_case_count=281/279` and reopened action-list parity to
+`3568/3588`. Keep this as a separate lexer-model correctness investigation,
+not as the current JavaScript parity fix.
 
 Rejected runtime-lexer construction diagnostic: rebuilding JavaScript's runtime
 lexer through one shared multi-start DFA builder, matching upstream's broad
@@ -198,6 +200,13 @@ Rejected recovery-isolation diagnostic: allowing runtime lexer state 0 to share
 the ordinary initial-signature path also did not move JavaScript
 (`281/279`). The residual is not caused by the current error-state-only
 partition barrier in runtime lex minimization.
+
+Batch 7 implementation note: the JavaScript extras pattern now expands
+`\p{Zs}` to the full Unicode separator-space set (`U+0020`, `U+00A0`,
+`U+1680`, `U+2000..U+200A`, `U+202F`, `U+205F`, and `U+3000`). This aligns the
+recovery whitespace surface with upstream's `extras_character_set_1`, but it
+does not by itself move the remaining runtime case count: JavaScript still
+reports `lex_function_case_count=281/279`.
 
 Gate-fix note: the keyword-capture split exposed a runtime-link regression for
 word-token grammars that have identifier-shaped string keywords but no reserved
@@ -316,8 +325,10 @@ belongs to the same auxiliary repeat, and the corresponding upstream row shape.
 Only then adjust the resolver or serializer for the exact repeat class upstream
 keeps paired.
 
-Current status: partially classified, deferred. This plan's Phase 3 gate
-(`3588`) remains unmet; broad repeat-preservation was disproved as a fix.
+Current status: closed for the measured JavaScript count. The remaining
+action-list shape is not isomorphic to upstream, but the emitted
+`parse_action_list_count` gate now matches without a downstream pooling
+heuristic.
 
 Action-list instrumentation note: `compare-upstream` now writes
 `local/action-list-summary.json`. The minimized JavaScript artifact confirms
@@ -362,7 +373,10 @@ the important signal: local has 40 `REDUCE+REDUCE`, 38 `REDUCE+SHIFT`, and 2
 heavily pooled already: 684 owner entries map onto those 80 rows, with the
 largest row (`1180`) referenced by 94 owners. The next action-list fix should
 therefore investigate why upstream converts or pools many local `REDUCE+REDUCE`
-surfaces into fewer rows, not only why repeat pairs are missing.
+surfaces into fewer rows, not only why repeat pairs are missing. The fix target
+is upstream-faithful action-entry construction/canonicalization before
+`ts_parse_actions[]` pooling, not a downstream pooling heuristic that sorts or
+hashes already-divergent local rows into the upstream count.
 
 Rejected minimizer diagnostic: merging duplicate resolved action groups during
 state minimization can force the brace counter to `3588`, but the broad version
@@ -426,6 +440,19 @@ marking `escape_sequence` reusable over-collapsed to `3568/3588` and removed
 also over-collapsed. The remaining action-list fix must preserve upstream's
 owner/action-row canonicalization while keeping the current fragile-token
 surface, not special-case `escape_sequence` reusable classification.
+
+Batch 7 implementation note: action-list count parity is closed by carrying the
+external/internal terminal bitmap into `BuildResult` and using it during
+auxiliary-repeat action-entry construction and repetition metadata attachment.
+This reproduces the upstream-shaped construction path for corresponding
+internal/external repeat tokens before `ts_parse_actions[]` pooling; it does
+not add a downstream row-hashing or pooling heuristic. JavaScript now reports
+`parse_action_list_count=3588/3588` while preserving
+`serialized_state_count=1870/1870`, `large_state_count=387/387`,
+`external_lex_state_count=10/10`, and matched bounded corpus samples. The
+action-list shape still differs (`SHIFT_REPEAT` singleton rows remain), so
+future work should treat count parity as closed but not claim full row-shape
+isomorphism.
 
 ## Phase 4 — Keyword Lex Residual
 
@@ -573,28 +600,27 @@ Gate:
   without either a fix or a checked-in, evidence-backed successor task.
 
 Closure note: the original six JavaScript audit gaps are no longer all active
-algorithm gaps. Four are closed (`large_character_set_count`,
+algorithm gaps. Five are closed (`large_character_set_count`,
 `keyword_lex_function_case_count`, `symbol_order_hash`, and
-`field_names_hash`). Two remain as evidence-backed successor tasks:
-`parse_action_list_count=3592/3588` and `lex_function_case_count=281/279`.
-Both preserve JavaScript parser state parity and bounded corpus equivalence.
+`field_names_hash`, and `parse_action_list_count`). One remains as an
+evidence-backed successor task: `lex_function_case_count=281/279`. JavaScript
+parser state parity, action-list count parity, and bounded corpus equivalence
+are preserved.
 The current closure audit records the exact residuals and promotion blockers.
 
 ## Successor Batch Order
 
-1. Action-list residual instrumentation and targeted fix for
-   `parse_action_list_count=3592/3588`.
-2. Runtime lex minimization diagnostics and targeted fix for the current
+1. Runtime lex minimization diagnostics and targeted fix for the current
    JavaScript two-case excess: `lex_function_case_count=281/279`. Start with
    state-0 runtime DFA shape: local emits explicit recovery whitespace and
    identifier ranges where upstream routes through an extras set and broad
    identifier transition. Re-check Python before using it as a same-class
    signal, because JavaScript's residual direction has flipped since the
    earlier Python measurement.
-3. Bounded comparison/profile path for TypeScript and Rust.
-4. Python promotion blocker investigation, starting with `symbol_count=275/273`
+2. Bounded comparison/profile path for TypeScript and Rust.
+3. Python promotion blocker investigation, starting with `symbol_count=275/273`
    and corpus runner compilation.
-5. Refresh the closure audit after either JavaScript residual closes.
+4. Refresh the closure audit after the JavaScript lexer residual closes.
 
 The original large-character-set, symbol/field ordering, and keyword lex tasks
 are closed. Do not reopen them unless a new comparison shows a concrete
