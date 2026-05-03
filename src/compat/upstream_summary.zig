@@ -6096,9 +6096,9 @@ test "generateLocalConflictSummaryJsonAlloc writes dynamic precedence decisions"
 
     try std.testing.expect(std.mem.indexOf(u8, json, "\"chosen_count\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"dynamic_precedence\": 0") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 0") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"single_action\": 9") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_count\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_reduce\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"single_action\": 8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"unresolved_count\": 1") != null);
 }
 
 test "generateLocalConflictSummaryJsonAlloc distinguishes expected shift reduce conflicts" {

@@ -428,7 +428,7 @@ fn lexStateTerminalConflictMapAlloc(
                 status.does_match_separators or
                 status.matches_prefix or
                 status.matches_same_string or
-                status.does_match_valid_continuation;
+                status.does_match_continuation;
             merge_overlaps[left * terminal_count + right] =
                 status.does_match_separators or
                 status.matches_prefix or
@@ -689,7 +689,7 @@ fn serializeRuntimeTableFromGrammarPathMaybeProfile(
         extracted.syntax.word_token,
     );
     defer serialize.deinitLexStateTerminalSets(allocator, runtime_lex_terminal_sets);
-    serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesWithEofAlloc(
+    serialized.lex_tables = try lexer_serialize.buildSharedSerializedLexTablesWithEofAlloc(
         allocator,
         prepared.rules,
         extracted.lexical,
@@ -853,7 +853,7 @@ fn serializePreparedBuildResultAlloc(
         extracted.syntax.word_token,
     );
     defer serialize.deinitLexStateTerminalSets(allocator, lex_terminal_sets);
-    serialized.lex_tables = try lexer_serialize.buildSerializedLexTablesAlloc(
+    serialized.lex_tables = try lexer_serialize.buildSharedSerializedLexTablesAlloc(
         allocator,
         prepared.rules,
         extracted.lexical,
@@ -1482,7 +1482,7 @@ test "generateResolvedActionTableDumpFromPrepared chooses shift for the second n
     try std.testing.expectEqualStrings(fixtures.parseTableNamedPrecedenceShiftResolvedActionDump().contents, dump);
 }
 
-test "generateResolvedActionTableDumpFromPrepared chooses reduce for the first dynamic-precedence grammar" {
+test "generateResolvedActionTableDumpFromPrepared leaves positive dynamic-precedence conflicts unresolved" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
     var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -1505,7 +1505,7 @@ test "generateResolvedActionTableDumpFromPrepared chooses reduce for the first d
     try std.testing.expectEqualStrings(fixtures.parseTableDynamicPrecedenceResolvedActionDump().contents, dump);
 }
 
-test "generateResolvedActionTableDumpFromPrepared chooses shift for the first negative-dynamic-precedence grammar" {
+test "generateResolvedActionTableDumpFromPrepared leaves negative dynamic-precedence conflicts unresolved" {
     var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer loader_arena.deinit();
     var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -2004,7 +2004,7 @@ test "serializeTableFromPrepared attaches serialized lex tables for an unambiguo
 
     try std.testing.expect(!serialized.blocked);
     try std.testing.expect(serialized.lex_tables.len > 0);
-    try std.testing.expectEqual(serialized.lex_state_terminal_sets.len, serialized.lex_tables.len);
+    try std.testing.expectEqual(@as(usize, 1), serialized.lex_tables.len);
     var non_empty_tables: usize = 0;
     for (serialized.lex_tables) |lex_table| {
         if (lex_table.states.len == 0) continue;

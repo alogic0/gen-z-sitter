@@ -1515,10 +1515,24 @@ fn buildRuntimeLexTableAlloc(
     allocator: std.mem.Allocator,
     lex_tables: []const lexer_serialize.SerializedLexTable,
 ) EmitError!RuntimeLexTable {
-    const starts = try allocator.alloc(u16, lex_tables.len);
+    var start_count: usize = 0;
+    for (lex_tables) |table| {
+        start_count += if (table.lex_state_starts.len == 0) 1 else table.lex_state_starts.len;
+    }
+
+    const starts = try allocator.alloc(u16, start_count);
     var state_count: usize = 0;
-    for (lex_tables, 0..) |table, index| {
-        starts[index] = @intCast(state_count + table.start_state_id);
+    var start_index: usize = 0;
+    for (lex_tables) |table| {
+        if (table.lex_state_starts.len == 0) {
+            starts[start_index] = @intCast(state_count + table.start_state_id);
+            start_index += 1;
+        } else {
+            for (table.lex_state_starts) |start| {
+                starts[start_index] = @intCast(state_count + start);
+                start_index += 1;
+            }
+        }
         state_count += table.states.len;
     }
 

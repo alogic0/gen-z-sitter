@@ -704,7 +704,6 @@ const Builder = struct {
                     self.nfa.states.items[loop_split_state_id] = .{
                         .split = .{ .left = inner_start_state, .right = next_state_id },
                     };
-                    try self.pushSplit(inner_start_state, next_state_id);
                     break :blk true;
                 }
                 _ = self.nfa.states.pop();
@@ -809,15 +808,10 @@ const Builder = struct {
                 break :blk self.nfa.lastStateId();
             },
             .zero_or_more => blk: {
-                try self.nfa.states.append(self.allocator, .{
-                    .split = .{ .left = next_state_id, .right = next_state_id },
-                });
-                const loop_split_state_id = self.nfa.lastStateId();
-                const inner_start = try self.expandRegexNode(node, loop_split_state_id);
-                self.nfa.states.items[loop_split_state_id] = .{
-                    .split = .{ .left = inner_start, .right = next_state_id },
-                };
-                try self.pushSplit(inner_start, next_state_id);
+                const before = self.nfa.states.items.len;
+                _ = try self.expandRegexRepeat(node, .one_or_more, next_state_id);
+                if (self.nfa.states.items.len == before) break :blk next_state_id;
+                try self.pushSplit(next_state_id, self.nfa.lastStateId());
                 break :blk self.nfa.lastStateId();
             },
             .one_or_more => blk: {
@@ -829,19 +823,28 @@ const Builder = struct {
                 self.nfa.states.items[loop_split_state_id] = .{
                     .split = .{ .left = inner_start, .right = next_state_id },
                 };
-                try self.pushSplit(inner_start, next_state_id);
                 break :blk inner_start;
             },
             .range => |range| blk: {
-                var next = next_state_id;
                 if (range.max) |max| {
-                    var optional_count = max - range.min;
-                    while (optional_count > 0) : (optional_count -= 1) {
-                        next = try self.expandRegexRepeat(node, .optional, next);
+                    if (range.min == max) {
+                        break :blk (try self.expandRegexCount(node, range.min, next_state_id)) orelse next_state_id;
                     }
-                } else {
-                    next = try self.expandRegexRepeat(node, .zero_or_more, next);
+
+                    var result = try self.expandRegexCount(node, range.min, next_state_id);
+                    var next = next_state_id;
+                    var optional_index = range.min;
+                    while (optional_index < max) : (optional_index += 1) {
+                        if (result != null) next = self.nfa.lastStateId();
+                        if (try self.expandRegexNodeChanged(node, next)) |start| {
+                            try self.pushSplit(next, start);
+                            result = self.nfa.lastStateId();
+                        }
+                    }
+                    break :blk result orelse next_state_id;
                 }
+
+                var next = try self.expandRegexRepeat(node, .zero_or_more, next_state_id);
                 var required_count = range.min;
                 while (required_count > 0) : (required_count -= 1) {
                     next = try self.expandRegexNode(node, next);
@@ -849,6 +852,26 @@ const Builder = struct {
                 break :blk next;
             },
         };
+    }
+
+    fn expandRegexCount(self: *Builder, node: RegexNode, count: usize, next_state_id: u32) ExpandError!?u32 {
+        var result: ?u32 = null;
+        var next = next_state_id;
+        var index: usize = 0;
+        while (index < count) : (index += 1) {
+            if (try self.expandRegexNodeChanged(node, next)) |start| {
+                result = start;
+                next = start;
+            }
+        }
+        return result;
+    }
+
+    fn expandRegexNodeChanged(self: *Builder, node: RegexNode, next_state_id: u32) ExpandError!?u32 {
+        const before = self.nfa.states.items.len;
+        const start = try self.expandRegexNode(node, next_state_id);
+        if (start == next_state_id and self.nfa.states.items.len == before) return null;
+        return start;
     }
 
     fn expandPatternAtom(self: *Builder, atom: PatternAtom, next_state_id: u32) !u32 {
@@ -864,16 +887,8 @@ const Builder = struct {
                 break :blk self.nfa.lastStateId();
             },
             .zero_or_more => blk: {
-                try self.nfa.states.append(self.allocator, .{
-                    .split = .{ .left = next_state_id, .right = next_state_id },
-                });
-                const loop_split_state = self.nfa.lastStateId();
-                try self.pushAdvance(try cloneCharacterSet(self.allocator, atom.chars), loop_split_state);
-                const advance_state = self.nfa.lastStateId();
-                self.nfa.states.items[loop_split_state] = .{
-                    .split = .{ .left = advance_state, .right = next_state_id },
-                };
-                try self.pushSplit(advance_state, next_state_id);
+                _ = try self.expandPatternAtom(.{ .chars = atom.chars, .quantifier = .one_or_more }, next_state_id);
+                try self.pushSplit(next_state_id, self.nfa.lastStateId());
                 break :blk self.nfa.lastStateId();
             },
             .one_or_more => blk: {
@@ -886,7 +901,6 @@ const Builder = struct {
                 self.nfa.states.items[loop_split_state] = .{
                     .split = .{ .left = advance_state, .right = next_state_id },
                 };
-                try self.pushSplit(advance_state, next_state_id);
                 break :blk advance_state;
             },
         };
@@ -2775,6 +2789,42 @@ test "expandExtractedLexicalGrammar builds lexical NFA for simple string and pat
     try std.testing.expectEqualStrings("number", expanded.variables[1].name);
 }
 
+test "expandExtractedLexicalGrammar keeps one-or-more regex tokens non-nullable" {
+    const all_rules = [_]rules.Rule{
+        .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "identifier", .kind = .named, .rule = 0 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(?usize, null), try matchVariable(std.testing.allocator, expanded, 0, ""));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 0, "abc"));
+}
+
+test "expandExtractedLexicalGrammar keeps zero-or-more regex tokens nullable" {
+    const all_rules = [_]rules.Rule{
+        .{ .pattern = .{ .value = "[a-z]*", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "identifier", .kind = .named, .rule = 0 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(?usize, 0), try matchVariable(std.testing.allocator, expanded, 0, ""));
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 0, "abc"));
+}
+
 test "expandExtractedLexicalGrammar integrates separator transitions for non-immediate tokens" {
     const all_rules = [_]rules.Rule{
         .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
@@ -3189,6 +3239,25 @@ test "expandExtractedLexicalGrammar supports C grammar regex forms" {
     try std.testing.expectEqual(@as(?usize, 6), try matchVariable(std.testing.allocator, expanded, 8, "\\u1234+"));
 }
 
+test "expandExtractedLexicalGrammar honors bounded regex repeat maxima" {
+    const all_rules = [_]rules.Rule{
+        .{ .pattern = .{ .value = "&[A-Za-z]{1,3};", .flags = null } },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "entity", .kind = .named, .rule = 0 },
+        },
+        .separators = &.{},
+    };
+
+    var expanded = try expandExtractedLexicalGrammar(std.testing.allocator, all_rules[0..], lexical);
+    defer expanded.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(?usize, 3), try matchVariable(std.testing.allocator, expanded, 0, "&a;"));
+    try std.testing.expectEqual(@as(?usize, 5), try matchVariable(std.testing.allocator, expanded, 0, "&abc;"));
+    try std.testing.expectEqual(@as(?usize, null), try matchVariable(std.testing.allocator, expanded, 0, "&abcd;"));
+}
+
 test "expandExtractedLexicalGrammar supports broader zigrep-style regex forms" {
     const all_rules = [_]rules.Rule{
         .{ .pattern = .{ .value = "(?:ab|cd)+?e", .flags = null } },
@@ -3325,7 +3394,7 @@ test "buildTokenConflictMapWithFollowingTokensAlloc derives following chars from
     try std.testing.expect(conflict_map.following_chars_by_index[2].contains('l'));
 }
 
-test "buildTokenConflictMapAlloc marks separator-sensitive conflicts" {
+test "buildTokenConflictMapAlloc does not mark non-nullable regex starts as separator-sensitive" {
     const all_rules = [_]rules.Rule{
         .{ .string = "let" },
         .{ .pattern = .{ .value = "[a-z]+", .flags = null } },
@@ -3345,7 +3414,7 @@ test "buildTokenConflictMapAlloc marks separator-sensitive conflicts" {
     var conflict_map = try buildTokenConflictMapAlloc(std.testing.allocator, expanded);
     defer conflict_map.deinit(std.testing.allocator);
 
-    try std.testing.expect(conflict_map.status(1, 0).does_match_separators);
+    try std.testing.expect(!conflict_map.status(1, 0).does_match_separators);
 }
 
 test "computeFollowingTokensAlloc derives grammar-based token follow sets" {

@@ -187,6 +187,20 @@ pub const LexTable = struct {
     }
 };
 
+pub const MultiStartLexTable = struct {
+    table: LexTable,
+    start_state_ids: []usize,
+    allowed_tokens: lexer_model.TokenIndexSet,
+
+    pub fn deinit(self: *MultiStartLexTable) void {
+        const allocator = self.table.allocator;
+        self.table.deinit();
+        allocator.free(self.start_state_ids);
+        self.allowed_tokens.deinit(allocator);
+        self.* = undefined;
+    }
+};
+
 pub fn buildLexTableForSet(
     allocator: std.mem.Allocator,
     grammar: lexer_model.ExpandedLexicalGrammar,
@@ -267,6 +281,76 @@ pub fn buildLexTableForSetWithOptions(
     return table;
 }
 
+pub fn buildLexTableForSetsWithOptions(
+    allocator: std.mem.Allocator,
+    grammar: lexer_model.ExpandedLexicalGrammar,
+    allowed_sets: []const lexer_model.TokenIndexSet,
+    eof_valids: ?[]const bool,
+    options: BuildOptions,
+) !MultiStartLexTable {
+    const starts = try allocator.alloc(usize, allowed_sets.len);
+    errdefer allocator.free(starts);
+
+    var all_allowed = try lexer_model.TokenIndexSet.initEmpty(allocator, grammar.variables.len);
+    errdefer all_allowed.deinit(allocator);
+    for (allowed_sets) |allowed| {
+        for (allowed.values, 0..) |enabled, index| {
+            if (enabled) all_allowed.insert(index);
+        }
+    }
+
+    var builder = LexTableBuilder{
+        .allocator = allocator,
+        .grammar = grammar,
+        .allowed_tokens = all_allowed,
+        .profile = options.profile,
+    };
+    errdefer builder.deinit();
+
+    var start_states = std.ArrayListUnmanaged(u32).empty;
+    defer start_states.deinit(allocator);
+
+    for (allowed_sets, 0..) |allowed_tokens, index| {
+        start_states.clearRetainingCapacity();
+        for (grammar.variables, 0..) |variable, variable_index| {
+            if (!allowed_tokens.contains(variable_index)) continue;
+            try start_states.append(allocator, variable.start_state);
+        }
+
+        const eof_valid = if (eof_valids) |values| index < values.len and values[index] else false;
+        const start_closure_timer = profileTimer(options.profile != null);
+        const closure = try epsilonClosureAlloc(allocator, grammar, start_states.items);
+        if (options.profile) |profile| profile.start_closure_ns += profileElapsedNs(start_closure_timer);
+        defer allocator.free(closure);
+
+        const construct_timer = profileTimer(options.profile != null);
+        starts[index] = try builder.internState(closure, eof_valid);
+        if (options.profile) |profile| profile.construct_ns += profileElapsedNs(construct_timer);
+    }
+
+    var table: LexTable = .{
+        .allocator = allocator,
+        .grammar = grammar,
+        .allowed_tokens = all_allowed,
+        .start_state_id = if (starts.len == 0) 0 else starts[0],
+        .states = try builder.states.toOwnedSlice(allocator),
+    };
+    errdefer table.deinit();
+
+    const minimize_timer = profileTimer(options.profile != null);
+    try minimizeLexTableWithStarts(&table, starts);
+    if (options.profile) |profile| profile.minimize_ns += profileElapsedNs(minimize_timer);
+    const sort_timer = profileTimer(options.profile != null);
+    try sortLexTableWithStarts(&table, starts);
+    if (options.profile) |profile| profile.sort_ns += profileElapsedNs(sort_timer);
+
+    return .{
+        .table = table,
+        .start_state_ids = starts,
+        .allowed_tokens = all_allowed,
+    };
+}
+
 pub fn selectBestTokenForSet(
     allocator: std.mem.Allocator,
     grammar: lexer_model.ExpandedLexicalGrammar,
@@ -339,10 +423,9 @@ const LexTableBuilder = struct {
         const owned_states = try self.allocator.dupe(u32, nfa_states);
         errdefer self.allocator.free(owned_states);
 
-        const completion = bestCompletionForAllowed(owned_states, self.grammar, self.allowed_tokens);
         try self.states.append(self.allocator, .{
             .nfa_states = owned_states,
-            .completion = completion,
+            .completion = bestCompletionForAllowed(owned_states, self.grammar, self.allowed_tokens),
             .eof_valid = eof_valid,
             .eof_target = null,
             .transitions = &.{},
@@ -355,18 +438,42 @@ const LexTableBuilder = struct {
         }
 
         const transition_collection = try collectTransitionsAlloc(self.allocator, self.grammar, owned_states);
-        errdefer {
-            _ = self.states.pop();
-            freeTransitions(self.allocator, transition_collection.transitions);
-        }
+        var processed_transitions: usize = 0;
 
         var transitions = try self.allocator.alloc(LexTransition, transition_collection.transitions.len);
+        var transition_count: usize = 0;
         errdefer {
             _ = self.states.pop();
+            for (transitions[0..transition_count]) |*transition| transition.chars.deinit(self.allocator);
             self.allocator.free(transitions);
+            for (transition_collection.transitions[processed_transitions..]) |*transition| {
+                transition.chars.deinit(self.allocator);
+                self.allocator.free(transition.target_states);
+            }
+            self.allocator.free(transition_collection.transitions);
         }
 
-        for (transition_collection.transitions, 0..) |transition, index| {
+        for (transition_collection.transitions) |*transition| {
+            if (self.states.items[state_id].completion) |completion| {
+                const successor_contains_completed = transitionTargetsContainVariable(
+                    self.grammar,
+                    transition.target_states,
+                    completion.variable_index,
+                );
+                if (!preferAdvanceOverCompletion(
+                    self.grammar,
+                    completion,
+                    transition.*,
+                    successor_contains_completed,
+                    transition_collection.has_separator_transitions,
+                )) {
+                    transition.chars.deinit(self.allocator);
+                    self.allocator.free(transition.target_states);
+                    processed_transitions += 1;
+                    continue;
+                }
+            }
+
             const next_closure_timer = profileTimer(self.profile != null);
             const next_states = try epsilonClosureAlloc(self.allocator, self.grammar, transition.target_states);
             if (self.profile) |profile| {
@@ -375,15 +482,21 @@ const LexTableBuilder = struct {
             }
             defer self.allocator.free(next_states);
             const next_state_id = try self.internState(next_states, eof_valid and transition.is_separator);
-            transitions[index] = .{
+            transitions[transition_count] = .{
                 .chars = transition.chars,
                 .next_state_id = next_state_id,
                 .is_separator = transition.is_separator,
                 .precedence = transition.precedence,
             };
-        }
-        for (transition_collection.transitions) |transition| {
+            transition_count += 1;
             self.allocator.free(transition.target_states);
+            processed_transitions += 1;
+        }
+        if (transition_count != transitions.len) {
+            const trimmed = try self.allocator.alloc(LexTransition, transition_count);
+            @memcpy(trimmed, transitions[0..transition_count]);
+            self.allocator.free(transitions);
+            transitions = trimmed;
         }
         self.allocator.free(transition_collection.transitions);
         self.states.items[state_id].transitions = transitions;
@@ -620,13 +733,13 @@ fn partitionRawTransitionsAlloc(
 
         var target_states = std.ArrayListUnmanaged(u32).empty;
         defer target_states.deinit(allocator);
-        var is_separator = false;
+        var is_separator = true;
         var precedence: i32 = std.math.minInt(i32);
 
         for (raw_transitions) |transition| {
             if (!transition.chars.contains(@intCast(start))) continue;
             try appendUniqueTargetState(allocator, &target_states, transition.target_state);
-            is_separator = is_separator or transition.is_separator;
+            is_separator = is_separator and transition.is_separator;
             precedence = @max(precedence, transition.precedence);
         }
         if (target_states.items.len == 0) continue;
@@ -685,6 +798,31 @@ fn preferAdvanceOverCompletion(
     return true;
 }
 
+fn transitionTargetsContainVariable(
+    grammar: lexer_model.ExpandedLexicalGrammar,
+    target_states: []const u32,
+    variable_index: usize,
+) bool {
+    for (target_states) |state_id| {
+        if (variableIndexForNfaState(grammar, state_id) == variable_index) return true;
+    }
+    return false;
+}
+
+fn variableIndexForNfaState(grammar: lexer_model.ExpandedLexicalGrammar, state_id: u32) usize {
+    var low: usize = 0;
+    var high: usize = grammar.variables.len;
+    while (low < high) {
+        const mid = low + (high - low) / 2;
+        if (grammar.variables[mid].start_state < state_id) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    return low;
+}
+
 fn decodeNextCodepoint(input: []const u8, offset: usize) ?MatchCursor {
     if (offset >= input.len) return null;
 
@@ -714,67 +852,110 @@ fn cloneCharacterSet(
 }
 
 fn minimizeLexTable(table: *LexTable) !void {
+    try minimizeLexTableWithStarts(table, null);
+}
+
+fn minimizeLexTableWithStarts(table: *LexTable, start_state_ids: ?[]usize) !void {
     if (table.states.len <= 1) return;
 
     const group_ids = try table.allocator.alloc(usize, table.states.len);
     defer table.allocator.free(group_ids);
-    @memset(group_ids, 0);
-    const new_group_ids = try table.allocator.alloc(usize, table.states.len);
-    defer table.allocator.free(new_group_ids);
     const signatures = try table.allocator.alloc(u64, table.states.len);
     defer table.allocator.free(signatures);
-    var changed = true;
 
-    while (changed) {
-        changed = false;
-        var next_group_id: usize = 0;
-        for (table.states, 0..) |_, index| {
-            signatures[index] = lexStateSignature(table.*, index, group_ids);
-        }
+    var groups = std.array_list.Managed([]usize).init(table.allocator);
+    defer {
+        for (groups.items) |group| table.allocator.free(group);
+        groups.deinit();
+    }
 
-        var state_index: usize = 0;
-        while (state_index < table.states.len) : (state_index += 1) {
-            var matched_group: ?usize = null;
-            var prior_index: usize = 0;
-            while (prior_index < state_index) : (prior_index += 1) {
-                if (signatures[prior_index] != signatures[state_index]) continue;
-                if (lexStatesEquivalent(table, state_index, prior_index, group_ids)) {
-                    matched_group = new_group_ids[prior_index];
-                    break;
-                }
-            }
-            if (matched_group) |group_id| {
-                new_group_ids[state_index] = group_id;
-            } else {
-                new_group_ids[state_index] = next_group_id;
-                next_group_id += 1;
+    for (table.states, 0..) |_, state_index| {
+        signatures[state_index] = lexStateInitialSignature(table.*, state_index);
+        var matched_group: ?usize = null;
+        for (groups.items, 0..) |group, group_id| {
+            const representative = group[0];
+            if (signatures[representative] != signatures[state_index]) continue;
+            if (lexStatesEquivalentIgnoringSuccessors(table.states[representative], table.states[state_index])) {
+                matched_group = group_id;
+                break;
             }
         }
 
-        if (!std.mem.eql(usize, group_ids, new_group_ids)) {
-            @memcpy(group_ids, new_group_ids);
-            changed = true;
+        if (matched_group) |group_id| {
+            groups.items[group_id] = try appendUsize(table.allocator, groups.items[group_id], state_index);
+        } else {
+            const group = try table.allocator.alloc(usize, 1);
+            group[0] = state_index;
+            try groups.append(group);
         }
     }
 
-    const new_state_count = countDistinctGroups(group_ids);
+    if (groups.items.len > 1) {
+        for (groups.items, 0..) |group, group_id| {
+            if (std.mem.indexOfScalar(usize, group, 0) != null) {
+                std.mem.swap([]usize, &groups.items[0], &groups.items[group_id]);
+                break;
+            }
+        }
+    }
+
+    assignLexGroupIdsFromGroups(groups.items, group_ids);
+
+    var changed = true;
+    while (changed) {
+        changed = false;
+        var group_index: usize = 1;
+        while (group_index < groups.items.len) : (group_index += 1) {
+            const group = groups.items[group_index];
+            if (group.len <= 1) continue;
+
+            const split_marks = try table.allocator.alloc(bool, table.states.len);
+            defer table.allocator.free(split_marks);
+            @memset(split_marks, false);
+
+            var split = std.array_list.Managed(usize).init(table.allocator);
+            defer split.deinit();
+
+            var left_index: usize = 0;
+            while (left_index < group.len) : (left_index += 1) {
+                const left_state_id = group[left_index];
+                if (split_marks[left_state_id]) continue;
+
+                var right_index = left_index + 1;
+                while (right_index < group.len) : (right_index += 1) {
+                    const right_state_id = group[right_index];
+                    if (split_marks[right_state_id]) continue;
+                    if (!lexSuccessorsDiffer(table.states[left_state_id], table.states[right_state_id], group_ids)) continue;
+
+                    try split.append(right_state_id);
+                    split_marks[right_state_id] = true;
+                }
+            }
+
+            if (split.items.len != 0) {
+                var retained = std.array_list.Managed(usize).init(table.allocator);
+                defer retained.deinit();
+                for (group) |state_id| {
+                    if (!split_marks[state_id]) try retained.append(state_id);
+                }
+
+                table.allocator.free(group);
+                groups.items[group_index] = try retained.toOwnedSlice();
+                try groups.append(try split.toOwnedSlice());
+                assignLexGroupIdsFromGroups(groups.items, group_ids);
+                changed = true;
+            }
+        }
+    }
+
+    const new_state_count = groups.items.len;
     if (new_state_count == table.states.len) return;
 
     const old_states = table.states;
     const new_states = try table.allocator.alloc(LexState, new_state_count);
 
-    var representative_by_group = try table.allocator.alloc(usize, new_state_count);
-    defer table.allocator.free(representative_by_group);
-    @memset(representative_by_group, std.math.maxInt(usize));
-
-    for (group_ids, 0..) |group_id, state_index| {
-        if (representative_by_group[group_id] == std.math.maxInt(usize)) {
-            representative_by_group[group_id] = state_index;
-        }
-    }
-
-    for (0..new_state_count) |group_id| {
-        const rep = representative_by_group[group_id];
+    for (groups.items, 0..) |group, group_id| {
+        const rep = group[0];
         new_states[group_id] = old_states[rep];
         if (new_states[group_id].eof_target) |target| {
             new_states[group_id].eof_target = group_ids[target];
@@ -785,36 +966,65 @@ fn minimizeLexTable(table: *LexTable) !void {
     }
 
     for (old_states, 0..) |*old_state, state_index| {
-        if (representative_by_group[group_ids[state_index]] == state_index) continue;
+        if (groups.items[group_ids[state_index]][0] == state_index) continue;
         table.allocator.free(old_state.nfa_states);
         for (old_state.transitions) |*transition| transition.chars.deinit(table.allocator);
         table.allocator.free(old_state.transitions);
     }
 
     table.start_state_id = group_ids[table.start_state_id];
+    if (start_state_ids) |starts| {
+        for (starts) |*start_id| start_id.* = group_ids[start_id.*];
+    }
     table.allocator.free(old_states);
     table.states = new_states;
 }
 
-fn lexStateSignature(table: LexTable, state_id: usize, group_ids: []const usize) u64 {
+fn appendUsize(allocator: std.mem.Allocator, values: []usize, value: usize) std.mem.Allocator.Error![]usize {
+    const result = try allocator.alloc(usize, values.len + 1);
+    @memcpy(result[0..values.len], values);
+    result[values.len] = value;
+    allocator.free(values);
+    return result;
+}
+
+fn assignLexGroupIdsFromGroups(groups: []const []usize, group_ids: []usize) void {
+    for (groups, 0..) |group, group_id| {
+        for (group) |state_id| group_ids[state_id] = group_id;
+    }
+}
+
+fn lexStateInitialSignature(table: LexTable, state_id: usize) u64 {
     const state = table.states[state_id];
     var hasher = std.hash.Wyhash.init(0);
-    const is_start = state_id == table.start_state_id;
-    hasher.update(std.mem.asBytes(&is_start));
+    const is_error_state = state_id == 0;
+    hasher.update(std.mem.asBytes(&is_error_state));
     hashConflictCompletion(&hasher, state.completion);
     hasher.update(std.mem.asBytes(&state.eof_valid));
-    hasher.update(std.mem.asBytes(&state.has_separator_transitions));
-    const eof_group = if (state.eof_target) |target| group_ids[target] else std.math.maxInt(usize);
-    hasher.update(std.mem.asBytes(&eof_group));
     hasher.update(std.mem.asBytes(&state.transitions.len));
     for (state.transitions) |transition| {
-        const target_group = group_ids[transition.next_state_id];
-        hasher.update(std.mem.asBytes(&target_group));
         hasher.update(std.mem.asBytes(&transition.is_separator));
-        hasher.update(std.mem.asBytes(&transition.precedence));
         hashCharacterSet(&hasher, transition.chars);
     }
     return hasher.final();
+}
+
+fn lexStatesEquivalentIgnoringSuccessors(left: LexState, right: LexState) bool {
+    if (!conflictCompletionEql(left.completion, right.completion)) return false;
+    if (left.eof_valid != right.eof_valid) return false;
+    if (left.transitions.len != right.transitions.len) return false;
+    for (left.transitions, right.transitions) |left_transition, right_transition| {
+        if (left_transition.is_separator != right_transition.is_separator) return false;
+        if (!characterSetEql(left_transition.chars, right_transition.chars)) return false;
+    }
+    return true;
+}
+
+fn lexSuccessorsDiffer(left: LexState, right: LexState, group_ids: []const usize) bool {
+    for (left.transitions, right.transitions) |left_transition, right_transition| {
+        if (group_ids[left_transition.next_state_id] != group_ids[right_transition.next_state_id]) return true;
+    }
+    return false;
 }
 
 fn hashConflictCompletion(hasher: *std.hash.Wyhash, completion: ?ConflictCompletion) void {
@@ -835,6 +1045,10 @@ fn hashCharacterSet(hasher: *std.hash.Wyhash, value: lexer_model.CharacterSet) v
 }
 
 fn sortLexTable(table: *LexTable) !void {
+    try sortLexTableWithStarts(table, null);
+}
+
+fn sortLexTableWithStarts(table: *LexTable, start_state_ids: ?[]usize) !void {
     if (table.states.len <= 1) return;
 
     const order = try table.allocator.alloc(usize, table.states.len);
@@ -861,6 +1075,9 @@ fn sortLexTable(table: *LexTable) !void {
     }
 
     table.start_state_id = remap[start_id];
+    if (start_state_ids) |starts| {
+        for (starts) |*state_id| state_id.* = remap[state_id.*];
+    }
     table.allocator.free(old_states);
     table.states = new_states;
 }
@@ -876,25 +1093,6 @@ fn lessThanStateId(context: SortContext, left_id: usize, right_id: usize) bool {
     return lexStateLessThan(context.table.states[left_id], context.table.states[right_id]);
 }
 
-fn lexStatesEquivalent(table: *const LexTable, left_id: usize, right_id: usize, group_ids: []const usize) bool {
-    const left = table.states[left_id];
-    const right = table.states[right_id];
-    if ((left_id == table.start_state_id) != (right_id == table.start_state_id)) return false;
-    if (!conflictCompletionEql(left.completion, right.completion)) return false;
-    if (left.eof_valid != right.eof_valid) return false;
-    if (left.has_separator_transitions != right.has_separator_transitions) return false;
-    if (left.transitions.len != right.transitions.len) return false;
-    for (left.transitions, right.transitions) |left_transition, right_transition| {
-        if (group_ids[left_transition.next_state_id] != group_ids[right_transition.next_state_id]) return false;
-        if (left_transition.is_separator != right_transition.is_separator) return false;
-        if (left_transition.precedence != right_transition.precedence) return false;
-        if (!characterSetEql(left_transition.chars, right_transition.chars)) return false;
-    }
-    if (left.eof_target == null or right.eof_target == null) return left.eof_target == null and right.eof_target == null;
-    if (group_ids[left.eof_target.?] != group_ids[right.eof_target.?]) return false;
-    return true;
-}
-
 fn lexStateLessThan(left: LexState, right: LexState) bool {
     if (!conflictCompletionEql(left.completion, right.completion)) {
         return conflictCompletionLessThan(left.completion, right.completion);
@@ -905,9 +1103,6 @@ fn lexStateLessThan(left: LexState, right: LexState) bool {
         if (right.eof_target == null) return false;
         return left.eof_target.? < right.eof_target.?;
     }
-    if (left.has_separator_transitions != right.has_separator_transitions) {
-        return !left.has_separator_transitions and right.has_separator_transitions;
-    }
     if (left.transitions.len != right.transitions.len) return left.transitions.len < right.transitions.len;
     for (left.transitions, right.transitions) |left_transition, right_transition| {
         if (!characterSetEql(left_transition.chars, right_transition.chars)) {
@@ -915,9 +1110,6 @@ fn lexStateLessThan(left: LexState, right: LexState) bool {
         }
         if (left_transition.is_separator != right_transition.is_separator) {
             return !left_transition.is_separator and right_transition.is_separator;
-        }
-        if (left_transition.precedence != right_transition.precedence) {
-            return left_transition.precedence < right_transition.precedence;
         }
         if (left_transition.next_state_id != right_transition.next_state_id) {
             return left_transition.next_state_id < right_transition.next_state_id;

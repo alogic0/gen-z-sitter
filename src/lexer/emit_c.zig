@@ -60,13 +60,21 @@ fn emitLexFunctionWithLargeSets(
     try writer.writeAll("  eof = lexer->eof(lexer);\n");
     try writer.writeAll("  switch (state) {\n");
     for (lex_table.states, 0..) |state_value, state_id| {
+        if (isOmittableDirectEofAcceptState(lex_table, state_id)) continue;
         try writer.print("    case {d}:\n", .{state_id});
         if (state_value.accept_symbol) |symbol| {
             const symbol_id = runtimeSymbolId(symbol, resolver);
             try writer.print("      ACCEPT_TOKEN({d});\n", .{symbol_id});
         }
         if (state_value.eof_target) |target| {
-            try writer.print("      if (eof) ADVANCE({d});\n", .{target});
+            if (isOmittableDirectEofAcceptState(lex_table, target)) {
+                try writer.writeAll("      if (eof) {\n");
+                try writer.writeAll("        ACCEPT_TOKEN(0);\n");
+                try writer.writeAll("        END_STATE();\n");
+                try writer.writeAll("      }\n");
+            } else {
+                try writer.print("      if (eof) ADVANCE({d});\n", .{target});
+            }
         }
         const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
         if (advance_map_end != 0) {
@@ -100,6 +108,31 @@ fn emitLexFunctionWithLargeSets(
     try writer.writeAll("      return false;\n");
     try writer.writeAll("  }\n");
     try writer.writeAll("}\n\n");
+}
+
+fn isOmittableDirectEofAcceptState(
+    lex_table: lexical_serialize.SerializedLexTable,
+    state_id: usize,
+) bool {
+    if (state_id >= lex_table.states.len) return false;
+    const state_value = lex_table.states[state_id];
+    if (state_value.eof_target != null or state_value.transitions.len != 0) return false;
+    if (state_value.accept_symbol == null or state_value.accept_symbol.? != .end) return false;
+    if (lex_table.start_state_id == state_id) return false;
+    for (lex_table.lex_state_starts) |start| {
+        if (start == state_id) return false;
+    }
+
+    var has_eof_reference = false;
+    for (lex_table.states) |candidate| {
+        if (candidate.eof_target != null and candidate.eof_target.? == state_id) {
+            has_eof_reference = true;
+        }
+        for (candidate.transitions) |transition| {
+            if (transition.next_state_id == state_id) return false;
+        }
+    }
+    return has_eof_reference;
 }
 
 fn emitUnusedCharacterSetMacro(writer: anytype) EmitError!void {
@@ -620,6 +653,31 @@ test "emitLexFunction renders EOF guards and adjacent range readability form" {
         emitted,
         1,
         "      if ((!eof && (0 <= lookahead && lookahead <= 3)) || (lookahead == 120 || lookahead == 121)) ADVANCE(1);\n",
+    ));
+}
+
+test "emitLexFunction folds pure EOF accept targets into EOF guards" {
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buffer.deinit();
+
+    const table = lexical_serialize.SerializedLexTable{
+        .start_state_id = 0,
+        .states = &[_]lexical_serialize.SerializedLexState{
+            .{ .eof_target = 1, .transitions = &.{} },
+            .{ .accept_symbol = .{ .end = {} }, .transitions = &.{} },
+        },
+    };
+
+    try emitLexFunction(&buffer.writer, "ts_lex", table);
+    const emitted = buffer.writer.buffered();
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    case 0:\n"));
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "    case 1:\n") == null);
+    try std.testing.expect(std.mem.containsAtLeast(
+        u8,
+        emitted,
+        1,
+        "      if (eof) {\n        ACCEPT_TOKEN(0);\n        END_STATE();\n      }\n",
     ));
 }
 

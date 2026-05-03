@@ -111,6 +111,7 @@ pub const SerializedLexTable = struct {
     start_state_id: u32,
     states: []const SerializedLexState,
     large_character_sets: []const SerializedLargeCharacterSet = &.{},
+    lex_state_starts: []const u16 = &.{},
 };
 
 /// Build parser-state-indexed lexer modes from serialized parse states.
@@ -135,6 +136,119 @@ pub fn buildSerializedLexTablesAlloc(
     terminal_sets: []const []const bool,
 ) SerializeError![]const SerializedLexTable {
     return buildSerializedLexTablesWithEofAlloc(allocator, all_rules, lexical, terminal_sets, null);
+}
+
+/// Build one upstream-shaped main lexer table and return the remapped start
+/// state for each parser lex-state terminal set.
+pub fn buildSharedSerializedLexTablesAlloc(
+    allocator: std.mem.Allocator,
+    all_rules: []const ir_rules.Rule,
+    lexical: lexical_ir.LexicalGrammar,
+    terminal_sets: []const []const bool,
+) SerializeError![]const SerializedLexTable {
+    return buildSharedSerializedLexTablesWithEofAlloc(allocator, all_rules, lexical, terminal_sets, null);
+}
+
+pub fn buildSharedSerializedLexTablesWithEofAlloc(
+    allocator: std.mem.Allocator,
+    all_rules: []const ir_rules.Rule,
+    lexical: lexical_ir.LexicalGrammar,
+    terminal_sets: []const []const bool,
+    eof_valids: ?[]const bool,
+) SerializeError![]const SerializedLexTable {
+    const profile_log = profileEnabled();
+    const total_timer = profileTimer(profile_log);
+    var expanded = try lexer_model.expandExtractedLexicalGrammar(allocator, all_rules, lexical);
+    defer expanded.deinit(allocator);
+
+    const allowed_sets = try allocator.alloc(lexer_model.TokenIndexSet, terminal_sets.len);
+    var allowed_initialized: usize = 0;
+    errdefer {
+        for (allowed_sets[0..allowed_initialized]) |*set| set.deinit(allocator);
+        allocator.free(allowed_sets);
+    }
+
+    var token_set_ns: u64 = 0;
+    for (terminal_sets, 0..) |terminal_set, index| {
+        const token_set_timer = profileTimer(profile_log);
+        allowed_sets[index] = try tokenIndexSetFromTerminalSet(allocator, expanded.variables.len, terminal_set);
+        token_set_ns += profileElapsedNs(token_set_timer);
+        allowed_initialized += 1;
+    }
+    defer {
+        for (allowed_sets) |*set| set.deinit(allocator);
+        allocator.free(allowed_sets);
+    }
+
+    var table_profile = lexer_table.BuildProfile{};
+    const build_timer = profileTimer(profile_log);
+    var multi_table = try lexer_table.buildLexTableForSetsWithOptions(allocator, expanded, allowed_sets, eof_valids, .{
+        .profile = if (profile_log) &table_profile else null,
+    });
+    defer multi_table.deinit();
+    const build_table_ns = profileElapsedNs(build_timer);
+
+    var built_transition_count: usize = 0;
+    for (multi_table.table.states) |lex_state| built_transition_count += lex_state.transitions.len;
+
+    const tables = try allocator.alloc(SerializedLexTable, 1);
+    var initialized_tables: usize = 0;
+    errdefer {
+        deinitSerializedLexTables(allocator, tables[0..initialized_tables]);
+        if (initialized_tables == 0) allocator.free(tables);
+    }
+    const serialize_timer = profileTimer(profile_log);
+    tables[0] = try serializeLexTableAlloc(allocator, multi_table.table);
+    initialized_tables = 1;
+    tables[0].large_character_sets = try buildLargeCharacterSetsAlloc(allocator, expanded);
+    const serialize_table_ns = profileElapsedNs(serialize_timer);
+
+    const starts = try allocator.alloc(u16, multi_table.start_state_ids.len);
+    for (multi_table.start_state_ids, 0..) |start_id, index| {
+        starts[index] = @intCast(start_id);
+    }
+    tables[0].lex_state_starts = starts;
+
+    if (profile_log) {
+        var serialized_transition_count: usize = 0;
+        var serialized_range_count: usize = 0;
+        for (tables[0].states) |lex_state| {
+            serialized_transition_count += lex_state.transitions.len;
+            for (lex_state.transitions) |transition| serialized_range_count += transition.ranges.len;
+        }
+        std.debug.print(
+            "[lexer_serialize_profile] shared_tables=1 lex_states={d} built_states={d} built_transitions={d} serialized_states={d} serialized_transitions={d} serialized_ranges={d} token_set_ms={d:.2} build_table_ms={d:.2} serialize_table_ms={d:.2} total_ms={d:.2}\n",
+            .{
+                terminal_sets.len,
+                multi_table.table.states.len,
+                built_transition_count,
+                tables[0].states.len,
+                serialized_transition_count,
+                serialized_range_count,
+                @as(f64, @floatFromInt(token_set_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(build_table_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(serialize_table_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(profileElapsedNs(total_timer))) / @as(f64, std.time.ns_per_ms),
+            },
+        );
+        std.debug.print(
+            "[lexer_table_profile] start_closure_ms={d:.2} construct_ms={d:.2} minimize_ms={d:.2} sort_ms={d:.2} intern_calls={d} intern_new={d} intern_reused={d} next_closure_calls={d} next_closure_ms={d:.2}\n",
+            .{
+                @as(f64, @floatFromInt(table_profile.start_closure_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(table_profile.construct_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(table_profile.minimize_ns)) / @as(f64, std.time.ns_per_ms),
+                @as(f64, @floatFromInt(table_profile.sort_ns)) / @as(f64, std.time.ns_per_ms),
+                table_profile.intern_calls,
+                table_profile.intern_new,
+                table_profile.intern_reused,
+                table_profile.next_closure_calls,
+                @as(f64, @floatFromInt(table_profile.next_closure_ns)) / @as(f64, std.time.ns_per_ms),
+            },
+        );
+    }
+
+    initialized_tables = 0;
+    return tables;
 }
 
 pub fn buildSerializedLexTablesWithEofAlloc(
@@ -251,6 +365,7 @@ pub fn deinitSerializedLexTable(
     }
     allocator.free(table.states);
     deinitLargeCharacterSets(allocator, table.large_character_sets);
+    allocator.free(table.lex_state_starts);
 }
 
 pub fn deinitLargeCharacterSets(
@@ -635,6 +750,41 @@ test "buildSerializedLexTablesAlloc builds one table per terminal set" {
     try std.testing.expect(lexTableAcceptsTerminal(tables[1], 1));
     try std.testing.expect(lexTableAcceptsTerminal(tables[2], 0));
     try std.testing.expect(lexTableAcceptsTerminal(tables[2], 1));
+}
+
+test "buildSharedSerializedLexTablesAlloc builds one main table with remapped starts" {
+    const rules = [_]ir_rules.Rule{
+        .{ .string = "a" },
+        .{ .string = "b" },
+    };
+    const lexical = lexical_ir.LexicalGrammar{
+        .variables = &.{
+            .{ .name = "letter_a", .kind = .named, .rule = 0 },
+            .{ .name = "letter_b", .kind = .named, .rule = 1 },
+        },
+        .separators = &.{},
+    };
+    const terminal_sets = [_][]const bool{
+        &.{ true, false },
+        &.{ false, true },
+        &.{ true, true },
+    };
+
+    const tables = try buildSharedSerializedLexTablesAlloc(
+        std.testing.allocator,
+        rules[0..],
+        lexical,
+        terminal_sets[0..],
+    );
+    defer deinitSerializedLexTables(std.testing.allocator, tables);
+
+    try std.testing.expectEqual(@as(usize, 1), tables.len);
+    try std.testing.expectEqual(@as(usize, terminal_sets.len), tables[0].lex_state_starts.len);
+    for (tables[0].lex_state_starts) |start| {
+        try std.testing.expect(start < tables[0].states.len);
+    }
+    try std.testing.expect(lexTableAcceptsTerminal(tables[0], 0));
+    try std.testing.expect(lexTableAcceptsTerminal(tables[0], 1));
 }
 
 test "buildSerializedLexTablesAlloc accepts nullable token suffixes" {

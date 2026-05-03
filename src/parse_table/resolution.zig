@@ -479,7 +479,7 @@ fn resolvedShiftIsRepetition(
             .shift => {},
             else => return false,
         },
-        .unresolved => |reason| if (reason != .auxiliary_repeat) return false,
+        .unresolved => |reason| if (reason == .auxiliary_repeat) return true else return false,
     }
     const resolved_state = parse_state orelse return false;
     return hasSameAuxiliaryRepeatConflictWithFirstSets(productions, resolved_state, first_sets, symbol);
@@ -495,15 +495,26 @@ fn hasSameAuxiliaryRepeatConflictForGroup(
     const resolved_state = parse_state orelse return false;
     var saw_shift = false;
     var saw_reduce = false;
+    var repeat_lhs: ?u32 = null;
     for (candidate_actions) |candidate| {
         switch (candidate) {
             .shift => saw_shift = true,
-            .reduce => saw_reduce = true,
+            .reduce => |production_id| {
+                saw_reduce = true;
+                if (production_id >= productions.len) return false;
+                const production = productions[production_id];
+                if (!productionIsRepeatAuxiliary(production) or !productionIsAuxiliary(production)) continue;
+                if (repeat_lhs) |lhs| {
+                    if (lhs != production.lhs) return false;
+                } else {
+                    repeat_lhs = production.lhs;
+                }
+            },
             else => return false,
         }
     }
     return saw_shift and saw_reduce and
-        hasSameAuxiliaryRepeatConflictWithFirstSets(productions, resolved_state, first_sets, symbol);
+        (hasSameAuxiliaryRepeatConflictWithFirstSets(productions, resolved_state, first_sets, symbol) or repeat_lhs != null);
 }
 
 fn actionGroupActionsAlloc(
@@ -520,7 +531,7 @@ fn filterLowerPrecedenceReductionsAlloc(
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
     candidate_actions: []const actions.ParseAction,
 ) std.mem.Allocator.Error!?[]const actions.ParseAction {
-    if (candidate_actions.len <= 2) return null;
+    if (candidate_actions.len <= 1) return null;
 
     var kept_reductions_buffer: [256]actions.ParseAction = undefined;
     var kept_reduction_count: usize = 0;
@@ -1327,9 +1338,6 @@ fn resolveShiftReduce(
         extractShiftResolutionMetadata(productions, resolved_state, first_sets, shift_symbol)
     else
         null;
-
-    if (metadata.dynamic_precedence > 0) return reduce_action;
-    if (metadata.dynamic_precedence < 0) return shift_action;
 
     if (shift_metadata) |shift| {
         if (metadata.max_integer_precedence) |reduce_value| {
@@ -2353,7 +2361,7 @@ test "resolveActionTable drops lower-precedence reductions before shift reduce r
     try expectChosenAction(group, .{ .reduce = 2 });
 }
 
-test "resolveActionTable removes shift when multiple reductions outrank it" {
+test "resolveActionTable does not use positive dynamic precedence to remove shift from multiple reductions" {
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -2393,12 +2401,13 @@ test "resolveActionTable removes shift when multiple reductions outrank it" {
     }
 
     const group = resolved.groupsForState(4)[0];
-    try expectUnresolvedGroup(group, .reduce_reduce_deferred, 2);
-    try std.testing.expectEqual(actions.ParseAction{ .reduce = 1 }, group.candidate_actions[0]);
-    try std.testing.expectEqual(actions.ParseAction{ .reduce = 2 }, group.candidate_actions[1]);
+    try expectUnresolvedGroup(group, .multiple_candidates, 3);
+    try std.testing.expectEqual(actions.ParseAction{ .shift = 5 }, group.candidate_actions[0]);
+    try std.testing.expectEqual(actions.ParseAction{ .reduce = 1 }, group.candidate_actions[1]);
+    try std.testing.expectEqual(actions.ParseAction{ .reduce = 2 }, group.candidate_actions[2]);
 }
 
-test "resolveActionTable removes multiple reductions when shift outranks them" {
+test "resolveActionTable does not use negative dynamic precedence to remove reductions" {
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -2438,8 +2447,10 @@ test "resolveActionTable removes multiple reductions when shift outranks them" {
     }
 
     const group = resolved.groupsForState(4)[0];
-    try std.testing.expectEqual(@as(usize, 1), group.candidate_actions.len);
-    try expectChosenAction(group, .{ .shift = 5 });
+    try expectUnresolvedGroup(group, .multiple_candidates, 3);
+    try std.testing.expectEqual(actions.ParseAction{ .shift = 5 }, group.candidate_actions[0]);
+    try std.testing.expectEqual(actions.ParseAction{ .reduce = 1 }, group.candidate_actions[1]);
+    try std.testing.expectEqual(actions.ParseAction{ .reduce = 2 }, group.candidate_actions[2]);
 }
 
 test "resolveActionTable expands auxiliary conflict members to parent symbols" {
@@ -2609,6 +2620,7 @@ test "resolveActionTable chooses higher integer precedence reduce/reduce action"
     }
 
     try expectChosenAction(resolved.groupsForState(4)[0], .{ .reduce = 2 });
+    try std.testing.expectEqual(@as(usize, 1), resolved.groupsForState(4)[0].candidate_actions.len);
 }
 
 test "resolveActionTable chooses ordered named precedence reduce/reduce action" {
@@ -2669,6 +2681,7 @@ test "resolveActionTable chooses ordered named precedence reduce/reduce action" 
     }
 
     try expectChosenAction(resolved.groupsForState(4)[0], .{ .reduce = 2 });
+    try std.testing.expectEqual(@as(usize, 1), resolved.groupsForState(4)[0].candidate_actions.len);
 }
 
 test "resolveActionTable chooses reduce for a positive integer precedence shift/reduce pair" {
@@ -3251,7 +3264,7 @@ test "extractResolutionMetadata captures integer precedence and associativity" {
     try std.testing.expectEqual(@as(i32, 7), metadata.dynamic_precedence);
 }
 
-test "resolveActionTable chooses reduce for positive dynamic precedence shift/reduce pair" {
+test "resolveActionTable does not use positive dynamic precedence for shift/reduce resolution" {
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -3298,10 +3311,10 @@ test "resolveActionTable chooses reduce for positive dynamic precedence shift/re
         allocator.free(resolved.states);
     }
 
-    try expectChosenAction(resolved.groupsForState(3)[0], .{ .reduce = 1 });
+    try expectUnresolvedGroup(resolved.groupsForState(3)[0], .shift_reduce, 2);
 }
 
-test "resolveActionTable chooses shift for negative dynamic precedence shift/reduce pair" {
+test "resolveActionTable does not use negative dynamic precedence for shift/reduce resolution" {
     const allocator = std.testing.allocator;
 
     const ProductionInfo = struct {
@@ -3348,7 +3361,7 @@ test "resolveActionTable chooses shift for negative dynamic precedence shift/red
         allocator.free(resolved.states);
     }
 
-    try expectChosenAction(resolved.groupsForState(3)[0], .{ .shift = 4 });
+    try expectUnresolvedGroup(resolved.groupsForState(3)[0], .shift_reduce, 2);
 }
 
 test "resolveActionTable lets positive dynamic precedence outrank named precedence" {
@@ -3716,6 +3729,72 @@ test "resolveActionTable prefers shift over reducing repeat auxiliaries" {
     }
 
     try expectChosenAction(resolved.groupsForState(6)[0], .{ .shift = 7 });
+}
+
+test "resolveActionTable preserves repeat auxiliary reductions before shift filtering" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        lhs_kind: syntax_ir.VariableKind = .named,
+        steps: []const syntax_ir.ProductionStep,
+        lhs_is_repeat_auxiliary: bool = false,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const repeat_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .non_terminal = 1 } },
+        .{ .symbol = .{ .non_terminal = 1 } },
+    };
+    const shift_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 0 } },
+    };
+
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 1, .lhs_kind = .auxiliary, .steps = repeat_steps[0..], .lhs_is_repeat_auxiliary = true },
+        .{ .lhs = 2, .steps = shift_steps[0..] },
+    };
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.withLookahead(allocator, 1, 0, .{ .production_id = 1, .step_index = 2 }, .{ .terminal = 0 }),
+        try item.ParseItemSetEntry.initEmpty(allocator, 1, 0, .{ .production_id = 2, .step_index = 0 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+    const parse_states = [_]state.ParseState{
+        .{ .id = 6, .items = parse_items[0..], .transitions = &.{}, .conflicts = &.{} },
+    };
+
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{
+            .{
+                .state_id = 6,
+                .groups = &[_]actions.ActionGroup{
+                    .{
+                        .symbol = .{ .terminal = 0 },
+                        .entries = &[_]actions.ActionEntry{
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                        },
+                    },
+                },
+            },
+        },
+    };
+
+    const resolved = try resolveActionTableWithContext(allocator, productions[0..], &.{}, &.{}, parse_states[0..], grouped);
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    const group = resolved.groupsForState(6)[0];
+    try expectUnresolvedGroup(group, .auxiliary_repeat, 2);
+    try std.testing.expect(group.shift_is_repetition);
 }
 
 test "resolveActionTable keeps same auxiliary repeat conflicts with repetition metadata" {
