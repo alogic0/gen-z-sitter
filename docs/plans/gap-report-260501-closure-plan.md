@@ -633,19 +633,26 @@ Gate:
   - a checked-in explanation of the remaining blocker and why promotion is not
     correct yet.
 
-Measurement note: Python is not ready for promotion. The minimized comparison
-completed unblocked, but local/upstream state and surface counts still diverge:
-`symbol_count=275/273`, `serialized_state_count=2812/2788`,
-`emitted_state_count=2811/2788`, `large_state_count=193/185`,
-`parse_action_list_count=4900/4864`, and `lex_function_case_count=128/150`.
-That Python lex case direction matched the earlier JavaScript `266/279`
-measurement, but no longer matches the current JavaScript `281/279` residual.
-Re-run Python after the JavaScript lexer residual is closed before treating it
-as the same defect class. The Python corpus runner also failed to compile, so
-there is no runtime proof for promotion. TypeScript and Rust minimized comparisons both
-exceeded the bounded batch budget and were stopped; both need a cheaper
+Measurement note: Python is not ready for promotion. After the JavaScript
+action-list and runtime lexer residuals closed, the refreshed minimized
+comparison still diverges: `symbol_count=275/273`,
+`serialized_state_count=2938/2788`, `emitted_state_count=2931/2788`,
+`large_state_count=193/185`, `parse_action_list_count=5144/4864`, and
+`lex_function_case_count=182/150`. The Python corpus runner now compiles and
+bounded external-scanner samples match upstream, so the promotion blocker is no
+longer missing runtime proof. The first concrete blocker is surface extraction:
+local has extra node types `[^{}\n]+`, `as_pattern_target`, and
+`keyword_identifier`. TypeScript and Rust minimized comparisons both exceeded
+the bounded batch budget and were stopped; both need a cheaper
 comparison/profile path before they can be used as promotion gates. This means
-Phase 5 is currently a measurement-gated blocker, not a simple scope-gate lift.
+Phase 5 remains a measurement-gated blocker, not a simple scope-gate lift.
+
+Python runtime-link fix note: the corpus runner compile failure was caused by
+`ts_supertype_map_slices` being declared with `SYMBOL_COUNT` while local
+supertype symbols can be indexed through the alias-tail symbol surface. Parser C
+emission now declares that table as `SYMBOL_COUNT + ALIAS_COUNT`; focused
+supertype emission tests passed and the Python comparison reports bounded
+corpus samples as `matched`.
 
 No compatibility metadata was promoted in this phase because none of the three
 targets met the stability and proof requirements.
@@ -682,15 +689,15 @@ non-JavaScript promotion blockers.
 
 ## Successor Batch Order
 
-1. Re-check Python with the closed JavaScript runtime lexer and action-list
-   surface before using it as a same-class promotion signal. JavaScript no
-   longer has a `lex_function_case_count` residual; the remaining scope is to
-   determine whether Python's earlier state and lexer differences are still
-   present or were symptoms of the now-closed JavaScript fixes.
+1. Investigate Python extraction/surface parity, starting with the three extra
+   node types and `symbol_count=275/273`. The count and node-type surface are
+   upstream-visible and should be resolved before state-count or lexer-count
+   conclusions.
 2. Bounded comparison/profile path for TypeScript and Rust.
-3. Python promotion blocker investigation, starting with `symbol_count=275/273`
-   and corpus runner compilation.
-4. Refresh the closure audit after the JavaScript lexer residual closes.
+3. Re-run Python after the surface fix and then classify the remaining
+   state/action/lexer deltas.
+4. Refresh the closure audit after each promoted non-JavaScript grammar
+   decision.
 
 The original large-character-set, symbol/field ordering, and keyword lex tasks
 are closed. Do not reopen them unless a new comparison shows a concrete

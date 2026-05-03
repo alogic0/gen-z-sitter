@@ -29,8 +29,8 @@ Current JavaScript minimized comparison:
 | production_id_count | 121 | 121 | matched |
 | large_character_set_count | 3 | 3 | matched |
 | keyword_lex_function_case_count | 200 | 200 | matched |
-| parse_action_list_count | 3592 | 3588 | residual +4 |
-| lex_function_case_count | 266 | 279 | residual -13 |
+| parse_action_list_count | 3588 | 3588 | matched |
+| lex_function_case_count | 279 | 279 | matched |
 
 Bounded corpus samples still match local and upstream generated parsers.
 
@@ -45,8 +45,8 @@ Current classification:
 | `keyword_lex_function_case_count` 201/200 | Closed. Separator-loop construction now matches upstream keyword shape; JavaScript reports 200/200. |
 | `symbol_order_hash` mismatch | Closed. Emitted symbol labels and ordering now compare by normalized symbol surface and match. |
 | `field_names_hash` mismatch | Closed. Field-name emission uses upstream-shaped enum constants and `NULL` sentinel. |
-| `parse_action_list_count` 3592/3588 | Successor task. The residual is two unique action-list rows after parser state, large/small row, and corpus parity. |
-| `lex_function_case_count` 525/279 | Successor task. The large-set and keyword-capture portions are closed; the remaining local count is lower than upstream at 266/279, indicating runtime lex minimization/start-row compatibility work rather than missing large-set emission. |
+| `parse_action_list_count` 3592/3588 | Closed. Upstream-shaped action-entry construction now reports 3588/3588. |
+| `lex_function_case_count` 525/279 | Closed. Runtime lexer construction/emission now reports 279/279. |
 
 ## Runtime Gate Triage
 
@@ -66,7 +66,14 @@ zig build test-release -Dtest-filter=ZigParserAccepted --summary all
 zig build test-release --summary all
 ```
 
-Final release gate result: `1520/1520` tests passed.
+Final release gate result after the Python runtime-link refresh:
+`1545/1545` tests passed.
+
+After the JavaScript closure commit, a Python runtime proof compile failure was
+also fixed at the parser C emission boundary: `ts_supertype_map_slices` now uses
+the full `SYMBOL_COUNT + ALIAS_COUNT` symbol surface, matching the symbol IDs it
+can be indexed with. Focused parser-emission tests passed, and the refreshed
+Python comparison now links both local and upstream parsers for bounded samples.
 
 ## Real-Grammar Promotion Wave
 
@@ -75,16 +82,25 @@ Python minimized comparison completed but is not promotable:
 | Field | Local | Upstream |
 |---|---:|---:|
 | symbol_count | 275 | 273 |
-| serialized_state_count | 2812 | 2788 |
-| emitted_state_count | 2811 | 2788 |
+| serialized_state_count | 2938 | 2788 |
+| emitted_state_count | 2931 | 2788 |
 | large_state_count | 193 | 185 |
-| parse_action_list_count | 4900 | 4864 |
-| lex_function_case_count | 128 | 150 |
+| parse_action_list_count | 5144 | 4864 |
+| lex_function_case_count | 182 | 150 |
 | keyword_lex_function_case_count | 162 | 162 |
 | large_character_set_count | 2 | 2 |
 | external_lex_state_count | 19 | 19 |
 
-The Python corpus runner failed to compile, so runtime proof is also absent.
+The Python corpus runner now compiles and the bounded external-scanner samples
+match upstream. Python remains blocked because local still has extra node-type
+surface:
+
+- anonymous `[^{}\n]+`;
+- named `as_pattern_target`;
+- named `keyword_identifier`.
+
+Those extra node types are the first Python investigation target because they
+precede the larger state, action-list, and runtime lexer count deltas.
 
 TypeScript and Rust minimized comparisons exceeded the bounded batch budget and
 were stopped. They need a cheaper comparison/profile path before scope
@@ -92,16 +108,11 @@ promotion can be evaluated safely.
 
 ## Successor Tasks
 
-1. Add an action-list comparison artifact that reports owner states, macro
-   sequences, reusable/fragile/recovery flags, and sharing status for local and
-   upstream rows. Use it to close or explicitly classify the JavaScript
-   `parse_action_list_count=3592/3588` residual.
-2. Add runtime lex minimization diagnostics for start-row ownership and merged
-   runtime lex states. The next target is explaining why local emits 10 unique
-   lex-mode start states and 266 total runtime lex cases while upstream emits
-   16 start states and 279 cases.
-3. Add bounded profile modes for TypeScript and Rust comparisons so Phase 5 can
+1. Investigate Python extraction/surface parity, starting with the three extra
+   node types and `symbol_count=275/273`.
+2. Add bounded profile modes for TypeScript and Rust comparisons so Phase 5 can
    produce promotion decisions without unbounded wall-clock behavior.
 
 No remaining 2026-05-01 JavaScript gap is hidden by stale goldens: each item is
-either closed or carried forward here with current evidence.
+closed with current evidence. The remaining blockers are non-JavaScript
+promotion blockers.

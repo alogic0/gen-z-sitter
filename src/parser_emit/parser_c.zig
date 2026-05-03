@@ -1325,7 +1325,7 @@ fn writeSupertypeTables(
     }
     try writer.writeAll("};\n\n");
 
-    try writer.writeAll("static const TSMapSlice ts_supertype_map_slices[SYMBOL_COUNT] = {\n");
+    try writer.writeAll("static const TSMapSlice ts_supertype_map_slices[SYMBOL_COUNT + ALIAS_COUNT] = {\n");
     for (supertype_map.slices) |slice| {
         const symbol_id = symbolIdForRef(symbols, slice.supertype) orelse return error.OutOfMemory;
         try writer.print("  [{d}] = {{ .index = {d}, .length = {d} }},\n", .{ symbol_id, slice.index, slice.length });
@@ -2804,7 +2804,7 @@ test "emitParserCAlloc emits serialized supertype tables" {
     defer allocator.free(emitted);
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_supertype_symbols[] = {\n"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSMapSlice ts_supertype_map_slices[SYMBOL_COUNT] = {\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSMapSlice ts_supertype_map_slices[SYMBOL_COUNT + ALIAS_COUNT] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "static const TSSymbol ts_supertype_map_entries[] = {\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [2] = { .index = 0, .length = 2 },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  .supertype_count = 1,\n"));
