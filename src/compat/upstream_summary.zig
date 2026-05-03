@@ -2216,6 +2216,8 @@ fn writeActionListSummaryJson(
     try writer.writeAll(",\n");
     try writeRepeatSingletonOwnersJson(writer, serialized, result, raw_grouped_actions, 2);
     try writer.writeAll(",\n");
+    try writeRepeatPairOwnersJson(writer, serialized, result, raw_grouped_actions, 2);
+    try writer.writeAll(",\n");
     try writeSerializedConflictRowsJson(writer, emitted, 2, "conflict_action_rows");
     try writer.writeAll(",\n");
     try writeConflictActionOwnersJson(writer, serialized, result, raw_grouped_actions, 2);
@@ -2748,6 +2750,28 @@ fn serializedActionEntryIsRepeatSingleton(entry: parse_table_serialize.Serialize
         entry.candidate_actions.len <= 1;
 }
 
+fn serializedActionEntryIsRepeatPairOwner(entry: parse_table_serialize.SerializedActionEntry) bool {
+    if (!entry.repetition or entry.candidate_actions.len <= 1) return false;
+    var saw_shift = false;
+    var saw_reduce = false;
+    for (entry.candidate_actions) |candidate| switch (candidate) {
+        .shift => saw_shift = true,
+        .reduce => saw_reduce = true,
+        .accept, .shift_extra => return false,
+    };
+    return saw_shift and saw_reduce;
+}
+
+fn countRepeatPairOwners(serialized: parse_table_serialize.SerializedTable) usize {
+    var count: usize = 0;
+    for (serialized.states) |serialized_state| {
+        for (serialized_state.actions) |entry| {
+            if (serializedActionEntryIsRepeatPairOwner(entry)) count += 1;
+        }
+    }
+    return count;
+}
+
 fn serializedActionEntryIsNonRepeatConflictOwner(entry: parse_table_serialize.SerializedActionEntry) bool {
     if (entry.candidate_actions.len <= 1) return false;
     if (!entry.repetition) return true;
@@ -2826,6 +2850,10 @@ fn writeConflictActionOwnerJson(
     try writeJsonString(writer, parseActionShapeName(entry.candidate_actions, entry.repetition));
     try writer.writeAll(",\n");
     try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"decision\": ");
+    try writeResolvedDecisionJson(writer, result, state_id, entry.symbol);
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
     try writer.writeAll("\"post_filter_candidates\": ");
     try writeParseActionArrayJson(writer, entry.candidate_actions);
     try writer.writeAll(",\n");
@@ -2835,6 +2863,32 @@ fn writeConflictActionOwnerJson(
     try writer.writeByte('\n');
     try writeIndent(writer, indent);
     try writer.writeByte('}');
+}
+
+fn writeResolvedDecisionJson(
+    writer: anytype,
+    result: parse_table_build.BuildResult,
+    state_id: u32,
+    symbol: syntax_ir.SymbolRef,
+) !void {
+    const decision = result.resolved_actions.decisionFor(state_id, symbol) orelse {
+        try writer.writeAll("null");
+        return;
+    };
+    try writer.writeAll("{ \"kind\": ");
+    switch (decision) {
+        .chosen => |action| {
+            try writeJsonString(writer, "chosen");
+            try writer.writeAll(", \"action\": ");
+            try writeParseActionJson(writer, action);
+        },
+        .unresolved => |reason| {
+            try writeJsonString(writer, "unresolved");
+            try writer.writeAll(", \"reason\": ");
+            try writeJsonString(writer, @tagName(reason));
+        },
+    }
+    try writer.writeAll(" }");
 }
 
 fn writeRepeatSingletonOwnersJson(
@@ -2860,6 +2914,67 @@ fn writeRepeatSingletonOwnersJson(
     }
     if (owner_count != 0) try writeIndent(writer, indent);
     try writer.writeByte(']');
+}
+
+fn writeRepeatPairOwnersJson(
+    writer: anytype,
+    serialized: parse_table_serialize.SerializedTable,
+    result: parse_table_build.BuildResult,
+    raw_grouped_actions: parse_table_actions.GroupedActionTable,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("\"repeat_pair_owners\": [");
+    const owner_count = countRepeatPairOwners(serialized);
+    if (owner_count != 0) try writer.writeByte('\n');
+    var owner_index: usize = 0;
+    for (serialized.states) |serialized_state| {
+        for (serialized_state.actions) |entry| {
+            if (!serializedActionEntryIsRepeatPairOwner(entry)) continue;
+            try writeRepeatPairOwnerJson(writer, serialized, result, raw_grouped_actions, serialized_state.id, entry, indent + 2);
+            owner_index += 1;
+            if (owner_index != owner_count) try writer.writeByte(',');
+            try writer.writeByte('\n');
+        }
+    }
+    if (owner_count != 0) try writeIndent(writer, indent);
+    try writer.writeByte(']');
+}
+
+fn writeRepeatPairOwnerJson(
+    writer: anytype,
+    serialized: parse_table_serialize.SerializedTable,
+    result: parse_table_build.BuildResult,
+    raw_grouped_actions: parse_table_actions.GroupedActionTable,
+    state_id: u32,
+    entry: parse_table_serialize.SerializedActionEntry,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{\n");
+    try writeUsizeField(writer, indent + 2, "state_id", @intCast(state_id), true);
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"symbol\": ");
+    try writeNamedSymbolRef(writer, serialized, entry.symbol);
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"action_index\": ");
+    if (parse_table_serialize.parseActionListIndexForActionEntry(serialized.parse_action_list, entry, serialized.productions)) |index| {
+        try writer.print("{d}", .{index});
+    } else {
+        try writer.writeAll("null");
+    }
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"post_filter_candidates\": ");
+    try writeParseActionArrayJson(writer, entry.candidate_actions);
+    try writer.writeAll(",\n");
+    try writeIndent(writer, indent + 2);
+    try writer.writeAll("\"raw_candidates\": ");
+    try writeRawCandidateActionsJson(writer, result, raw_grouped_actions, state_id, entry.symbol);
+    try writer.writeByte('\n');
+    try writeIndent(writer, indent);
+    try writer.writeByte('}');
 }
 
 fn writeRepeatSingletonOwnerJson(

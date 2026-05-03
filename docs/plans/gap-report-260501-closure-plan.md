@@ -408,6 +408,25 @@ This confirms the singleton repeat rows are carrying real pooling structure;
 the fix is to preserve the missing `REDUCE + SHIFT_REPEAT` conflict surface,
 not to downgrade singleton repeat shifts to ordinary `SHIFT` rows.
 
+Decision-class diagnostic note: local `conflict_action_owners` now records
+whether each serialized conflict row came from a chosen decision or an expected
+unresolved decision. On the baseline JavaScript artifact, the 80 non-repeat
+conflict rows split into 20 chosen `REDUCE+REDUCE` rows, 20 expected
+`REDUCE+REDUCE` rows, 38 expected `REDUCE+SHIFT` rows, and 2 expected
+`REDUCE+REDUCE+SHIFT` rows. A narrow serializer probe that collapsed the 20
+chosen `REDUCE+REDUCE` rows matched upstream's `REDUCE+REDUCE` row count but
+over-collapsed the total to `3558/3588` and left local six
+`REDUCE+SHIFT` rows short. This disproves row-shape-only chosen conflict
+collapse as the final fix.
+
+Rejected fragile-token probe: the two non-reusable local `string_repeat`
+repeat-pair rows initially looked like the two-row action-list residual, but
+marking `escape_sequence` reusable over-collapsed to `3568/3588` and removed
+10 shift rows. Treating all corresponding external/internal tokens the same
+also over-collapsed. The remaining action-list fix must preserve upstream's
+owner/action-row canonicalization while keeping the current fragile-token
+surface, not special-case `escape_sequence` reusable classification.
+
 ## Phase 4 — Keyword Lex Residual
 
 Goal: close the one-entry `keyword_lex_function_case_count` delta:
