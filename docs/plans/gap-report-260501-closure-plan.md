@@ -339,6 +339,18 @@ is available beside the local owner-level artifact. Current upstream shape is
 shape is 1,796 rows, 3,592 initializer braces, 3,695 flat entries, 61
 `SHIFT_REPEAT` singleton rows, and 22 `REDUCE+SHIFT_REPEAT` rows.
 
+Repeat-pair row diagnostic note: action-list summaries now include
+`repeat_pair_rows` for both local serialized/emitted tables and upstream
+`parser.c`. The current JavaScript artifact shows local's 22 repeat pairs are
+concentrated in string/template/array/object/class-body repeats, while upstream
+has 83 pairs dominated by `program_repeat` (43 rows) and `class_body_repeat`
+(12 rows). This makes the missing upstream surface explicit without ad hoc
+`parser.c` parsing and keeps the rejected broad-preservation result
+explainable: forcing the upstream-shaped same-auxiliary predicate converts the
+61 singleton rows but overshoots to 85 repeat pairs (`3596/3588`). Relaxing
+prefix-only reusable classification independently over-merges to `3568/3588`;
+combining both probes over-merges to `3572/3588`. Neither probe is a fix.
+
 Rejected minimizer diagnostic: merging duplicate resolved action groups during
 state minimization can force the brace counter to `3588`, but the broad version
 turns the grammar `blocked=true` by creating blocking merged decisions, and the

@@ -2184,11 +2184,63 @@ fn writeActionListSummaryJson(
     try writer.writeAll("  \"shape_counts\": {\n");
     try writeActionListShapeCountsJson(writer, emitted_shape_counts, 4);
     try writer.writeAll("  },\n");
+    try writeSerializedRepeatPairRowsJson(writer, emitted, 2, "repeat_pair_rows");
+    try writer.writeAll(",\n");
     try writer.writeAll("  \"serialized_shape_counts\": {\n");
     try writeActionListShapeCountsJson(writer, serialized_shape_counts, 4);
     try writer.writeAll("  },\n");
+    try writeSerializedRepeatPairRowsJson(writer, serialized, 2, "serialized_repeat_pair_rows");
+    try writer.writeAll(",\n");
     try writeRepeatSingletonOwnersJson(writer, serialized, result, raw_grouped_actions, 2);
     try writer.writeAll("\n}\n");
+}
+
+fn writeSerializedRepeatPairRowsJson(
+    writer: anytype,
+    serialized: parse_table_serialize.SerializedTable,
+    indent: usize,
+    field_name: []const u8,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeByte('"');
+    try writer.writeAll(field_name);
+    try writer.writeAll("\": [");
+    var wrote_any = false;
+    for (serialized.parse_action_list) |entry| {
+        if (!actionListIsReduceShiftRepeat(entry.actions)) continue;
+        if (wrote_any) try writer.writeByte(',');
+        try writer.writeByte('\n');
+        try writeSerializedRepeatPairRowJson(writer, serialized, entry, indent + 2);
+        wrote_any = true;
+    }
+    if (wrote_any) {
+        try writer.writeByte('\n');
+        try writeIndent(writer, indent);
+    }
+    try writer.writeByte(']');
+}
+
+fn writeSerializedRepeatPairRowJson(
+    writer: anytype,
+    serialized: parse_table_serialize.SerializedTable,
+    entry: parse_table_serialize.SerializedParseActionListEntry,
+    indent: usize,
+) !void {
+    const reduce = entry.actions[0];
+    const shift = entry.actions[1];
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ ");
+    try writer.print("\"index\": {d}", .{entry.index});
+    try writer.writeAll(", \"reusable\": ");
+    try writeBoolJson(writer, entry.reusable);
+    try writer.writeAll(", \"reduce_symbol\": ");
+    try writeJsonString(writer, symbolNameForRef(serialized, reduce.symbol) orelse "");
+    try writer.print(
+        ", \"child_count\": \"{d}\", \"dynamic_precedence\": \"{d}\", \"production_id\": \"{d}\"",
+        .{ reduce.child_count, reduce.dynamic_precedence, reduce.production_id },
+    );
+    try writer.print(", \"shift_state\": \"{d}\"", .{shift.state});
+    try writer.writeAll(" }");
 }
 
 fn writeParserCActionListSummaryJson(writer: anytype, parser_c: []const u8) !void {
@@ -2200,8 +2252,79 @@ fn writeParserCActionListSummaryJson(writer: anytype, parser_c: []const u8) !voi
     try writeUsizeField(writer, 2, "parse_action_list_flat_width", parserCActionListFlatWidth(body), true);
     try writer.writeAll("  \"shape_counts\": {\n");
     try writeActionListShapeCountsJson(writer, counts, 4);
-    try writer.writeAll("  }\n");
+    try writer.writeAll("  },\n");
+    try writeParserCRepeatPairRowsJson(writer, body, 2);
+    try writer.writeByte('\n');
     try writer.writeAll("}\n");
+}
+
+fn writeParserCRepeatPairRowsJson(writer: anytype, body: []const u8, indent: usize) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("\"repeat_pair_rows\": [");
+
+    var wrote_any = false;
+    var lines = std.mem.splitScalar(u8, body, '\n');
+    while (lines.next()) |line| {
+        const action_count = parseParserCActionCount(line) orelse continue;
+        const kinds = parserCActionKinds(line);
+        if (action_count != 2 or kinds[0] != .reduce or kinds[1] != .shift_repeat) continue;
+
+        if (wrote_any) try writer.writeByte(',');
+        try writer.writeByte('\n');
+        try writeParserCRepeatPairRowJson(writer, line, indent + 2);
+        wrote_any = true;
+    }
+
+    if (wrote_any) {
+        try writer.writeByte('\n');
+        try writeIndent(writer, indent);
+    }
+    try writer.writeByte(']');
+}
+
+fn writeParserCRepeatPairRowJson(writer: anytype, line: []const u8, indent: usize) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ ");
+    try writer.writeAll("\"index\": ");
+    if (parseParserCActionListIndex(line)) |index| {
+        try writer.print("{d}", .{index});
+    } else {
+        try writer.writeAll("null");
+    }
+    try writer.writeAll(", \"reusable\": ");
+    try writeBoolJson(writer, std.mem.indexOf(u8, line, "reusable = true") != null);
+    if (parserCActionArguments(line, "REDUCE(")) |args| {
+        var parts = std.mem.splitScalar(u8, args, ',');
+        const symbol = std.mem.trim(u8, parts.next() orelse "", " ");
+        const child_count = std.mem.trim(u8, parts.next() orelse "", " ");
+        const dynamic_precedence = std.mem.trim(u8, parts.next() orelse "", " ");
+        const production_id = std.mem.trim(u8, parts.next() orelse "", " ");
+        try writer.writeAll(", \"reduce_symbol\": ");
+        try writeJsonString(writer, symbol);
+        try writer.writeAll(", \"child_count\": ");
+        try writeJsonString(writer, child_count);
+        try writer.writeAll(", \"dynamic_precedence\": ");
+        try writeJsonString(writer, dynamic_precedence);
+        try writer.writeAll(", \"production_id\": ");
+        try writeJsonString(writer, production_id);
+    }
+    if (parserCActionArguments(line, "SHIFT_REPEAT(")) |target| {
+        try writer.writeAll(", \"shift_state\": ");
+        try writeJsonString(writer, std.mem.trim(u8, target, " "));
+    }
+    try writer.writeAll(" }");
+}
+
+fn parseParserCActionListIndex(line: []const u8) ?usize {
+    const open = std.mem.indexOfScalar(u8, line, '[') orelse return null;
+    const close = std.mem.indexOfScalarPos(u8, line, open + 1, ']') orelse return null;
+    return std.fmt.parseUnsigned(usize, line[open + 1 .. close], 10) catch null;
+}
+
+fn parserCActionArguments(line: []const u8, marker: []const u8) ?[]const u8 {
+    const start = (std.mem.indexOf(u8, line, marker) orelse return null) + marker.len;
+    const end = std.mem.indexOfScalarPos(u8, line, start, ')') orelse return null;
+    return line[start..end];
 }
 
 fn writeActionListShapeCountsJson(writer: anytype, counts: ActionListShapeCounts, indent: usize) !void {
@@ -5938,6 +6061,8 @@ test "generateParserCActionListSummaryJsonAlloc writes parser C action shapes" {
     try std.testing.expect(std.mem.indexOf(u8, json, "\"parse_action_list_flat_width\": 6") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"SHIFT\": 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"REDUCE+SHIFT_REPEAT\": 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"repeat_pair_rows\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"shift_state\": \"4\"") != null);
 }
 
 test "writeLexTableSummaryJson writes keyword table counts" {
