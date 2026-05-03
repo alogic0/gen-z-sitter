@@ -351,6 +351,19 @@ explainable: forcing the upstream-shaped same-auxiliary predicate converts the
 prefix-only reusable classification independently over-merges to `3568/3588`;
 combining both probes over-merges to `3572/3588`. Neither probe is a fix.
 
+Non-repeat conflict-row diagnostic note: action-list summaries now include
+`conflict_action_rows` for local/upstream action-list rows and
+`conflict_action_owners` for local serialized owner state/symbol entries with
+post-filter and raw candidate actions. The current JavaScript artifact shows
+local has 80 non-repeat conflict rows while upstream has 66. The shape split is
+the important signal: local has 40 `REDUCE+REDUCE`, 38 `REDUCE+SHIFT`, and 2
+`REDUCE+REDUCE+SHIFT` rows; upstream has 20 `REDUCE+REDUCE`, 44
+`REDUCE+SHIFT`, and 2 `REDUCE+REDUCE+SHIFT` rows. Local owner references are
+heavily pooled already: 684 owner entries map onto those 80 rows, with the
+largest row (`1180`) referenced by 94 owners. The next action-list fix should
+therefore investigate why upstream converts or pools many local `REDUCE+REDUCE`
+surfaces into fewer rows, not only why repeat pairs are missing.
+
 Rejected minimizer diagnostic: merging duplicate resolved action groups during
 state minimization can force the brace counter to `3588`, but the broad version
 turns the grammar `blocked=true` by creating blocking merged decisions, and the
