@@ -28,7 +28,7 @@ Current closure status:
 | symbol_order_hash | mismatch | match | match | closed |
 | field_names_hash | mismatch | match | match | closed |
 | Python node-types surface | mismatch | match | match | closed |
-| Python scope gate | serialize_only | measured, not promotable | promotion decision | blocked |
+| Python scope gate | serialize_only | surface matched, parser table divergent | promotion decision | blocked |
 | TypeScript/Rust scope gates | serialize_only | timed out in bounded compare | promotion decision | measurement-gated |
 
 Closure audit: `docs/audits/gap-report-260501-closure-2026-05-02.md`.
@@ -673,6 +673,22 @@ The JavaScript reference comparison still reports only the expected
 `parse_action_list_count=3588/3588`, `lex_function_case_count=279/279`, and
 matched bounded corpus samples.
 
+Python symbol-surface fix note: Python now matches upstream on the full emitted
+surface before parser-table construction: `symbol_count=273/273`,
+`symbol_order_hash=0x1afe251bf085ceb8`, `token_count=108/108`,
+`field_names_hash=0xac14787217c045dd`,
+`node_types_hash=0xc44a31c1782023ac`, `alias_count=2/2`,
+`production_id_count=150/150`, `keyword_lex_function_case_count=162/162`,
+`large_character_set_count=2/2`, and `external_lex_state_count=19/19`.
+The two fixes were upstream-shaped: parser C emission filters supertype maps to
+symbols that are actually emitted instead of adding hidden inline fallback
+symbols, and nested unaliased non-string tokens now use upstream-style
+`<variable>_token<N>` auxiliary names after lexical-rule deduplication. The
+remaining Python blocker is now a parser/table construction gap:
+`serialized_state_count=2938/2788`, `emitted_state_count=2931/2788`,
+`large_state_count=193/185`, `parse_action_list_count=5144/4864`,
+`small_parse_row_count=2738/2603`, and `lex_function_case_count=182/150`.
+
 No compatibility metadata was promoted in this phase because none of the three
 targets met the stability and proof requirements.
 
@@ -708,10 +724,12 @@ non-JavaScript promotion blockers.
 
 ## Successor Batch Order
 
-1. Investigate Python symbol and parse-table construction parity now that
-   node-types match upstream. Start with `symbol_count=275/273` and
-   `symbol_order_hash` before interpreting the `serialized_state_count=2938/2788`
-   and `parse_action_list_count=5144/4864` deltas.
+1. Investigate Python parser/table construction parity now that symbol,
+   token, alias, field, node-types, production, keyword-lex, large-character-set,
+   and external-lex-state surfaces match upstream. Start with the
+   `serialized_state_count=2938/2788` and `parse_action_list_count=5144/4864`
+   deltas; do not reopen extraction unless a new artifact shows a surface
+   regression.
 2. Bounded comparison/profile path for TypeScript and Rust.
 3. Re-run Python after the symbol-surface fix and then classify the remaining
    state/action/lexer deltas.

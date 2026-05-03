@@ -198,6 +198,7 @@ pub fn writeParserCWithOptions(
     const has_external_scanner = compacted.external_scanner.symbols.len != 0 and compacted.external_scanner.states.len != 0;
     const emitted_symbols = try collectEmittedSymbols(allocator, compacted);
     defer deinitEmittedSymbols(allocator, emitted_symbols);
+    const emitted_supertype_map = try buildEmittedSupertypeMapAlloc(arena.allocator(), emitted_symbols, compacted.supertype_map);
     const parse_action_list = if (options.glr_loop and compacted.parse_action_list.len > 0 and !has_unresolved)
         compacted.parse_action_list
     else if (options.glr_loop)
@@ -371,7 +372,7 @@ pub fn writeParserCWithOptions(
         try writer.print("  [{d}] = {d},\n", .{ index, primary_state_id });
     }
     try writer.writeAll("};\n\n");
-    try writeSupertypeTables(writer, emitted_symbols, compacted.supertype_map);
+    try writeSupertypeTables(writer, emitted_supertype_map);
 
     try writer.writeAll("static const uint16_t ts_parse_table[LARGE_STATE_COUNT][SYMBOL_COUNT] = {\n");
     for (compacted.states[0..large_state_count_value], 0..) |serialized_state, index| {
@@ -527,8 +528,8 @@ pub fn writeParserCWithOptions(
     try writer.writeAll("  .name = \"");
     try writeCStringLiteralContents(writer, compacted.grammar_name);
     try writer.writeAll("\",\n");
-    try writer.print("  .supertype_count = {d},\n", .{compacted.supertype_map.symbols.len});
-    if (compacted.supertype_map.symbols.len != 0) {
+    try writer.print("  .supertype_count = {d},\n", .{emitted_supertype_map.symbols.len});
+    if (emitted_supertype_map.symbols.len != 0) {
         try writer.writeAll("  .supertype_symbols = ts_supertype_symbols,\n");
         try writer.writeAll("  .supertype_map_slices = ts_supertype_map_slices,\n");
         try writer.writeAll("  .supertype_map_entries = ts_supertype_map_entries,\n");
@@ -1313,22 +1314,19 @@ fn hasUnresolvedStateRows(states: []const serialize.SerializedState) bool {
 
 fn writeSupertypeTables(
     writer: anytype,
-    symbols: []const EmittedSymbol,
-    supertype_map: serialize.SerializedSupertypeMap,
+    supertype_map: EmittedSupertypeMap,
 ) EmitError!void {
     if (supertype_map.symbols.len == 0) return;
 
     try writer.writeAll("static const TSSymbol ts_supertype_symbols[] = {\n");
-    for (supertype_map.symbols, 0..) |symbol, index| {
-        const symbol_id = symbolIdForRef(symbols, symbol) orelse return error.OutOfMemory;
+    for (supertype_map.symbols, 0..) |symbol_id, index| {
         try writer.print("  [{d}] = {d},\n", .{ index, symbol_id });
     }
     try writer.writeAll("};\n\n");
 
     try writer.writeAll("static const TSMapSlice ts_supertype_map_slices[SYMBOL_COUNT + ALIAS_COUNT] = {\n");
     for (supertype_map.slices) |slice| {
-        const symbol_id = symbolIdForRef(symbols, slice.supertype) orelse return error.OutOfMemory;
-        try writer.print("  [{d}] = {{ .index = {d}, .length = {d} }},\n", .{ symbol_id, slice.index, slice.length });
+        try writer.print("  [{d}] = {{ .index = {d}, .length = {d} }},\n", .{ slice.symbol_id, slice.index, slice.length });
     }
     try writer.writeAll("};\n\n");
 
@@ -1336,12 +1334,66 @@ fn writeSupertypeTables(
     if (supertype_map.entries.len == 0) {
         try writer.writeAll("  0,\n");
     } else {
-        for (supertype_map.entries, 0..) |entry, index| {
-            const symbol_id = supertypeEntrySymbolId(symbols, entry) orelse return error.OutOfMemory;
+        for (supertype_map.entries, 0..) |symbol_id, index| {
             try writer.print("  [{d}] = {d},\n", .{ index, symbol_id });
         }
     }
     try writer.writeAll("};\n\n");
+}
+
+const EmittedSupertypeMap = struct {
+    symbols: []const u16 = &.{},
+    slices: []const EmittedSupertypeMapSlice = &.{},
+    entries: []const u16 = &.{},
+};
+
+const EmittedSupertypeMapSlice = struct {
+    symbol_id: u16,
+    index: u16,
+    length: u16,
+};
+
+fn buildEmittedSupertypeMapAlloc(
+    allocator: std.mem.Allocator,
+    symbols: []const EmittedSymbol,
+    supertype_map: serialize.SerializedSupertypeMap,
+) EmitError!EmittedSupertypeMap {
+    var emitted_symbols = std.array_list.Managed(u16).init(allocator);
+    var emitted_slices = std.array_list.Managed(EmittedSupertypeMapSlice).init(allocator);
+    var emitted_entries = std.array_list.Managed(u16).init(allocator);
+
+    for (supertype_map.slices) |slice| {
+        const supertype_id = symbolIdForRef(symbols, slice.supertype) orelse continue;
+        try emitted_symbols.append(supertype_id);
+        const start = emitted_entries.items.len;
+        const end = @min(supertype_map.entries.len, @as(usize, slice.index) + slice.length);
+        for (supertype_map.entries[slice.index..end]) |entry| {
+            const entry_id = supertypeEntrySymbolId(symbols, entry) orelse continue;
+            try appendUniqueSupertypeSymbolId(&emitted_entries, start, entry_id);
+        }
+        try emitted_slices.append(.{
+            .symbol_id = supertype_id,
+            .index = @intCast(@min(start, std.math.maxInt(u16))),
+            .length = @intCast(@min(emitted_entries.items.len - start, std.math.maxInt(u16))),
+        });
+    }
+
+    return .{
+        .symbols = try emitted_symbols.toOwnedSlice(),
+        .slices = try emitted_slices.toOwnedSlice(),
+        .entries = try emitted_entries.toOwnedSlice(),
+    };
+}
+
+fn appendUniqueSupertypeSymbolId(
+    entries: *std.array_list.Managed(u16),
+    start: usize,
+    symbol_id: u16,
+) EmitError!void {
+    for (entries.items[start..]) |existing| {
+        if (existing == symbol_id) return;
+    }
+    try entries.append(symbol_id);
 }
 
 fn supertypeEntrySymbolId(
@@ -1349,7 +1401,8 @@ fn supertypeEntrySymbolId(
     entry: serialize.SerializedSupertypeMapEntry,
 ) ?u16 {
     if (entry.alias_name) |name| {
-        return aliasSymbolIdForName(symbols, name, entry.alias_named);
+        return aliasSymbolIdForName(symbols, name, entry.alias_named) orelse
+            symbolIdForRef(symbols, entry.symbol);
     }
     return symbolIdForRef(symbols, entry.symbol);
 }
@@ -2152,16 +2205,6 @@ fn collectEmittedSymbols(
         try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
     }
 
-    for (serialized.supertype_map.symbols) |symbol| {
-        try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
-    }
-    for (serialized.supertype_map.entries) |entry| {
-        if (entry.alias_name) |name| {
-            try appendUniqueAliasSymbol(&symbols, name, entry.alias_named);
-        } else {
-            try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
-        }
-    }
     for (serialized.reserved_words.sets) |set| {
         for (set) |symbol| {
             try appendUniqueEmittedSymbol(allocator, &symbols, symbol);

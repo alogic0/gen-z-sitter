@@ -41,6 +41,7 @@ const Extractor = struct {
     auxiliary_variables: std.array_list.Managed(syntax_ir.SyntaxVariable),
     repeat_cache: std.array_list.Managed(RepeatCacheEntry),
     promoted_top_level_repeat_variables: std.array_list.Managed(u32),
+    synthetic_token_name_counts: std.StringHashMap(usize),
     symbol_replacements: []const SymbolReplacement,
 
     fn init(allocator: std.mem.Allocator, prepared: prepared_ir.PreparedGrammar) Extractor {
@@ -52,6 +53,7 @@ const Extractor = struct {
             .auxiliary_variables = std.array_list.Managed(syntax_ir.SyntaxVariable).init(allocator),
             .repeat_cache = std.array_list.Managed(RepeatCacheEntry).init(allocator),
             .promoted_top_level_repeat_variables = std.array_list.Managed(u32).init(allocator),
+            .synthetic_token_name_counts = std.StringHashMap(usize).init(allocator),
             .symbol_replacements = &.{},
         };
     }
@@ -112,7 +114,7 @@ const Extractor = struct {
         if (self.findLexicalVariable(token.rule)) |terminal_index| {
             return .{ .terminal = terminal_index };
         }
-        if (self.findEquivalentLexicalVariable(token.rule, self.lexicalKindForRule(token.rule, externalPreferredName(token.name)))) |terminal_index| {
+        if (self.findEquivalentLexicalVariable(token.rule, self.lexicalKindForRule(token.rule, externalPreferredName(token.name), null))) |terminal_index| {
             return .{ .terminal = terminal_index };
         }
 
@@ -125,7 +127,7 @@ const Extractor = struct {
                     if (self.findLexicalVariable(variable.rule)) |terminal_index| {
                         return .{ .terminal = terminal_index };
                     }
-                    if (self.findEquivalentLexicalVariable(variable.rule, self.lexicalKindForRule(variable.rule, variable.name))) |terminal_index| {
+                    if (self.findEquivalentLexicalVariable(variable.rule, self.lexicalKindForRule(variable.rule, variable.name, null))) |terminal_index| {
                         return .{ .terminal = terminal_index };
                     }
                     return null;
@@ -432,7 +434,11 @@ const Extractor = struct {
         at_end: bool,
     ) ExtractTokensError![]syntax_ir.Production {
         const lexical_name = lexical_preferred_name orelse if (self.lexicalRuleHasDirectLiteralName(rule_id)) null else variable_name;
-        if (self.tryEnsureLexicalVariable(lexical_name, rule_id, lexical_preferred_name)) |terminal_index| {
+        const synthetic_base_name = if (lexical_preferred_name == null and lexical_name == null)
+            variable_name
+        else
+            null;
+        if (self.tryEnsureLexicalVariable(lexical_name, rule_id, lexical_preferred_name, synthetic_base_name)) |terminal_index| {
             return try self.singleStepProductions(.{
                 .symbol = .{ .terminal = terminal_index },
             });
@@ -510,7 +516,11 @@ const Extractor = struct {
         at_end: bool,
     ) ExtractTokensError![]syntax_ir.Production {
         if (metadata.data.token or metadata.data.immediate_token) {
-            if (self.tryEnsureLexicalVariable(lexical_preferred_name, @intCast(metadata.inner), lexical_preferred_name)) |terminal_index| {
+            const synthetic_base_name = if (lexical_preferred_name == null and metadata.data.alias == null)
+                variable_name
+            else
+                null;
+            if (self.tryEnsureLexicalVariable(lexical_preferred_name, @intCast(metadata.inner), lexical_preferred_name, synthetic_base_name)) |terminal_index| {
                 const productions = try self.singleStepProductions(.{
                     .symbol = .{ .terminal = terminal_index },
                 });
@@ -562,15 +572,27 @@ const Extractor = struct {
         preferred_name: ?[]const u8,
         rule_id: ir_rules.RuleId,
         lexical_boundary_name: ?[]const u8,
+        synthetic_base_name: ?[]const u8,
     ) ?u32 {
         if (!self.isLexicalRule(rule_id, lexical_boundary_name)) return null;
         const identity_rule_id = self.lexicalIdentityRule(rule_id);
 
         if (self.findLexicalVariable(identity_rule_id)) |index| return index;
 
-        const name = self.lexicalNameForRule(identity_rule_id, preferred_name);
-        const kind = self.lexicalKindForRule(identity_rule_id, preferred_name);
+        const use_synthetic_name = preferred_name == null and
+            synthetic_base_name != null and
+            self.lexicalRuleNeedsSyntheticName(identity_rule_id);
+        const kind = self.lexicalKindForRule(
+            identity_rule_id,
+            preferred_name,
+            if (use_synthetic_name) synthetic_base_name else null,
+        );
         if (self.findEquivalentLexicalVariable(identity_rule_id, kind)) |index| return index;
+        const synthetic_name = if (use_synthetic_name)
+            self.nextSyntheticTokenName(synthetic_base_name.?) catch return null
+        else
+            null;
+        const name = self.lexicalNameForRule(identity_rule_id, preferred_name, synthetic_name);
         self.lexical_variables.append(.{
             .name = name,
             .kind = kind,
@@ -586,6 +608,13 @@ const Extractor = struct {
             if (variable.rule == identity_rule_id) return @intCast(i);
         }
         return null;
+    }
+
+    fn nextSyntheticTokenName(self: *Extractor, variable_name: []const u8) ![]const u8 {
+        const entry = try self.synthetic_token_name_counts.getOrPut(variable_name);
+        if (!entry.found_existing) entry.value_ptr.* = 0;
+        entry.value_ptr.* += 1;
+        return try std.fmt.allocPrint(self.allocator, "{s}_token{d}", .{ variable_name, entry.value_ptr.* });
     }
 
     fn findEquivalentLexicalVariable(
@@ -895,33 +924,54 @@ const Extractor = struct {
         };
     }
 
-    fn lexicalNameForRule(self: *Extractor, rule_id: ir_rules.RuleId, preferred_name: ?[]const u8) []const u8 {
+    fn lexicalRuleNeedsSyntheticName(self: *Extractor, rule_id: ir_rules.RuleId) bool {
+        return switch (self.prepared.rules[@intCast(rule_id)]) {
+            .string => false,
+            .pattern => true,
+            .metadata => |metadata| if (metadata.data.token or metadata.data.immediate_token)
+                metadata.data.alias == null and self.lexicalRuleNeedsSyntheticName(metadata.inner)
+            else
+                self.lexicalRuleNeedsSyntheticName(metadata.inner),
+            else => true,
+        };
+    }
+
+    fn lexicalNameForRule(
+        self: *Extractor,
+        rule_id: ir_rules.RuleId,
+        preferred_name: ?[]const u8,
+        synthetic_name: ?[]const u8,
+    ) []const u8 {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
             .string => |value| value,
             .pattern => |pattern| if (preferred_name) |name|
                 if (shouldUseLiteralLexicalName(name)) pattern.value else name
             else
-                pattern.value,
+                synthetic_name orelse pattern.value,
             .metadata => |metadata| if (metadata.data.token or metadata.data.immediate_token)
-                if (metadata.data.alias) |alias| alias.value else self.lexicalNameForRule(metadata.inner, preferred_name)
+                if (metadata.data.alias) |alias| alias.value else self.lexicalNameForRule(metadata.inner, preferred_name, synthetic_name)
             else
-                self.lexicalNameForRule(metadata.inner, preferred_name),
-            else => preferred_name.?,
+                self.lexicalNameForRule(metadata.inner, preferred_name, synthetic_name),
+            else => preferred_name orelse synthetic_name.?,
         };
     }
 
-    fn lexicalKindForRule(self: *Extractor, rule_id: ir_rules.RuleId, preferred_name: ?[]const u8) lexical_ir.VariableKind {
+    fn lexicalKindForRule(
+        self: *Extractor,
+        rule_id: ir_rules.RuleId,
+        preferred_name: ?[]const u8,
+        synthetic_name: ?[]const u8,
+    ) lexical_ir.VariableKind {
         return switch (self.prepared.rules[@intCast(rule_id)]) {
             .string => .anonymous,
             .pattern => if (preferred_name) |name|
                 if (shouldUseLiteralLexicalName(name)) .anonymous else .named
-            else
-                .anonymous,
+            else if (synthetic_name != null) .auxiliary else .anonymous,
             .metadata => |metadata| if (metadata.data.token or metadata.data.immediate_token)
-                if (metadata.data.alias) |alias| lexicalKindFromAlias(alias) else self.lexicalKindForRule(metadata.inner, preferred_name)
+                if (metadata.data.alias) |alias| lexicalKindFromAlias(alias) else self.lexicalKindForRule(metadata.inner, preferred_name, synthetic_name)
             else
-                self.lexicalKindForRule(metadata.inner, preferred_name),
-            else => .named,
+                self.lexicalKindForRule(metadata.inner, preferred_name, synthetic_name),
+            else => if (synthetic_name != null) .auxiliary else .named,
         };
     }
 
@@ -2381,6 +2431,8 @@ test "extractTokens keeps unaliased token pattern source kind" {
 
     const extracted = try extractTokens(arena.allocator(), prepared);
     try std.testing.expectEqual(@as(usize, 1), extracted.lexical.variables.len);
+    try std.testing.expectEqualStrings("source_file_token1", extracted.lexical.variables[0].name);
+    try std.testing.expectEqual(lexical_ir.VariableKind.auxiliary, extracted.lexical.variables[0].kind);
     try std.testing.expectEqual(lexical_ir.SourceKind.pattern, extracted.lexical.variables[0].source_kind);
     try std.testing.expectEqual(@as(u32, 0), extracted.syntax.variables[0].productions[0].steps[0].symbol.terminal);
 }
