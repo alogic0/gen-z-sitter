@@ -17,9 +17,9 @@ pub const ParseAction = union(ActionKind) {
     accept: void,
 
     pub fn lessThan(_: void, a: ParseAction, b: ParseAction) bool {
-        const a_tag = @intFromEnum(a);
-        const b_tag = @intFromEnum(b);
-        if (a_tag != b_tag) return a_tag < b_tag;
+        const a_order = parseActionOrder(a);
+        const b_order = parseActionOrder(b);
+        if (a_order != b_order) return a_order < b_order;
 
         return switch (a) {
             .shift => |left| switch (b) {
@@ -35,6 +35,15 @@ pub const ParseAction = union(ActionKind) {
         };
     }
 };
+
+fn parseActionOrder(action: ParseAction) u8 {
+    return switch (action) {
+        .accept => 0,
+        .reduce => 1,
+        .shift => 2,
+        .shift_extra => 3,
+    };
+}
 
 pub const ActionEntry = struct {
     symbol: syntax_ir.SymbolRef,
@@ -144,15 +153,6 @@ pub fn buildGroupedActionsForState(
     defer groups.deinit();
     errdefer deinitActionGroups(allocator, groups.items);
 
-    for (parse_state.transitions) |transition| {
-        switch (transition.symbol) {
-            .terminal, .external => {
-                try appendUniqueGroupedAction(allocator, &groups, transition.symbol, .{ .shift = transition.state });
-            },
-            .end, .non_terminal => {},
-        }
-    }
-
     for (parse_state.items) |entry| {
         const parse_item = entry.item;
         const production = productions[parse_item.production_id];
@@ -176,10 +176,16 @@ pub fn buildGroupedActionsForState(
         }
     }
 
-    sortActionGroups(groups.items);
-    for (groups.items) |group| {
-        sortParseActions(@constCast(group.actions));
+    for (parse_state.transitions) |transition| {
+        switch (transition.symbol) {
+            .terminal, .external => {
+                try appendUniqueGroupedAction(allocator, &groups, transition.symbol, .{ .shift = transition.state });
+            },
+            .end, .non_terminal => {},
+        }
     }
+
+    sortActionGroups(groups.items);
 
     return .{
         .state_id = parse_state.id,
@@ -420,27 +426,15 @@ fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
 }
 
 fn symbolLessThan(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
-    return switch (a) {
-        .end => switch (b) {
-            .end => false,
-            else => true,
-        },
-        .non_terminal => |index| switch (b) {
-            .end => false,
-            .non_terminal => |other| index < other,
-            else => true,
-        },
-        .terminal => |index| switch (b) {
-            .end => false,
-            .non_terminal => false,
-            .terminal => |other| index < other,
-            .external => true,
-        },
-        .external => |index| switch (b) {
-            .end => false,
-            .external => |other| index < other,
-            else => false,
-        },
+    return symbolSortKey(a) < symbolSortKey(b);
+}
+
+fn symbolSortKey(symbol: syntax_ir.SymbolRef) u64 {
+    return switch (symbol) {
+        .external => |index| index,
+        .end => @as(u64, 1) << 32,
+        .terminal => |index| (@as(u64, 3) << 32) | index,
+        .non_terminal => |index| (@as(u64, 4) << 32) | index,
     };
 }
 
@@ -452,9 +446,10 @@ test "action helpers sort deterministically" {
     };
 
     sortActionEntries(entries[0..]);
-    try std.testing.expectEqual(@as(u32, 0), entries[0].symbol.terminal);
+    try std.testing.expectEqual(@as(u32, 1), entries[0].symbol.external);
+    try std.testing.expectEqual(@as(u32, 0), entries[1].symbol.terminal);
     try std.testing.expect(switch (entries[0].action) {
-        .shift => true,
+        .accept => true,
         else => false,
     });
     try std.testing.expect(switch (entries[1].action) {
@@ -462,7 +457,7 @@ test "action helpers sort deterministically" {
         else => false,
     });
     try std.testing.expect(switch (entries[2].action) {
-        .accept => true,
+        .shift => true,
         else => false,
     });
 }
@@ -512,20 +507,21 @@ test "buildActionsForState derives shift reduce and accept actions" {
     defer allocator.free(entries);
 
     try std.testing.expectEqual(@as(usize, 3), entries.len);
-    try std.testing.expectEqual(@as(u32, 0), entries[0].symbol.terminal);
-    try std.testing.expect(switch (entries[0].action) {
-        .shift => |id| id == 7,
-        else => false,
-    });
-    try std.testing.expect(switch (entries[1].action) {
-        .reduce => |id| id == 1,
-        else => false,
-    });
-    try std.testing.expectEqual(@as(u32, 2), entries[2].symbol.external);
-    try std.testing.expect(switch (entries[2].action) {
-        .accept => true,
-        else => false,
-    });
+    try std.testing.expect(actionEntriesContain(entries, .{ .external = 2 }, .{ .accept = {} }));
+    try std.testing.expect(actionEntriesContain(entries, .{ .terminal = 0 }, .{ .reduce = 1 }));
+    try std.testing.expect(actionEntriesContain(entries, .{ .terminal = 0 }, .{ .shift = 7 }));
+}
+
+fn actionEntriesContain(
+    entries: []const ActionEntry,
+    symbol: syntax_ir.SymbolRef,
+    action: ParseAction,
+) bool {
+    for (entries) |entry| {
+        if (!symbolRefEql(entry.symbol, symbol)) continue;
+        if (parseActionEql(entry.action, action)) return true;
+    }
+    return false;
 }
 
 test "buildActionTable keeps per-state actions addressable by state id" {

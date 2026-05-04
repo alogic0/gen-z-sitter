@@ -45,6 +45,23 @@ pub fn emitLexFunctionWithResolverAlloc(
     try emitLexFunctionWithLargeSets(allocator, writer, fn_name, lex_table, resolver, large_sets);
 }
 
+pub fn emitLexFunctionWithResolverAllocAndAliases(
+    allocator: std.mem.Allocator,
+    writer: anytype,
+    fn_name: []const u8,
+    lex_table: lexical_serialize.SerializedLexTable,
+    resolver: ?SymbolResolver,
+    alias_fn_name: []const u8,
+    alias_lex_table: lexical_serialize.SerializedLexTable,
+) EmitError!void {
+    const large_sets = try LargeCharacterSetIndex.initAlloc(allocator, lex_table);
+    defer large_sets.deinit(allocator);
+    const alias_sets = try LargeCharacterSetIndex.initAlloc(allocator, alias_lex_table);
+    defer alias_sets.deinit(allocator);
+    try large_sets.emitDeclarationsWithAliases(writer, fn_name, alias_fn_name, alias_sets);
+    try emitLexFunctionBodyWithLargeSets(allocator, writer, fn_name, lex_table, resolver, large_sets);
+}
+
 fn emitLexFunctionWithLargeSets(
     allocator: ?std.mem.Allocator,
     writer: anytype,
@@ -54,27 +71,29 @@ fn emitLexFunctionWithLargeSets(
     large_sets: anytype,
 ) EmitError!void {
     try large_sets.emitDeclarations(writer, fn_name);
+    try emitLexFunctionBodyWithLargeSets(allocator, writer, fn_name, lex_table, resolver, large_sets);
+}
 
+fn emitLexFunctionBodyWithLargeSets(
+    allocator: ?std.mem.Allocator,
+    writer: anytype,
+    fn_name: []const u8,
+    lex_table: lexical_serialize.SerializedLexTable,
+    resolver: ?SymbolResolver,
+    large_sets: anytype,
+) EmitError!void {
     try writer.print("static bool {s}(TSLexer *lexer, TSStateId state) {{\n", .{fn_name});
     try writer.writeAll("  START_LEXER();\n");
     try writer.writeAll("  eof = lexer->eof(lexer);\n");
     try writer.writeAll("  switch (state) {\n");
     for (lex_table.states, 0..) |state_value, state_id| {
-        if (isOmittableDirectEofAcceptState(lex_table, state_id)) continue;
         try writer.print("    case {d}:\n", .{state_id});
         if (state_value.accept_symbol) |symbol| {
             const symbol_id = runtimeSymbolId(symbol, resolver);
             try writer.print("      ACCEPT_TOKEN({d});\n", .{symbol_id});
         }
         if (state_value.eof_target) |target| {
-            if (isOmittableDirectEofAcceptState(lex_table, target)) {
-                try writer.writeAll("      if (eof) {\n");
-                try writer.writeAll("        ACCEPT_TOKEN(0);\n");
-                try writer.writeAll("        END_STATE();\n");
-                try writer.writeAll("      }\n");
-            } else {
-                try writer.print("      if (eof) ADVANCE({d});\n", .{target});
-            }
+            try writer.print("      if (eof) ADVANCE({d});\n", .{target});
         }
         const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
         if (advance_map_end != 0) {
@@ -110,31 +129,6 @@ fn emitLexFunctionWithLargeSets(
     try writer.writeAll("}\n\n");
 }
 
-fn isOmittableDirectEofAcceptState(
-    lex_table: lexical_serialize.SerializedLexTable,
-    state_id: usize,
-) bool {
-    if (state_id >= lex_table.states.len) return false;
-    const state_value = lex_table.states[state_id];
-    if (state_value.eof_target != null or state_value.transitions.len != 0) return false;
-    if (state_value.accept_symbol == null or state_value.accept_symbol.? != .end) return false;
-    if (lex_table.start_state_id == state_id) return false;
-    for (lex_table.lex_state_starts) |start| {
-        if (start == state_id) return false;
-    }
-
-    var has_eof_reference = false;
-    for (lex_table.states) |candidate| {
-        if (candidate.eof_target != null and candidate.eof_target.? == state_id) {
-            has_eof_reference = true;
-        }
-        for (candidate.transitions) |transition| {
-            if (transition.next_state_id == state_id) return false;
-        }
-    }
-    return has_eof_reference;
-}
-
 fn emitUnusedCharacterSetMacro(writer: anytype) EmitError!void {
     try writer.writeAll("#ifndef GEN_Z_SITTER_UNUSED_CHARACTER_SET\n");
     try writer.writeAll("#if defined(__GNUC__) || defined(__clang__)\n");
@@ -147,6 +141,7 @@ fn emitUnusedCharacterSetMacro(writer: anytype) EmitError!void {
 
 const LargeCharacterSetEntry = struct {
     ranges: []const lexical_serialize.SerializedCharacterRange,
+    used: bool = true,
 };
 
 const LargeCharacterSetIndex = struct {
@@ -162,7 +157,7 @@ const LargeCharacterSetIndex = struct {
         if (lex_table.large_character_sets.len != 0) {
             for (lex_table.large_character_sets) |set| {
                 if (findInEntries(entries.items, set.ranges) != null) continue;
-                try entries.append(.{ .ranges = set.ranges });
+                try entries.append(.{ .ranges = set.ranges, .used = false });
             }
         } else {
             for (lex_table.states) |state_value| {
@@ -170,7 +165,17 @@ const LargeCharacterSetIndex = struct {
                 for (state_value.transitions[advance_map_end..]) |transition| {
                     if (!isLargeCharacterSet(transition.ranges)) continue;
                     if (findInEntries(entries.items, transition.ranges) != null) continue;
-                    try entries.append(.{ .ranges = transition.ranges });
+                    try entries.append(.{ .ranges = transition.ranges, .used = false });
+                }
+            }
+        }
+
+        for (lex_table.states) |state_value| {
+            const advance_map_end = leadingAdvanceMapTransitionEnd(state_value.transitions);
+            for (state_value.transitions[advance_map_end..]) |transition| {
+                if (try findBestInEntriesAlloc(allocator, entries.items, transition.ranges)) |match| {
+                    entries.items[match.set_id].used = true;
+                    match.deinit(allocator);
                 }
             }
         }
@@ -189,6 +194,29 @@ const LargeCharacterSetIndex = struct {
     ) EmitError!void {
         if (self.entries.len != 0) try emitUnusedCharacterSetMacro(writer);
         for (self.entries, 0..) |entry, set_id| {
+            if (!entry.used) continue;
+            try writer.print("static const TSCharacterRange {s}_character_set_{d}[] GEN_Z_SITTER_UNUSED_CHARACTER_SET = {{\n", .{ fn_name, set_id });
+            for (entry.ranges) |range| {
+                try writer.print("  {{ {d}, {d} }},\n", .{ range.start, range.end_inclusive });
+            }
+            try writer.writeAll("};\n\n");
+        }
+    }
+
+    fn emitDeclarationsWithAliases(
+        self: LargeCharacterSetIndex,
+        writer: anytype,
+        fn_name: []const u8,
+        alias_fn_name: []const u8,
+        alias_sets: LargeCharacterSetIndex,
+    ) EmitError!void {
+        if (self.entries.len != 0) try emitUnusedCharacterSetMacro(writer);
+        for (self.entries, 0..) |entry, set_id| {
+            if (!entry.used) continue;
+            if (alias_sets.find(entry.ranges)) |alias_id| {
+                try writer.print("#define {s}_character_set_{d} {s}_character_set_{d}\n\n", .{ fn_name, set_id, alias_fn_name, alias_id });
+                continue;
+            }
             try writer.print("static const TSCharacterRange {s}_character_set_{d}[] GEN_Z_SITTER_UNUSED_CHARACTER_SET = {{\n", .{ fn_name, set_id });
             for (entry.ranges) |range| {
                 try writer.print("  {{ {d}, {d} }},\n", .{ range.start, range.end_inclusive });
@@ -210,47 +238,55 @@ const LargeCharacterSetIndex = struct {
         allocator: std.mem.Allocator,
         ranges: []const lexical_serialize.SerializedCharacterRange,
     ) std.mem.Allocator.Error!?LargeCharacterSetMatch {
-        if (!isLargeCharacterSet(ranges)) return null;
+        return findBestInEntriesAlloc(allocator, self.entries, ranges);
+    }
+};
 
-        var best: ?LargeCharacterSetMatch = null;
-        errdefer if (best) |match| match.deinit(allocator);
+fn findBestInEntriesAlloc(
+    allocator: std.mem.Allocator,
+    entries: []const LargeCharacterSetEntry,
+    ranges: []const lexical_serialize.SerializedCharacterRange,
+) std.mem.Allocator.Error!?LargeCharacterSetMatch {
+    if (!isLargeCharacterSet(ranges)) return null;
 
-        for (self.entries, 0..) |entry, set_id| {
-            const intersection = try intersectRangeSetsAlloc(allocator, ranges, entry.ranges);
-            defer allocator.free(intersection);
-            if (intersection.len == 0) continue;
+    var best: ?LargeCharacterSetMatch = null;
+    errdefer if (best) |match| match.deinit(allocator);
 
-            const additions = try subtractRangeSetsAlloc(allocator, ranges, entry.ranges);
-            errdefer allocator.free(additions);
-            const removals = try subtractRangeSetsAlloc(allocator, entry.ranges, ranges);
-            errdefer allocator.free(removals);
-            const correction_count = additions.len + removals.len;
-            if (correction_count >= ranges.len) {
+    for (entries, 0..) |entry, set_id| {
+        const intersection = try intersectRangeSetsAlloc(allocator, ranges, entry.ranges);
+        defer allocator.free(intersection);
+        if (intersection.len == 0) continue;
+
+        const additions = try subtractRangeSetsAlloc(allocator, ranges, entry.ranges);
+        errdefer allocator.free(additions);
+        const removals = try subtractRangeSetsAlloc(allocator, entry.ranges, ranges);
+        errdefer allocator.free(removals);
+        const correction_count = additions.len + removals.len;
+        if (correction_count >= ranges.len) {
+            allocator.free(additions);
+            allocator.free(removals);
+            continue;
+        }
+
+        if (best) |current| {
+            const current_count = current.additions.len + current.removals.len;
+            if (current_count < correction_count) {
                 allocator.free(additions);
                 allocator.free(removals);
                 continue;
             }
-
-            if (best) |current| {
-                const current_count = current.additions.len + current.removals.len;
-                if (current_count < correction_count) {
-                    allocator.free(additions);
-                    allocator.free(removals);
-                    continue;
-                }
-                current.deinit(allocator);
-            }
-
-            best = .{
-                .set_id = set_id,
-                .additions = additions,
-                .removals = removals,
-            };
+            current.deinit(allocator);
         }
 
-        return best;
+        best = .{
+            .set_id = set_id,
+            .additions = additions,
+            .removals = removals,
+        };
     }
-};
+
+    return best;
+}
 
 fn findInEntries(
     entries: []const LargeCharacterSetEntry,
@@ -656,7 +692,7 @@ test "emitLexFunction renders EOF guards and adjacent range readability form" {
     ));
 }
 
-test "emitLexFunction folds pure EOF accept targets into EOF guards" {
+test "emitLexFunction emits upstream-shaped EOF accept target states" {
     var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer buffer.deinit();
 
@@ -672,12 +708,18 @@ test "emitLexFunction folds pure EOF accept targets into EOF guards" {
     const emitted = buffer.writer.buffered();
 
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    case 0:\n"));
-    try std.testing.expect(std.mem.indexOf(u8, emitted, "    case 1:\n") == null);
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    case 1:\n"));
     try std.testing.expect(std.mem.containsAtLeast(
         u8,
         emitted,
         1,
-        "      if (eof) {\n        ACCEPT_TOKEN(0);\n        END_STATE();\n      }\n",
+        "      if (eof) ADVANCE(1);\n",
+    ));
+    try std.testing.expect(std.mem.containsAtLeast(
+        u8,
+        emitted,
+        1,
+        "    case 1:\n      ACCEPT_TOKEN(0);\n      END_STATE();\n",
     ));
 }
 

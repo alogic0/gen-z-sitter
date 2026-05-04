@@ -221,8 +221,10 @@ pub fn buildStatesFromPreparedWithOptions(
     effective_build_options.terminal_extra_symbols = try terminalExtraSymbolsAlloc(allocator, flattened.extra_symbols);
     effective_build_options.simple_alias_symbols = simple_alias_symbols;
     effective_build_options.reserved_word_sets = reserved_words.sets;
+    effective_build_options.state_zero_error_recovery = true;
     var owned_lex_conflicts: ?build.LexStateTerminalConflictMap = null;
     defer if (owned_lex_conflicts) |conflicts| {
+        allocator.free(conflicts.match_shorter_or_longer);
         allocator.free(conflicts.conflict_or_prefixes);
         allocator.free(conflicts.overlaps);
         allocator.free(conflicts.merge_overlaps);
@@ -368,6 +370,9 @@ fn lexStateTerminalConflictMapAlloc(
     const conflicts = try allocator.alloc(bool, terminal_count * terminal_count);
     errdefer allocator.free(conflicts);
     @memset(conflicts, false);
+    const match_shorter_or_longer = try allocator.alloc(bool, terminal_count * terminal_count);
+    errdefer allocator.free(match_shorter_or_longer);
+    @memset(match_shorter_or_longer, false);
     const conflict_or_prefixes = try allocator.alloc(bool, terminal_count * terminal_count);
     errdefer allocator.free(conflict_or_prefixes);
     @memset(conflict_or_prefixes, false);
@@ -415,10 +420,14 @@ fn lexStateTerminalConflictMapAlloc(
         for (0..terminal_count) |right| {
             if (left == right) continue;
             const status = conflict_map.status(left, right);
+            const reverse = conflict_map.status(right, left);
             conflicts[left * terminal_count + right] =
                 status.does_match_valid_continuation or
                 status.does_match_separators or
                 status.matches_same_string;
+            match_shorter_or_longer[left * terminal_count + right] =
+                (status.does_match_valid_continuation or status.does_match_separators) and
+                !reverse.does_match_separators;
             conflict_or_prefixes[left * terminal_count + right] =
                 status.does_match_valid_continuation or
                 status.does_match_separators or
@@ -440,6 +449,7 @@ fn lexStateTerminalConflictMapAlloc(
     return .{
         .terminal_count = terminal_count,
         .conflicts = conflicts,
+        .match_shorter_or_longer = match_shorter_or_longer,
         .conflict_or_prefixes = conflict_or_prefixes,
         .overlaps = overlaps,
         .merge_overlaps = merge_overlaps,
@@ -958,27 +968,27 @@ test "generateStateActionDumpFromPrepared matches the tiny parser-state action g
         \\
         \\state 1
         \\  items:
-        \\    #0@0 [end]
         \\    #1@0 [end]
+        \\    #0@0 [end]
         \\  transitions:
-        \\    non_terminal:0 -> 2
-        \\    terminal:0 -> 3
+        \\    terminal:0 -> 2
+        \\    non_terminal:0 -> 3
         \\  actions:
-        \\    terminal:0 => shift 3
+        \\    terminal:0 => shift 2
         \\
         \\state 2
-        \\  items:
-        \\    #0@1 [end]
-        \\  transitions:
-        \\  actions:
-        \\    end => accept
-        \\
-        \\state 3
         \\  items:
         \\    #1@1 [end]
         \\  transitions:
         \\  actions:
         \\    end => reduce 1
+        \\
+        \\state 3
+        \\  items:
+        \\    #0@1 [end]
+        \\  transitions:
+        \\  actions:
+        \\    end => accept
         \\
     , dump);
 }
@@ -1294,8 +1304,8 @@ test "buildStatesFromPrepared reuses identical advanced states deterministically
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
     const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
 
-    try std.testing.expectEqual(@as(state.StateId, 4), result.states[1].transitions[2].state);
-    try std.testing.expectEqual(result.states[1].transitions[2].state, result.states[5].transitions[1].state);
+    try std.testing.expectEqual(@as(state.StateId, 2), result.states[1].transitions[0].state);
+    try std.testing.expectEqual(result.states[1].transitions[0].state, result.states[4].transitions[0].state);
 }
 
 test "buildStatesFromPrepared reports a focused reduce/reduce conflict fixture" {
@@ -1386,7 +1396,8 @@ test "resolveActionTableSkeleton leaves the first precedence-sensitive grammar u
     const raw = try json_loader.parseTopLevel(loader_arena.allocator(), parsed.value);
     const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &raw);
     const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
-    const grouped = try actions.groupActionTable(pipeline_arena.allocator(), result.actions);
+    const raw_actions = try actions.buildActionTable(pipeline_arena.allocator(), result.productions, result.states);
+    const grouped = try actions.groupActionTable(pipeline_arena.allocator(), raw_actions);
     const resolved = try resolution.resolveActionTableSkeleton(pipeline_arena.allocator(), grouped);
 
     var saw_unresolved = false;

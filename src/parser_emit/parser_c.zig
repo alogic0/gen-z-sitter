@@ -262,7 +262,7 @@ pub fn writeParserCWithOptions(
     }
     if (compacted.keyword_lex_table) |keyword_lex_table| {
         const resolver_context = RuntimeSymbolResolverContext{ .symbols = emitted_symbols };
-        try lexer_emit_c.emitLexFunctionWithResolverAlloc(
+        try lexer_emit_c.emitLexFunctionWithResolverAllocAndAliases(
             arena.allocator(),
             writer,
             "ts_lex_keywords",
@@ -271,6 +271,8 @@ pub fn writeParserCWithOptions(
                 .context = &resolver_context,
                 .resolve = resolveRuntimeSymbol,
             },
+            "ts_lex",
+            runtime_lex.table,
         );
     }
     try writer.writeAll("static const char * const ts_symbol_names[SYMBOL_COUNT + ALIAS_COUNT] = {\n");

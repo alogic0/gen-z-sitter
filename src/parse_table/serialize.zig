@@ -81,6 +81,7 @@ pub const SerializedState = struct {
     id: state.StateId,
     core_id: u32 = 0,
     lex_state_id: state.LexStateId = 0,
+    reserved_word_set_id: u16 = 0,
     actions: []const SerializedActionEntry,
     gotos: []const SerializedGotoEntry,
     unresolved: []const SerializedUnresolvedEntry,
@@ -372,13 +373,18 @@ pub fn serializeBuildResultWithOptions(
         allocator.free(snapshot.unresolved);
     }
     const serialized_states = try allocator.alloc(SerializedState, result.states.len);
-    const production_serialization = try buildProductionSerializationAlloc(allocator, result.productions);
+    const production_serialization = try buildProductionSerializationWithProductionIdsAlloc(
+        allocator,
+        result.productions,
+        if (result.reduce_production_info_ids.len != 0) result.reduce_production_info_ids else null,
+    );
 
     for (result.states, 0..) |parse_state, index| {
         serialized_states[index] = .{
             .id = parse_state.id,
             .core_id = parse_state.core_id,
             .lex_state_id = parse_state.lex_state_id,
+            .reserved_word_set_id = parse_state.reserved_word_set_id,
             .actions = try collectActionsForState(
                 allocator,
                 snapshot.chosen,
@@ -659,92 +665,13 @@ fn attachExtractedErrorRecoveryStateAlloc(
 
     var result = serialized;
     result.states = states;
-    result.lex_state_terminal_sets = try attachStateZeroRecoveryLexStateAlloc(
-        allocator,
-        serialized.lex_state_terminal_sets,
-        states,
-        lexical.variables.len,
-    );
+    result.lex_state_terminal_sets = try buildLexStateTerminalSetsAlloc(allocator, serialized.lex_state_terminal_sets);
     if (syntax.external_tokens.len == 0) {
         result.lex_modes = try lexer_serialize.buildLexModesAlloc(allocator, result.states);
     }
     result.large_state_count = try computeLargeStateCountAlloc(allocator, result.states, result.productions);
     try rebuildParseActionTables(allocator, &result, .{});
     return result;
-}
-
-fn attachStateZeroRecoveryLexStateAlloc(
-    allocator: std.mem.Allocator,
-    terminal_sets: []const []const bool,
-    states: []SerializedState,
-    terminal_count: usize,
-) std.mem.Allocator.Error![]const []const bool {
-    if (states.len == 0) return try buildLexStateTerminalSetsAlloc(allocator, terminal_sets);
-
-    const old_id: usize = @intCast(states[0].lex_state_id);
-    const old_id_valid = old_id < terminal_sets.len;
-    var shared = false;
-    if (old_id_valid) {
-        for (states[1..]) |state_value| {
-            if (state_value.lex_state_id == states[0].lex_state_id) {
-                shared = true;
-                break;
-            }
-        }
-    }
-
-    const extra_count: usize = if (old_id_valid and shared) 1 else if (!old_id_valid) 1 else 0;
-    const result = try allocator.alloc([]const bool, terminal_sets.len + extra_count);
-    var initialized: usize = 0;
-    errdefer {
-        for (result[0..initialized]) |terminal_set| allocator.free(terminal_set);
-        allocator.free(result);
-    }
-
-    for (terminal_sets, 0..) |terminal_set, index| {
-        if (old_id_valid and index == old_id) {
-            result[index] = try recoveryLexTerminalSetAlloc(allocator, states[0].actions, terminal_count);
-        } else {
-            result[index] = try allocator.dupe(bool, terminal_set);
-        }
-        initialized += 1;
-    }
-
-    if (old_id_valid and shared) {
-        const replacement_id = result.len - 1;
-        result[replacement_id] = try allocator.dupe(bool, terminal_sets[old_id]);
-        initialized += 1;
-        for (states[1..]) |*state_value| {
-            if (state_value.lex_state_id == states[0].lex_state_id) {
-                state_value.lex_state_id = @intCast(replacement_id);
-            }
-        }
-    } else if (!old_id_valid) {
-        const replacement_id = result.len - 1;
-        result[replacement_id] = try recoveryLexTerminalSetAlloc(allocator, states[0].actions, terminal_count);
-        initialized += 1;
-        states[0].lex_state_id = @intCast(replacement_id);
-    }
-
-    return result;
-}
-
-fn recoveryLexTerminalSetAlloc(
-    allocator: std.mem.Allocator,
-    actions_list: []const SerializedActionEntry,
-    terminal_count: usize,
-) std.mem.Allocator.Error![]const bool {
-    const terminal_set = try allocator.alloc(bool, terminal_count);
-    @memset(terminal_set, false);
-    for (actions_list) |entry| {
-        switch (entry.symbol) {
-            .terminal => |index| {
-                if (index < terminal_set.len) terminal_set[index] = true;
-            },
-            .end, .non_terminal, .external => {},
-        }
-    }
-    return terminal_set;
 }
 
 fn buildExtractedErrorRecoverySymbolsAlloc(
@@ -2038,6 +1965,17 @@ fn buildProductionSerializationAlloc(
     return try buildProductionSerializationForUsedAlloc(allocator, productions, null);
 }
 
+fn buildProductionSerializationWithProductionIdsAlloc(
+    allocator: std.mem.Allocator,
+    productions: []const build.ProductionInfo,
+    maybe_assigned_ids: ?[]const ?u16,
+) std.mem.Allocator.Error!ProductionSerialization {
+    if (maybe_assigned_ids) |assigned_ids| {
+        return try buildProductionSerializationForAssignedIdsAlloc(allocator, productions, assigned_ids);
+    }
+    return try buildProductionSerializationAlloc(allocator, productions);
+}
+
 fn buildProductionSerializationForUsedAlloc(
     allocator: std.mem.Allocator,
     productions: []const build.ProductionInfo,
@@ -2122,6 +2060,143 @@ fn buildProductionSerializationForUsedAlloc(
         if (findProductionMetadata(metadata.items, current)) |existing| {
             raw_infos[production_id].production_info_id = @intCast(@min(existing, std.math.maxInt(u16)));
         }
+    }
+
+    var aliases = std.ArrayListUnmanaged(SerializedAliasEntry).empty;
+    for (metadata.items, 0..) |entry, production_info_id| {
+        for (entry.aliases) |alias| {
+            try aliases.append(allocator, .{
+                .production_id = @intCast(production_info_id),
+                .step_index = alias.step_index,
+                .original_symbol = alias.original_symbol,
+                .name = alias.name,
+                .named = alias.named,
+            });
+        }
+    }
+
+    var field_entries = std.array_list.Managed(SerializedFieldMapEntry).init(allocator);
+    defer field_entries.deinit();
+    var field_slices = std.ArrayListUnmanaged(SerializedFieldMapSlice).empty;
+    var field_rows = std.ArrayListUnmanaged(FieldMapRow).empty;
+    defer {
+        field_slices.deinit(allocator);
+        field_rows.deinit(allocator);
+    }
+
+    for (metadata.items) |entry| {
+        if (entry.fields.len == 0) {
+            try field_slices.append(allocator, .{ .index = 0, .length = 0 });
+            continue;
+        }
+        if (findFieldMapRow(field_rows.items, entry.fields)) |row| {
+            try field_slices.append(allocator, .{
+                .index = row.index,
+                .length = @intCast(@min(entry.fields.len, std.math.maxInt(u16))),
+            });
+            continue;
+        }
+
+        const start = field_entries.items.len;
+        try field_entries.appendSlice(entry.fields);
+        const row = FieldMapRow{
+            .index = @intCast(@min(start, std.math.maxInt(u16))),
+            .fields = entry.fields,
+        };
+        try field_rows.append(allocator, row);
+        try field_slices.append(allocator, .{
+            .index = row.index,
+            .length = @intCast(@min(entry.fields.len, std.math.maxInt(u16))),
+        });
+    }
+
+    return .{
+        .productions = raw_infos,
+        .production_id_count = metadata.items.len,
+        .alias_sequences = try aliases.toOwnedSlice(allocator),
+        .non_terminal_aliases = try non_terminal_aliases.toOwnedSlice(allocator),
+        .field_map = .{
+            .names = try field_names.toOwnedSlice(),
+            .entries = try field_entries.toOwnedSlice(),
+            .slices = try field_slices.toOwnedSlice(allocator),
+        },
+    };
+}
+
+fn buildProductionSerializationForAssignedIdsAlloc(
+    allocator: std.mem.Allocator,
+    productions: []const build.ProductionInfo,
+    assigned_ids: []const ?u16,
+) std.mem.Allocator.Error!ProductionSerialization {
+    const raw_infos = try allocator.alloc(SerializedProductionInfo, productions.len);
+    errdefer allocator.free(raw_infos);
+
+    var production_info_count: usize = 0;
+    for (assigned_ids) |maybe_id| {
+        if (maybe_id) |id| production_info_count = @max(production_info_count, @as(usize, id) + 1);
+    }
+    if (production_info_count == 0) return try buildProductionSerializationAlloc(allocator, productions);
+
+    const representatives = try allocator.alloc(?usize, production_info_count);
+    defer allocator.free(representatives);
+    @memset(representatives, null);
+
+    for (productions, 0..) |production, production_id| {
+        raw_infos[production_id] = .{
+            .lhs = production.lhs,
+            .child_count = @intCast(@min(production.steps.len, std.math.maxInt(u8))),
+            .dynamic_precedence = @intCast(std.math.clamp(production.dynamic_precedence, std.math.minInt(i16), std.math.maxInt(i16))),
+        };
+        if (production_id >= assigned_ids.len) continue;
+        const production_info_id = assigned_ids[production_id] orelse continue;
+        raw_infos[production_id].production_info_id = production_info_id;
+        if (representatives[production_info_id] == null) representatives[production_info_id] = production_id;
+    }
+
+    var metadata = std.ArrayListUnmanaged(ProductionMetadata).empty;
+    defer {
+        for (metadata.items) |entry| {
+            allocator.free(entry.aliases);
+            allocator.free(entry.fields);
+        }
+        metadata.deinit(allocator);
+    }
+
+    var field_names = std.array_list.Managed(SerializedFieldName).init(allocator);
+    defer field_names.deinit();
+    var non_terminal_aliases = std.ArrayListUnmanaged(SerializedAliasEntry).empty;
+
+    const variable_fields = try buildInheritedFieldNamesAlloc(allocator, productions);
+    defer {
+        for (variable_fields) |fields| allocator.free(fields);
+        allocator.free(variable_fields);
+    }
+    try populateSortedProductionFieldNamesAlloc(allocator, &field_names, productions, variable_fields);
+
+    for (productions, 0..) |production, production_id| {
+        if (production_id >= assigned_ids.len or assigned_ids[production_id] == null) continue;
+        const current = try buildProductionMetadataAlloc(allocator, productions, variable_fields, &field_names, production);
+        defer {
+            allocator.free(current.aliases);
+            allocator.free(current.fields);
+        }
+        for (current.aliases) |alias| {
+            try non_terminal_aliases.append(allocator, alias);
+        }
+    }
+
+    for (representatives, 0..) |maybe_production_id, production_info_id| {
+        const production_id = maybe_production_id orelse {
+            try metadata.append(allocator, .{ .aliases = &.{}, .fields = &.{} });
+            continue;
+        };
+        const current = try buildProductionMetadataAlloc(allocator, productions, variable_fields, &field_names, productions[production_id]);
+        errdefer {
+            allocator.free(current.aliases);
+            allocator.free(current.fields);
+        }
+        std.debug.assert(production_info_id == metadata.items.len);
+        try metadata.append(allocator, current);
     }
 
     var aliases = std.ArrayListUnmanaged(SerializedAliasEntry).empty;
@@ -3023,10 +3098,10 @@ fn symbolRefLessThan(_: void, left: syntax_ir.SymbolRef, right: syntax_ir.Symbol
 
 fn symbolSortKey(symbol: syntax_ir.SymbolRef) u64 {
     return switch (symbol) {
-        .end => 0,
-        .non_terminal => |index| (@as(u64, 1) << 32) | index,
-        .terminal => |index| (@as(u64, 2) << 32) | index,
-        .external => |index| (@as(u64, 3) << 32) | index,
+        .external => |index| index,
+        .end => @as(u64, 1) << 32,
+        .terminal => |index| (@as(u64, 3) << 32) | index,
+        .non_terminal => |index| (@as(u64, 4) << 32) | index,
     };
 }
 

@@ -198,14 +198,9 @@ const Builder = struct {
     /// Find or create an extra production equal to `candidate`.  Returns its combined ID.
     fn internExtra(self: *@This(), candidate: InlinedProduction, owned_steps: []const syntax_ir.ProductionStep) !u32 {
         const orig_len: u32 = @intCast(self.original.len);
-        // Check original productions first.
-        for (self.original, 0..) |p, i| {
-            if (p.eql(candidate)) {
-                self.allocator.free(owned_steps);
-                return @intCast(i);
-            }
-        }
-        // Check existing extra productions.
+        // Match upstream's InlinedProductionMap: inlined productions live in a
+        // separate pool, even when their shape matches an original production.
+        // Only deduplicate against other inlined productions in that pool.
         for (self.extra.items, 0..) |p, i| {
             if (p.eql(candidate)) {
                 self.allocator.free(owned_steps);
@@ -493,7 +488,7 @@ test "basic inline substitution: single alternative" {
     };
     const a_steps = [_]syntax_ir.ProductionStep{
         .{ .symbol = .{ .non_terminal = 1 } }, // V
-        .{ .symbol = .{ .terminal = 11 } },    // B
+        .{ .symbol = .{ .terminal = 11 } }, // B
     };
     const original = [_]InlinedProduction{
         .{ .lhs = 0, .steps = &a_steps }, // P0: A → V B

@@ -756,7 +756,40 @@ fn partitionRawTransitionsAlloc(
         });
     }
 
+    try mergeEquivalentAdvanceTransitions(allocator, &transitions);
     return try transitions.toOwnedSlice(allocator);
+}
+
+fn mergeEquivalentAdvanceTransitions(
+    allocator: std.mem.Allocator,
+    transitions: *std.ArrayListUnmanaged(AdvanceTransition),
+) !void {
+    var index: usize = 0;
+    while (index < transitions.items.len) {
+        var merged = false;
+        var previous_index: usize = 0;
+        while (previous_index < index) : (previous_index += 1) {
+            if (!advanceTransitionShapeEql(transitions.items[previous_index], transitions.items[index])) continue;
+            try transitions.items[previous_index].chars.addSet(allocator, transitions.items[index].chars);
+            transitions.items[index].chars.deinit(allocator);
+            allocator.free(transitions.items[index].target_states);
+            _ = transitions.swapRemove(index);
+            merged = true;
+            break;
+        }
+        if (!merged) index += 1;
+    }
+    std.mem.sort(AdvanceTransition, transitions.items, {}, advanceTransitionLessThan);
+}
+
+fn advanceTransitionShapeEql(left: AdvanceTransition, right: AdvanceTransition) bool {
+    return left.is_separator == right.is_separator and
+        left.precedence == right.precedence and
+        std.mem.eql(u32, left.target_states, right.target_states);
+}
+
+fn advanceTransitionLessThan(_: void, left: AdvanceTransition, right: AdvanceTransition) bool {
+    return characterSetLessThan(left.chars, right.chars);
 }
 
 fn appendUniqueBoundary(
@@ -1032,7 +1065,6 @@ fn hashConflictCompletion(hasher: *std.hash.Wyhash, completion: ?ConflictComplet
     hasher.update(std.mem.asBytes(&has_completion));
     if (completion) |value| {
         hasher.update(std.mem.asBytes(&value.variable_index));
-        hasher.update(std.mem.asBytes(&value.precedence));
     }
 }
 
@@ -1120,14 +1152,13 @@ fn lexStateLessThan(left: LexState, right: LexState) bool {
 
 fn conflictCompletionEql(left: ?ConflictCompletion, right: ?ConflictCompletion) bool {
     if (left == null or right == null) return left == null and right == null;
-    return left.?.variable_index == right.?.variable_index and left.?.precedence == right.?.precedence;
+    return left.?.variable_index == right.?.variable_index;
 }
 
 fn conflictCompletionLessThan(left: ?ConflictCompletion, right: ?ConflictCompletion) bool {
     if (left == null) return right != null;
     if (right == null) return false;
-    if (left.?.variable_index != right.?.variable_index) return left.?.variable_index < right.?.variable_index;
-    return left.?.precedence < right.?.precedence;
+    return left.?.variable_index < right.?.variable_index;
 }
 
 fn characterSetEql(left: lexer_model.CharacterSet, right: lexer_model.CharacterSet) bool {

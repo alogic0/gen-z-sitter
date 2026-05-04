@@ -396,19 +396,32 @@ const AppendStats = struct {
 const ParseItemCoreContext = struct {
     pub fn hash(_: @This(), value: item.ParseItem) u64 {
         var hasher = std.hash.Wyhash.init(0);
-        if (value.structural_identity != item.unset_structural_identity) {
+        if (value.merge_identity != item.unset_structural_identity) {
+            hasher.update(std.mem.asBytes(&value.merge_identity));
+        } else if (value.structural_identity != item.unset_structural_identity) {
             hasher.update(std.mem.asBytes(&value.structural_identity));
         } else {
             hasher.update(std.mem.asBytes(&value.production_id));
             hasher.update(std.mem.asBytes(&value.step_index));
         }
+        hasher.update(std.mem.asBytes(&value.has_preceding_inherited_fields));
         return hasher.final();
     }
 
     pub fn eql(_: @This(), a: item.ParseItem, b: item.ParseItem) bool {
-        return item.ParseItem.eql(a, b);
+        return parseItemMergeEql(a, b);
     }
 };
+
+fn parseItemMergeEql(a: item.ParseItem, b: item.ParseItem) bool {
+    if (a.merge_identity != item.unset_structural_identity and
+        b.merge_identity != item.unset_structural_identity)
+    {
+        return a.merge_identity == b.merge_identity and
+            a.has_preceding_inherited_fields == b.has_preceding_inherited_fields;
+    }
+    return item.ParseItem.eql(a, b);
+}
 
 const SymbolRefContext = struct {
     pub fn hash(_: @This(), value: syntax_ir.SymbolRef) u64 {
@@ -461,6 +474,7 @@ fn hashParseItemSetEntries(values: []const item.ParseItemSetEntry) u64 {
             hasher.update(std.mem.asBytes(&value.item.production_id));
             hasher.update(std.mem.asBytes(&value.item.step_index));
         }
+        hasher.update(std.mem.asBytes(&value.item.has_preceding_inherited_fields));
         hasher.update(std.mem.asBytes(&value.following_reserved_word_set_id));
         hasher.update(value.lookaheads.terminals.maskBytes());
         hasher.update(value.lookaheads.externals.maskBytes());
@@ -521,6 +535,7 @@ const ParseItemSetCoreContext = struct {
                 hasher.update(std.mem.asBytes(&core_item.production_id));
                 hasher.update(std.mem.asBytes(&core_item.step_index));
             }
+            hasher.update(std.mem.asBytes(&core_item.has_preceding_inherited_fields));
         }
         return hasher.final();
     }
@@ -565,7 +580,7 @@ const SuccessorGroup = struct {
 
     fn findItemIndex(self: @This(), parse_item: item.ParseItem) ?usize {
         for (self.items.items, 0..) |entry, index| {
-            if (item.ParseItem.eql(entry.item, parse_item)) return index;
+            if (parseItemMergeEql(entry.item, parse_item)) return index;
         }
         return null;
     }
@@ -595,6 +610,8 @@ const SuccessorGroups = struct {
         state_items: []const item.ParseItemSetEntry,
         productions: []const ProductionInfo,
         item_identity_ids: []const []const u32,
+        item_merge_identity_ids: []const []const u32,
+        variable_has_fields: []const bool,
         variables_to_inline: []const syntax_ir.SymbolRef,
         inline_map: process_inlines.InlinedProductionMap,
     ) !void {
@@ -603,6 +620,8 @@ const SuccessorGroups = struct {
                 entry,
                 productions,
                 item_identity_ids,
+                item_merge_identity_ids,
+                variable_has_fields,
                 variables_to_inline,
                 inline_map,
                 0,
@@ -612,6 +631,7 @@ const SuccessorGroups = struct {
         for (self.groups.items) |*group| {
             state.sortItems(group.items.items);
         }
+        std.mem.sort(SuccessorGroup, self.groups.items, {}, successorGroupLessThan);
     }
 
     fn appendSuccessorForEntry(
@@ -619,6 +639,8 @@ const SuccessorGroups = struct {
         entry: item.ParseItemSetEntry,
         productions: []const ProductionInfo,
         item_identity_ids: []const []const u32,
+        item_merge_identity_ids: []const []const u32,
+        variable_has_fields: []const bool,
         variables_to_inline: []const syntax_ir.SymbolRef,
         inline_map: process_inlines.InlinedProductionMap,
         depth: usize,
@@ -638,8 +660,14 @@ const SuccessorGroups = struct {
                             expanded_entry.item = .{
                                 .production_id = inlined_id,
                                 .step_index = parse_item.step_index,
+                                .has_preceding_inherited_fields = parse_item.has_preceding_inherited_fields,
                                 .structural_identity = itemIdentityId(
                                     item_identity_ids,
+                                    inlined_id,
+                                    parse_item.step_index,
+                                ),
+                                .merge_identity = itemIdentityId(
+                                    item_merge_identity_ids,
                                     inlined_id,
                                     parse_item.step_index,
                                 ),
@@ -648,6 +676,8 @@ const SuccessorGroups = struct {
                                 expanded_entry,
                                 productions,
                                 item_identity_ids,
+                                item_merge_identity_ids,
+                                variable_has_fields,
                                 variables_to_inline,
                                 inline_map,
                                 depth + 1,
@@ -674,8 +704,15 @@ const SuccessorGroups = struct {
             .item = .{
                 .production_id = parse_item.production_id,
                 .step_index = parse_item.step_index + 1,
+                .has_preceding_inherited_fields = parse_item.has_preceding_inherited_fields or
+                    symbolAddsPrecedingInheritedFields(productions, variable_has_fields, symbol),
                 .structural_identity = itemIdentityId(
                     item_identity_ids,
+                    parse_item.production_id,
+                    parse_item.step_index + 1,
+                ),
+                .merge_identity = itemIdentityId(
+                    item_merge_identity_ids,
                     parse_item.production_id,
                     parse_item.step_index + 1,
                 ),
@@ -699,6 +736,23 @@ const SuccessorGroups = struct {
         }
     }
 };
+
+fn successorGroupLessThan(_: void, left: SuccessorGroup, right: SuccessorGroup) bool {
+    return symbolRefLessThan(left.symbol, right.symbol);
+}
+
+fn symbolAddsPrecedingInheritedFields(
+    productions: []const ProductionInfo,
+    variable_has_fields: []const bool,
+    symbol: syntax_ir.SymbolRef,
+) bool {
+    const non_terminal = switch (symbol) {
+        .non_terminal => |index| index,
+        else => return false,
+    };
+    if (!variableIsHiddenForItemIdentity(productions, non_terminal)) return false;
+    return non_terminal < variable_has_fields.len and variable_has_fields[non_terminal];
+}
 
 const ClosureExpansionCacheEntry = struct {
     non_terminal: u32,
@@ -805,6 +859,7 @@ const ParseItemSetBuilder = struct {
     inline_map: process_inlines.InlinedProductionMap,
     original_productions_len: u32,
     item_identity_ids: []const []const u32,
+    item_merge_identity_ids: []const []const u32,
 
     fn init(
         allocator: std.mem.Allocator,
@@ -869,8 +924,20 @@ const ParseItemSetBuilder = struct {
         } else productions;
 
         const variable_count = variableCountFromProductions(extended_productions);
-        const item_identity_ids = try computeItemIdentityIdsAlloc(allocator, extended_productions);
+        const item_identity_ids = try computeItemIdentityIdsAlloc(
+            allocator,
+            extended_productions,
+            extended_productions[0..original_productions_len],
+            true,
+        );
         errdefer freeItemIdentityIds(allocator, item_identity_ids);
+        const item_merge_identity_ids = try computeItemIdentityIdsAlloc(
+            allocator,
+            extended_productions,
+            extended_productions[0..original_productions_len],
+            false,
+        );
+        errdefer freeItemIdentityIds(allocator, item_merge_identity_ids);
         const reserved_first_set_ids = try computeReservedFirstSetIdsAlloc(
             allocator,
             extended_productions,
@@ -915,6 +982,7 @@ const ParseItemSetBuilder = struct {
             .inline_map = inline_map,
             .original_productions_len = original_productions_len,
             .item_identity_ids = item_identity_ids,
+            .item_merge_identity_ids = item_merge_identity_ids,
         };
     }
 
@@ -928,6 +996,7 @@ const ParseItemSetBuilder = struct {
         self.allocator.free(self.additions_per_non_terminal);
         self.allocator.free(self.reserved_first_set_ids);
         freeItemIdentityIds(self.allocator, self.item_identity_ids);
+        freeItemIdentityIds(self.allocator, self.item_merge_identity_ids);
         // The extended productions slice (and its cloned steps) are returned as
         // BuildResult.productions and owned by the caller — do not free them here.
         self.inline_map.deinit();
@@ -946,6 +1015,7 @@ const ParseItemSetBuilder = struct {
             .production_id = production_id,
             .step_index = step_index,
             .structural_identity = itemIdentityId(self.item_identity_ids, production_id, step_index),
+            .merge_identity = itemIdentityId(self.item_merge_identity_ids, production_id, step_index),
         };
     }
 
@@ -1006,12 +1076,14 @@ fn freeItemIdentityIds(allocator: std.mem.Allocator, identity_ids: []const []con
 fn computeItemIdentityIdsAlloc(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
+    field_productions: []const ProductionInfo,
+    compare_consumed_symbols: bool,
 ) ![]const []const u32 {
     const variable_count = variableCountFromProductions(productions);
-    const variable_has_fields = try computeVariableHasFieldsAlloc(allocator, productions, variable_count);
+    const variable_has_fields = try computeVariableHasFieldsAlloc(allocator, field_productions, variable_count);
     defer allocator.free(variable_has_fields);
 
-    const ids = try allocator.alloc([]const u32, productions.len);
+    const ids = try allocator.alloc([]u32, productions.len);
     errdefer allocator.free(ids);
 
     var initialized: usize = 0;
@@ -1019,43 +1091,84 @@ fn computeItemIdentityIdsAlloc(
         for (ids[0..initialized]) |slice| allocator.free(slice);
     }
 
-    var next_identity: u32 = 0;
     for (productions, 0..) |production, production_id| {
         const per_step = try allocator.alloc(u32, production.steps.len + 1);
         ids[production_id] = per_step;
         initialized += 1;
+    }
 
-        for (per_step, 0..) |*slot, step_index| {
-            var identity: ?u32 = null;
-            var prior_production_id: usize = 0;
-            while (prior_production_id <= production_id and identity == null) : (prior_production_id += 1) {
-                const prior_limit = if (prior_production_id == production_id) step_index else ids[prior_production_id].len;
-                var prior_step_index: usize = 0;
-                while (prior_step_index < prior_limit) : (prior_step_index += 1) {
-                    if (parseItemStructuralEql(
-                        productions,
-                        variable_has_fields,
-                        @intCast(production_id),
-                        @intCast(step_index),
-                        @intCast(prior_production_id),
-                        @intCast(prior_step_index),
-                    )) {
-                        identity = ids[prior_production_id][prior_step_index];
-                        break;
-                    }
-                }
-            }
+    var candidate_count: usize = 0;
+    for (productions) |production| candidate_count += production.steps.len + 1;
 
-            if (identity) |value| {
-                slot.* = value;
-            } else {
-                slot.* = next_identity;
+    const candidates = try allocator.alloc(ItemIdentityCandidate, candidate_count);
+    defer allocator.free(candidates);
+
+    var candidate_index: usize = 0;
+    for (productions, 0..) |production, production_id| {
+        for (0..production.steps.len + 1) |step_index| {
+            candidates[candidate_index] = .{
+                .production_id = @intCast(production_id),
+                .step_index = @intCast(step_index),
+            };
+            candidate_index += 1;
+        }
+    }
+    std.mem.sort(ItemIdentityCandidate, candidates, ItemIdentitySortContext{
+        .productions = productions,
+        .variable_has_fields = variable_has_fields,
+        .compare_consumed_symbols = compare_consumed_symbols,
+    }, itemIdentityCandidateLessThan);
+
+    var next_identity: u32 = 0;
+    var current_identity: u32 = 0;
+    var previous: ?ItemIdentityCandidate = null;
+    for (candidates) |candidate| {
+        if (previous) |prior| {
+            if (!parseItemStructuralEql(
+                productions,
+                variable_has_fields,
+                prior.production_id,
+                prior.step_index,
+                candidate.production_id,
+                candidate.step_index,
+                compare_consumed_symbols,
+            )) {
                 next_identity += 1;
+                current_identity = next_identity;
             }
         }
+        ids[candidate.production_id][candidate.step_index] = current_identity;
+        previous = candidate;
     }
 
     return ids;
+}
+
+const ItemIdentityCandidate = struct {
+    production_id: item.ProductionId,
+    step_index: u16,
+};
+
+const ItemIdentitySortContext = struct {
+    productions: []const ProductionInfo,
+    variable_has_fields: []const bool,
+    compare_consumed_symbols: bool,
+};
+
+fn itemIdentityCandidateLessThan(
+    context: ItemIdentitySortContext,
+    left: ItemIdentityCandidate,
+    right: ItemIdentityCandidate,
+) bool {
+    return parseItemStructuralCompare(
+        context.productions,
+        context.variable_has_fields,
+        left.production_id,
+        left.step_index,
+        right.production_id,
+        right.step_index,
+        context.compare_consumed_symbols,
+    ) == .lt;
 }
 
 fn parseItemStructuralEql(
@@ -1065,6 +1178,7 @@ fn parseItemStructuralEql(
     left_step_index: u16,
     right_id: item.ProductionId,
     right_step_index: u16,
+    compare_consumed_symbols: bool,
 ) bool {
     if (left_id >= productions.len or right_id >= productions.len) return false;
     const left = productions[left_id];
@@ -1086,12 +1200,69 @@ fn parseItemStructuralEql(
         if (index < step_index) {
             if (!aliasEql(left_step.alias, right_step.alias)) return false;
             if (!optionalStringEql(left_step.field_name, right_step.field_name)) return false;
-            if (left_has_preceding_inherited_fields and !symbolRefEql(left_step.symbol, right_step.symbol)) return false;
+            if (compare_consumed_symbols and
+                left_has_preceding_inherited_fields and
+                !symbolRefEql(left_step.symbol, right_step.symbol))
+            {
+                return false;
+            }
         } else if (!productionStepEqlForItemIdentity(left_step, right_step)) {
             return false;
         }
     }
     return true;
+}
+
+fn parseItemStructuralCompare(
+    productions: []const ProductionInfo,
+    variable_has_fields: []const bool,
+    left_id: item.ProductionId,
+    left_step_index: u16,
+    right_id: item.ProductionId,
+    right_step_index: u16,
+    compare_consumed_symbols: bool,
+) std.math.Order {
+    if (left_id >= productions.len or right_id >= productions.len) return compareScalar(left_id, right_id);
+    const left = productions[left_id];
+    const right = productions[right_id];
+
+    const step_order = compareScalar(left_step_index, right_step_index);
+    if (step_order != .eq) return step_order;
+
+    const lhs_order = compareScalar(left.lhs, right.lhs);
+    if (lhs_order != .eq) return lhs_order;
+
+    const dynamic_order = compareScalar(left.dynamic_precedence, right.dynamic_precedence);
+    if (dynamic_order != .eq) return dynamic_order;
+
+    const len_order = compareScalar(left.steps.len, right.steps.len);
+    if (len_order != .eq) return len_order;
+
+    const precedence_order = precedenceValueCompare(prevStepPrecedence(left.steps, left_step_index), prevStepPrecedence(right.steps, right_step_index));
+    if (precedence_order != .eq) return precedence_order;
+
+    const associativity_order = assocCompare(prevStepAssociativity(left.steps, left_step_index), prevStepAssociativity(right.steps, right_step_index));
+    if (associativity_order != .eq) return associativity_order;
+
+    const left_has_preceding_inherited_fields = itemHasPrecedingInheritedFields(productions, left, variable_has_fields, left_step_index);
+    const right_has_preceding_inherited_fields = itemHasPrecedingInheritedFields(productions, right, variable_has_fields, right_step_index);
+    const inherited_order = compareScalar(@intFromBool(left_has_preceding_inherited_fields), @intFromBool(right_has_preceding_inherited_fields));
+    if (inherited_order != .eq) return inherited_order;
+
+    const step_index: usize = left_step_index;
+    for (left.steps, right.steps, 0..) |left_step, right_step, index| {
+        const order = if (index < step_index)
+            consumedProductionStepCompare(
+                left_step,
+                right_step,
+                compare_consumed_symbols and left_has_preceding_inherited_fields,
+            )
+        else
+            productionStepCompareForItemIdentity(left_step, right_step);
+        if (order != .eq) return order;
+    }
+
+    return compareScalar(left_id, right_id);
 }
 
 fn itemHasPrecedingInheritedFields(
@@ -1141,10 +1312,15 @@ test "item identities keep consumed hidden field symbols distinct" {
         .{ .lhs = 2, .lhs_kind = .hidden, .steps = hidden_right_steps[0..] },
     };
 
-    const ids = try computeItemIdentityIdsAlloc(allocator, productions[0..]);
+    const ids = try computeItemIdentityIdsAlloc(allocator, productions[0..], productions[0..], true);
     defer freeItemIdentityIds(allocator, ids);
 
     try std.testing.expect(ids[0][1] != ids[1][1]);
+
+    const merge_ids = try computeItemIdentityIdsAlloc(allocator, productions[0..], productions[0..], false);
+    defer freeItemIdentityIds(allocator, merge_ids);
+
+    try std.testing.expectEqual(merge_ids[0][1], merge_ids[1][1]);
 }
 
 fn prevStepPrecedence(steps: []const syntax_ir.ProductionStep, step_index: usize) rules.PrecedenceValue {
@@ -1167,6 +1343,36 @@ fn productionStepEqlForItemIdentity(left: syntax_ir.ProductionStep, right: synta
         optionalStringEql(left.reserved_context_name, right.reserved_context_name);
 }
 
+fn consumedProductionStepCompare(
+    left: syntax_ir.ProductionStep,
+    right: syntax_ir.ProductionStep,
+    compare_symbol: bool,
+) std.math.Order {
+    const alias_order = aliasCompare(left.alias, right.alias);
+    if (alias_order != .eq) return alias_order;
+    const field_order = optionalStringCompare(left.field_name, right.field_name);
+    if (field_order != .eq) return field_order;
+    if (compare_symbol) {
+        const symbol_order = symbolRefCompare(left.symbol, right.symbol);
+        if (symbol_order != .eq) return symbol_order;
+    }
+    return .eq;
+}
+
+fn productionStepCompareForItemIdentity(left: syntax_ir.ProductionStep, right: syntax_ir.ProductionStep) std.math.Order {
+    const symbol_order = symbolRefCompare(left.symbol, right.symbol);
+    if (symbol_order != .eq) return symbol_order;
+    const precedence_order = precedenceValueCompare(left.precedence, right.precedence);
+    if (precedence_order != .eq) return precedence_order;
+    const assoc_order = assocCompare(left.associativity, right.associativity);
+    if (assoc_order != .eq) return assoc_order;
+    const alias_order = aliasCompare(left.alias, right.alias);
+    if (alias_order != .eq) return alias_order;
+    const field_order = optionalStringCompare(left.field_name, right.field_name);
+    if (field_order != .eq) return field_order;
+    return optionalStringCompare(left.reserved_context_name, right.reserved_context_name);
+}
+
 fn precedenceValueEql(left: rules.PrecedenceValue, right: rules.PrecedenceValue) bool {
     return switch (left) {
         .none => right == .none,
@@ -1179,6 +1385,54 @@ fn precedenceValueEql(left: rules.PrecedenceValue, right: rules.PrecedenceValue)
             else => false,
         },
     };
+}
+
+fn precedenceValueCompare(left: rules.PrecedenceValue, right: rules.PrecedenceValue) std.math.Order {
+    const left_tag = precedenceValueOrder(left);
+    const right_tag = precedenceValueOrder(right);
+    const tag_order = compareScalar(left_tag, right_tag);
+    if (tag_order != .eq) return tag_order;
+    return switch (left) {
+        .none => .eq,
+        .integer => |left_value| switch (right) {
+            .integer => |right_value| compareScalar(left_value, right_value),
+            else => .eq,
+        },
+        .name => |left_name| switch (right) {
+            .name => |right_name| std.mem.order(u8, left_name, right_name),
+            else => .eq,
+        },
+    };
+}
+
+fn precedenceValueOrder(value: rules.PrecedenceValue) u8 {
+    return switch (value) {
+        .none => 0,
+        .integer => 1,
+        .name => 2,
+    };
+}
+
+fn assocCompare(left: rules.Assoc, right: rules.Assoc) std.math.Order {
+    return compareScalar(assocOrder(left), assocOrder(right));
+}
+
+fn assocOrder(value: rules.Assoc) u8 {
+    return switch (value) {
+        .none => 0,
+        .left => 1,
+        .right => 2,
+    };
+}
+
+fn aliasCompare(left: ?rules.Alias, right: ?rules.Alias) std.math.Order {
+    if (left) |left_value| {
+        const right_value = right orelse return .gt;
+        const value_order = std.mem.order(u8, left_value.value, right_value.value);
+        if (value_order != .eq) return value_order;
+        return compareScalar(@intFromBool(left_value.named), @intFromBool(right_value.named));
+    }
+    return if (right == null) .eq else .lt;
 }
 
 fn aliasEql(left: ?rules.Alias, right: ?rules.Alias) bool {
@@ -1195,6 +1449,26 @@ fn optionalStringEql(left: ?[]const u8, right: ?[]const u8) bool {
         return std.mem.eql(u8, left_value, right_value);
     }
     return right == null;
+}
+
+fn optionalStringCompare(left: ?[]const u8, right: ?[]const u8) std.math.Order {
+    if (left) |left_value| {
+        const right_value = right orelse return .gt;
+        return std.mem.order(u8, left_value, right_value);
+    }
+    return if (right == null) .eq else .lt;
+}
+
+fn symbolRefCompare(left: syntax_ir.SymbolRef, right: syntax_ir.SymbolRef) std.math.Order {
+    const left_key = symbolRefSortKey(left);
+    const right_key = symbolRefSortKey(right);
+    return compareScalar(left_key, right_key);
+}
+
+fn compareScalar(left: anytype, right: @TypeOf(left)) std.math.Order {
+    if (left < right) return .lt;
+    if (left > right) return .gt;
+    return .eq;
 }
 
 fn productionCountsFromProductions(
@@ -1350,18 +1624,6 @@ fn addSymbolToSet(target: *first.SymbolSet, symbol: syntax_ir.SymbolRef) void {
     }
 }
 
-fn closureContextFollowSet(
-    allocator: std.mem.Allocator,
-    suffix_first: first.SymbolSet,
-    inherited_lookaheads: first.SymbolSet,
-) !first.SymbolSet {
-    var result = try cloneSymbolSet(allocator, suffix_first);
-    if (result.includes_epsilon) {
-        _ = mergeSymbolSetLookaheads(&result, inherited_lookaheads);
-    }
-    return result;
-}
-
 fn closureContextProductionEndFollowSet(
     allocator: std.mem.Allocator,
     inherited_lookaheads: first.SymbolSet,
@@ -1377,24 +1639,17 @@ const ClosureContext = struct {
 
     fn init(
         allocator: std.mem.Allocator,
-        suffix_first: first.SymbolSet,
-        suffix_reserved_word_set_id: u16,
+        following_tokens: first.SymbolSet,
+        following_reserved_word_set_id: u16,
         inherited_lookaheads: first.SymbolSet,
         inherited_reserved_word_set_id: u16,
     ) !@This() {
         return .{
-            .following_tokens = try closureContextFollowSet(allocator, suffix_first, inherited_lookaheads),
+            .following_tokens = try cloneSymbolSet(allocator, following_tokens),
             .production_end_follow = try closureContextProductionEndFollowSet(allocator, inherited_lookaheads),
-            .following_reserved_word_set_id = if (suffix_first.includes_epsilon)
-                @max(suffix_reserved_word_set_id, inherited_reserved_word_set_id)
-            else
-                suffix_reserved_word_set_id,
+            .following_reserved_word_set_id = following_reserved_word_set_id,
             .production_end_reserved_word_set_id = inherited_reserved_word_set_id,
         };
-    }
-
-    fn nullableSuffixNeedsContextFollow(self: @This()) bool {
-        return self.following_tokens.includes_epsilon;
     }
 
     fn deinit(self: @This(), allocator: std.mem.Allocator) void {
@@ -1402,6 +1657,24 @@ const ClosureContext = struct {
         freeSymbolSet(allocator, self.production_end_follow);
     }
 };
+
+fn immediateFollowingFirstSetAlloc(
+    allocator: std.mem.Allocator,
+    first_sets: first.FirstSets,
+    symbol: syntax_ir.SymbolRef,
+) !first.SymbolSet {
+    var result = try initEmptySymbolSet(allocator, first_sets.terminals_len, first_sets.externals_len);
+    switch (symbol) {
+        .end => result.includes_end = true,
+        .terminal => |index| result.terminals.set(index),
+        .external => |index| result.externals.set(index),
+        .non_terminal => |index| {
+            freeSymbolSet(allocator, result);
+            result = try cloneSymbolSet(allocator, first_sets.firstOfVariable(index));
+        },
+    }
+    return result;
+}
 
 fn optionalSymbolRefEql(a: ?syntax_ir.SymbolRef, b: ?syntax_ir.SymbolRef) bool {
     if (a) |left| {
@@ -1559,11 +1832,6 @@ fn computeTransitiveClosureAdditionsAlloc(
     inline_map: process_inlines.InlinedProductionMap,
     original_productions_len: u32,
 ) ![]const TransitiveClosureAddition {
-    // Inline non-terminals have no closure additions; they're substituted away.
-    if (isNonTerminalInline(variables_to_inline, root_non_terminal)) {
-        return &.{};
-    }
-
     const variable_count = variableCountFromProductions(productions);
     var infos = try allocator.alloc(?ClosureFollowInfo, variable_count);
     defer {
@@ -1597,17 +1865,13 @@ fn computeTransitiveClosureAdditionsAlloc(
         freeSymbolSet(allocator, entry.lookaheads);
         if (!changed) continue;
 
-        for (productions) |production| {
+        for (productions[0..original_productions_len]) |production| {
             if (production.augmented) continue;
             if (production.lhs != entry.non_terminal) continue;
             if (production.steps.len == 0) continue;
 
             switch (production.steps[0].symbol) {
                 .non_terminal => |next_non_terminal| {
-                    // Skip inline variables: their expansions appear as extra productions
-                    // with the same lhs, so the correct step[0] non-terminals are followed
-                    // via those extra productions instead.
-                    if (isNonTerminalInline(variables_to_inline, next_non_terminal)) continue;
                     const remainder = production.steps[1..];
                     if (remainder.len == 0) {
                         const info = infos[entry.non_terminal].?;
@@ -1639,6 +1903,10 @@ fn computeTransitiveClosureAdditionsAlloc(
 
     for (infos, 0..) |maybe_info, non_terminal| {
         const info = maybe_info orelse continue;
+        // Upstream still walks inline variables while computing follow info, but
+        // inline variables do not contribute their own closure additions. Their
+        // productions are substituted from the InlinedProductionMap instead.
+        if (isNonTerminalInline(variables_to_inline, @intCast(non_terminal))) continue;
         // Only iterate original productions; extra productions are added via inlinedProductions().
         for (productions[0..original_productions_len], 0..) |production, production_id| {
             if (production.augmented) continue;
@@ -1649,7 +1917,7 @@ fn computeTransitiveClosureAdditionsAlloc(
                     .non_terminal => |nt| if (isNonTerminalInline(variables_to_inline, nt)) {
                         if (inline_map.inlinedProductions(@intCast(production_id), 0)) |exp_ids| {
                             for (exp_ids) |exp_id| {
-                                try additions.append(.{
+                                try appendTransitiveClosureAdditionDedup(allocator, &additions, .{
                                     .production_id = exp_id,
                                     .info = .{
                                         .lookaheads = try cloneSymbolSet(allocator, info.lookaheads),
@@ -1664,7 +1932,7 @@ fn computeTransitiveClosureAdditionsAlloc(
                     else => {},
                 }
             }
-            try additions.append(.{
+            try appendTransitiveClosureAdditionDedup(allocator, &additions, .{
                 .production_id = @intCast(production_id),
                 .info = .{
                     .lookaheads = try cloneSymbolSet(allocator, info.lookaheads),
@@ -1676,6 +1944,27 @@ fn computeTransitiveClosureAdditionsAlloc(
     }
 
     return try additions.toOwnedSlice();
+}
+
+fn appendTransitiveClosureAdditionDedup(
+    allocator: std.mem.Allocator,
+    additions: *std.array_list.Managed(TransitiveClosureAddition),
+    candidate: TransitiveClosureAddition,
+) !void {
+    for (additions.items) |existing| {
+        if (transitiveClosureAdditionEql(existing, candidate)) {
+            freeSymbolSet(allocator, candidate.info.lookaheads);
+            return;
+        }
+    }
+    try additions.append(candidate);
+}
+
+fn transitiveClosureAdditionEql(left: TransitiveClosureAddition, right: TransitiveClosureAddition) bool {
+    return left.production_id == right.production_id and
+        first.SymbolSet.eql(left.info.lookaheads, right.info.lookaheads) and
+        left.info.reserved_lookaheads == right.info.reserved_lookaheads and
+        left.info.propagates_lookaheads == right.info.propagates_lookaheads;
 }
 
 fn buildClosureExpansionItemsAlloc(
@@ -1697,6 +1986,7 @@ fn buildClosureExpansionItemsAlloc(
             &item_indexes,
             addition.production_id,
             item_set_builder.item_identity_ids,
+            item_set_builder.item_merge_identity_ids,
             addition.info.lookaheads,
             addition.info.reserved_lookaheads,
             addition.info.propagates_lookaheads,
@@ -1716,6 +2006,7 @@ fn appendGeneratedItems(
     item_indexes: *ClosureItemIndexMap,
     production_id: item.ProductionId,
     item_identity_ids: []const []const u32,
+    item_merge_identity_ids: []const []const u32,
     lookaheads: first.SymbolSet,
     reserved_lookaheads: u16,
     propagates_lookaheads: bool,
@@ -1725,28 +2016,23 @@ fn appendGeneratedItems(
     options: BuildOptions,
 ) !void {
     if (options.closure_lookahead_mode == .none) {
-        const has_any_signal = propagates_lookaheads or
-            lookaheads.includes_end or
-            countPresent(lookaheads.terminals) > 0 or
-            countPresent(lookaheads.externals) > 0;
-        if (has_any_signal) {
-            try appendOrMergeClosureEntry(
+        try appendOrMergeClosureEntry(
+            allocator,
+            generated,
+            item_indexes,
+            try item.ParseItemSetEntry.initEmpty(
                 allocator,
-                generated,
-                item_indexes,
-                try item.ParseItemSetEntry.initEmpty(
-                    allocator,
-                    first_sets.terminals_len,
-                    first_sets.externals_len,
-                    .{
-                        .production_id = production_id,
-                        .step_index = 0,
-                        .structural_identity = itemIdentityId(item_identity_ids, production_id, 0),
-                    },
-                ),
-                true,
-            );
-        }
+                first_sets.terminals_len,
+                first_sets.externals_len,
+                .{
+                    .production_id = production_id,
+                    .step_index = 0,
+                    .structural_identity = itemIdentityId(item_identity_ids, production_id, 0),
+                    .merge_identity = itemIdentityId(item_merge_identity_ids, production_id, 0),
+                },
+            ),
+            true,
+        );
         return;
     }
 
@@ -1758,10 +2044,9 @@ fn appendGeneratedItems(
             .production_id = production_id,
             .step_index = 0,
             .structural_identity = itemIdentityId(item_identity_ids, production_id, 0),
+            .merge_identity = itemIdentityId(item_merge_identity_ids, production_id, 0),
         },
     );
-    var has_any_signal = propagates_lookaheads or lookaheads.includes_end;
-
     if (lookaheads.includes_end) {
         item.addLookahead(&generated_entry.lookaheads, .{ .end = {} });
     }
@@ -1769,13 +2054,11 @@ fn appendGeneratedItems(
     var effective_terminal_iter = lookaheads.terminals.bits.iterator(.{});
     while (effective_terminal_iter.next()) |index| {
         item.addLookahead(&generated_entry.lookaheads, .{ .terminal = @intCast(index) });
-        has_any_signal = true;
     }
 
     var effective_external_iter = lookaheads.externals.bits.iterator(.{});
     while (effective_external_iter.next()) |index| {
         item.addLookahead(&generated_entry.lookaheads, .{ .external = @intCast(index) });
-        has_any_signal = true;
     }
 
     if (propagates_lookaheads) {
@@ -1786,13 +2069,11 @@ fn appendGeneratedItems(
         while (following_terminal_iter.next()) |index| {
             const lookahead: syntax_ir.SymbolRef = .{ .terminal = @intCast(index) };
             if (!item.containsLookahead(generated_entry.lookaheads, lookahead)) item.addLookahead(&generated_entry.lookaheads, lookahead);
-            has_any_signal = true;
         }
         var following_external_iter = context.following_tokens.externals.bits.iterator(.{});
         while (following_external_iter.next()) |index| {
             const lookahead: syntax_ir.SymbolRef = .{ .external = @intCast(index) };
             if (!item.containsLookahead(generated_entry.lookaheads, lookahead)) item.addLookahead(&generated_entry.lookaheads, lookahead);
-            has_any_signal = true;
         }
     }
 
@@ -1811,11 +2092,6 @@ fn appendGeneratedItems(
                 );
             }
         }
-    }
-
-    if (!has_any_signal) {
-        freeSymbolSet(allocator, generated_entry.lookaheads);
-        return;
     }
 
     try appendOrMergeClosureEntry(allocator, generated, item_indexes, generated_entry, true);
@@ -1856,6 +2132,7 @@ pub const CoarseTransitionSpec = struct {
 pub const LexStateTerminalConflictMap = struct {
     terminal_count: usize,
     conflicts: []const bool,
+    match_shorter_or_longer: []const bool = &.{},
     conflict_or_prefixes: []const bool = &.{},
     overlaps: []const bool = &.{},
     merge_overlaps: []const bool = &.{},
@@ -1866,6 +2143,18 @@ pub const LexStateTerminalConflictMap = struct {
     pub fn conflictsWith(self: LexStateTerminalConflictMap, left: usize, right: usize) bool {
         if (left >= self.terminal_count or right >= self.terminal_count) return true;
         return self.conflicts[left * self.terminal_count + right];
+    }
+
+    pub fn matchesShorterOrLonger(self: LexStateTerminalConflictMap, left: usize, right: usize) bool {
+        if (left >= self.terminal_count or right >= self.terminal_count) return true;
+        if (self.match_shorter_or_longer.len == self.terminal_count * self.terminal_count) {
+            return self.match_shorter_or_longer[left * self.terminal_count + right];
+        }
+        return self.conflictsWith(left, right);
+    }
+
+    pub fn isKeyword(self: LexStateTerminalConflictMap, token: usize) bool {
+        return token < self.keyword_tokens.len and self.keyword_tokens[token];
     }
 
     pub fn conflictsOrPrefixesWith(self: LexStateTerminalConflictMap, left: usize, right: usize) bool {
@@ -1916,6 +2205,7 @@ pub const BuildOptions = struct {
     reserved_word_context_names: []const []const u8 = &.{},
     non_terminal_extra_symbols: []const syntax_ir.SymbolRef = &.{},
     terminal_extra_symbols: []const syntax_ir.SymbolRef = &.{},
+    state_zero_error_recovery: bool = false,
     lex_state_terminal_conflicts: ?LexStateTerminalConflictMap = null,
     minimize_states: bool = false,
     strict_expected_conflicts: bool = false,
@@ -1935,7 +2225,8 @@ fn shouldUseCoarseTransition(options: BuildOptions, source_state_id: state.State
 }
 
 fn canUseSuccessorSeedStateCache(options: BuildOptions) bool {
-    return options.closure_pressure_mode == .none and options.coarse_transitions.len == 0;
+    _ = options;
+    return false;
 }
 
 pub fn minimizeWordToken(grammar: syntax_ir.SyntaxGrammar) ?syntax_ir.SymbolRef {
@@ -1960,14 +2251,14 @@ pub fn minimizeWordToken(grammar: syntax_ir.SyntaxGrammar) ?syntax_ir.SymbolRef 
 fn unitReductionOptionsAlloc(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
+    field_productions: []const ProductionInfo,
     grammar: syntax_ir.SyntaxGrammar,
     simple_alias_symbols: []const syntax_ir.SymbolRef,
+    production_info_ids: []const ?u16,
 ) !minimize.UnitReductionOptions {
     const variable_count = variableCountFromProductions(productions);
-    const variable_has_fields = try computeVariableHasFieldsAlloc(allocator, productions, variable_count);
+    const variable_has_fields = try computeVariableHasFieldsAlloc(allocator, field_productions, variable_count);
     defer allocator.free(variable_has_fields);
-    const production_info_ids = try productionInfoIdsForReduceEquivalenceAlloc(allocator, productions);
-    defer allocator.free(production_info_ids);
 
     const production_infos = try allocator.alloc(minimize.UnitReductionProduction, productions.len);
     errdefer allocator.free(production_infos);
@@ -1977,7 +2268,7 @@ fn unitReductionOptionsAlloc(
             .child_count = @intCast(@min(production.steps.len, std.math.maxInt(u16))),
             .dynamic_precedence = production.dynamic_precedence,
             .metadata_empty = productionMetadataEmptyForUnitReduction(productions, variable_has_fields, production),
-            .production_info_id = production_info_ids[production_id],
+            .production_info_id = if (production_id < production_info_ids.len) production_info_ids[production_id] else null,
         };
     }
 
@@ -1989,7 +2280,7 @@ fn unitReductionOptionsAlloc(
             .simple_alias = symbolRefIn(simple_alias_symbols, .{ .non_terminal = @intCast(index) }),
             .supertype = symbolRefIn(grammar.supertype_symbols, .{ .non_terminal = @intCast(index) }),
             .extra = symbolRefIn(grammar.extra_symbols, .{ .non_terminal = @intCast(index) }),
-            .aliased = symbolIsAliasedInProductions(productions, .{ .non_terminal = @intCast(index) }),
+            .aliased = symbolIsAliasedInGrammar(grammar, .{ .non_terminal = @intCast(index) }),
         };
     }
 
@@ -2028,15 +2319,17 @@ const ReduceProductionField = struct {
 
 const ReduceMetadataVisitState = enum { pending, visiting, done };
 
-fn productionInfoIdsForReduceEquivalenceAlloc(
+fn productionInfoIdsForCompletedItemsAlloc(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
+    field_productions: []const ProductionInfo,
+    parse_states: []const state.ParseState,
 ) ![]const ?u16 {
     const ids = try allocator.alloc(?u16, productions.len);
     errdefer allocator.free(ids);
     @memset(ids, null);
 
-    const variable_fields = try buildInheritedFieldNamesForReduceMetadataAlloc(allocator, productions);
+    const variable_fields = try buildInheritedFieldNamesForReduceMetadataAlloc(allocator, productions, field_productions);
     defer {
         for (variable_fields) |fields| allocator.free(fields);
         allocator.free(variable_fields);
@@ -2048,30 +2341,45 @@ fn productionInfoIdsForReduceEquivalenceAlloc(
         metadata.deinit(allocator);
     }
 
-    for (productions, 0..) |production, production_id| {
-        if (!production.production_metadata_eligible) continue;
-        var current = try reduceProductionMetadataAlloc(allocator, productions, variable_fields, production);
-        errdefer current.deinit(allocator);
-        if (findReduceProductionMetadata(metadata.items, current)) |existing| {
-            current.deinit(allocator);
-            ids[production_id] = @intCast(@min(existing, std.math.maxInt(u16)));
-        } else {
-            const new_id = metadata.items.len;
-            try metadata.append(allocator, current);
-            ids[production_id] = @intCast(@min(new_id, std.math.maxInt(u16)));
-        }
-    }
-
-    for (productions, 0..) |production, production_id| {
-        if (ids[production_id] != null) continue;
-        const current = try reduceProductionMetadataAlloc(allocator, productions, variable_fields, production);
-        defer current.deinit(allocator);
-        if (findReduceProductionMetadata(metadata.items, current)) |existing| {
-            ids[production_id] = @intCast(@min(existing, std.math.maxInt(u16)));
+    for (parse_states) |parse_state| {
+        for (parse_state.items) |entry| {
+            if (entry.item.production_id >= productions.len) continue;
+            const production = productions[entry.item.production_id];
+            if (production.augmented or entry.item.step_index != production.steps.len) continue;
+            try ensureProductionInfoIdForProduction(
+                allocator,
+                productions,
+                variable_fields,
+                &metadata,
+                ids,
+                entry.item.production_id,
+            );
         }
     }
 
     return ids;
+}
+
+fn ensureProductionInfoIdForProduction(
+    allocator: std.mem.Allocator,
+    productions: []const ProductionInfo,
+    variable_fields: []const []const []const u8,
+    metadata: *std.ArrayListUnmanaged(ReduceProductionMetadata),
+    ids: []?u16,
+    production_id: item.ProductionId,
+) !void {
+    if (production_id >= productions.len or ids[production_id] != null) return;
+
+    var current = try reduceProductionMetadataAlloc(allocator, productions, variable_fields, productions[production_id]);
+    errdefer current.deinit(allocator);
+    if (findReduceProductionMetadata(metadata.items, current)) |existing| {
+        current.deinit(allocator);
+        ids[production_id] = @intCast(@min(existing, std.math.maxInt(u16)));
+    } else {
+        const new_id = metadata.items.len;
+        try metadata.append(allocator, current);
+        ids[production_id] = @intCast(@min(new_id, std.math.maxInt(u16)));
+    }
 }
 
 fn reduceProductionMetadataAlloc(
@@ -2167,6 +2475,7 @@ fn reduceProductionFieldLessThan(_: void, left: ReduceProductionField, right: Re
 fn buildInheritedFieldNamesForReduceMetadataAlloc(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
+    field_productions: []const ProductionInfo,
 ) ![]const []const []const u8 {
     const variable_count = variableCountFromProductions(productions);
     const fields = try allocator.alloc([]const []const u8, variable_count);
@@ -2178,7 +2487,7 @@ fn buildInheritedFieldNamesForReduceMetadataAlloc(
     @memset(states, .pending);
 
     for (0..variable_count) |variable_index| {
-        try collectInheritedFieldNamesForReduceMetadata(allocator, productions, fields, states, @intCast(variable_index));
+        try collectInheritedFieldNamesForReduceMetadata(allocator, field_productions, fields, states, @intCast(variable_index));
     }
 
     return fields;
@@ -2333,12 +2642,13 @@ fn variableIsVisibleForUnitReduction(productions: []const ProductionInfo, variab
     return kind == .named or kind == .anonymous;
 }
 
-fn symbolIsAliasedInProductions(productions: []const ProductionInfo, symbol: syntax_ir.SymbolRef) bool {
-    for (productions) |production| {
-        if (production.augmented) continue;
-        for (production.steps) |step| {
-            if (step.alias == null) continue;
-            if (symbolRefEql(step.symbol, symbol)) return true;
+fn symbolIsAliasedInGrammar(grammar: syntax_ir.SyntaxGrammar, symbol: syntax_ir.SymbolRef) bool {
+    for (grammar.variables) |variable| {
+        for (variable.productions) |production| {
+            for (production.steps) |step| {
+                if (step.alias == null) continue;
+                if (symbolRefEql(step.symbol, symbol)) return true;
+            }
         }
     }
     return false;
@@ -2373,7 +2683,9 @@ fn reservedContextIndex(names: []const []const u8, target: []const u8) ?usize {
 }
 
 fn reservedWordSetIdForStep(step: syntax_ir.ProductionStep, names: []const []const u8) u16 {
-    const context_name = step.reserved_context_name orelse return 0;
+    const context_name = step.reserved_context_name orelse {
+        return if (names.len == 0) 0 else 1;
+    };
     const index = reservedContextIndex(names, context_name) orelse return 0;
     return @intCast(@min(index + 1, std.math.maxInt(u16)));
 }
@@ -2468,6 +2780,7 @@ pub const ProductionInfo = struct {
 
 pub const BuildResult = struct {
     productions: []const ProductionInfo,
+    reduce_production_info_ids: []const ?u16 = &.{},
     precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
     expected_conflicts: []const []const syntax_ir.SymbolRef = &.{},
     states: []const state.ParseState,
@@ -2560,6 +2873,7 @@ const LexStateAssignmentOptions = struct {
     word_token: ?syntax_ir.SymbolRef = null,
     reserved_word_sets: []const []const syntax_ir.SymbolRef = &.{},
     coincident_tokens: []const bool = &.{},
+    state_zero_error_recovery: bool = false,
 };
 
 fn assignLexStateIdsAlloc(
@@ -2620,10 +2934,23 @@ fn assignLexStateIdsAlloc(
         @memset(terminal_set, false);
         errdefer allocator.free(terminal_set);
 
-        for (resolved_actions.groupsForState(parse_state.id)) |group| {
-            switch (group.symbol) {
-                .terminal => |index| terminal_set[index] = true,
-                .end, .non_terminal, .external => {},
+        if (options.state_zero_error_recovery and parse_state.id == 0) {
+            if (terminal_conflicts) |terminal_conflict_map| {
+                populateStateZeroRecoveryTerminalSet(terminal_set, terminal_conflict_map, coincident_tokens, options.word_token);
+            } else {
+                for (resolved_actions.groupsForState(parse_state.id)) |group| {
+                    switch (group.symbol) {
+                        .terminal => |index| terminal_set[index] = true,
+                        .end, .non_terminal, .external => {},
+                    }
+                }
+            }
+        } else {
+            for (resolved_actions.groupsForState(parse_state.id)) |group| {
+                switch (group.symbol) {
+                    .terminal => |index| terminal_set[index] = true,
+                    .end, .non_terminal, .external => {},
+                }
             }
         }
         addReservedWordTokensToLexSet(terminal_set, parse_state.reserved_word_set_id, options.reserved_word_sets);
@@ -2761,6 +3088,49 @@ fn normalizeKeywordTokensInLexSet(
         saw_keyword = true;
     }
     if (saw_keyword) terminal_set[word_index] = true;
+}
+
+fn populateStateZeroRecoveryTerminalSet(
+    terminal_set: []bool,
+    terminal_conflict_map: LexStateTerminalConflictMap,
+    coincident_tokens: []const bool,
+    word_token: ?syntax_ir.SymbolRef,
+) void {
+    const terminal_count = @min(terminal_set.len, terminal_conflict_map.terminal_count);
+    for (0..terminal_count) |index| {
+        const conflict_free = stateZeroRecoveryTokenIsConflictFree(index, terminal_conflict_map, coincident_tokens);
+        const include = conflict_free or
+            terminal_conflict_map.isKeyword(index) or
+            symbolRefEql(word_token orelse .{ .end = {} }, .{ .terminal = @intCast(index) }) or
+            !stateZeroRecoveryTokenConflictsWithConflictFree(index, terminal_conflict_map, coincident_tokens);
+        terminal_set[index] = include;
+    }
+}
+
+fn stateZeroRecoveryTokenIsConflictFree(
+    token: usize,
+    terminal_conflict_map: LexStateTerminalConflictMap,
+    coincident_tokens: []const bool,
+) bool {
+    for (0..terminal_conflict_map.terminal_count) |other| {
+        if (token == other) continue;
+        if (coincidentTokenContains(coincident_tokens, terminal_conflict_map.terminal_count, token, other)) continue;
+        if (terminal_conflict_map.matchesShorterOrLonger(token, other)) return false;
+    }
+    return true;
+}
+
+fn stateZeroRecoveryTokenConflictsWithConflictFree(
+    token: usize,
+    terminal_conflict_map: LexStateTerminalConflictMap,
+    coincident_tokens: []const bool,
+) bool {
+    for (0..terminal_conflict_map.terminal_count) |other| {
+        if (!stateZeroRecoveryTokenIsConflictFree(other, terminal_conflict_map, coincident_tokens)) continue;
+        if (coincidentTokenContains(coincident_tokens, terminal_conflict_map.terminal_count, token, other)) continue;
+        if (terminal_conflict_map.conflictsWith(token, other)) return true;
+    }
+    return false;
 }
 
 fn lexStateMergeStats(
@@ -3103,8 +3473,6 @@ pub fn buildStatesWithOptions(
             .{ constructed.states.len, constructed.grouped_actions.states.len },
         );
     }
-    const action_projection = try actions.actionTableFromGroupedAlloc(allocator, constructed.grouped_actions);
-
     timer = maybeStartTimer(progress_log);
     stage_profile_timer = profileTimer(profile_log);
     if (progress_log) std.debug.print("[parse_table/build] stage resolve_action_table\n", .{});
@@ -3152,15 +3520,25 @@ pub fn buildStatesWithOptions(
         }
     }
 
-    if (options.minimize_states) {
-        const unit_reduction_options = try unitReductionOptionsAlloc(
-            allocator,
-            item_set_builder.productions,
-            grammar,
-            options.simple_alias_symbols,
-        );
-        defer freeUnitReductionOptions(allocator, unit_reduction_options);
+    const field_productions = item_set_builder.productions[0..item_set_builder.original_productions_len];
+    const production_info_ids = try productionInfoIdsForCompletedItemsAlloc(
+        allocator,
+        item_set_builder.productions,
+        field_productions,
+        constructed.states,
+    );
 
+    const unit_reduction_options = try unitReductionOptionsAlloc(
+        allocator,
+        item_set_builder.productions,
+        field_productions,
+        grammar,
+        options.simple_alias_symbols,
+        production_info_ids,
+    );
+    defer freeUnitReductionOptions(allocator, unit_reduction_options);
+
+    if (options.minimize_states) {
         timer = maybeStartTimer(progress_log);
         stage_profile_timer = profileTimer(profile_log);
         if (progress_log) logBuildStart("minimize_states");
@@ -3190,6 +3568,7 @@ pub fn buildStatesWithOptions(
                 .word_token = minimizeWordToken(grammar),
                 .reserved_word_sets = options.reserved_word_sets,
                 .coincident_tokens = pre_minimize_coincident_tokens,
+                .state_zero_error_recovery = options.state_zero_error_recovery,
             },
         );
         const fragile_token_sets = try buildFragileTokenSetsAlloc(
@@ -3199,9 +3578,11 @@ pub fn buildStatesWithOptions(
             options.lex_state_terminal_conflicts,
         );
         const external_internal_tokens = try externalInternalTokensAlloc(allocator, options.lex_state_terminal_conflicts);
+        const minimized_action_projection = try actionTableFromResolvedAlloc(allocator, minimized.resolved_actions);
         logProfileDone("assign_lex_state_ids", stage_profile_timer);
         return .{
             .productions = item_set_builder.productions,
+            .reduce_production_info_ids = production_info_ids,
             .precedence_orderings = grammar.precedence_orderings,
             .expected_conflicts = grammar.expected_conflicts,
             .states = minimized_lex_states.states,
@@ -3211,34 +3592,44 @@ pub fn buildStatesWithOptions(
             .external_internal_tokens = external_internal_tokens,
             .recovery_coincident_tokens = pre_minimize_coincident_tokens,
             .recovery_coincident_terminal_count = pre_minimize_coincident_terminal_count,
-            .actions = action_projection,
+            .actions = minimized_action_projection,
             .resolved_actions = minimized.resolved_actions,
         };
     }
 
-    stage_profile_timer = profileTimer(profile_log);
-    const lex_states = try assignLexStateIdsAlloc(
+    const compacted = try minimize.compactUnitReductionsAlloc(
         allocator,
         constructed.states,
         resolved_actions_with_extras,
+        unit_reduction_options,
+    );
+
+    stage_profile_timer = profileTimer(profile_log);
+    const lex_states = try assignLexStateIdsAlloc(
+        allocator,
+        compacted.states,
+        compacted.resolved_actions,
         options.lex_state_terminal_conflicts,
         .{
             .word_token = minimizeWordToken(grammar),
             .reserved_word_sets = options.reserved_word_sets,
             .coincident_tokens = pre_minimize_coincident_tokens,
+            .state_zero_error_recovery = options.state_zero_error_recovery,
         },
     );
     const fragile_token_sets = try buildFragileTokenSetsAlloc(
         allocator,
         lex_states.states,
-        resolved_actions_with_extras,
+        compacted.resolved_actions,
         options.lex_state_terminal_conflicts,
     );
     const external_internal_tokens = try externalInternalTokensAlloc(allocator, options.lex_state_terminal_conflicts);
+    const compacted_action_projection = try actionTableFromResolvedAlloc(allocator, compacted.resolved_actions);
     logProfileDone("assign_lex_state_ids", stage_profile_timer);
 
     return .{
         .productions = item_set_builder.productions,
+        .reduce_production_info_ids = production_info_ids,
         .precedence_orderings = grammar.precedence_orderings,
         .expected_conflicts = grammar.expected_conflicts,
         .states = lex_states.states,
@@ -3248,9 +3639,52 @@ pub fn buildStatesWithOptions(
         .external_internal_tokens = external_internal_tokens,
         .recovery_coincident_tokens = pre_minimize_coincident_tokens,
         .recovery_coincident_terminal_count = pre_minimize_coincident_terminal_count,
-        .actions = action_projection,
-        .resolved_actions = resolved_actions_with_extras,
+        .actions = compacted_action_projection,
+        .resolved_actions = compacted.resolved_actions,
     };
+}
+
+fn actionTableFromResolvedAlloc(
+    allocator: std.mem.Allocator,
+    resolved_actions: resolution.ResolvedActionTable,
+) std.mem.Allocator.Error!actions.ActionTable {
+    const states = try allocator.alloc(actions.StateActions, resolved_actions.states.len);
+    errdefer allocator.free(states);
+
+    for (resolved_actions.states, 0..) |resolved_state, state_index| {
+        var entry_count: usize = 0;
+        for (resolved_state.groups) |group| {
+            entry_count += switch (group.decision) {
+                .chosen => 1,
+                .unresolved => group.candidate_actions.len,
+            };
+        }
+
+        const entries = try allocator.alloc(actions.ActionEntry, entry_count);
+        errdefer allocator.free(entries);
+        var entry_index: usize = 0;
+        for (resolved_state.groups) |group| {
+            switch (group.decision) {
+                .chosen => |action| {
+                    entries[entry_index] = .{ .symbol = group.symbol, .action = action };
+                    entry_index += 1;
+                },
+                .unresolved => {
+                    for (group.candidate_actions) |action| {
+                        entries[entry_index] = .{ .symbol = group.symbol, .action = action };
+                        entry_index += 1;
+                    }
+                },
+            }
+        }
+
+        states[state_index] = .{
+            .state_id = resolved_state.state_id,
+            .entries = entries,
+        };
+    }
+
+    return .{ .states = states };
 }
 
 fn buildFragileTokenSetsAlloc(
@@ -3386,10 +3820,10 @@ fn symbolRefLessThan(left: syntax_ir.SymbolRef, right: syntax_ir.SymbolRef) bool
 
 fn symbolRefSortKey(symbol: syntax_ir.SymbolRef) u64 {
     return switch (symbol) {
-        .end => 0,
-        .non_terminal => |index| (@as(u64, 1) << 32) | index,
-        .terminal => |index| (@as(u64, 2) << 32) | index,
-        .external => |index| (@as(u64, 3) << 32) | index,
+        .external => |index| index,
+        .end => @as(u64, 1) << 32,
+        .terminal => |index| (@as(u64, 3) << 32) | index,
+        .non_terminal => |index| (@as(u64, 4) << 32) | index,
     };
 }
 
@@ -3632,6 +4066,10 @@ fn auxiliarySymbolSequenceForSuccessorsAlloc(
     existing: []const state.AuxiliarySymbolInfo,
     state_items: []const item.ParseItemSetEntry,
     productions: []const ProductionInfo,
+    item_identity_ids: []const []const u32,
+    item_merge_identity_ids: []const []const u32,
+    variables_to_inline: []const syntax_ir.SymbolRef,
+    inline_map: process_inlines.InlinedProductionMap,
 ) ![]const state.AuxiliarySymbolInfo {
     var result = std.array_list.Managed(state.AuxiliarySymbolInfo).init(allocator);
     defer result.deinit();
@@ -3650,37 +4088,101 @@ fn auxiliarySymbolSequenceForSuccessorsAlloc(
         );
     }
 
-    var added_symbols = std.array_list.Managed(syntax_ir.SymbolRef).init(allocator);
-    defer added_symbols.deinit();
     for (state_items) |entry| {
-        if (entry.item.production_id >= productions.len) continue;
-        const production = productions[entry.item.production_id];
-        if (entry.item.step_index >= production.steps.len) continue;
-        const symbol = production.steps[entry.item.step_index].symbol;
-        const non_terminal = switch (symbol) {
-            .non_terminal => |index| index,
-            else => continue,
-        };
-        if (!symbolIsAuxiliaryLhs(productions, non_terminal)) continue;
-        if (containsSymbolRef(added_symbols.items, symbol)) continue;
-        try added_symbols.append(symbol);
-
-        try appendAuxiliaryInfoDedup(
+        try appendAuxiliaryInfosForEntry(
             allocator,
             &result,
-            .{
-                .auxiliary_symbol = symbol,
-                .parent_symbols = try parentSymbolsForAuxiliaryAlloc(
-                    allocator,
-                    state_items,
-                    productions,
-                    symbol,
-                ),
-            },
+            entry,
+            state_items,
+            productions,
+            item_identity_ids,
+            item_merge_identity_ids,
+            variables_to_inline,
+            inline_map,
+            0,
         );
     }
 
     return try result.toOwnedSlice();
+}
+
+fn appendAuxiliaryInfosForEntry(
+    allocator: std.mem.Allocator,
+    result: *std.array_list.Managed(state.AuxiliarySymbolInfo),
+    entry: item.ParseItemSetEntry,
+    state_items: []const item.ParseItemSetEntry,
+    productions: []const ProductionInfo,
+    item_identity_ids: []const []const u32,
+    item_merge_identity_ids: []const []const u32,
+    variables_to_inline: []const syntax_ir.SymbolRef,
+    inline_map: process_inlines.InlinedProductionMap,
+    depth: usize,
+) !void {
+    const parse_item = entry.item;
+    if (parse_item.production_id >= productions.len) return;
+    const production = productions[parse_item.production_id];
+    if (parse_item.step_index >= production.steps.len) return;
+    const symbol = production.steps[parse_item.step_index].symbol;
+    const non_terminal = switch (symbol) {
+        .non_terminal => |index| index,
+        else => return,
+    };
+
+    if (isNonTerminalInline(variables_to_inline, non_terminal)) {
+        if (depth > productions.len) return;
+        if (inline_map.inlinedProductions(parse_item.production_id, parse_item.step_index)) |inlined_ids| {
+            for (inlined_ids) |inlined_id| {
+                var expanded_entry = entry;
+                expanded_entry.item = .{
+                    .production_id = inlined_id,
+                    .step_index = parse_item.step_index,
+                    .has_preceding_inherited_fields = parse_item.has_preceding_inherited_fields,
+                    .structural_identity = itemIdentityId(
+                        item_identity_ids,
+                        inlined_id,
+                        parse_item.step_index,
+                    ),
+                    .merge_identity = itemIdentityId(
+                        item_merge_identity_ids,
+                        inlined_id,
+                        parse_item.step_index,
+                    ),
+                };
+                try appendAuxiliaryInfosForEntry(
+                    allocator,
+                    result,
+                    expanded_entry,
+                    state_items,
+                    productions,
+                    item_identity_ids,
+                    item_merge_identity_ids,
+                    variables_to_inline,
+                    inline_map,
+                    depth + 1,
+                );
+            }
+        }
+        return;
+    }
+
+    if (!symbolIsAuxiliaryLhs(productions, non_terminal)) return;
+    try appendAuxiliaryInfoDedup(
+        allocator,
+        result,
+        .{
+            .auxiliary_symbol = symbol,
+            .parent_symbols = try parentSymbolsForAuxiliaryExpandedAlloc(
+                allocator,
+                state_items,
+                productions,
+                item_identity_ids,
+                item_merge_identity_ids,
+                variables_to_inline,
+                inline_map,
+                symbol,
+            ),
+        },
+    );
 }
 
 fn appendAuxiliaryInfoDedup(
@@ -3716,6 +4218,101 @@ fn parentSymbolsForAuxiliaryAlloc(
     return try parents.toOwnedSlice();
 }
 
+fn parentSymbolsForAuxiliaryExpandedAlloc(
+    allocator: std.mem.Allocator,
+    state_items: []const item.ParseItemSetEntry,
+    productions: []const ProductionInfo,
+    item_identity_ids: []const []const u32,
+    item_merge_identity_ids: []const []const u32,
+    variables_to_inline: []const syntax_ir.SymbolRef,
+    inline_map: process_inlines.InlinedProductionMap,
+    auxiliary_symbol: syntax_ir.SymbolRef,
+) ![]const syntax_ir.SymbolRef {
+    var parents = std.array_list.Managed(syntax_ir.SymbolRef).init(allocator);
+    defer parents.deinit();
+
+    for (state_items) |entry| {
+        try appendParentSymbolsForAuxiliaryEntry(
+            allocator,
+            &parents,
+            entry,
+            productions,
+            item_identity_ids,
+            item_merge_identity_ids,
+            variables_to_inline,
+            inline_map,
+            auxiliary_symbol,
+            0,
+        );
+    }
+
+    return try parents.toOwnedSlice();
+}
+
+fn appendParentSymbolsForAuxiliaryEntry(
+    allocator: std.mem.Allocator,
+    parents: *std.array_list.Managed(syntax_ir.SymbolRef),
+    entry: item.ParseItemSetEntry,
+    productions: []const ProductionInfo,
+    item_identity_ids: []const []const u32,
+    item_merge_identity_ids: []const []const u32,
+    variables_to_inline: []const syntax_ir.SymbolRef,
+    inline_map: process_inlines.InlinedProductionMap,
+    auxiliary_symbol: syntax_ir.SymbolRef,
+    depth: usize,
+) !void {
+    const parse_item = entry.item;
+    if (parse_item.production_id >= productions.len) return;
+    const production = productions[parse_item.production_id];
+    if (production.augmented or production.lhs_kind == .auxiliary) return;
+    if (parse_item.step_index >= production.steps.len) return;
+    const symbol = production.steps[parse_item.step_index].symbol;
+    switch (symbol) {
+        .non_terminal => |non_terminal| {
+            if (isNonTerminalInline(variables_to_inline, non_terminal)) {
+                if (depth > productions.len) return;
+                if (inline_map.inlinedProductions(parse_item.production_id, parse_item.step_index)) |inlined_ids| {
+                    for (inlined_ids) |inlined_id| {
+                        var expanded_entry = entry;
+                        expanded_entry.item = .{
+                            .production_id = inlined_id,
+                            .step_index = parse_item.step_index,
+                            .has_preceding_inherited_fields = parse_item.has_preceding_inherited_fields,
+                            .structural_identity = itemIdentityId(
+                                item_identity_ids,
+                                inlined_id,
+                                parse_item.step_index,
+                            ),
+                            .merge_identity = itemIdentityId(
+                                item_merge_identity_ids,
+                                inlined_id,
+                                parse_item.step_index,
+                            ),
+                        };
+                        try appendParentSymbolsForAuxiliaryEntry(
+                            allocator,
+                            parents,
+                            expanded_entry,
+                            productions,
+                            item_identity_ids,
+                            item_merge_identity_ids,
+                            variables_to_inline,
+                            inline_map,
+                            auxiliary_symbol,
+                            depth + 1,
+                        );
+                    }
+                }
+                return;
+            }
+        },
+        else => {},
+    }
+
+    if (!symbolRefEql(symbol, auxiliary_symbol)) return;
+    try parents.append(.{ .non_terminal = production.lhs });
+}
+
 fn auxiliaryInfoEql(left: state.AuxiliarySymbolInfo, right: state.AuxiliarySymbolInfo) bool {
     if (!symbolRefEql(left.auxiliary_symbol, right.auxiliary_symbol)) return false;
     if (left.parent_symbols.len != right.parent_symbols.len) return false;
@@ -3723,13 +4320,6 @@ fn auxiliaryInfoEql(left: state.AuxiliarySymbolInfo, right: state.AuxiliarySymbo
         if (!symbolRefEql(left_parent, right_parent)) return false;
     }
     return true;
-}
-
-fn containsSymbolRef(values: []const syntax_ir.SymbolRef, needle: syntax_ir.SymbolRef) bool {
-    for (values) |value| {
-        if (symbolRefEql(value, needle)) return true;
-    }
-    return false;
 }
 
 fn symbolIsAuxiliaryLhs(productions: []const ProductionInfo, non_terminal: u32) bool {
@@ -3952,6 +4542,7 @@ const StateConstructionEngine = struct {
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
     follow_sets: []const first.SymbolSet,
+    variable_has_fields: []const bool,
     item_set_builder: ParseItemSetBuilder,
     closure_expansion_cache: *ClosureExpansionCache,
     successor_seed_state_cache: *SuccessorSeedStateCache,
@@ -4009,8 +4600,10 @@ const StateConstructionEngine = struct {
         const conflicts_timer = profileTimer(construct_profile_enabled);
         const detected_conflicts = try conflicts.detectConflictsFromActionGroups(
             self.allocator,
+            self.productions,
             mutable_states[state_index],
             grouped_state_actions.groups,
+            self.first_sets,
         );
         addProfileDuration(&construct_profile.detect_conflicts_ns, conflicts_timer);
         mutable_states[state_index].conflicts = detected_conflicts;
@@ -4095,6 +4688,8 @@ const StateConstructionEngine = struct {
             state_items,
             self.productions,
             self.item_set_builder.item_identity_ids,
+            self.item_set_builder.item_merge_identity_ids,
+            self.variable_has_fields,
             self.item_set_builder.variables_to_inline,
             self.item_set_builder.inline_map,
         );
@@ -4103,6 +4698,10 @@ const StateConstructionEngine = struct {
             self.state_registry.items()[@intCast(source_state_id)].auxiliary_symbols,
             state_items,
             self.productions,
+            self.item_set_builder.item_identity_ids,
+            self.item_set_builder.item_merge_identity_ids,
+            self.item_set_builder.variables_to_inline,
+            self.item_set_builder.inline_map,
         );
         defer freeAuxiliarySymbolInfos(self.allocator, successor_auxiliary_symbols);
         if (construct_profile_enabled) {
@@ -4566,9 +5165,17 @@ const ClosureRun = struct {
                     stats.expansion_visits[non_terminal] += 1;
                 }
                 const suffix = production.steps[parse_item.step_index + 1 ..];
-                const suffix_first = try self.item_set_builder.first_sets.firstOfSequence(self.allocator, suffix);
-                const suffix_reserved_word_set_id = if (suffix.len == 0)
-                    0
+                const following_tokens = if (suffix.len == 0)
+                    try cloneSymbolSet(self.allocator, parse_entry.lookaheads)
+                else
+                    try immediateFollowingFirstSetAlloc(
+                        self.allocator,
+                        self.item_set_builder.first_sets,
+                        suffix[0].symbol,
+                    );
+                defer freeSymbolSet(self.allocator, following_tokens);
+                const following_reserved_word_set_id = if (suffix.len == 0)
+                    parse_entry.following_reserved_word_set_id
                 else
                     @max(
                         reservedWordSetIdForStep(suffix[0], self.item_set_builder.reserved_word_context_names),
@@ -4576,8 +5183,8 @@ const ClosureRun = struct {
                     );
                 const context = try ClosureContext.init(
                     self.allocator,
-                    suffix_first,
-                    suffix_reserved_word_set_id,
+                    following_tokens,
+                    following_reserved_word_set_id,
                     parse_entry.lookaheads,
                     parse_entry.following_reserved_word_set_id,
                 );
@@ -4898,6 +5505,8 @@ test "SuccessorGroups substitutes inline cursor symbols before grouping transiti
         state_items[0..],
         item_set_builder.productions,
         item_set_builder.item_identity_ids,
+        item_set_builder.item_merge_identity_ids,
+        &.{},
         item_set_builder.variables_to_inline,
         item_set_builder.inline_map,
     );
@@ -5359,57 +5968,26 @@ test "closure preserves named-precedence plus lookahead through recursive contex
     try std.testing.expect(findParseItem(items, item.ParseItem.init(4, 0), .{ .terminal = 0 }) != null);
 }
 
-test "closureContextFollowSet merges inherited lookahead only through nullable suffixes" {
+test "ClosureContext keeps upstream immediate following tokens separate from production-end follow" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
     var inherited = try initEmptySymbolSet(arena.allocator(), 3, 0);
     inherited.terminals.set(2);
-    var suffix = try initEmptySymbolSet(arena.allocator(), 3, 0);
-    suffix.terminals.set(1);
-    suffix.includes_epsilon = true;
+    var following = try initEmptySymbolSet(arena.allocator(), 3, 0);
+    following.terminals.set(1);
+    following.includes_epsilon = true;
 
-    const merged = try closureContextFollowSet(arena.allocator(), suffix, inherited);
-    try std.testing.expect(merged.terminals.get(1));
-    try std.testing.expect(merged.terminals.get(2));
-    try std.testing.expect(merged.includes_epsilon);
-
-    var non_nullable = try initEmptySymbolSet(arena.allocator(), 3, 0);
-    non_nullable.terminals.set(1);
-    const unchanged = try closureContextFollowSet(arena.allocator(), non_nullable, inherited);
-    try std.testing.expect(unchanged.terminals.get(1));
-    try std.testing.expect(!unchanged.terminals.get(2));
-    try std.testing.expect(!unchanged.includes_epsilon);
-}
-
-test "ClosureContext projects nullable-suffix follow from merged follow and production-end follow" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
-    var inherited = try initEmptySymbolSet(arena.allocator(), 3, 0);
-    inherited.terminals.set(2);
-    var suffix = try initEmptySymbolSet(arena.allocator(), 3, 0);
-    suffix.terminals.set(1);
-    suffix.includes_epsilon = true;
-
-    const context = try ClosureContext.init(arena.allocator(), suffix, 0, inherited, 0);
+    const context = try ClosureContext.init(arena.allocator(), following, 7, inherited, 11);
     defer context.deinit(arena.allocator());
 
     try std.testing.expect(context.following_tokens.terminals.get(1));
-    try std.testing.expect(context.following_tokens.terminals.get(2));
-    try std.testing.expect(context.nullableSuffixNeedsContextFollow());
+    try std.testing.expect(!context.following_tokens.terminals.get(2));
+    try std.testing.expect(context.following_tokens.includes_epsilon);
+    try std.testing.expectEqual(@as(u16, 7), context.following_reserved_word_set_id);
     try std.testing.expect(context.production_end_follow.terminals.get(2));
     try std.testing.expect(!context.production_end_follow.terminals.get(1));
-
-    var non_nullable = try initEmptySymbolSet(arena.allocator(), 3, 0);
-    non_nullable.terminals.set(1);
-    const non_nullable_context = try ClosureContext.init(arena.allocator(), non_nullable, 0, inherited, 0);
-    defer non_nullable_context.deinit(arena.allocator());
-
-    try std.testing.expect(non_nullable_context.following_tokens.terminals.get(1));
-    try std.testing.expect(!non_nullable_context.following_tokens.terminals.get(2));
-    try std.testing.expect(!non_nullable_context.nullableSuffixNeedsContextFollow());
-    try std.testing.expect(non_nullable_context.production_end_follow.terminals.get(2));
+    try std.testing.expectEqual(@as(u16, 11), context.production_end_reserved_word_set_id);
 }
 
 fn findParseItem(items: []const item.ParseItemSetEntry, needle: item.ParseItem, lookahead: syntax_ir.SymbolRef) ?usize {
@@ -5616,6 +6194,13 @@ fn constructStates(
     else
         FollowSets{ .values = &.{} };
     defer follow_sets.deinit(allocator);
+    const field_productions = all_productions[0..item_set_builder.original_productions_len];
+    const variable_has_fields = try computeVariableHasFieldsAlloc(
+        allocator,
+        field_productions,
+        variableCountFromProductions(all_productions),
+    );
+    defer allocator.free(variable_has_fields);
 
     var state_engine = StateConstructionEngine{
         .allocator = allocator,
@@ -5623,6 +6208,7 @@ fn constructStates(
         .productions = all_productions,
         .first_sets = first_sets,
         .follow_sets = follow_sets.values,
+        .variable_has_fields = variable_has_fields,
         .item_set_builder = item_set_builder,
         .closure_expansion_cache = &closure_expansion_cache,
         .successor_seed_state_cache = &successor_seed_state_cache,
@@ -6097,9 +6683,9 @@ test "buildStates reduces nested JSON-like values before separators" {
     } else return error.TestUnexpectedResult;
 
     _ = value_number_production;
-    try std.testing.expect(hasReduceActionForLhs(result, 1, .{ .terminal = comma }));
-    try std.testing.expect(hasReduceActionForLhs(result, 1, .{ .terminal = rbracket }));
-    try std.testing.expect(hasReduceActionForLhs(result, 1, .{ .terminal = rbrace }));
+    const raw_actions = try actions.buildActionTable(arena.allocator(), result.productions, result.states);
+    try std.testing.expect(hasReduceActionForLhsInActionTable(raw_actions, result.productions, 5, .{ .terminal = rbracket }));
+    try std.testing.expect(hasReduceActionForLhsInActionTable(raw_actions, result.productions, 2, .{ .terminal = rbrace }));
 }
 
 test "buildStates uses SLR follow lookaheads for completed coarse closure items" {
@@ -6200,12 +6786,21 @@ fn hasReduceActionForLhs(
     lhs: u32,
     lookahead: syntax_ir.SymbolRef,
 ) bool {
-    for (result.actions.states) |state_actions| {
+    return hasReduceActionForLhsInActionTable(result.actions, result.productions, lhs, lookahead);
+}
+
+fn hasReduceActionForLhsInActionTable(
+    action_table: actions.ActionTable,
+    productions: []const ProductionInfo,
+    lhs: u32,
+    lookahead: syntax_ir.SymbolRef,
+) bool {
+    for (action_table.states) |state_actions| {
         for (state_actions.entries) |entry| {
             if (!symbolRefEql(entry.symbol, lookahead)) continue;
             switch (entry.action) {
                 .reduce => |reduced| {
-                    if (reduced < result.productions.len and result.productions[reduced].lhs == lhs) return true;
+                    if (reduced < productions.len and productions[reduced].lhs == lhs) return true;
                 },
                 else => {},
             }

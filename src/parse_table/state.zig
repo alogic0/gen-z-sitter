@@ -61,27 +61,15 @@ fn lessThanTransition(_: void, a: Transition, b: Transition) bool {
 }
 
 fn symbolLessThan(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
-    return switch (a) {
-        .end => switch (b) {
-            .end => false,
-            else => true,
-        },
-        .non_terminal => |index| switch (b) {
-            .end => false,
-            .non_terminal => |other| index < other,
-            else => true,
-        },
-        .terminal => |index| switch (b) {
-            .end => false,
-            .non_terminal => false,
-            .terminal => |other| index < other,
-            .external => true,
-        },
-        .external => |index| switch (b) {
-            .end => false,
-            .external => |other| index < other,
-            else => false,
-        },
+    return symbolSortKey(a) < symbolSortKey(b);
+}
+
+fn symbolSortKey(symbol: syntax_ir.SymbolRef) u64 {
+    return switch (symbol) {
+        .external => |index| index,
+        .end => @as(u64, 1) << 32,
+        .terminal => |index| (@as(u64, 3) << 32) | index,
+        .non_terminal => |index| (@as(u64, 4) << 32) | index,
     };
 }
 
@@ -103,7 +91,7 @@ test "state helpers sort items and transitions deterministically" {
         .{ .symbol = .{ .non_terminal = 2 }, .state = 1 },
     };
     sortTransitions(transitions[0..]);
-    try std.testing.expectEqual(@as(u32, 2), transitions[0].symbol.non_terminal);
-    try std.testing.expectEqual(@as(StateId, 1), transitions[0].state);
-    try std.testing.expectEqual(@as(u32, 7), transitions[2].symbol.external);
+    try std.testing.expectEqual(@as(u32, 7), transitions[0].symbol.external);
+    try std.testing.expectEqual(@as(u32, 2), transitions[1].symbol.non_terminal);
+    try std.testing.expectEqual(@as(StateId, 1), transitions[1].state);
 }

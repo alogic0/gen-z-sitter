@@ -53,6 +53,8 @@ pub const ParseItem = struct {
     production_id: ProductionId,
     step_index: u16,
     structural_identity: u32 = unset_structural_identity,
+    merge_identity: u32 = unset_structural_identity,
+    has_preceding_inherited_fields: bool = false,
 
     pub fn init(production_id: ProductionId, step_index: u16) ParseItem {
         return .{
@@ -66,20 +68,29 @@ pub const ParseItem = struct {
         if (a.structural_identity != unset_structural_identity and
             b.structural_identity != unset_structural_identity)
         {
-            return a.structural_identity == b.structural_identity;
+            return a.structural_identity == b.structural_identity and
+                a.has_preceding_inherited_fields == b.has_preceding_inherited_fields;
         }
-        return a.production_id == b.production_id and a.step_index == b.step_index;
+        return a.production_id == b.production_id and
+            a.step_index == b.step_index and
+            a.has_preceding_inherited_fields == b.has_preceding_inherited_fields;
     }
 
     pub fn lessThan(_: void, a: ParseItem, b: ParseItem) bool {
         if (a.structural_identity != unset_structural_identity and
-            b.structural_identity != unset_structural_identity and
-            a.structural_identity != b.structural_identity)
+            b.structural_identity != unset_structural_identity)
         {
-            return a.structural_identity < b.structural_identity;
+            if (a.structural_identity != b.structural_identity) {
+                return a.structural_identity < b.structural_identity;
+            }
+            if (a.has_preceding_inherited_fields != b.has_preceding_inherited_fields) {
+                return !a.has_preceding_inherited_fields and b.has_preceding_inherited_fields;
+            }
+            return false;
         }
         if (a.production_id != b.production_id) return a.production_id < b.production_id;
-        return a.step_index < b.step_index;
+        if (a.step_index != b.step_index) return a.step_index < b.step_index;
+        return @intFromBool(a.has_preceding_inherited_fields) < @intFromBool(b.has_preceding_inherited_fields);
     }
 
     pub fn format(self: ParseItem, writer: anytype) !void {

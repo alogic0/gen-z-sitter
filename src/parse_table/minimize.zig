@@ -84,6 +84,11 @@ const UnitReductionRejectStats = struct {
     no_unit_symbol: usize = 0,
 };
 
+const ReorderStateContext = struct {
+    states: []const state.ParseState,
+    resolved: resolution.ResolvedActionTable,
+};
+
 const MinimizeTraceStats = struct {
     external_token: usize = 0,
     internal_external_token: usize = 0,
@@ -139,6 +144,13 @@ threadlocal var successor_detail_remaining: usize = 0;
 threadlocal var state_detail_id: ?state.StateId = null;
 threadlocal var state_detail_remaining: usize = 0;
 threadlocal var action_detail_remaining: usize = 0;
+threadlocal var conflict_pair_detail_remaining: usize = 0;
+const max_trace_pairs = 16;
+threadlocal var pair_detail_pairs: [max_trace_pairs]struct { left: state.StateId, right: state.StateId } = undefined;
+threadlocal var pair_detail_count: usize = 0;
+threadlocal var pair_detail_remaining: usize = 0;
+threadlocal var reference_detail_targets: [max_trace_pairs]state.StateId = undefined;
+threadlocal var reference_detail_count: usize = 0;
 
 fn resetMinimizeTraceStats() void {
     minimize_trace_stats = .{};
@@ -283,6 +295,61 @@ fn loadActionDetailTrace() void {
     action_detail_remaining = 32;
 }
 
+fn loadConflictPairTrace() void {
+    conflict_pair_detail_remaining = 0;
+    if (!envFlagEnabled("GEN_Z_SITTER_MINIMIZER_TRACE_CONFLICT_PAIRS")) return;
+    conflict_pair_detail_remaining = 5000;
+}
+
+fn loadPairDetailTrace() void {
+    pair_detail_count = 0;
+    pair_detail_remaining = 0;
+    const value = std.process.Environ.getAlloc(
+        runtime_io.environ(),
+        std.heap.page_allocator,
+        "GEN_Z_SITTER_MINIMIZER_TRACE_PAIR",
+    ) catch return;
+    defer std.heap.page_allocator.free(value);
+    if (value.len == 0) return;
+
+    var iter = std.mem.splitScalar(u8, value, ',');
+    while (iter.next()) |pair_text| {
+        if (pair_detail_count >= pair_detail_pairs.len) break;
+        const separator = std.mem.indexOfScalar(u8, pair_text, ':') orelse continue;
+        const left = std.fmt.parseUnsigned(state.StateId, pair_text[0..separator], 10) catch continue;
+        const right = std.fmt.parseUnsigned(state.StateId, pair_text[separator + 1 ..], 10) catch continue;
+        pair_detail_pairs[pair_detail_count] = .{ .left = left, .right = right };
+        pair_detail_count += 1;
+    }
+    if (pair_detail_count != 0) pair_detail_remaining = 128;
+}
+
+fn loadReferenceDetailTrace() void {
+    reference_detail_count = 0;
+    const value = std.process.Environ.getAlloc(
+        runtime_io.environ(),
+        std.heap.page_allocator,
+        "GEN_Z_SITTER_MINIMIZER_TRACE_REFERENCES",
+    ) catch return;
+    defer std.heap.page_allocator.free(value);
+    if (value.len == 0) return;
+
+    var iter = std.mem.splitScalar(u8, value, ',');
+    while (iter.next()) |target_text| {
+        if (reference_detail_count >= reference_detail_targets.len) break;
+        const target = std.fmt.parseUnsigned(state.StateId, target_text, 10) catch continue;
+        reference_detail_targets[reference_detail_count] = target;
+        reference_detail_count += 1;
+    }
+}
+
+fn traceReferenceTargetMatches(target: state.StateId) bool {
+    for (reference_detail_targets[0..reference_detail_count]) |candidate| {
+        if (candidate == target) return true;
+    }
+    return false;
+}
+
 fn ignoredTokenConflictPair(left: usize, right: usize) bool {
     if (!token_ignore_pairs_active) return false;
     if (left >= token_trace_max or right >= token_trace_max) return false;
@@ -339,10 +406,20 @@ fn traceStateConflictDetail(
     right_target: ?state.StateId,
     group_of: []const u32,
 ) void {
-    if (state_detail_remaining == 0) return;
-    const traced = state_detail_id orelse return;
-    if (left_state_id != traced and right_state_id != traced) return;
-    state_detail_remaining -= 1;
+    var should_trace = false;
+    if (state_detail_remaining != 0) {
+        if (state_detail_id) |traced| {
+            if (left_state_id == traced or right_state_id == traced) {
+                state_detail_remaining -= 1;
+                should_trace = true;
+            }
+        }
+    }
+    if (!should_trace and pair_detail_remaining != 0 and tracePairMatches(left_state_id, right_state_id)) {
+        pair_detail_remaining -= 1;
+        should_trace = true;
+    }
+    if (!should_trace) return;
     const left_group = if (left_target) |target| groupOfState(group_of, target) else null;
     const right_group = if (right_target) |target| groupOfState(group_of, target) else null;
     std.debug.print(
@@ -366,6 +443,23 @@ fn traceStateConflictDetail(
     );
 }
 
+fn tracePairMatches(left_state_id: state.StateId, right_state_id: state.StateId) bool {
+    for (pair_detail_pairs[0..pair_detail_count]) |pair| {
+        if ((pair.left == left_state_id and pair.right == right_state_id) or
+            (pair.left == right_state_id and pair.right == left_state_id))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn traceConflictPair(left_state_id: state.StateId, right_state_id: state.StateId) void {
+    if (conflict_pair_detail_remaining == 0) return;
+    conflict_pair_detail_remaining -= 1;
+    std.debug.print("[minimize-conflict-pair] left_state={d} right_state={d}\n", .{ left_state_id, right_state_id });
+}
+
 fn traceActionGroupDiff(
     reason: []const u8,
     left_state_id: state.StateId,
@@ -375,8 +469,13 @@ fn traceActionGroupDiff(
     reduce_productions: ?[]const UnitReductionProduction,
     group_of: []const u32,
 ) void {
-    if (action_detail_remaining == 0) return;
-    action_detail_remaining -= 1;
+    if (action_detail_remaining != 0) {
+        action_detail_remaining -= 1;
+    } else if (pair_detail_remaining != 0 and tracePairMatches(left_state_id, right_state_id)) {
+        pair_detail_remaining -= 1;
+    } else {
+        return;
+    }
     std.debug.print(
         "[minimize-action] reason={s} left_state={d} right_state={d} symbol={s}:{d} left_decision={s} right_decision={s} left_candidates={d} right_candidates={d}\n",
         .{
@@ -564,6 +663,9 @@ pub fn minimizeAllocWithOptions(
     loadSuccessorDetailTrace();
     loadStateDetailTrace();
     loadActionDetailTrace();
+    loadConflictPairTrace();
+    loadPairDetailTrace();
+    loadReferenceDetailTrace();
     defer {
         token_trace_active = false;
         minimize_trace_stats_active = false;
@@ -574,6 +676,10 @@ pub fn minimizeAllocWithOptions(
         state_detail_id = null;
         state_detail_remaining = 0;
         action_detail_remaining = 0;
+        conflict_pair_detail_remaining = 0;
+        pair_detail_count = 0;
+        pair_detail_remaining = 0;
+        reference_detail_count = 0;
     }
     if (trace_minimizer) resetMinimizeTraceStats();
     if (trace_token_conflicts) resetTokenConflictTrace();
@@ -591,12 +697,13 @@ pub fn minimizeAllocWithOptions(
         resolved_in,
         effective_terminal_conflicts,
         word_token,
-        if (unit_reductions) |options| options.productions else null,
+        unit_reductions,
         &groups,
         group_of,
     );
     if (trace_minimizer) {
         std.debug.print("[minimize] after conflicts changed={} groups={d}\n", .{ conflict_changed, groups.items.len });
+        printMinimizeTraceStats(effective_terminal_conflicts);
     }
     if (trace_token_conflicts) printTokenConflictTrace(effective_terminal_conflicts);
     var successor_iteration: usize = 0;
@@ -618,15 +725,8 @@ pub fn minimizeAllocWithOptions(
     }
 
     if (groups.items.len > 1) {
-        for (groups.items, 0..) |group, index| {
-            for (group) |state_index| {
-                if (states_in[state_index].id == 0 and index != 0) {
-                    std.mem.swap([]usize, &groups.items[0], &groups.items[index]);
-                    break;
-                }
-            } else continue;
-            break;
-        }
+        moveGroupContainingState(states_in, groups.items, 0, 0);
+        moveGroupContainingState(states_in, groups.items, 1, 1);
         refreshGroupIds(states_in, groups.items, group_of);
     }
 
@@ -645,19 +745,26 @@ pub fn minimizeAllocWithOptions(
         var transitions = std.array_list.Managed(state.Transition).init(allocator);
         for (group) |state_index| {
             for (states_in[state_index].transitions) |transition| {
-                try appendMergedTransition(&transitions, .{
+                try appendOrReplaceMergedTransition(&transitions, .{
                     .symbol = transition.symbol,
                     .state = id_remap[transition.state],
                     .extra = transition.extra,
                 });
             }
         }
+        const reserved_word_set_id = try mergedReservedWordSetIdForGroupAlloc(
+            allocator,
+            group,
+            states_in,
+            resolved_in,
+            terminal_conflicts,
+        );
 
         out_states[new_id] = .{
             .id = @intCast(new_id),
             .core_id = base.core_id,
             .lex_state_id = base.lex_state_id,
-            .reserved_word_set_id = base.reserved_word_set_id,
+            .reserved_word_set_id = reserved_word_set_id,
             .items = base.items,
             .transitions = try transitions.toOwnedSlice(),
             .conflicts = base.conflicts,
@@ -671,8 +778,13 @@ pub fn minimizeAllocWithOptions(
         for (group) |state_index| {
             const old_state_id = states_in[state_index].id;
             for (resolved_in.groupsForState(old_state_id)) |action_group| {
-                if (findResolvedGroup(action_groups.items, action_group.symbol) != null) continue;
-                try action_groups.append(try remapResolvedActionGroup(allocator, action_group, id_remap));
+                const remapped = try remapResolvedActionGroup(allocator, action_group, id_remap);
+                if (findResolvedGroupIndex(action_groups.items, remapped.symbol)) |existing_index| {
+                    freeResolvedActionGroup(allocator, action_groups.items[existing_index]);
+                    action_groups.items[existing_index] = remapped;
+                } else {
+                    try action_groups.append(remapped);
+                }
             }
         }
 
@@ -705,6 +817,15 @@ pub fn minimizeAllocWithOptions(
     };
 }
 
+pub fn compactUnitReductionsAlloc(
+    allocator: std.mem.Allocator,
+    states_in: []const state.ParseState,
+    resolved_in: resolution.ResolvedActionTable,
+    options: UnitReductionOptions,
+) std.mem.Allocator.Error!MinimizeResult {
+    return try removeUnitReductionsAndUnusedAlloc(allocator, states_in, resolved_in, options);
+}
+
 fn deinitOwnedStateSlices(allocator: std.mem.Allocator, states: []const state.ParseState) void {
     for (states) |parse_state| {
         if (parse_state.transitions.len != 0) allocator.free(parse_state.transitions);
@@ -735,6 +856,13 @@ fn removeUnitReductionsAndUnusedAlloc(
             if (unit_symbol != null) count += 1;
         }
         std.debug.print("[minimize] unit_reduction candidates={d} states={d}\n", .{ count, states_in.len });
+        if (envFlagEnabled("GEN_Z_SITTER_MINIMIZER_TRACE_UNIT_STATES")) {
+            std.debug.print("[minimize-unit-states]", .{});
+            for (unit_symbols, 0..) |unit_symbol, state_id| {
+                if (unit_symbol != null) std.debug.print(" {d}", .{state_id});
+            }
+            std.debug.print("\n", .{});
+        }
     }
 
     const rewritten_states = try rewriteUnitReductionReferencesAlloc(allocator, states_in, resolved_in, unit_symbols);
@@ -758,7 +886,21 @@ fn removeUnitReductionsAndUnusedAlloc(
     deinitOwnedStateSlices(allocator, rewritten_states.states);
     allocator.free(rewritten_states.states);
     deinitOwnedResolvedTable(allocator, rewritten_states.resolved_actions);
-    return compacted;
+    errdefer {
+        deinitOwnedStateSlices(allocator, compacted.states);
+        allocator.free(compacted.states);
+        deinitOwnedResolvedTable(allocator, compacted.resolved_actions);
+    }
+
+    const reordered = try reorderStatesByDescendingSizeAlloc(
+        allocator,
+        compacted.states,
+        compacted.resolved_actions,
+    );
+    deinitOwnedStateSlices(allocator, compacted.states);
+    allocator.free(compacted.states);
+    deinitOwnedResolvedTable(allocator, compacted.resolved_actions);
+    return reordered;
 }
 
 fn unitReductionSymbolsByStateAlloc(
@@ -779,6 +921,7 @@ fn unitReductionSymbolsByStateAlloc(
         var unit_symbol: ?syntax_ir.SymbolRef = null;
 
         for (resolved.groupsForState(parse_state.id)) |group| {
+            if (group.symbol == .non_terminal) continue;
             const action_count: usize = switch (group.decision) {
                 .chosen => 1,
                 .unresolved => group.candidate_actions.len,
@@ -798,8 +941,7 @@ fn unitReductionSymbolsByStateAlloc(
 
                 switch (action) {
                     .shift_extra => continue,
-                    .shift => |target| {
-                        if (isExtraShift(parse_state, group.symbol, target)) continue;
+                    .shift => {
                         reject_stats.shift += 1;
                         only_unit_reductions = false;
                     },
@@ -877,7 +1019,12 @@ fn unitReductionSymbolForProductionWithStats(
         return null;
     }
     if (relaxUnitReductionForDiagnostics()) return .{ .non_terminal = production.lhs };
-    if (!production.metadata_empty) {
+    if (production.production_info_id) |production_info_id| {
+        if (production_info_id != 0) {
+            if (reject_stats) |stats| stats.non_empty_metadata += 1;
+            return null;
+        }
+    } else if (!production.metadata_empty) {
         if (reject_stats) |stats| stats.non_empty_metadata += 1;
         return null;
     }
@@ -897,13 +1044,6 @@ fn unitReductionSymbolForProductionWithStats(
         return null;
     }
     return .{ .non_terminal = production.lhs };
-}
-
-fn isExtraShift(parse_state: state.ParseState, symbol: syntax_ir.SymbolRef, target: state.StateId) bool {
-    for (parse_state.transitions) |transition| {
-        if (transition.state == target and transition.extra and symbolRefEql(transition.symbol, symbol)) return true;
-    }
-    return false;
 }
 
 fn rewriteUnitReductionReferencesAlloc(
@@ -1081,10 +1221,29 @@ fn removeUnusedStatesAlloc(
 
     for (states_in) |parse_state| {
         for (parse_state.transitions) |transition| {
-            if (transition.state < used.len) used[transition.state] = true;
+            if (transition.symbol != .non_terminal) continue;
+            if (transition.state < used.len) {
+                if (traceReferenceTargetMatches(transition.state)) {
+                    std.debug.print(
+                        "[minimize-reference] owner={d} kind=transition symbol={s}:{d} target={d}\n",
+                        .{
+                            parse_state.id,
+                            @tagName(transition.symbol),
+                            switch (transition.symbol) {
+                                .end => 0,
+                                .terminal => |idx| idx,
+                                .external => |idx| idx,
+                                .non_terminal => |idx| idx,
+                            },
+                            transition.state,
+                        },
+                    );
+                }
+                used[transition.state] = true;
+            }
         }
         for (resolved_in.groupsForState(parse_state.id)) |group| {
-            markActionGroupReferences(group, used);
+            markActionGroupReferences(parse_state.id, group, used);
         }
     }
 
@@ -1096,6 +1255,15 @@ fn removeUnusedStatesAlloc(
         if (parse_state.id >= used.len or !used[parse_state.id]) continue;
         id_remap[parse_state.id] = @intCast(used_count);
         used_count += 1;
+    }
+    if (traceMinimizerEnabled() and envFlagEnabled("GEN_Z_SITTER_MINIMIZER_TRACE_UNUSED_STATES")) {
+        std.debug.print("[minimize-unused-states]", .{});
+        for (states_in) |parse_state| {
+            if (parse_state.id < used.len and !used[parse_state.id]) {
+                std.debug.print(" {d}", .{parse_state.id});
+            }
+        }
+        std.debug.print("\n", .{});
     }
 
     const states = try allocator.alloc(state.ParseState, used_count);
@@ -1153,18 +1321,156 @@ fn removeUnusedStatesAlloc(
     };
 }
 
-fn markActionGroupReferences(group: resolution.ResolvedActionGroup, used: []bool) void {
+fn reorderStatesByDescendingSizeAlloc(
+    allocator: std.mem.Allocator,
+    states_in: []const state.ParseState,
+    resolved_in: resolution.ResolvedActionTable,
+) std.mem.Allocator.Error!MinimizeResult {
+    if (states_in.len == 0) {
+        return .{
+            .states = try allocator.alloc(state.ParseState, 0),
+            .resolved_actions = .{ .states = try allocator.alloc(resolution.ResolvedStateActions, 0) },
+            .merged_count = 0,
+        };
+    }
+
+    var max_id: state.StateId = 0;
+    for (states_in) |parse_state| max_id = @max(max_id, parse_state.id);
+
+    const id_to_idx = try allocator.alloc(usize, max_id + 1);
+    defer allocator.free(id_to_idx);
+    @memset(id_to_idx, std.math.maxInt(usize));
+    for (states_in, 0..) |parse_state, index| {
+        if (parse_state.id < id_to_idx.len) id_to_idx[parse_state.id] = index;
+    }
+
+    const old_ids_by_new_id = try allocator.alloc(usize, states_in.len);
+    defer allocator.free(old_ids_by_new_id);
+    for (old_ids_by_new_id, 0..) |*old_id, index| old_id.* = index;
+    std.mem.sort(usize, old_ids_by_new_id, ReorderStateContext{
+        .states = states_in,
+        .resolved = resolved_in,
+    }, lessThanReorderedState);
+
+    const id_remap = try allocator.alloc(state.StateId, max_id + 1);
+    defer allocator.free(id_remap);
+    @memset(id_remap, std.math.maxInt(state.StateId));
+    for (old_ids_by_new_id, 0..) |old_index, new_id| {
+        const old_state_id = states_in[old_index].id;
+        if (old_state_id < id_remap.len) id_remap[old_state_id] = @intCast(new_id);
+    }
+
+    const states = try allocator.alloc(state.ParseState, states_in.len);
+    var states_initialized: usize = 0;
+    errdefer {
+        for (states[0..states_initialized]) |parse_state| {
+            if (parse_state.transitions.len != 0) allocator.free(parse_state.transitions);
+        }
+        allocator.free(states);
+    }
+
+    const resolved_states = try allocator.alloc(resolution.ResolvedStateActions, states_in.len);
+    var resolved_initialized: usize = 0;
+    errdefer {
+        for (resolved_states[0..resolved_initialized]) |resolved_state| {
+            for (resolved_state.groups) |group| {
+                if (group.candidate_actions.len != 0) allocator.free(group.candidate_actions);
+            }
+            if (resolved_state.groups.len != 0) allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved_states);
+    }
+
+    for (old_ids_by_new_id, 0..) |old_index, new_id| {
+        const parse_state = states_in[old_index];
+        states[new_id] = parse_state;
+        states[new_id].id = @intCast(new_id);
+        states[new_id].transitions = try remapTransitionsAlloc(allocator, parse_state.transitions, id_remap);
+        states_initialized += 1;
+
+        const source_groups = resolved_in.groupsForState(parse_state.id);
+        var groups = std.array_list.Managed(resolution.ResolvedActionGroup).init(allocator);
+        defer groups.deinit();
+        errdefer {
+            for (groups.items) |group| {
+                if (group.candidate_actions.len != 0) allocator.free(group.candidate_actions);
+            }
+        }
+        for (source_groups) |group| {
+            try groups.append(try remapResolvedActionGroup(allocator, group, id_remap));
+        }
+        resolved_states[new_id] = .{
+            .state_id = @intCast(new_id),
+            .groups = try groups.toOwnedSlice(),
+        };
+        resolved_initialized += 1;
+    }
+
+    return .{
+        .states = states,
+        .resolved_actions = .{ .states = resolved_states },
+        .merged_count = 0,
+    };
+}
+
+fn lessThanReorderedState(
+    context: ReorderStateContext,
+    left_index: usize,
+    right_index: usize,
+) bool {
+    const left_id = context.states[left_index].id;
+    const right_id = context.states[right_index].id;
+    if (left_id <= 1 or right_id <= 1) {
+        if (left_id <= 1 and right_id <= 1) return left_id < right_id;
+        return left_id <= 1;
+    }
+
+    const left_size = parseStateEntryCount(context.states[left_index], context.resolved);
+    const right_size = parseStateEntryCount(context.states[right_index], context.resolved);
+    if (left_size != right_size) return left_size > right_size;
+    return false;
+}
+
+fn parseStateEntryCount(parse_state: state.ParseState, resolved: resolution.ResolvedActionTable) usize {
+    var terminal_count: usize = 0;
+    for (resolved.groupsForState(parse_state.id)) |group| {
+        if (group.symbol != .non_terminal) terminal_count += 1;
+    }
+    var nonterminal_count: usize = 0;
+    for (parse_state.transitions) |transition| {
+        if (transition.symbol == .non_terminal) nonterminal_count += 1;
+    }
+    return terminal_count + nonterminal_count;
+}
+
+fn markActionGroupReferences(owner_state: state.StateId, group: resolution.ResolvedActionGroup, used: []bool) void {
     switch (group.decision) {
-        .chosen => |action| markActionReference(action, used),
+        .chosen => |action| markActionReference(owner_state, group.symbol, action, used),
         .unresolved => {
-            for (group.candidate_actions) |action| markActionReference(action, used);
+            for (group.candidate_actions) |action| markActionReference(owner_state, group.symbol, action, used);
         },
     }
 }
 
-fn markActionReference(action: actions.ParseAction, used: []bool) void {
+fn markActionReference(owner_state: state.StateId, symbol: syntax_ir.SymbolRef, action: actions.ParseAction, used: []bool) void {
     switch (action) {
         .shift => |target| if (target < used.len) {
+            if (traceReferenceTargetMatches(target)) {
+                std.debug.print(
+                    "[minimize-reference] owner={d} kind=action symbol={s}:{d} target={d}\n",
+                    .{
+                        owner_state,
+                        @tagName(symbol),
+                        switch (symbol) {
+                            .end => 0,
+                            .terminal => |idx| idx,
+                            .external => |idx| idx,
+                            .non_terminal => |idx| idx,
+                        },
+                        target,
+                    },
+                );
+            }
             used[target] = true;
         },
         else => {},
@@ -1205,13 +1511,37 @@ fn refreshGroupIds(
     }
 }
 
+fn moveGroupContainingState(
+    states_in: []const state.ParseState,
+    groups: [][]usize,
+    state_id: state.StateId,
+    target_index: usize,
+) void {
+    if (target_index >= groups.len) return;
+    for (groups, 0..) |group, index| {
+        for (group) |state_index| {
+            if (states_in[state_index].id != state_id) continue;
+            if (state_id != 0 and groupContainsState(states_in, group, 0)) return;
+            if (index != target_index) std.mem.swap([]usize, &groups[target_index], &groups[index]);
+            return;
+        }
+    }
+}
+
+fn groupContainsState(states_in: []const state.ParseState, group: []const usize, state_id: state.StateId) bool {
+    for (group) |state_index| {
+        if (states_in[state_index].id == state_id) return true;
+    }
+    return false;
+}
+
 fn splitConflictGroups(
     allocator: std.mem.Allocator,
     states_in: []const state.ParseState,
     resolved: resolution.ResolvedActionTable,
     terminal_conflicts: ?TerminalConflictMap,
     word_token: ?syntax_ir.SymbolRef,
-    reduce_productions: ?[]const UnitReductionProduction,
+    unit_reductions: ?UnitReductionOptions,
     groups: *std.array_list.Managed([]usize),
     group_of: []u32,
 ) std.mem.Allocator.Error!bool {
@@ -1243,7 +1573,7 @@ fn splitConflictGroups(
                     resolved,
                     terminal_conflicts,
                     word_token,
-                    reduce_productions,
+                    unit_reductions,
                     group_of,
                 )) {
                     try split_state_indices.append(right_index);
@@ -1350,7 +1680,7 @@ fn statesConflict(
     resolved: resolution.ResolvedActionTable,
     terminal_conflicts: ?TerminalConflictMap,
     word_token: ?syntax_ir.SymbolRef,
-    reduce_productions: ?[]const UnitReductionProduction,
+    unit_reductions: ?UnitReductionOptions,
     group_of: []const u32,
 ) bool {
     const left_groups = resolved.groupsForState(left.id);
@@ -1358,15 +1688,22 @@ fn statesConflict(
     for (left_groups) |left_group| {
         if (left_group.symbol == .non_terminal) continue;
         if (findResolvedGroup(right_groups, left_group.symbol)) |right_group| {
-            if (entriesConflict(left.id, right.id, left_group, right_group, reduce_productions, group_of)) return true;
-        } else if (tokenConflicts(left.id, right.id, left_group.symbol, right, right_groups, terminal_conflicts, word_token)) {
+            if (entriesConflict(left.id, right.id, left_group, right_group, if (unit_reductions) |options| options.productions else null, group_of)) {
+                traceConflictPair(left.id, right.id);
+                return true;
+            }
+        } else if (tokenConflicts(left.id, right.id, left_group, right, right_groups, terminal_conflicts, word_token, unit_reductions)) {
+            traceConflictPair(left.id, right.id);
             return true;
         }
     }
     for (right_groups) |right_group| {
         if (right_group.symbol == .non_terminal) continue;
         if (findResolvedGroup(left_groups, right_group.symbol) != null) continue;
-        if (tokenConflicts(right.id, left.id, right_group.symbol, left, left_groups, terminal_conflicts, word_token)) return true;
+        if (tokenConflicts(right.id, left.id, right_group, left, left_groups, terminal_conflicts, word_token, unit_reductions)) {
+            traceConflictPair(left.id, right.id);
+            return true;
+        }
     }
     return false;
 }
@@ -1374,14 +1711,23 @@ fn statesConflict(
 fn tokenConflicts(
     new_state_id: state.StateId,
     other_state_id: state.StateId,
-    new_token: syntax_ir.SymbolRef,
+    new_group: resolution.ResolvedActionGroup,
     other_state: state.ParseState,
     other_groups: []const resolution.ResolvedActionGroup,
     terminal_conflicts: ?TerminalConflictMap,
     word_token: ?syntax_ir.SymbolRef,
+    unit_reductions: ?UnitReductionOptions,
 ) bool {
+    const new_token = new_group.symbol;
     switch (new_token) {
-        .end => return false,
+        .end => {
+            if (endGroupIsNonTerminalExtraSentinel(new_group, unit_reductions)) {
+                traceStateConflictDetail("nonterminal_extra_end", new_state_id, other_state_id, new_token, null, null, &.{});
+                recordMinimizeTraceStat("token_conflict");
+                return true;
+            }
+            return false;
+        },
         .external => {
             traceStateConflictDetail("external_token", new_state_id, other_state_id, new_token, null, null, &.{});
             recordMinimizeTraceStat("external_token");
@@ -1441,6 +1787,38 @@ fn reservedWordSetContains(
     return false;
 }
 
+fn endGroupIsNonTerminalExtraSentinel(
+    group: resolution.ResolvedActionGroup,
+    maybe_options: ?UnitReductionOptions,
+) bool {
+    const options = maybe_options orelse return false;
+    const candidate_actions = switch (group.decision) {
+        .chosen => |action| blk: {
+            if (group.candidate_actions.len != 0) break :blk group.candidate_actions;
+            return actionIsExtraReduce(action, options);
+        },
+        .unresolved => group.candidate_actions,
+    };
+    if (candidate_actions.len == 0) return false;
+    var saw_reduce = false;
+    for (candidate_actions) |candidate| {
+        if (!actionIsExtraReduce(candidate, options)) return false;
+        saw_reduce = true;
+    }
+    return saw_reduce;
+}
+
+fn actionIsExtraReduce(action: actions.ParseAction, options: UnitReductionOptions) bool {
+    const production_id = switch (action) {
+        .reduce => |id| id,
+        else => return false,
+    };
+    if (production_id >= options.productions.len) return false;
+    const lhs = options.productions[production_id].lhs;
+    if (lhs >= options.symbols.len) return false;
+    return options.symbols[lhs].extra;
+}
+
 fn entriesConflict(
     left_state_id: state.StateId,
     right_state_id: state.StateId,
@@ -1454,67 +1832,37 @@ fn entriesConflict(
         recordMinimizeTraceStat("shift_repetition");
         return true;
     }
-    switch (left.decision) {
-        .unresolved => switch (right.decision) {
-            .unresolved => {
-                if (actionListsEquivalent(left.symbol, left.candidate_actions, right.candidate_actions, reduce_productions, group_of)) return false;
-                traceActionGroupDiff("unresolved_actions", left_state_id, right_state_id, left, right, reduce_productions, group_of);
-                traceStateConflictDetail(
-                    "unresolved_actions",
-                    left_state_id,
-                    right_state_id,
-                    left.symbol,
-                    firstShiftTarget(left.candidate_actions),
-                    firstShiftTarget(right.candidate_actions),
-                    group_of,
-                );
-                return true;
-            },
-            .chosen => {
-                traceStateConflictDetail(
-                    "unresolved_vs_chosen",
-                    left_state_id,
-                    right_state_id,
-                    left.symbol,
-                    firstShiftTarget(left.candidate_actions),
-                    chosenShiftTarget(right),
-                    group_of,
-                );
-                traceActionGroupDiff("unresolved_vs_chosen", left_state_id, right_state_id, left, right, reduce_productions, group_of);
-                recordMinimizeTraceStat("unequal_action");
-                return true;
-            },
-        },
-        .chosen => switch (right.decision) {
-            .unresolved => {
-                traceActionGroupDiff("chosen_vs_unresolved", left_state_id, right_state_id, left, right, reduce_productions, group_of);
-                traceStateConflictDetail(
-                    "chosen_vs_unresolved",
-                    left_state_id,
-                    right_state_id,
-                    left.symbol,
-                    chosenShiftTarget(left),
-                    firstShiftTarget(right.candidate_actions),
-                    group_of,
-                );
-                recordMinimizeTraceStat("unequal_action");
-                return true;
-            },
-            .chosen => {},
-        },
-    }
-    if (decisionsEquivalent(left.symbol, left.decision, right.decision, reduce_productions, group_of)) return false;
+
+    var left_single: [1]actions.ParseAction = undefined;
+    var right_single: [1]actions.ParseAction = undefined;
+    const left_actions = effectiveActions(left, &left_single);
+    const right_actions = effectiveActions(right, &right_single);
+    if (actionListsEquivalent(left.symbol, left_actions, right_actions, reduce_productions, group_of)) return false;
+
     traceActionGroupDiff("decision", left_state_id, right_state_id, left, right, reduce_productions, group_of);
     traceStateConflictDetail(
         "decision",
         left_state_id,
         right_state_id,
         left.symbol,
-        chosenShiftTarget(left),
-        chosenShiftTarget(right),
+        firstShiftTarget(left_actions),
+        firstShiftTarget(right_actions),
         group_of,
     );
     return true;
+}
+
+fn effectiveActions(
+    group: resolution.ResolvedActionGroup,
+    single_buffer: *[1]actions.ParseAction,
+) []const actions.ParseAction {
+    return switch (group.decision) {
+        .chosen => |action| blk: {
+            single_buffer[0] = action;
+            break :blk single_buffer[0..1];
+        },
+        .unresolved => group.candidate_actions,
+    };
 }
 
 fn shiftRepetitionDiffers(left: resolution.ResolvedActionGroup, right: resolution.ResolvedActionGroup) bool {
@@ -1576,25 +1924,6 @@ fn successorsDiffer(
         }
     }
     return false;
-}
-
-fn decisionsEquivalent(
-    symbol: syntax_ir.SymbolRef,
-    left: resolution.ResolvedDecision,
-    right: resolution.ResolvedDecision,
-    reduce_productions: ?[]const UnitReductionProduction,
-    group_of: []const u32,
-) bool {
-    return switch (left) {
-        .chosen => |left_action| switch (right) {
-            .chosen => |right_action| actionsEquivalent(symbol, left_action, right_action, reduce_productions, group_of),
-            .unresolved => false,
-        },
-        .unresolved => |left_reason| switch (right) {
-            .chosen => false,
-            .unresolved => |right_reason| left_reason == right_reason,
-        },
-    };
 }
 
 fn actionsEquivalent(
@@ -1662,8 +1991,7 @@ fn reduceActionsEquivalent(
     if (left_info.production_info_id) |left_id| {
         return if (right_info.production_info_id) |right_id| left_id == right_id else false;
     }
-    if (right_info.production_info_id != null) return false;
-    return left_info.metadata_empty and right_info.metadata_empty;
+    return false;
 }
 
 fn actionListsEquivalent(
@@ -1701,8 +2029,16 @@ fn chosenShiftTarget(group: resolution.ResolvedActionGroup) ?state.StateId {
 fn successorShiftTarget(group: resolution.ResolvedActionGroup) ?state.StateId {
     switch (group.decision) {
         .chosen => return chosenShiftTarget(group),
-        .unresolved => return firstShiftTarget(group.candidate_actions),
+        .unresolved => return lastActionShiftTarget(group.candidate_actions),
     }
+}
+
+fn lastActionShiftTarget(candidate_actions: []const actions.ParseAction) ?state.StateId {
+    if (candidate_actions.len == 0) return null;
+    return switch (candidate_actions[candidate_actions.len - 1]) {
+        .shift => |target| target,
+        else => null,
+    };
 }
 
 fn firstShiftTarget(candidate_actions: []const actions.ParseAction) ?state.StateId {
@@ -1725,6 +2061,16 @@ fn findResolvedGroup(
     return null;
 }
 
+fn findResolvedGroupIndex(
+    groups: []const resolution.ResolvedActionGroup,
+    symbol: syntax_ir.SymbolRef,
+) ?usize {
+    for (groups, 0..) |group, index| {
+        if (symbolRefEql(group.symbol, symbol)) return index;
+    }
+    return null;
+}
+
 fn findTransition(
     transitions: []const state.Transition,
     symbol: syntax_ir.SymbolRef,
@@ -1743,6 +2089,100 @@ fn appendMergedTransition(
         if (symbolRefEql(existing.symbol, new_transition.symbol) and existing.extra == new_transition.extra) return;
     }
     try transitions.append(new_transition);
+}
+
+fn appendOrReplaceMergedTransition(
+    transitions: *std.array_list.Managed(state.Transition),
+    new_transition: state.Transition,
+) !void {
+    for (transitions.items) |*existing| {
+        if (symbolRefEql(existing.symbol, new_transition.symbol)) {
+            existing.* = new_transition;
+            return;
+        }
+    }
+    try transitions.append(new_transition);
+}
+
+fn freeResolvedActionGroup(allocator: std.mem.Allocator, group: resolution.ResolvedActionGroup) void {
+    if (group.candidate_actions.len != 0) allocator.free(group.candidate_actions);
+}
+
+fn mergedReservedWordSetIdForGroupAlloc(
+    allocator: std.mem.Allocator,
+    group: []const usize,
+    states_in: []const state.ParseState,
+    resolved_in: resolution.ResolvedActionTable,
+    terminal_conflicts: ?TerminalConflictMap,
+) std.mem.Allocator.Error!u16 {
+    const conflict_map = terminal_conflicts orelse return states_in[group[0]].reserved_word_set_id;
+    if (conflict_map.reserved_word_sets.len == 0 or conflict_map.terminal_count == 0) {
+        return states_in[group[0]].reserved_word_set_id;
+    }
+
+    const reserved_tokens = try allocator.alloc(bool, conflict_map.terminal_count);
+    defer allocator.free(reserved_tokens);
+    @memset(reserved_tokens, false);
+
+    for (group) |state_index| {
+        const reserved_word_set_id = states_in[state_index].reserved_word_set_id;
+        if (reserved_word_set_id < conflict_map.reserved_word_sets.len) {
+            for (conflict_map.reserved_word_sets[reserved_word_set_id]) |symbol| {
+                switch (symbol) {
+                    .terminal => |terminal| {
+                        if (terminal < reserved_tokens.len) reserved_tokens[terminal] = true;
+                    },
+                    .end, .external, .non_terminal => {},
+                }
+            }
+        }
+    }
+
+    for (group) |state_index| {
+        const state_id = states_in[state_index].id;
+        for (resolved_in.groupsForState(state_id)) |action_group| {
+            switch (action_group.symbol) {
+                .terminal => |terminal| {
+                    if (terminal < reserved_tokens.len) reserved_tokens[terminal] = false;
+                },
+                .end, .external, .non_terminal => {},
+            }
+        }
+    }
+
+    return reservedWordSetIdForTokenSet(conflict_map.reserved_word_sets, reserved_tokens) orelse
+        states_in[group[0]].reserved_word_set_id;
+}
+
+fn reservedWordSetIdForTokenSet(
+    reserved_word_sets: []const []const syntax_ir.SymbolRef,
+    token_set: []const bool,
+) ?u16 {
+    for (reserved_word_sets, 0..) |reserved_word_set, set_id| {
+        if (reservedWordSetMatchesTokenSet(reserved_word_set, token_set)) return @intCast(set_id);
+    }
+    return null;
+}
+
+fn reservedWordSetMatchesTokenSet(
+    reserved_word_set: []const syntax_ir.SymbolRef,
+    token_set: []const bool,
+) bool {
+    var matched_count: usize = 0;
+    for (reserved_word_set) |symbol| {
+        const terminal = switch (symbol) {
+            .terminal => |index| index,
+            .end, .external, .non_terminal => return false,
+        };
+        if (terminal >= token_set.len or !token_set[terminal]) return false;
+        matched_count += 1;
+    }
+
+    var token_count: usize = 0;
+    for (token_set) |is_reserved| {
+        if (is_reserved) token_count += 1;
+    }
+    return matched_count == token_count;
 }
 
 fn remapResolvedActionGroup(
@@ -1847,6 +2287,7 @@ test "minimizeAlloc removes hidden unit reduction states" {
         .lhs = 0,
         .child_count = 1,
         .metadata_empty = true,
+        .production_info_id = 0,
     }};
     const unit_symbols = [_]UnitReductionSymbol{.{
         .kind = .hidden,
@@ -1964,7 +2405,7 @@ test "minimizeAlloc does not keep states only referenced by chosen diagnostic ca
     try std.testing.expectEqual(@as(state.StateId, 1), result.states[1].id);
 }
 
-test "minimizeAlloc compares empty reduce metadata instead of raw production ids" {
+test "minimizeAlloc compares emitted production ids for empty reduce metadata" {
     const allocator = std.testing.allocator;
 
     const parse_states = [_]state.ParseState{
@@ -2005,8 +2446,8 @@ test "minimizeAlloc compares empty reduce metadata instead of raw production ids
     );
     defer result.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 1), result.states.len);
-    try std.testing.expectEqual(@as(usize, 1), result.merged_count);
+    try std.testing.expectEqual(@as(usize, 2), result.states.len);
+    try std.testing.expectEqual(@as(usize, 0), result.merged_count);
 }
 
 test "minimizeAlloc compares compact production info ids for non-empty reduce metadata" {

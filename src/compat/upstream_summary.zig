@@ -26,7 +26,7 @@ pub const LocalSummaryOptions = struct {
     js_runtime: []const u8 = "node",
     report_states_for_rule: ?[]const u8 = null,
     minimize_states: bool = false,
-    compact_duplicate_states: bool = true,
+    compact_duplicate_states: bool = false,
 };
 
 pub const Summary = struct {

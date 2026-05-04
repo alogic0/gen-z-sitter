@@ -1,5 +1,6 @@
 const std = @import("std");
 const actions = @import("actions.zig");
+const first = @import("first.zig");
 const syntax_ir = @import("../ir/syntax_grammar.zig");
 const item = @import("item.zig");
 const state = @import("state.zig");
@@ -81,7 +82,7 @@ pub fn detectConflictsFromActions(
         if (grouped.len >= 2) {
             const kind = classifyConflict(grouped);
             if (kind) |conflict_kind| {
-                const conflict_items = try collectConflictItemsForSymbol(allocator, parse_state.items, symbol);
+                const conflict_items = try collectConflictItemsForSymbolLegacy(allocator, parse_state.items, symbol);
                 try conflicts.append(.{
                     .kind = conflict_kind,
                     .symbol = symbol,
@@ -98,8 +99,10 @@ pub fn detectConflictsFromActions(
 
 pub fn detectConflictsFromActionGroups(
     allocator: std.mem.Allocator,
+    productions: anytype,
     parse_state: state.ParseState,
     action_groups: []const actions.ActionGroup,
+    first_sets: first.FirstSets,
 ) std.mem.Allocator.Error![]const state.Conflict {
     var conflicts = std.array_list.Managed(state.Conflict).init(allocator);
     defer conflicts.deinit();
@@ -108,7 +111,13 @@ pub fn detectConflictsFromActionGroups(
         if (group.actions.len < 2) continue;
         const kind = classifyConflictActions(group.actions);
         if (kind) |conflict_kind| {
-            const conflict_items = try collectConflictItemsForSymbol(allocator, parse_state.items, group.symbol);
+            const conflict_items = try collectConflictItemsForSymbol(
+                allocator,
+                productions,
+                parse_state.items,
+                group.symbol,
+                first_sets,
+            );
             try conflicts.append(.{
                 .kind = conflict_kind,
                 .symbol = group.symbol,
@@ -164,6 +173,33 @@ fn itemAppliesToLookahead(entry: item.ParseItemSetEntry, lookahead: ?syntax_ir.S
 
 fn collectConflictItemsForSymbol(
     allocator: std.mem.Allocator,
+    productions: anytype,
+    state_items: []const item.ParseItemSetEntry,
+    symbol: syntax_ir.SymbolRef,
+    first_sets: first.FirstSets,
+) std.mem.Allocator.Error![]const item.ParseItem {
+    var grouped = std.array_list.Managed(item.ParseItem).init(allocator);
+    defer grouped.deinit();
+
+    for (state_items) |entry| {
+        if (entry.item.production_id >= productions.len) continue;
+        const production = productions[entry.item.production_id];
+        if (entry.item.step_index < production.steps.len) {
+            if (entry.item.step_index == 0) continue;
+            const step = production.steps[entry.item.step_index];
+            if (!symbolCanStart(first_sets, step.symbol, symbol)) continue;
+            try appendUniqueCoreItem(&grouped, entry.item);
+        } else {
+            if (!itemAppliesToLookahead(entry, symbol)) continue;
+            try appendUniqueCoreItem(&grouped, entry.item);
+        }
+    }
+
+    return try allocator.dupe(item.ParseItem, grouped.items);
+}
+
+fn collectConflictItemsForSymbolLegacy(
+    allocator: std.mem.Allocator,
     state_items: []const item.ParseItemSetEntry,
     symbol: syntax_ir.SymbolRef,
 ) std.mem.Allocator.Error![]const item.ParseItem {
@@ -176,6 +212,33 @@ fn collectConflictItemsForSymbol(
     }
 
     return try allocator.dupe(item.ParseItem, grouped.items);
+}
+
+fn symbolCanStart(
+    first_sets: first.FirstSets,
+    symbol: syntax_ir.SymbolRef,
+    lookahead: syntax_ir.SymbolRef,
+) bool {
+    return switch (symbol) {
+        .terminal => |index| switch (lookahead) {
+            .terminal => |other| index == other,
+            else => false,
+        },
+        .external => |index| switch (lookahead) {
+            .external => |other| index == other,
+            else => false,
+        },
+        .end => switch (lookahead) {
+            .end => true,
+            else => false,
+        },
+        .non_terminal => |index| switch (lookahead) {
+            .terminal => |terminal| first_sets.firstOfVariable(index).containsTerminal(terminal),
+            .external => |external| first_sets.firstOfVariable(index).containsExternal(external),
+            .end => first_sets.firstOfVariable(index).includes_end,
+            .non_terminal => false,
+        },
+    };
 }
 
 fn classifyConflict(grouped: []const actions.ActionEntry) ?state.ConflictKind {

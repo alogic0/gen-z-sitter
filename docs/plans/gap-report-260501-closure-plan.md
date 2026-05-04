@@ -689,6 +689,29 @@ remaining Python blocker is now a parser/table construction gap:
 `large_state_count=193/185`, `parse_action_list_count=5144/4864`,
 `small_parse_row_count=2738/2603`, and `lex_function_case_count=182/150`.
 
+Python parser/table closure note: the parser/table residual was not a Python
+surface problem. Local comparison had been compacting duplicate states by
+default, masking the upstream topology, and state-0 recovery lex tokens were
+attached after lex-state assignment instead of flowing through the normal
+token-set merge path. The upstream-shaped fix disables duplicate-state
+compaction in upstream comparisons, computes state-0 recovery tokens before
+lex-state assignment, carries the recovery `match_shorter_or_longer` predicate
+from the extracted lexer conflict map, and aliases keyword large character sets
+to identical main lexer sets during C emission. Python now matches upstream on
+all structural fields:
+`serialized_state_count=2788/2788`, `emitted_state_count=2788/2788`,
+`large_state_count=185/185`, `parse_action_list_count=4864/4864`,
+`small_parse_row_count=2603/2603`, `small_parse_map_count=2603/2603`,
+`lex_mode_count=2788/2788`, `lex_function_case_count=150/150`,
+`keyword_lex_function_case_count=162/162`, `large_character_set_count=2/2`,
+and `external_lex_state_count=19/19`; bounded corpus samples and node types
+match. JavaScript also remains structurally matched:
+`serialized_state_count=1870/1870`, `parse_action_list_count=3588/3588`,
+`lex_function_case_count=279/279`, `large_character_set_count=3/3`, and
+`external_lex_state_count=10/10`, with bounded corpus samples matched. The only
+remaining diff in both summaries is the known local `language_version=15`
+versus upstream `14`.
+
 No compatibility metadata was promoted in this phase because none of the three
 targets met the stability and proof requirements.
 
@@ -725,11 +748,10 @@ non-JavaScript promotion blockers.
 ## Successor Batch Order
 
 1. Investigate Python parser/table construction parity now that symbol,
-   token, alias, field, node-types, production, keyword-lex, large-character-set,
-   and external-lex-state surfaces match upstream. Start with the
-   `serialized_state_count=2938/2788` and `parse_action_list_count=5144/4864`
-   deltas; do not reopen extraction unless a new artifact shows a surface
-   regression.
+   token, alias, field, node-types, production, parser-table, keyword-lex,
+   large-character-set, and external-lex-state surfaces match upstream. This
+   item is closed for the bounded Python comparison; reopen only if a later
+   non-bounded corpus or emitted artifact shows a concrete regression.
 2. Bounded comparison/profile path for TypeScript and Rust.
 3. Re-run Python after the symbol-surface fix and then classify the remaining
    state/action/lexer deltas.

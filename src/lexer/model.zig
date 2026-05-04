@@ -5,6 +5,7 @@ const syntax_ir = @import("../ir/syntax_grammar.zig");
 const first_sets = @import("../parse_table/first.zig");
 const process_inlines = @import("../parse_table/process_inlines.zig");
 const lexer_table = @import("table.zig");
+const unicode_props = @import("unicode_props.zig");
 
 pub const ExpandError = std.mem.Allocator.Error || error{
     UnsupportedRule,
@@ -291,8 +292,20 @@ const AdvanceTransition = struct {
     precedence: i32,
 };
 
+const CombinedTransition = struct {
+    chars: CharacterSet,
+    states: []u32,
+    is_separator: bool,
+    precedence: i32,
+};
+
 const TransitionCollection = struct {
     transitions: []AdvanceTransition,
+    has_separator_transitions: bool,
+};
+
+const CombinedTransitionCollection = struct {
+    transitions: []CombinedTransition,
     has_separator_transitions: bool,
 };
 
@@ -1359,18 +1372,11 @@ fn parseUnicodePropertySet(
         return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "XID_Start")) {
-        try set.addRange(allocator, 'A', 'Z');
-        try set.addRange(allocator, 'a', 'z');
-        try set.addRange(allocator, '_', '_');
-        try set.addCodepointRange(allocator, 0x80, 0x110000);
+        try addUnicodePropertyRanges(allocator, &set, &unicode_props.xid_start_ranges);
         return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "XID_Continue")) {
-        try set.addRange(allocator, 'A', 'Z');
-        try set.addRange(allocator, 'a', 'z');
-        try set.addRange(allocator, '0', '9');
-        try set.addRange(allocator, '_', '_');
-        try set.addCodepointRange(allocator, 0x80, 0x110000);
+        try addUnicodePropertyRanges(allocator, &set, &unicode_props.xid_continue_ranges);
         return if (negated) negateUnicodePropertySet(allocator, set) else set;
     }
     if (std.mem.eql(u8, property_name, "Mn")) {
@@ -1383,6 +1389,16 @@ fn parseUnicodePropertySet(
     }
 
     return error.UnsupportedPattern;
+}
+
+fn addUnicodePropertyRanges(
+    allocator: std.mem.Allocator,
+    set: *CharacterSet,
+    ranges: []const unicode_props.Range,
+) !void {
+    for (ranges) |range| {
+        try set.addCodepointRange(allocator, range.start, range.end);
+    }
 }
 
 pub fn expandExtractedLexicalGrammar(
@@ -1998,7 +2014,9 @@ fn reservedWordSetIdForContext(
     context_name: ?[]const u8,
     reserved_word_context_names: []const []const u8,
 ) u16 {
-    const name = context_name orelse return 0;
+    const name = context_name orelse {
+        return if (reserved_word_context_names.len == 0) 0 else 1;
+    };
     for (reserved_word_context_names, 0..) |candidate, index| {
         if (std.mem.eql(u8, name, candidate)) {
             return @intCast(@min(index + 1, std.math.maxInt(u16)));
@@ -2379,31 +2397,28 @@ fn computeConflictStatusPair(
     left_following_chars: CharacterSet,
     right_following_chars: CharacterSet,
 ) std.mem.Allocator.Error![2]TokenConflictStatus {
-    var queue = std.ArrayListUnmanaged(TokenConflictPairState).empty;
+    var queue = std.ArrayListUnmanaged([]const u32).empty;
     defer {
-        for (queue.items) |state| {
-            allocator.free(state.left);
-            allocator.free(state.right);
-        }
+        for (queue.items) |state| allocator.free(state);
         queue.deinit(allocator);
     }
 
     var visited = std.AutoHashMap(u64, void).init(allocator);
     defer visited.deinit();
 
-    const left_start = try epsilonClosureAlloc(allocator, grammar, &.{grammar.variables[left_index].start_state});
-    const right_start = try epsilonClosureAlloc(allocator, grammar, &.{grammar.variables[right_index].start_state});
-    try queue.append(allocator, .{ .left = left_start, .right = right_start });
-    try visited.put(pairStateHash(left_start, right_start), {});
+    const start = try epsilonClosureAlloc(allocator, grammar, &.{
+        grammar.variables[left_index].start_state,
+        grammar.variables[right_index].start_state,
+    });
+    try queue.append(allocator, start);
+    try visited.put(stateSetHash(start), {});
 
     var result = [2]TokenConflictStatus{ .{}, .{} };
-
     while (queue.items.len != 0) {
-        const pair_state = queue.pop().?;
-        defer allocator.free(pair_state.left);
-        defer allocator.free(pair_state.right);
+        const state_set = queue.pop().?;
+        defer allocator.free(state_set);
 
-        const live_owner = singleLiveOwner(owner_by_state, pair_state.left, pair_state.right);
+        const live_owner = singleLiveOwner(owner_by_state, state_set);
         if (live_owner) |owner| {
             if (owner == left_index) {
                 result[0].matches_different_string = true;
@@ -2413,99 +2428,95 @@ fn computeConflictStatusPair(
             continue;
         }
 
-        const left_completion = firstCompletion(pair_state.left, grammar);
-        const right_completion = firstCompletion(pair_state.right, grammar);
-        const left_transitions = try collectTransitionsAlloc(allocator, grammar, pair_state.left);
-        defer freeTransitions(allocator, left_transitions.transitions);
-        const right_transitions = try collectTransitionsAlloc(allocator, grammar, pair_state.right);
-        defer freeTransitions(allocator, right_transitions.transitions);
-        const within_separator = left_transitions.has_separator_transitions or right_transitions.has_separator_transitions;
+        const transitions = try combinedTransitionsAlloc(allocator, grammar, state_set);
+        defer freeCombinedTransitions(allocator, transitions.transitions);
 
-        if (left_completion != null and within_separator) result[0].does_match_separators = true;
-        if (right_completion != null and within_separator) result[1].does_match_separators = true;
-
-        if (left_completion != null and right_completion != null) {
-            const preferred_left = preferCompletedToken(grammar, left_completion.?, right_completion.?);
-            if (preferred_left) {
-                result[0].matches_same_string = true;
-            } else {
-                result[1].matches_same_string = true;
+        var completion: ?ConflictCompletion = null;
+        for (state_set) |state_id| {
+            switch (grammar.nfa.states.items[state_id]) {
+                .accept => |accept| {
+                    const candidate: ConflictCompletion = .{
+                        .variable_index = accept.variable_index,
+                        .precedence = accept.precedence,
+                    };
+                    if (transitions.has_separator_transitions) {
+                        if (candidate.variable_index == left_index) {
+                            result[0].does_match_separators = true;
+                        } else {
+                            result[1].does_match_separators = true;
+                        }
+                    }
+                    if (completion) |previous| {
+                        if (candidate.variable_index == previous.variable_index) continue;
+                        const preferred = if (preferCompletedToken(grammar, previous, candidate))
+                            previous
+                        else blk: {
+                            completion = candidate;
+                            break :blk candidate;
+                        };
+                        if (preferred.variable_index == left_index) {
+                            result[0].matches_same_string = true;
+                        } else {
+                            result[1].matches_same_string = true;
+                        }
+                    } else {
+                        completion = candidate;
+                    }
+                },
+                else => {},
             }
         }
 
-        if (left_transitions.transitions.len == 0 and right_transitions.transitions.len == 0) continue;
+        for (transitions.transitions) |transition| {
+            var can_advance = true;
+            if (completion) |completed| {
+                var advanced_id: ?usize = null;
+                var successor_contains_completed = false;
+                var previous_owner: ?usize = null;
+                for (transition.states) |state_id| {
+                    const variable_index = owner_by_state[state_id];
+                    if (previous_owner != null and previous_owner.? == variable_index) continue;
+                    previous_owner = variable_index;
+                    if (variable_index == completed.variable_index) {
+                        successor_contains_completed = true;
+                        break;
+                    }
+                    advanced_id = variable_index;
+                }
+                if (advanced_id != null and !successor_contains_completed) {
+                    if (preferCombinedTransitionOverCompletion(
+                        completed,
+                        transition,
+                        transitions.has_separator_transitions,
+                    )) {
+                        can_advance = true;
+                        if (advanced_id.? == left_index) {
+                            result[0].does_match_continuation = true;
+                            if (characterSetsIntersect(transition.chars, right_following_chars)) {
+                                result[0].does_match_valid_continuation = true;
+                            }
+                        } else {
+                            result[1].does_match_continuation = true;
+                            if (characterSetsIntersect(transition.chars, left_following_chars)) {
+                                result[1].does_match_valid_continuation = true;
+                            }
+                        }
+                    } else if (completed.variable_index == left_index) {
+                        result[0].matches_prefix = true;
+                    } else {
+                        result[1].matches_prefix = true;
+                    }
+                }
+            }
 
-        var left_overlap = false;
-        var right_overlap = false;
-        for (left_transitions.transitions) |left_transition| {
-            for (right_transitions.transitions) |right_transition| {
-                if (!characterSetsIntersect(left_transition.chars, right_transition.chars)) continue;
-                left_overlap = true;
-                right_overlap = true;
-
-                const left_next = try epsilonClosureAlloc(allocator, grammar, &.{left_transition.target_state});
-                const right_next = try epsilonClosureAlloc(allocator, grammar, &.{right_transition.target_state});
-                const hash = pairStateHash(left_next, right_next);
+            if (can_advance) {
+                const next = try epsilonClosureAlloc(allocator, grammar, transition.states);
+                const hash = stateSetHash(next);
                 if (!visited.contains(hash)) {
                     try visited.put(hash, {});
-                    try queue.append(allocator, .{ .left = left_next, .right = right_next });
+                    try queue.append(allocator, next);
                 } else {
-                    allocator.free(left_next);
-                    allocator.free(right_next);
-                }
-            }
-        }
-
-        if (!left_overlap and left_transitions.transitions.len != 0) result[0].matches_different_string = true;
-        if (!right_overlap and right_transitions.transitions.len != 0) result[1].matches_different_string = true;
-
-        if (left_completion) |completion| {
-            for (right_transitions.transitions) |transition| {
-                const successor_contains_completed = transitionCanReachVariable(
-                    allocator,
-                    grammar,
-                    transition.target_state,
-                    completion.variable_index,
-                ) catch false;
-                if (successor_contains_completed) continue;
-                if (preferAdvanceOverCompletion(
-                    grammar,
-                    completion,
-                    transition,
-                    successor_contains_completed,
-                    within_separator,
-                )) {
-                    result[1].does_match_continuation = true;
-                    if (characterSetsIntersect(transition.chars, left_following_chars)) {
-                        result[1].does_match_valid_continuation = true;
-                    }
-                } else {
-                    result[0].matches_prefix = true;
-                }
-            }
-        }
-        if (right_completion) |completion| {
-            for (left_transitions.transitions) |transition| {
-                const successor_contains_completed = transitionCanReachVariable(
-                    allocator,
-                    grammar,
-                    transition.target_state,
-                    completion.variable_index,
-                ) catch false;
-                if (successor_contains_completed) continue;
-                if (preferAdvanceOverCompletion(
-                    grammar,
-                    completion,
-                    transition,
-                    successor_contains_completed,
-                    within_separator,
-                )) {
-                    result[0].does_match_continuation = true;
-                    if (characterSetsIntersect(transition.chars, right_following_chars)) {
-                        result[0].does_match_valid_continuation = true;
-                    }
-                } else {
-                    result[1].matches_prefix = true;
+                    allocator.free(next);
                 }
             }
         }
@@ -2548,17 +2559,9 @@ fn computeStateOwnersAlloc(
     return owners;
 }
 
-fn singleLiveOwner(owner_by_state: []const usize, left: []const u32, right: []const u32) ?usize {
+fn singleLiveOwner(owner_by_state: []const usize, states: []const u32) ?usize {
     var owner: ?usize = null;
-    for (left) |state_id| {
-        const current = owner_by_state[state_id];
-        if (owner == null) {
-            owner = current;
-        } else if (owner.? != current) {
-            return null;
-        }
-    }
-    for (right) |state_id| {
+    for (states) |state_id| {
         const current = owner_by_state[state_id];
         if (owner == null) {
             owner = current;
@@ -2567,6 +2570,302 @@ fn singleLiveOwner(owner_by_state: []const usize, left: []const u32, right: []co
         }
     }
     return owner;
+}
+
+fn combinedTransitionsAlloc(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    states: []const u32,
+) std.mem.Allocator.Error!CombinedTransitionCollection {
+    var result = std.ArrayListUnmanaged(CombinedTransition).empty;
+    errdefer freeCombinedTransitions(allocator, result.items);
+    var has_separator_transitions = false;
+
+    for (states) |state_id| {
+        switch (grammar.nfa.states.items[state_id]) {
+            .advance => |advance| {
+                if (advance.is_separator) has_separator_transitions = true;
+                var chars = try cloneCharacterSet(allocator, advance.chars);
+                defer chars.deinit(allocator);
+
+                var index: usize = 0;
+                while (index < result.items.len and !characterSetIsEmpty(chars)) : (index += 1) {
+                    var intersection = try removeCharacterSetIntersectionAlloc(
+                        allocator,
+                        &result.items[index].chars,
+                        &chars,
+                    );
+                    defer intersection.deinit(allocator);
+                    if (characterSetIsEmpty(intersection)) continue;
+
+                    var states_for_intersection = std.ArrayListUnmanaged(u32).empty;
+                    defer states_for_intersection.deinit(allocator);
+                    try states_for_intersection.appendSlice(allocator, result.items[index].states);
+                    try appendUniqueState(allocator, &states_for_intersection, advance.state_id);
+                    std.mem.sort(u32, states_for_intersection.items, {}, std.sort.asc(u32));
+                    const owned_states = try states_for_intersection.toOwnedSlice(allocator);
+                    errdefer allocator.free(owned_states);
+
+                    const transition = CombinedTransition{
+                        .chars = try cloneCharacterSet(allocator, intersection),
+                        .states = owned_states,
+                        .is_separator = result.items[index].is_separator and advance.is_separator,
+                        .precedence = @max(result.items[index].precedence, advance.precedence),
+                    };
+                    errdefer {
+                        var owned_transition = transition;
+                        owned_transition.chars.deinit(allocator);
+                        allocator.free(owned_transition.states);
+                    }
+
+                    if (characterSetIsEmpty(result.items[index].chars)) {
+                        result.items[index].chars.deinit(allocator);
+                        allocator.free(result.items[index].states);
+                        result.items[index] = transition;
+                    } else {
+                        try result.append(allocator, transition);
+                    }
+                }
+
+                if (!characterSetIsEmpty(chars)) {
+                    const target_states = try allocator.alloc(u32, 1);
+                    errdefer allocator.free(target_states);
+                    target_states[0] = advance.state_id;
+                    try result.append(allocator, .{
+                        .chars = try cloneCharacterSet(allocator, chars),
+                        .states = target_states,
+                        .is_separator = advance.is_separator,
+                        .precedence = advance.precedence,
+                    });
+                }
+            },
+            else => {},
+        }
+    }
+
+    try mergeCombinedTransitions(allocator, &result);
+
+    return .{
+        .transitions = try result.toOwnedSlice(allocator),
+        .has_separator_transitions = has_separator_transitions,
+    };
+}
+
+fn mergeCombinedTransitions(
+    allocator: std.mem.Allocator,
+    transitions: *std.ArrayListUnmanaged(CombinedTransition),
+) std.mem.Allocator.Error!void {
+    var index: usize = 0;
+    while (index < transitions.items.len) {
+        var merged = false;
+        var previous_index: usize = 0;
+        while (previous_index < index) : (previous_index += 1) {
+            if (transitions.items[previous_index].is_separator == transitions.items[index].is_separator and
+                transitions.items[previous_index].precedence == transitions.items[index].precedence and
+                std.mem.eql(u32, transitions.items[previous_index].states, transitions.items[index].states))
+            {
+                try transitions.items[previous_index].chars.addSet(allocator, transitions.items[index].chars);
+                transitions.items[index].chars.deinit(allocator);
+                allocator.free(transitions.items[index].states);
+                _ = transitions.swapRemove(index);
+                merged = true;
+                break;
+            }
+        }
+        if (!merged) index += 1;
+    }
+    std.mem.sort(CombinedTransition, transitions.items, {}, combinedTransitionLessThan);
+}
+
+fn combinedTransitionLessThan(_: void, left: CombinedTransition, right: CombinedTransition) bool {
+    return characterSetLessThan(left.chars, right.chars);
+}
+
+fn characterSetIsEmpty(chars: CharacterSet) bool {
+    return chars.ranges.items.len == 0;
+}
+
+fn characterSetLessThan(left: CharacterSet, right: CharacterSet) bool {
+    const len = @min(left.ranges.items.len, right.ranges.items.len);
+    var index: usize = 0;
+    while (index < len) : (index += 1) {
+        const left_range = left.ranges.items[index];
+        const right_range = right.ranges.items[index];
+        if (left_range.start != right_range.start) return left_range.start < right_range.start;
+        if (left_range.end != right_range.end) return left_range.end < right_range.end;
+    }
+    return left.ranges.items.len < right.ranges.items.len;
+}
+
+fn removeCharacterSetIntersectionAlloc(
+    allocator: std.mem.Allocator,
+    left: *CharacterSet,
+    right: *CharacterSet,
+) std.mem.Allocator.Error!CharacterSet {
+    var intersection = CharacterSet.empty();
+    errdefer intersection.deinit(allocator);
+
+    var left_index: usize = 0;
+    var right_index: usize = 0;
+    while (left_index < left.ranges.items.len and right_index < right.ranges.items.len) {
+        const left_range = left.ranges.items[left_index];
+        const right_range = right.ranges.items[right_index];
+        const start = @max(left_range.start, right_range.start);
+        const end = @min(left_range.end, right_range.end);
+        if (start < end) {
+            try intersection.addCodepointRange(allocator, start, end);
+        }
+        if (left_range.end <= right_range.end) {
+            left_index += 1;
+        } else {
+            right_index += 1;
+        }
+    }
+
+    for (intersection.ranges.items) |range| {
+        try left.removeCodepointRange(allocator, range.start, range.end);
+        try right.removeCodepointRange(allocator, range.start, range.end);
+    }
+    return intersection;
+}
+
+fn legacyPartitionedCombinedTransitionsAlloc(
+    allocator: std.mem.Allocator,
+    grammar: ExpandedLexicalGrammar,
+    states: []const u32,
+) std.mem.Allocator.Error!CombinedTransitionCollection {
+    var raw = std.ArrayListUnmanaged(AdvanceTransition).empty;
+    defer {
+        for (raw.items) |*transition| transition.chars.deinit(allocator);
+        raw.deinit(allocator);
+    }
+
+    var boundaries = std.ArrayListUnmanaged(u32).empty;
+    defer boundaries.deinit(allocator);
+
+    var has_separator_transitions = false;
+    for (states) |state_id| {
+        switch (grammar.nfa.states.items[state_id]) {
+            .advance => |advance| {
+                if (advance.is_separator) has_separator_transitions = true;
+                try raw.append(allocator, .{
+                    .chars = try cloneCharacterSet(allocator, advance.chars),
+                    .target_state = advance.state_id,
+                    .is_separator = advance.is_separator,
+                    .precedence = advance.precedence,
+                });
+                for (advance.chars.ranges.items) |range| {
+                    try appendUniqueBoundary(allocator, &boundaries, range.start);
+                    try appendUniqueBoundary(allocator, &boundaries, range.end);
+                }
+            },
+            else => {},
+        }
+    }
+
+    std.mem.sort(u32, boundaries.items, {}, std.sort.asc(u32));
+
+    var result = std.ArrayListUnmanaged(CombinedTransition).empty;
+    errdefer freeCombinedTransitions(allocator, result.items);
+
+    if (boundaries.items.len >= 2) {
+        var boundary_index: usize = 0;
+        while (boundary_index + 1 < boundaries.items.len) : (boundary_index += 1) {
+            const start = boundaries.items[boundary_index];
+            const end = boundaries.items[boundary_index + 1];
+            if (start >= end) continue;
+
+            var states_for_range = std.ArrayListUnmanaged(u32).empty;
+            defer states_for_range.deinit(allocator);
+            var chars = CharacterSet.empty();
+            errdefer chars.deinit(allocator);
+            var is_separator = true;
+            var saw_transition = false;
+            var precedence: i32 = std.math.minInt(i32);
+
+            for (raw.items) |transition| {
+                if (!characterSetContainsRange(transition.chars, start, end)) continue;
+                saw_transition = true;
+                is_separator = is_separator and transition.is_separator;
+                precedence = @max(precedence, transition.precedence);
+                try appendUniqueState(allocator, &states_for_range, transition.target_state);
+            }
+            if (!saw_transition) continue;
+
+            try chars.addCodepointRange(allocator, start, end);
+            std.mem.sort(u32, states_for_range.items, {}, std.sort.asc(u32));
+            const owned_states = try states_for_range.toOwnedSlice(allocator);
+            try appendCombinedTransition(allocator, &result, .{
+                .chars = chars,
+                .states = owned_states,
+                .is_separator = is_separator,
+                .precedence = precedence,
+            });
+        }
+    }
+
+    return .{
+        .transitions = try result.toOwnedSlice(allocator),
+        .has_separator_transitions = has_separator_transitions,
+    };
+}
+
+fn freeCombinedTransitions(allocator: std.mem.Allocator, transitions: []CombinedTransition) void {
+    for (transitions) |*transition| {
+        transition.chars.deinit(allocator);
+        allocator.free(transition.states);
+    }
+    allocator.free(transitions);
+}
+
+fn appendCombinedTransition(
+    allocator: std.mem.Allocator,
+    transitions: *std.ArrayListUnmanaged(CombinedTransition),
+    candidate: CombinedTransition,
+) std.mem.Allocator.Error!void {
+    for (transitions.items) |*existing| {
+        if (existing.is_separator == candidate.is_separator and
+            existing.precedence == candidate.precedence and
+            std.mem.eql(u32, existing.states, candidate.states))
+        {
+            try existing.chars.addSet(allocator, candidate.chars);
+            var owned = candidate;
+            owned.chars.deinit(allocator);
+            allocator.free(owned.states);
+            return;
+        }
+    }
+    try transitions.append(allocator, candidate);
+}
+
+fn appendUniqueBoundary(
+    allocator: std.mem.Allocator,
+    boundaries: *std.ArrayListUnmanaged(u32),
+    value: u32,
+) std.mem.Allocator.Error!void {
+    for (boundaries.items) |existing| {
+        if (existing == value) return;
+    }
+    try boundaries.append(allocator, value);
+}
+
+fn appendUniqueState(
+    allocator: std.mem.Allocator,
+    states: *std.ArrayListUnmanaged(u32),
+    value: u32,
+) std.mem.Allocator.Error!void {
+    for (states.items) |existing| {
+        if (existing == value) return;
+    }
+    try states.append(allocator, value);
+}
+
+fn characterSetContainsRange(chars: CharacterSet, start: u32, end: u32) bool {
+    for (chars.ranges.items) |range| {
+        if (start >= range.start and end <= range.end) return true;
+        if (range.start > start) return false;
+    }
+    return false;
 }
 
 fn epsilonClosureAlloc(
@@ -2720,12 +3019,32 @@ fn preferAdvanceOverCompletion(
     return true;
 }
 
+fn preferCombinedTransitionOverCompletion(
+    completion: ConflictCompletion,
+    transition: CombinedTransition,
+    has_separator_transitions: bool,
+) bool {
+    if (transition.precedence < completion.precedence) return false;
+    if (transition.precedence == completion.precedence) {
+        if (transition.is_separator) return false;
+        if (has_separator_transitions) return false;
+    }
+    return true;
+}
+
 fn pairStateHash(left: []const u32, right: []const u32) u64 {
     var hasher = std.hash.Wyhash.init(0);
     std.hash.autoHash(&hasher, left.len);
     for (left) |value| std.hash.autoHash(&hasher, value);
     std.hash.autoHash(&hasher, right.len);
     for (right) |value| std.hash.autoHash(&hasher, value);
+    return hasher.final();
+}
+
+fn stateSetHash(states: []const u32) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    std.hash.autoHash(&hasher, states.len);
+    for (states) |value| std.hash.autoHash(&hasher, value);
     return hasher.final();
 }
 
