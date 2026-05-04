@@ -131,7 +131,7 @@ pub fn generateLocalSummaryAlloc(
     defer arena.deinit();
 
     const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
-    const serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+    const serialized = try parse_table_pipeline.serializeRuntimeTableFromPreparedWithBuildOptions(
         arena.allocator(),
         prepared,
         .diagnostic,
@@ -144,17 +144,7 @@ pub fn generateLocalSummaryAlloc(
     const emission_stats = try parser_c_emit.collectEmissionStatsWithOptions(arena.allocator(), serialized, .{
         .compact_duplicate_states = options.compact_duplicate_states,
     });
-    const runtime_serialized = try parse_table_pipeline.serializeRuntimeTableFromGrammarPathWithBuildOptions(
-        arena.allocator(),
-        grammar_path,
-        .diagnostic,
-        .{
-            .minimize_states = options.minimize_states,
-            .strict_expected_conflicts = false,
-            .include_unresolved_parse_actions = false,
-        },
-    );
-    const parser_c = try parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), runtime_serialized, .{
+    const parser_c = try parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, .{
         .compact_duplicate_states = options.compact_duplicate_states,
     });
     const node_types_json = try node_type_pipeline.generateNodeTypesJsonFromPrepared(arena.allocator(), prepared);

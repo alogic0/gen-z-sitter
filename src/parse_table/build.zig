@@ -3978,6 +3978,7 @@ const StateRegistry = struct {
         if (construct_profile_enabled) construct_profile.state_intern_calls += 1;
         const key = ParseItemSetKey.fromEntries(key_item_set.entries);
         if (self.state_ids_by_item_set.get(key)) |existing_id| {
+            freeParseItemSetEntries(self.allocator, stored_item_set.entries);
             if (construct_profile_enabled) construct_profile.state_intern_reused += 1;
             return .{
                 .state_id = existing_id,

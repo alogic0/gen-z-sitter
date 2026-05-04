@@ -2391,12 +2391,22 @@ fn writeCStringLiteralContents(writer: anytype, value: []const u8) !void {
         switch (byte) {
             '\\' => try writer.writeAll("\\\\"),
             '"' => try writer.writeAll("\\\""),
+            '?' => try writer.writeAll("\\?"),
             '\n' => try writer.writeAll("\\n"),
             '\r' => try writer.writeAll("\\r"),
             '\t' => try writer.writeAll("\\t"),
             else => try writer.writeByte(byte),
         }
     }
+}
+
+test "writeCStringLiteralContents escapes question marks to avoid C trigraphs" {
+    var buffer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buffer.deinit();
+
+    try writeCStringLiteralContents(&buffer.writer, "??= ??/ ?");
+
+    try std.testing.expectEqualStrings("\\?\\?= \\?\\?/ \\?", buffer.writer.buffered());
 }
 
 fn deinitEmittedSymbols(allocator: std.mem.Allocator, symbols: []EmittedSymbol) void {

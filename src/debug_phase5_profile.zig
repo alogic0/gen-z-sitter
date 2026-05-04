@@ -1,4 +1,6 @@
 const std = @import("std");
+const grammar_loader = @import("grammar/loader.zig");
+const parse_grammar = @import("grammar/parse_grammar.zig");
 const parse_table_pipeline = @import("parse_table/pipeline.zig");
 const parser_c_emit = @import("parser_emit/parser_c.zig");
 const runtime_io = @import("support/runtime_io.zig");
@@ -22,19 +24,16 @@ const profile_targets = [_]ProfileTarget{
 };
 
 pub fn main(init: std.process.Init) !void {
-    const allocator = init.gpa;
     const args = try init.minimal.args.toSlice(init.arena.allocator());
     runtime_io.set(init.io, init.minimal.environ);
-
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
+    const profile_allocator = std.heap.smp_allocator;
 
     const only = parseOnlyArg(args) orelse null;
     for (profile_targets) |target| {
         if (only) |label| {
             if (!std.mem.eql(u8, label, target.label)) continue;
         }
-        try profileTarget(arena.allocator(), target);
+        try profileTarget(init.gpa, profile_allocator, target);
     }
 }
 
@@ -46,15 +45,28 @@ fn parseOnlyArg(args: []const []const u8) ?[]const u8 {
     return null;
 }
 
-fn profileTarget(allocator: std.mem.Allocator, target: ProfileTarget) !void {
+fn profileTarget(lifetime_allocator: std.mem.Allocator, work_allocator: std.mem.Allocator, target: ProfileTarget) !void {
     std.debug.print("[phase5-profile] target={s} path={s}\n", .{ target.label, target.path });
     const start_rss_kb = selfMaxRssKb();
     const total_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
 
+    var lifetime_arena = std.heap.ArenaAllocator.init(lifetime_allocator);
+    defer lifetime_arena.deinit();
+    const arena_allocator = lifetime_arena.allocator();
+
+    const load_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+    var loaded = try grammar_loader.loadGrammarFile(arena_allocator, target.path);
+    defer loaded.deinit();
+    logStage("runtime-serialize-profile", target.label, "load", load_timer);
+
+    const prepare_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
+    const prepared = try parse_grammar.parseRawGrammar(arena_allocator, &loaded.json.grammar);
+    logStage("runtime-serialize-profile", target.label, "prepare", prepare_timer);
+
     const serialize_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
-    const serialized = parse_table_pipeline.serializeRuntimeTableFromGrammarPathWithBuildOptionsProfile(
-        allocator,
-        target.path,
+    const serialized = parse_table_pipeline.serializeRuntimeTableFromPreparedWithBuildOptionsProfile(
+        work_allocator,
+        prepared,
         .diagnostic,
         target.build_options,
         target.label,
@@ -75,7 +87,7 @@ fn profileTarget(allocator: std.mem.Allocator, target: ProfileTarget) !void {
     const serialize_ms = elapsedMs(serialize_timer);
 
     const emit_timer = std.Io.Timestamp.now(runtime_io.get(), .awake);
-    const parser_c = try parser_c_emit.emitParserCAllocWithOptions(allocator, serialized, .{
+    const parser_c = try parser_c_emit.emitParserCAllocWithOptions(work_allocator, serialized, .{
         .compact_duplicate_states = false,
         .glr_loop = true,
     });
@@ -95,6 +107,12 @@ fn profileTarget(allocator: std.mem.Allocator, target: ProfileTarget) !void {
             @max(start_rss_kb, max_rss_kb),
         },
     );
+}
+
+fn logStage(prefix: []const u8, label: []const u8, stage: []const u8, start: std.Io.Timestamp) void {
+    const duration = start.durationTo(std.Io.Timestamp.now(runtime_io.get(), .awake));
+    const elapsed_ms = @as(f64, @floatFromInt(duration.nanoseconds)) / @as(f64, std.time.ns_per_ms);
+    std.debug.print("[{s}] {s} {s}_ms={d:.2}\n", .{ prefix, label, stage, elapsed_ms });
 }
 
 fn elapsedMs(start: std.Io.Timestamp) f64 {
