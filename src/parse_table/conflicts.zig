@@ -398,7 +398,7 @@ test "detectConflictsFromActions derives shift-reduce conflicts from competing a
     };
     const state_actions = [_]actions.ActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(2) },
     };
 
     const conflicts = try detectConflictsFromActions(allocator, parse_state, state_actions[0..]);
@@ -428,8 +428,8 @@ test "detectConflictsFromActions derives reduce-reduce conflicts from competing 
         .transitions = &.{},
     };
     const state_actions = [_]actions.ActionEntry{
-        .{ .symbol = .{ .terminal = 1 }, .action = .{ .reduce = 2 } },
-        .{ .symbol = .{ .terminal = 1 }, .action = .{ .reduce = 3 } },
+        .{ .symbol = .{ .terminal = 1 }, .action = actions.reduce(2) },
+        .{ .symbol = .{ .terminal = 1 }, .action = actions.reduce(3) },
     };
 
     const conflicts = try detectConflictsFromActions(allocator, parse_state, state_actions[0..]);

@@ -1507,7 +1507,7 @@ pub fn computeLargeStateCountAlloc(
             if (entry.candidate_actions.len > 1) {
                 for (entry.candidate_actions) |candidate| {
                     const production_id = switch (candidate) {
-                        .reduce => |id| id,
+                        .reduce => |reduced| reduced.production_id,
                         .shift, .shift_extra, .accept => continue,
                     };
                     if (production_id < productions.len) {
@@ -1517,7 +1517,8 @@ pub fn computeLargeStateCountAlloc(
                 continue;
             }
             switch (entry.action) {
-                .reduce => |production_id| {
+                .reduce => |reduced| {
+                    const production_id = reduced.production_id;
                     if (production_id < productions.len) {
                         try appendUniqueSymbolRef(&symbols, .{ .non_terminal = productions[production_id].lhs });
                     }
@@ -1858,16 +1859,23 @@ pub fn runtimeActionFromParseAction(
             .kind = .shift,
             .extra = true,
         },
-        .reduce => |production_id| blk: {
+        .reduce => |reduced| blk: {
+            const production_id = reduced.production_id;
             const production = if (production_id < productions.len)
                 productions[production_id]
             else
                 SerializedProductionInfo{ .lhs = 0, .child_count = 0, .dynamic_precedence = 0 };
             break :blk .{
                 .kind = .reduce,
-                .child_count = production.child_count,
-                .symbol = .{ .non_terminal = production.lhs },
-                .dynamic_precedence = production.dynamic_precedence,
+                .child_count = if (reduced.child_count != actions.unset_reduce_child_count and reduced.child_count <= std.math.maxInt(u8)) @intCast(reduced.child_count) else production.child_count,
+                .symbol = if (reduced.symbol == .non_terminal and reduced.symbol.non_terminal != item.unset_variable_index)
+                    reduced.symbol
+                else
+                    .{ .non_terminal = production.lhs },
+                .dynamic_precedence = if (reduced.dynamic_precedence != actions.unset_reduce_dynamic_precedence and reduced.dynamic_precedence >= std.math.minInt(i16) and reduced.dynamic_precedence <= std.math.maxInt(i16))
+                    @intCast(reduced.dynamic_precedence)
+                else
+                    production.dynamic_precedence,
                 .production_id = production.production_info_id orelse @intCast(@min(production_id, std.math.maxInt(u16))),
             };
         },
@@ -3169,7 +3177,8 @@ fn repeatCandidateUsesExternalInternalToken(
     var saw_reduce = false;
     for (candidate_actions) |candidate| switch (candidate) {
         .shift => saw_shift = true,
-        .reduce => |production_id| {
+        .reduce => |reduced| {
+            const production_id = reduced.production_id;
             if (production_id >= productions.len) return false;
             if (!productions[production_id].lhs_is_repeat_auxiliary) return false;
             saw_reduce = true;
@@ -4365,8 +4374,8 @@ test "buildProductionSerializationAlloc interns production ids separately from r
     try std.testing.expectEqual(@as(?u16, 0), serialized.productions[1].production_info_id);
     try std.testing.expectEqual(@as(?u16, 1), serialized.productions[2].production_info_id);
 
-    const first_reduce = runtimeActionFromParseAction(.{ .reduce = 0 }, serialized.productions);
-    const second_reduce = runtimeActionFromParseAction(.{ .reduce = 1 }, serialized.productions);
+    const first_reduce = runtimeActionFromParseAction(actions.reduce(0), serialized.productions);
+    const second_reduce = runtimeActionFromParseAction(actions.reduce(1), serialized.productions);
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 10 }, first_reduce.symbol);
     try std.testing.expectEqual(syntax_ir.SymbolRef{ .non_terminal = 11 }, second_reduce.symbol);
     try std.testing.expectEqual(@as(u8, 1), first_reduce.child_count);
@@ -4450,7 +4459,7 @@ test "buildProductionSerializationAlloc reuses existing metadata for ineligible 
     try std.testing.expectEqual(@as(?u16, 0), serialized.productions[0].production_info_id);
     try std.testing.expectEqual(@as(?u16, 0), serialized.productions[1].production_info_id);
 
-    const raw_reduce = runtimeActionFromParseAction(.{ .reduce = 0 }, serialized.productions);
+    const raw_reduce = runtimeActionFromParseAction(actions.reduce(0), serialized.productions);
     try std.testing.expectEqual(@as(u16, 0), raw_reduce.production_id);
 }
 
@@ -4477,7 +4486,7 @@ test "serializeBuildResult rejects blocked snapshots in strict mode" {
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &[_]actions.ParseAction{
                             .{ .shift = 4 },
-                            .{ .reduce = 2 },
+                            actions.reduce(2),
                         },
                         .decision = .{ .unresolved = .shift_reduce },
                     },
@@ -4527,8 +4536,8 @@ test "serializeBuildResult accepts expected reduce reduce snapshots in strict mo
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &[_]actions.ParseAction{
-                            .{ .reduce = 1 },
-                            .{ .reduce = 2 },
+                            actions.reduce(1),
+                            actions.reduce(2),
                         },
                         .decision = .{ .unresolved = .reduce_reduce_expected },
                     },
@@ -4600,7 +4609,7 @@ test "serializeBuildResult emits expected shift reduce conflicts as runtime acti
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &[_]actions.ParseAction{
                             .{ .shift = 4 },
-                            .{ .reduce = 0 },
+                            actions.reduce(0),
                         },
                         .decision = .{ .unresolved = .shift_reduce_expected },
                     },
@@ -4675,7 +4684,7 @@ test "serializeBuildResult keeps blocked snapshots in diagnostic mode" {
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &[_]actions.ParseAction{
                             .{ .shift = 4 },
-                            .{ .reduce = 2 },
+                            actions.reduce(2),
                         },
                         .decision = .{ .unresolved = .shift_reduce },
                     },
@@ -4762,7 +4771,7 @@ test "buildParseActionListAlloc deduplicates runtime actions" {
             .actions = &[_]SerializedActionEntry{
                 .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
                 .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 7 } },
-                .{ .symbol = .{ .terminal = 2 }, .action = .{ .reduce = 0 } },
+                .{ .symbol = .{ .terminal = 2 }, .action = actions.reduce(0) },
             },
             .gotos = &.{},
             .unresolved = &.{},
@@ -4777,7 +4786,7 @@ test "buildParseActionListAlloc deduplicates runtime actions" {
     try std.testing.expectEqual(@as(u16, 1), list[1].index);
     try std.testing.expectEqual(@as(u16, 3), list[2].index);
     try std.testing.expectEqual(@as(u16, 1), parseActionListIndexForParseAction(list, .{ .shift = 7 }, productions[0..]).?);
-    try std.testing.expectEqual(@as(u16, 3), parseActionListIndexForParseAction(list, .{ .reduce = 0 }, productions[0..]).?);
+    try std.testing.expectEqual(@as(u16, 3), parseActionListIndexForParseAction(list, actions.reduce(0), productions[0..]).?);
     try std.testing.expectEqual(SerializedParseActionKind.reduce, list[2].actions[0].kind);
     try std.testing.expectEqual(@as(u8, 3), list[2].actions[0].child_count);
     try std.testing.expectEqual(@as(i16, 4), list[2].actions[0].dynamic_precedence);
@@ -4791,7 +4800,7 @@ test "buildRuntimeParseActionListAlloc omits unresolved candidates" {
     };
     const unresolved_candidates = [_]actions.ParseAction{
         .{ .shift = 9 },
-        .{ .reduce = 0 },
+        actions.reduce(0),
     };
     const states = [_]SerializedState{
         .{
@@ -4835,7 +4844,7 @@ test "buildParseActionListAlloc keeps reductions before repetition shifts" {
                     .action = .{ .shift = 7 },
                     .candidate_actions = &[_]actions.ParseAction{
                         .{ .shift = 7 },
-                        .{ .reduce = 0 },
+                        actions.reduce(0),
                     },
                     .repetition = true,
                 },
@@ -4873,7 +4882,7 @@ test "buildParseActionListAlloc keeps reductions before expected conflict shifts
                     .action = .{ .shift = 7 },
                     .candidate_actions = &[_]actions.ParseAction{
                         .{ .shift = 7 },
-                        .{ .reduce = 0 },
+                        actions.reduce(0),
                     },
                 },
             },
@@ -4994,7 +5003,7 @@ test "buildRuntimeParseActionListAlloc excludes unresolved diagnostic actions" {
     };
     const candidates = [_]actions.ParseAction{
         .{ .shift = 2 },
-        .{ .reduce = 0 },
+        actions.reduce(0),
     };
     const states = [_]SerializedState{
         .{

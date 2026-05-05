@@ -321,7 +321,7 @@ fn remapParseAction(
     return switch (action) {
         .shift => |state_id| .{ .shift = remapStateId(states, state_id, state_owners, owner_new_ids) },
         .shift_extra => .{ .shift_extra = {} },
-        .reduce => |production_id| .{ .reduce = production_id },
+        .reduce => |reduced| .{ .reduce = reduced },
         .accept => .{ .accept = {} },
     };
 }
@@ -398,7 +398,7 @@ fn parseActionEql(left: parse_actions.ParseAction, right: parse_actions.ParseAct
             else => false,
         },
         .reduce => |left_value| switch (right) {
-            .reduce => |right_value| left_value == right_value,
+            .reduce => |right_value| std.meta.eql(left_value, right_value),
             else => false,
         },
         .accept => switch (right) {

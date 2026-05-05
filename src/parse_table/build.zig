@@ -6801,7 +6801,7 @@ fn hasReduceAction(
         for (state_actions.entries) |entry| {
             if (!symbolRefEql(entry.symbol, lookahead)) continue;
             switch (entry.action) {
-                .reduce => |reduced| if (reduced == production_id) return true,
+                .reduce => |reduced| if (reduced.production_id == production_id) return true,
                 else => {},
             }
         }
@@ -6828,7 +6828,7 @@ fn hasReduceActionForLhsInActionTable(
             if (!symbolRefEql(entry.symbol, lookahead)) continue;
             switch (entry.action) {
                 .reduce => |reduced| {
-                    if (reduced < productions.len and productions[reduced].lhs == lhs) return true;
+                    if (reduced.production_id < productions.len and productions[reduced.production_id].lhs == lhs) return true;
                 },
                 else => {},
             }
@@ -7261,8 +7261,8 @@ test "BuildResult exposes unused expected conflict indexes" {
         .{ .non_terminal = 9 },
     };
     const reduce_actions = [_]actions.ParseAction{
-        .{ .reduce = 1 },
-        .{ .reduce = 2 },
+        actions.reduce(1),
+        actions.reduce(2),
     };
     const result = BuildResult{
         .productions = &[_]ProductionInfo{

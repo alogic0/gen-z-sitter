@@ -127,7 +127,7 @@ pub fn reduceConflictCandidate(
     var member_count: usize = 0;
     for (candidate_actions) |action| {
         const production_id = switch (action) {
-            .reduce => |id| id,
+            .reduce => |reduced| reduced.production_id,
             else => return null,
         };
         if (production_id >= productions.len) return null;
@@ -304,8 +304,8 @@ test "reduceConflictIsExpected derives members from reduce actions" {
         .{ .non_terminal = 1 },
     };
     const candidate_actions = [_]actions.ParseAction{
-        .{ .reduce = 1 },
-        .{ .reduce = 2 },
+        actions.reduce(1),
+        actions.reduce(2),
     };
 
     try std.testing.expect(reduceConflictIsExpected(
@@ -330,7 +330,7 @@ test "reduceConflictIsExpected rejects mixed action groups" {
         .{ .non_terminal = 2 },
     };
     const candidate_actions = [_]actions.ParseAction{
-        .{ .reduce = 1 },
+        actions.reduce(1),
         .{ .shift = 3 },
     };
 
@@ -353,8 +353,8 @@ test "reduceConflictCandidateAlloc owns derived member slice" {
         .{ .lhs = 4 },
     };
     const candidate_actions = [_]actions.ParseAction{
-        .{ .reduce = 1 },
-        .{ .reduce = 2 },
+        actions.reduce(1),
+        actions.reduce(2),
     };
 
     const candidate = (try reduceConflictCandidateAlloc(

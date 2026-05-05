@@ -2092,7 +2092,7 @@ fn parseActionEql(left: @import("../parse_table/actions.zig").ParseAction, right
             else => false,
         },
         .reduce => |left_value| switch (right) {
-            .reduce => |right_value| left_value == right_value,
+            .reduce => |right_value| std.meta.eql(left_value, right_value),
             else => false,
         },
         .accept => switch (right) {
@@ -2156,7 +2156,8 @@ fn collectEmittedSymbols(
         for (state.actions) |entry| {
             try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
             switch (entry.action) {
-                .reduce => |production_id| {
+                .reduce => |reduced| {
+                    const production_id = reduced.production_id;
                     if (production_id < serialized.productions.len) {
                         try appendUniqueEmittedSymbol(allocator, &symbols, .{ .non_terminal = serialized.productions[production_id].lhs });
                     }
@@ -2171,7 +2172,8 @@ fn collectEmittedSymbols(
             try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
             for (entry.candidate_actions) |candidate| {
                 switch (candidate) {
-                    .reduce => |production_id| {
+                    .reduce => |reduced| {
+                        const production_id = reduced.production_id;
                         if (production_id < serialized.productions.len) {
                             try appendUniqueEmittedSymbol(allocator, &symbols, .{ .non_terminal = serialized.productions[production_id].lhs });
                         }
@@ -2570,7 +2572,7 @@ test "emitParserCAlloc formats parser C skeletons deterministically" {
                         .reason = .shift_reduce,
                         .candidate_actions = &[_]@import("../parse_table/actions.zig").ParseAction{
                             .{ .shift = 4 },
-                            .{ .reduce = 5 },
+                            parse_actions.reduce(5),
                         },
                     },
                 },
@@ -2680,7 +2682,7 @@ test "emitParserCAlloc compacts identical serialized states before row sharing" 
     const allocator = std.testing.allocator;
     const duplicate_unresolved = [_]@import("../parse_table/actions.zig").ParseAction{
         .{ .shift = 7 },
-        .{ .reduce = 8 },
+        parse_actions.reduce(8),
     };
     const serialized = serialize.SerializedTable{
         .blocked = false,
@@ -3160,7 +3162,7 @@ test "emitParserCAlloc emits opt-in GLR unresolved fork helpers" {
     const allocator = std.testing.allocator;
     const candidates = [_]parse_actions.ParseAction{
         .{ .shift = 1 },
-        .{ .reduce = 0 },
+        parse_actions.reduce(0),
     };
     const serialized = serialize.SerializedTable{
         .blocked = true,
@@ -3864,7 +3866,7 @@ test "emitParserCAlloc emits self-contained C that compiles" {
                 .id = 0,
                 .actions = &[_]serialize.SerializedActionEntry{
                     .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
-                    .{ .symbol = .{ .terminal = 1 }, .action = .{ .reduce = 0 } },
+                    .{ .symbol = .{ .terminal = 1 }, .action = parse_actions.reduce(0) },
                 },
                 .gotos = &[_]serialize.SerializedGotoEntry{
                     .{ .symbol = .{ .non_terminal = 0 }, .state = 1 },
@@ -3913,7 +3915,7 @@ test "collectEmissionStats reports shared empty and canonical non-empty rows" {
     const allocator = std.testing.allocator;
     const duplicate_unresolved = [_]@import("../parse_table/actions.zig").ParseAction{
         .{ .shift = 7 },
-        .{ .reduce = 8 },
+        parse_actions.reduce(8),
     };
     const serialized = serialize.SerializedTable{
         .blocked = true,
@@ -3995,7 +3997,7 @@ test "collectEmissionStatsWithOptions preserves duplicate states when compaction
     const allocator = std.testing.allocator;
     const duplicate_unresolved = [_]@import("../parse_table/actions.zig").ParseAction{
         .{ .shift = 7 },
-        .{ .reduce = 8 },
+        parse_actions.reduce(8),
     };
     const serialized = serialize.SerializedTable{
         .blocked = true,

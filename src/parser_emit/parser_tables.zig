@@ -89,7 +89,7 @@ test "emitSerializedTableAlloc formats parser-table skeletons deterministically"
                         .reason = .shift_reduce,
                         .candidate_actions = &[_]@import("../parse_table/actions.zig").ParseAction{
                             .{ .shift = 4 },
-                            .{ .reduce = 5 },
+                            @import("../parse_table/actions.zig").reduce(5),
                         },
                     },
                 },

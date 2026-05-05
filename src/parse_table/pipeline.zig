@@ -1370,7 +1370,7 @@ test "buildStatesFromPrepared reuses identical advanced states deterministically
     const result = try buildStatesFromPrepared(pipeline_arena.allocator(), prepared);
 
     try std.testing.expectEqual(@as(state.StateId, 2), result.states[1].transitions[0].state);
-    try std.testing.expectEqual(result.states[1].transitions[0].state, result.states[4].transitions[0].state);
+    try std.testing.expectEqual(result.states[1].transitions[0].state, result.states[5].transitions[0].state);
 }
 
 test "buildStatesFromPrepared reports a focused reduce/reduce conflict fixture" {
@@ -2141,7 +2141,7 @@ test "serializeTableFromPrepared carries recursive external close reduce lookahe
         for (state_actions.entries) |entry| {
             if (entry.symbol != .external or entry.symbol.external != 1) continue;
             if (entry.action != .reduce) continue;
-            const production = result.productions[entry.action.reduce];
+            const production = result.productions[entry.action.reduce.production_id];
             if (production.lhs != 1 or production.steps.len != 3) continue;
             reduce_state_id = state_actions.state_id;
             break;

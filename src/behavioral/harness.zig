@@ -1140,8 +1140,8 @@ fn simulateBuiltScannerFreeWithIncremental(
                                         vi += 1;
                                         break :inner;
                                     },
-                                    .reduce => |prod_id| {
-                                        if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                                    .reduce => |reduced| {
+                                        if (try versionReduce(allocator, result, &versions.items[vi], reduced.production_id)) |reason| {
                                             updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
                                             killVersion(allocator, &versions, vi);
                                             break :inner;
@@ -1160,8 +1160,8 @@ fn simulateBuiltScannerFreeWithIncremental(
                     }
                     if (selectEofAction(result, state_id)) |fb| switch (fb) {
                         .accept => return acceptedResult(versions.items[vi]),
-                        .reduce => |prod_id| {
-                            if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                        .reduce => |reduced| {
+                            if (try versionReduce(allocator, result, &versions.items[vi], reduced.production_id)) |reason| {
                                 updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
                                 killVersion(allocator, &versions, vi);
                                 break :inner;
@@ -1181,8 +1181,8 @@ fn simulateBuiltScannerFreeWithIncremental(
                     };
                     if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
                         .accept => return acceptedResult(versions.items[vi]),
-                        .reduce => |prod_id| {
-                            if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                        .reduce => |reduced| {
+                            if (try versionReduce(allocator, result, &versions.items[vi], reduced.production_id)) |reason| {
                                 updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
                                 killVersion(allocator, &versions, vi);
                                 break :inner;
@@ -1228,8 +1228,8 @@ fn simulateBuiltScannerFreeWithIncremental(
                 if (matched_opt == null) {
                     if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
                         .accept => return acceptedResult(versions.items[vi]),
-                        .reduce => |prod_id| {
-                            if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                        .reduce => |reduced| {
+                            if (try versionReduce(allocator, result, &versions.items[vi], reduced.production_id)) |reason| {
                                 updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
                                 killVersion(allocator, &versions, vi);
                                 break :inner;
@@ -1254,8 +1254,8 @@ fn simulateBuiltScannerFreeWithIncremental(
                 if (decision == null) {
                     if (selectFallbackAction(result, state_id)) |fb| switch (fb) {
                         .accept => return acceptedResult(versions.items[vi]),
-                        .reduce => |prod_id| {
-                            if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                        .reduce => |reduced| {
+                            if (try versionReduce(allocator, result, &versions.items[vi], reduced.production_id)) |reason| {
                                 updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
                                 killVersion(allocator, &versions, vi);
                                 break :inner;
@@ -1287,8 +1287,8 @@ fn simulateBuiltScannerFreeWithIncremental(
                             vi += 1;
                             break :inner;
                         },
-                        .reduce => |prod_id| {
-                            if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                        .reduce => |reduced| {
+                            if (try versionReduce(allocator, result, &versions.items[vi], reduced.production_id)) |reason| {
                                 updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
                                 killVersion(allocator, &versions, vi);
                                 break :inner;
@@ -1328,8 +1328,8 @@ fn simulateBuiltScannerFreeWithIncremental(
                                     };
                                     versions.appendAssumeCapacity(fork);
                                 },
-                                .reduce => |prod_id| {
-                                    const dead = versionReduce(allocator, result, &fork, prod_id) catch {
+                                .reduce => |reduced| {
+                                    const dead = versionReduce(allocator, result, &fork, reduced.production_id) catch {
                                         fork.deinit(allocator);
                                         return error.OutOfMemory;
                                     };
@@ -1359,8 +1359,8 @@ fn simulateBuiltScannerFreeWithIncremental(
                                 vi += 1;
                                 break :inner;
                             },
-                            .reduce => |prod_id| {
-                                if (try versionReduce(allocator, result, &versions.items[vi], prod_id)) |reason| {
+                            .reduce => |reduced| {
+                                if (try versionReduce(allocator, result, &versions.items[vi], reduced.production_id)) |reason| {
                                     updateBestReject(&best_cursor, &best_shifted, &best_reason, versions.items[vi].cursor, versions.items[vi].shifted_tokens, reason);
                                     killVersion(allocator, &versions, vi);
                                     break :inner;
@@ -1456,7 +1456,8 @@ fn simulateBuiltWithFirstExternalBoundary(
                             try external_state.applyEffect(matched.external_effect);
                             continue;
                         },
-                        .reduce => |production_id| {
+                        .reduce => |reduced| {
+                            const production_id = reduced.production_id;
                             const production = result.productions[production_id];
                             if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
                                 .consumed_bytes = cursor,
@@ -1507,7 +1508,8 @@ fn simulateBuiltWithFirstExternalBoundary(
                     if (progress) logSimulationResult("simulate_external_boundary eof_fallback_shift_extra", rejected);
                     return rejected;
                 },
-                .reduce => |production_id| {
+                .reduce => |reduced| {
+                    const production_id = reduced.production_id;
                     const production = result.productions[production_id];
                     if (production.steps.len > stack.items.len - 1) {
                         const rejected: SimulationResult = .{ .rejected = .{
@@ -1576,7 +1578,8 @@ fn simulateBuiltWithFirstExternalBoundary(
                     if (progress) logSimulationResult("simulate_external_boundary tokenization_failed_shift_extra", rejected);
                     return rejected;
                 },
-                .reduce => |production_id| {
+                .reduce => |reduced| {
+                    const production_id = reduced.production_id;
                     const production = result.productions[production_id];
                     if (production.steps.len > stack.items.len - 1) {
                         const rejected: SimulationResult = .{ .rejected = .{
@@ -1650,7 +1653,8 @@ fn simulateBuiltWithFirstExternalBoundary(
                     shifted_tokens += 1;
                     try external_state.applyEffect(matched.external_effect);
                 },
-                .reduce => |production_id| {
+                .reduce => |reduced| {
+                    const production_id = reduced.production_id;
                     const production = result.productions[production_id];
                     if (production.steps.len > stack.items.len - 1) return .{ .rejected = .{
                         .consumed_bytes = cursor,
@@ -2379,7 +2383,7 @@ fn parseActionEql(a: actions.ParseAction, b: actions.ParseAction) bool {
             else => false,
         },
         .reduce => |left| switch (b) {
-            .reduce => |right| left == right,
+            .reduce => |right| std.meta.eql(left, right),
             else => false,
         },
         .accept => switch (b) {

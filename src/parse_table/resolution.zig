@@ -497,7 +497,8 @@ fn hasSameAuxiliaryRepeatConflictForGroup(
     for (candidate_actions) |candidate| {
         switch (candidate) {
             .shift => saw_shift = true,
-            .reduce => |production_id| {
+            .reduce => |reduced| {
+                const production_id = reduced.production_id;
                 saw_reduce = true;
                 if (production_id >= productions.len) return false;
                 const production = productions[production_id];
@@ -865,7 +866,7 @@ fn reduceConflictCandidate(
     var member_count: usize = 0;
     for (candidate_actions) |action| {
         const production_id = switch (action) {
-            .reduce => |id| id,
+            .reduce => |reduced| reduced.production_id,
             else => return null,
         };
         if (production_id >= productions.len) return null;
@@ -969,7 +970,8 @@ fn shiftReduceConflictCandidate(
     for (candidate_actions) |action| {
         switch (action) {
             .shift => saw_shift = true,
-            .reduce => |production_id| {
+            .reduce => |reduced| {
+                const production_id = reduced.production_id;
                 saw_reduce = true;
                 if (production_id >= productions.len) return null;
                 member_count = appendConflictMemberUpstreamStyle(
@@ -1051,7 +1053,7 @@ fn recordedConflictCandidate(
 fn candidateActionsContainReduce(candidate_actions: []const actions.ParseAction, production_id: item.ProductionId) bool {
     for (candidate_actions) |candidate| {
         switch (candidate) {
-            .reduce => |candidate_id| if (candidate_id == production_id) return true,
+            .reduce => |reduced| if (reduced.production_id == production_id) return true,
             else => {},
         }
     }
@@ -1130,11 +1132,11 @@ fn compareReduceActionPrecedence(
     second: actions.ParseAction,
 ) ?PrecedenceComparison {
     const first_id = switch (first) {
-        .reduce => |id| id,
+        .reduce => |reduced| reduced.production_id,
         else => return null,
     };
     const second_id = switch (second) {
-        .reduce => |id| id,
+        .reduce => |reduced| reduced.production_id,
         else => return null,
     };
     if (first_id >= productions.len or second_id >= productions.len) return null;
@@ -1148,11 +1150,11 @@ fn resolveReduceReduceByPrecedence(
     second: actions.ParseAction,
 ) ?actions.ParseAction {
     const first_id = switch (first) {
-        .reduce => |id| id,
+        .reduce => |reduced| reduced.production_id,
         else => return null,
     };
     const second_id = switch (second) {
-        .reduce => |id| id,
+        .reduce => |reduced| reduced.production_id,
         else => return null,
     };
     if (first_id >= productions.len or second_id >= productions.len) return null;
@@ -1260,7 +1262,7 @@ fn resolveShiftReduce(
     reduce_action: actions.ParseAction,
 ) ?actions.ParseAction {
     const production_id = switch (reduce_action) {
-        .reduce => |id| id,
+        .reduce => |reduced| reduced.production_id,
         else => return null,
     };
 
@@ -1724,7 +1726,7 @@ test "resolveActionTableSkeleton leaves multi-candidate groups unresolved" {
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(2) },
                         },
                     },
                 },
@@ -1748,7 +1750,7 @@ test "resolveActionTableSkeleton leaves multi-candidate groups unresolved" {
         else => false,
     });
     try std.testing.expect(switch (resolved.groupsForState(2)[0].candidate_actions[1]) {
-        .reduce => |id| id == 2,
+        .reduce => |reduced| reduced.production_id == 2,
         else => false,
     });
     try std.testing.expectEqual(@as(usize, 2), resolved.candidateActionsFor(2, .{ .terminal = 0 }).len);
@@ -1812,7 +1814,7 @@ test "resolveActionTableSkeleton exposes structured unresolved decision refs" {
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(2) },
                         },
                     },
                 },
@@ -1854,7 +1856,7 @@ test "resolveActionTableSkeleton exposes a serializer-facing decision snapshot" 
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(2) },
                         },
                     },
                     .{
@@ -1905,12 +1907,12 @@ test "ResolvedActionTable exposes reduce conflict candidates" {
         .{ .lhs = 2 },
     };
     const reduce_actions = [_]actions.ParseAction{
-        .{ .reduce = 1 },
-        .{ .reduce = 2 },
+        actions.reduce(1),
+        actions.reduce(2),
     };
     const shift_reduce_actions = [_]actions.ParseAction{
         .{ .shift = 3 },
-        .{ .reduce = 2 },
+        actions.reduce(2),
     };
     const resolved = ResolvedActionTable{
         .states = &[_]ResolvedStateActions{.{
@@ -1960,8 +1962,8 @@ test "ResolvedActionTable reports unused expected conflict indexes" {
         .{ .non_terminal = 9 },
     };
     const reduce_actions = [_]actions.ParseAction{
-        .{ .reduce = 1 },
-        .{ .reduce = 2 },
+        actions.reduce(1),
+        actions.reduce(2),
     };
     const resolved = ResolvedActionTable{
         .states = &[_]ResolvedStateActions{.{
@@ -2021,7 +2023,7 @@ test "resolveActionTable marks declared shift reduce conflicts expected" {
                 .symbol = .{ .terminal = 0 },
                 .entries = &[_]actions.ActionEntry{
                     .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(2) },
                 },
             }},
         }},
@@ -2111,7 +2113,7 @@ test "resolveActionTable derives shift reduce expected members from conflict ite
                 .symbol = .{ .terminal = 2 },
                 .entries = &[_]actions.ActionEntry{
                     .{ .symbol = .{ .terminal = 2 }, .action = .{ .shift = 4 } },
-                    .{ .symbol = .{ .terminal = 2 }, .action = .{ .reduce = 2 } },
+                    .{ .symbol = .{ .terminal = 2 }, .action = actions.reduce(2) },
                 },
             }},
         }},
@@ -2196,8 +2198,8 @@ test "resolveActionTable marks multi-reduce shift conflicts expected" {
                 .symbol = .{ .terminal = 2 },
                 .entries = &[_]actions.ActionEntry{
                     .{ .symbol = .{ .terminal = 2 }, .action = .{ .shift = 4 } },
-                    .{ .symbol = .{ .terminal = 2 }, .action = .{ .reduce = 2 } },
-                    .{ .symbol = .{ .terminal = 2 }, .action = .{ .reduce = 3 } },
+                    .{ .symbol = .{ .terminal = 2 }, .action = actions.reduce(2) },
+                    .{ .symbol = .{ .terminal = 2 }, .action = actions.reduce(3) },
                 },
             }},
         }},
@@ -2263,8 +2265,8 @@ test "resolveActionTable drops lower-precedence reductions before shift reduce r
                 .symbol = .{ .terminal = 0 },
                 .entries = &[_]actions.ActionEntry{
                     .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 5 } },
-                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
-                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
+                    .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(2) },
                 },
             }},
         }},
@@ -2281,7 +2283,7 @@ test "resolveActionTable drops lower-precedence reductions before shift reduce r
 
     const group = resolved.groupsForState(4)[0];
     try std.testing.expectEqual(@as(usize, 1), group.candidate_actions.len);
-    try expectChosenAction(group, .{ .reduce = 2 });
+    try expectChosenAction(group, actions.reduce(2));
 }
 
 test "resolveActionTable does not use positive dynamic precedence to remove shift from multiple reductions" {
@@ -2307,8 +2309,8 @@ test "resolveActionTable does not use positive dynamic precedence to remove shif
                 .symbol = .{ .terminal = 0 },
                 .entries = &[_]actions.ActionEntry{
                     .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 5 } },
-                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
-                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
+                    .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(2) },
                 },
             }},
         }},
@@ -2326,8 +2328,8 @@ test "resolveActionTable does not use positive dynamic precedence to remove shif
     const group = resolved.groupsForState(4)[0];
     try expectUnresolvedGroup(group, .multiple_candidates, 3);
     try std.testing.expectEqual(actions.ParseAction{ .shift = 5 }, group.candidate_actions[0]);
-    try std.testing.expectEqual(actions.ParseAction{ .reduce = 1 }, group.candidate_actions[1]);
-    try std.testing.expectEqual(actions.ParseAction{ .reduce = 2 }, group.candidate_actions[2]);
+    try std.testing.expectEqual(actions.reduce(1), group.candidate_actions[1]);
+    try std.testing.expectEqual(actions.reduce(2), group.candidate_actions[2]);
 }
 
 test "resolveActionTable does not use negative dynamic precedence to remove reductions" {
@@ -2353,8 +2355,8 @@ test "resolveActionTable does not use negative dynamic precedence to remove redu
                 .symbol = .{ .terminal = 0 },
                 .entries = &[_]actions.ActionEntry{
                     .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 5 } },
-                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
-                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
+                    .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(2) },
                 },
             }},
         }},
@@ -2372,8 +2374,8 @@ test "resolveActionTable does not use negative dynamic precedence to remove redu
     const group = resolved.groupsForState(4)[0];
     try expectUnresolvedGroup(group, .multiple_candidates, 3);
     try std.testing.expectEqual(actions.ParseAction{ .shift = 5 }, group.candidate_actions[0]);
-    try std.testing.expectEqual(actions.ParseAction{ .reduce = 1 }, group.candidate_actions[1]);
-    try std.testing.expectEqual(actions.ParseAction{ .reduce = 2 }, group.candidate_actions[2]);
+    try std.testing.expectEqual(actions.reduce(1), group.candidate_actions[1]);
+    try std.testing.expectEqual(actions.reduce(2), group.candidate_actions[2]);
 }
 
 test "resolveActionTable expands auxiliary conflict members to parent symbols" {
@@ -2425,7 +2427,7 @@ test "resolveActionTable expands auxiliary conflict members to parent symbols" {
                 .symbol = .{ .terminal = 1 },
                 .entries = &[_]actions.ActionEntry{
                     .{ .symbol = .{ .terminal = 1 }, .action = .{ .shift = 4 } },
-                    .{ .symbol = .{ .terminal = 1 }, .action = .{ .reduce = 2 } },
+                    .{ .symbol = .{ .terminal = 1 }, .action = actions.reduce(2) },
                 },
             }},
         }},
@@ -2475,8 +2477,8 @@ test "resolveActionTable keeps reduce/reduce pairs unresolved" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(2) },
                         },
                     },
                 },
@@ -2530,8 +2532,8 @@ test "resolveActionTable chooses higher integer precedence reduce/reduce action"
                     .{
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(2) },
                         },
                     },
                 },
@@ -2548,7 +2550,7 @@ test "resolveActionTable chooses higher integer precedence reduce/reduce action"
         allocator.free(resolved.states);
     }
 
-    try expectChosenAction(resolved.groupsForState(4)[0], .{ .reduce = 2 });
+    try expectChosenAction(resolved.groupsForState(4)[0], actions.reduce(2));
     try std.testing.expectEqual(@as(usize, 1), resolved.groupsForState(4)[0].candidate_actions.len);
 }
 
@@ -2591,8 +2593,8 @@ test "resolveActionTable chooses ordered named precedence reduce/reduce action" 
                     .{
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(2) },
                         },
                     },
                 },
@@ -2609,7 +2611,7 @@ test "resolveActionTable chooses ordered named precedence reduce/reduce action" 
         allocator.free(resolved.states);
     }
 
-    try expectChosenAction(resolved.groupsForState(4)[0], .{ .reduce = 2 });
+    try expectChosenAction(resolved.groupsForState(4)[0], actions.reduce(2));
     try std.testing.expectEqual(@as(usize, 1), resolved.groupsForState(4)[0].candidate_actions.len);
 }
 
@@ -2645,7 +2647,7 @@ test "resolveActionTable chooses reduce for a positive integer precedence shift/
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -2697,7 +2699,7 @@ test "resolveActionTable chooses reduce for named precedence ordered above the c
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -2721,7 +2723,7 @@ test "resolveActionTable chooses reduce for named precedence ordered above the c
         allocator.free(resolved.states);
     }
 
-    try expectChosenAction(resolved.groupsForState(3)[0], .{ .reduce = 1 });
+    try expectChosenAction(resolved.groupsForState(3)[0], actions.reduce(1));
 }
 
 test "resolveActionTable chooses shift for named precedence ordered below the conflicted symbol" {
@@ -2756,7 +2758,7 @@ test "resolveActionTable chooses shift for named precedence ordered below the co
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -2828,7 +2830,7 @@ test "resolveActionTable compares shift parent symbols in precedence orderings" 
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -2894,7 +2896,7 @@ test "resolveActionTable chooses shift for a negative integer precedence shift/r
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -2947,7 +2949,7 @@ test "resolveActionTable chooses reduce for equal-precedence left associativity"
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -2964,7 +2966,7 @@ test "resolveActionTable chooses reduce for equal-precedence left associativity"
         allocator.free(resolved.states);
     }
 
-    try expectChosenAction(resolved.groupsForState(3)[0], .{ .reduce = 1 });
+    try expectChosenAction(resolved.groupsForState(3)[0], actions.reduce(1));
 }
 
 test "resolveActionTable chooses shift for equal-precedence right associativity" {
@@ -3000,7 +3002,7 @@ test "resolveActionTable chooses shift for equal-precedence right associativity"
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3075,7 +3077,7 @@ test "resolveActionTable uses associativity for unordered shift and reduce prece
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3146,7 +3148,7 @@ test "resolveActionTable keeps equal-precedence non-associative conflicts unreso
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3223,7 +3225,7 @@ test "resolveActionTable does not use positive dynamic precedence for shift/redu
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3273,7 +3275,7 @@ test "resolveActionTable does not use negative dynamic precedence for shift/redu
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3326,7 +3328,7 @@ test "resolveActionTable lets positive dynamic precedence outrank named preceden
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 4 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3350,7 +3352,7 @@ test "resolveActionTable lets positive dynamic precedence outrank named preceden
         allocator.free(resolved.states);
     }
 
-    try expectChosenAction(resolved.groupsForState(3)[0], .{ .reduce = 1 });
+    try expectChosenAction(resolved.groupsForState(3)[0], actions.reduce(1));
 }
 
 test "resolveActionTable uses shift-side integer precedence from the current state when available" {
@@ -3409,7 +3411,7 @@ test "resolveActionTable uses shift-side integer precedence from the current sta
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3485,7 +3487,7 @@ test "resolveActionTable uses shift-side named precedence from the current state
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3573,7 +3575,7 @@ test "resolveActionTable uses production-level shift precedence from the current
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3640,7 +3642,7 @@ test "resolveActionTable leaves repeat auxiliary marker conflicts to normal reso
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3700,7 +3702,7 @@ test "resolveActionTable preserves repeat auxiliary reductions before shift filt
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3766,7 +3768,7 @@ test "resolveActionTable keeps same auxiliary repeat conflicts with repetition m
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3908,7 +3910,7 @@ test "resolveActionTable leaves mixed auxiliary repeat conflicts unresolved" {
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -3972,7 +3974,7 @@ test "resolveActionTable leaves common non-auxiliary repeat-shaped conflicts unr
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -4040,7 +4042,7 @@ test "resolveActionTable leaves repeat auxiliary continuation conflicts to norma
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },
@@ -4114,7 +4116,7 @@ test "resolveActionTable leaves repeat auxiliary continuation with wrapper reduc
                         .symbol = .{ .terminal = 0 },
                         .entries = &[_]actions.ActionEntry{
                             .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 7 } },
-                            .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+                            .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(1) },
                         },
                     },
                 },

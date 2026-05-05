@@ -31,7 +31,7 @@ pub fn writeActionValue(writer: anytype, action: actions.ParseAction) !void {
     switch (action) {
         .shift => |target| try writer.print("{d}", .{target}),
         .shift_extra => try writer.writeByte('0'),
-        .reduce => |production_id| try writer.print("{d}", .{production_id}),
+        .reduce => |reduced| try writer.print("{d}", .{reduced.production_id}),
         .accept => try writer.writeByte('0'),
     }
 }
@@ -59,7 +59,7 @@ test "common emitter helpers format symbols and actions deterministically" {
     try buffer.writer.writeByte('\n');
     try writeQuotedSymbol(&buffer.writer, .{ .terminal = 1 });
     try buffer.writer.writeByte('\n');
-    try writeActionKind(&buffer.writer, .{ .reduce = 7 });
+    try writeActionKind(&buffer.writer, actions.reduce(7));
     try buffer.writer.writeByte('\n');
     try writeActionWithValue(&buffer.writer, .{ .shift = 4 });
     try buffer.writer.writeByte('\n');

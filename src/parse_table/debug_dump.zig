@@ -107,7 +107,7 @@ pub fn writeStatesWithActions(
                 switch (entry.action) {
                     .shift => |target| try writer.print("shift {d}\n", .{target}),
                     .shift_extra => try writer.writeAll("shift_extra\n"),
-                    .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                    .reduce => |reduced| try writer.print("reduce {d}\n", .{reduced.production_id}),
                     .accept => try writer.writeAll("accept\n"),
                 }
             }
@@ -147,7 +147,7 @@ pub fn writeActionTable(
             switch (entry.action) {
                 .shift => |target| try writer.print("shift {d}\n", .{target}),
                 .shift_extra => try writer.writeAll("shift_extra\n"),
-                .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                .reduce => |reduced| try writer.print("reduce {d}\n", .{reduced.production_id}),
                 .accept => try writer.writeAll("accept\n"),
             }
         }
@@ -203,7 +203,7 @@ pub fn writeGroupedActionTableAlloc(
                 switch (entry.action) {
                     .shift => |target| try writer.print("shift {d}\n", .{target}),
                     .shift_extra => try writer.writeAll("shift_extra\n"),
-                    .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                    .reduce => |reduced| try writer.print("reduce {d}\n", .{reduced.production_id}),
                     .accept => try writer.writeAll("accept\n"),
                 }
             }
@@ -245,7 +245,7 @@ pub fn writeResolvedActionTable(
                     switch (chosen) {
                         .shift => |target| try writer.print("shift {d}\n", .{target}),
                         .shift_extra => try writer.writeAll("shift_extra\n"),
-                        .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                        .reduce => |reduced| try writer.print("reduce {d}\n", .{reduced.production_id}),
                         .accept => try writer.writeAll("accept\n"),
                     }
                 },
@@ -260,7 +260,7 @@ pub fn writeResolvedActionTable(
                         switch (candidate) {
                             .shift => |target| try writer.print("shift {d}\n", .{target}),
                             .shift_extra => try writer.writeAll("shift_extra\n"),
-                            .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                            .reduce => |reduced| try writer.print("reduce {d}\n", .{reduced.production_id}),
                             .accept => try writer.writeAll("accept\n"),
                         }
                     }
@@ -288,7 +288,7 @@ pub fn writeSerializedTable(
             switch (entry.action) {
                 .shift => |target| try writer.print("shift {d}\n", .{target}),
                 .shift_extra => try writer.writeAll("shift_extra\n"),
-                .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                .reduce => |reduced| try writer.print("reduce {d}\n", .{reduced.production_id}),
                 .accept => try writer.writeAll("accept\n"),
             }
         }
@@ -313,7 +313,7 @@ pub fn writeSerializedTable(
                     switch (candidate) {
                         .shift => |target| try writer.print("shift {d}\n", .{target}),
                         .shift_extra => try writer.writeAll("shift_extra\n"),
-                        .reduce => |production_id| try writer.print("reduce {d}\n", .{production_id}),
+                        .reduce => |reduced| try writer.print("reduce {d}\n", .{reduced.production_id}),
                         .accept => try writer.writeAll("accept\n"),
                     }
                 }
@@ -447,7 +447,7 @@ test "dumpActionTableAlloc formats action tables deterministically" {
                 .state_id = 0,
                 .entries = &[_]actions.ActionEntry{
                     .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
-                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 3 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(3) },
                 },
             },
         },
@@ -494,7 +494,7 @@ test "dumpGroupedActionTableAlloc groups actions by symbol deterministically" {
                 .state_id = 0,
                 .entries = &[_]actions.ActionEntry{
                     .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
-                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 3 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = actions.reduce(3) },
                     .{ .symbol = .{ .external = 1 }, .action = .{ .accept = {} } },
                 },
             },
@@ -529,14 +529,14 @@ test "dumpResolvedActionTableAlloc formats chosen and unresolved groups determin
                 .groups = &[_]resolution.ResolvedActionGroup{
                     .{
                         .symbol = .{ .terminal = 0 },
-                        .candidate_actions = &[_]actions.ParseAction{.{ .reduce = 2 }},
-                        .decision = .{ .chosen = .{ .reduce = 2 } },
+                        .candidate_actions = &[_]actions.ParseAction{actions.reduce(2)},
+                        .decision = .{ .chosen = actions.reduce(2) },
                     },
                     .{
                         .symbol = .{ .terminal = 1 },
                         .candidate_actions = &[_]actions.ParseAction{
                             .{ .shift = 3 },
-                            .{ .reduce = 4 },
+                            actions.reduce(4),
                         },
                         .decision = .{ .unresolved = .shift_reduce },
                     },
@@ -578,7 +578,7 @@ test "dumpSerializedTableAlloc formats serialized tables deterministically" {
                         .reason = .shift_reduce,
                         .candidate_actions = &[_]actions.ParseAction{
                             .{ .shift = 4 },
-                            .{ .reduce = 5 },
+                            actions.reduce(5),
                         },
                     },
                 },

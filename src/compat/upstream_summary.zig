@@ -1652,7 +1652,7 @@ fn writeReduceParentRuleNames(
     var written: usize = 0;
     for (candidate_actions) |action| {
         const production_id = switch (action) {
-            .reduce => |id| id,
+            .reduce => |reduced| reduced.production_id,
             else => continue,
         };
         if (production_id >= result.productions.len) continue;
@@ -1760,7 +1760,7 @@ fn decisionUsesDynamicPrecedence(
     if (candidate_actions.len <= 1) return false;
     for (candidate_actions) |action| {
         const production_id = switch (action) {
-            .reduce => |id| id,
+            .reduce => |reduced| reduced.production_id,
             else => continue,
         };
         if (production_id < productions.len and productions[production_id].dynamic_precedence != 0) return true;
@@ -3048,7 +3048,7 @@ fn rawRepeatAuxReduceCount(
     const group = rawActionGroupForSymbol(raw_grouped_actions, state_id, symbol) orelse return 0;
     for (group.actions) |action| {
         const production_id = switch (action) {
-            .reduce => |value| value,
+            .reduce => |reduced| reduced.production_id,
             else => continue,
         };
         if (production_id < result.productions.len and result.productions[production_id].lhs_is_repeat_auxiliary) {
@@ -3109,7 +3109,8 @@ fn writeParseActionWithProductionJson(
     action: parse_table_actions.ParseAction,
 ) !void {
     switch (action) {
-        .reduce => |production_id| {
+        .reduce => |reduced| {
+            const production_id = reduced.production_id;
             try writer.writeAll("{ \"kind\": ");
             try writeJsonString(writer, "reduce");
             try writer.print(", \"production_id\": {d}", .{production_id});
@@ -3136,7 +3137,8 @@ fn writeParseActionJson(writer: anytype, action: parse_table_actions.ParseAction
         .shift_extra => {
             try writeJsonString(writer, "shift_extra");
         },
-        .reduce => |production_id| {
+        .reduce => |reduced| {
+            const production_id = reduced.production_id;
             try writeJsonString(writer, "reduce");
             try writer.print(", \"production_id\": {d}", .{production_id});
         },
@@ -3681,9 +3683,9 @@ fn hashParseAction(hasher: *std.hash.Wyhash, action: @import("../parse_table/act
         .shift_extra => {
             hashTag(hasher, "shift_extra");
         },
-        .reduce => |production_id| {
+        .reduce => |reduced| {
             hashTag(hasher, "reduce");
-            hashU32(hasher, production_id);
+            hashU32(hasher, reduced.production_id);
         },
         .accept => {
             hashTag(hasher, "accept");

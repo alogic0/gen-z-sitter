@@ -1090,7 +1090,7 @@ fn emitUnresolvedShiftReduceGlrParserC(allocator: std.mem.Allocator) RuntimeLink
     };
     const unresolved_candidates = [_]parse_actions.ParseAction{
         .{ .shift = 1 },
-        .{ .reduce = 0 },
+        parse_actions.reduce(0),
     };
     const unresolved_entries = [_]serialize.SerializedUnresolvedEntry{
         .{
@@ -1164,7 +1164,7 @@ fn emitAliasedFieldGlrParserC(allocator: std.mem.Allocator) RuntimeLinkError![]c
         .{ .symbol = .{ .terminal = 2 }, .action = .{ .shift = 3 } },
     };
     const reduce_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     };
     const accept_actions = [_]serialize.SerializedActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -1440,7 +1440,7 @@ fn emitKeywordReservedParserC(allocator: std.mem.Allocator) RuntimeLinkError![]c
         .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
     };
     const reduce_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     };
     const accept_actions = [_]serialize.SerializedActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -1545,7 +1545,7 @@ fn emitExternalScannerParserCWithOptions(
         .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
     };
     const reduce_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     };
     const accept_actions = [_]serialize.SerializedActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -1765,7 +1765,7 @@ fn emitJavascriptSingleExternalParserCWithOptions(
         .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
     });
     const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     });
     const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -1902,7 +1902,7 @@ fn emitTypescriptSingleExternalParserCWithOptions(
         .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
     });
     const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     });
     const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -2016,7 +2016,7 @@ fn emitPythonNewlineParserCWithOptions(
         .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
     });
     const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     });
     const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -2153,7 +2153,7 @@ fn emitPythonStringParserCWithOptions(
         .{ .symbol = .{ .external = python_string_end_external_id }, .action = .{ .shift = 4 } },
     });
     const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     });
     const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -2286,7 +2286,7 @@ fn emitPythonIndentDedentParserCWithOptions(
         .{ .symbol = .{ .external = python_dedent_external_id }, .action = .{ .shift = 4 } },
     });
     const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     });
     const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -2420,7 +2420,7 @@ fn emitRustFloatLiteralParserCWithOptions(
         .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
     });
     const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     });
     const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -2539,7 +2539,7 @@ fn emitRustRawStringParserCWithOptions(
         .{ .symbol = .{ .external = raw_string_end_external_id }, .action = .{ .shift = 4 } },
     });
     const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     });
     const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -2682,7 +2682,7 @@ fn emitBashBareDollarParserCWithOptions(
         .{ .symbol = .{ .non_terminal = 0 }, .state = 3 },
     });
     const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     });
     const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -2870,7 +2870,7 @@ fn emitHaskellVarsymParserCWithOptions(
         .{ .symbol = .{ .non_terminal = 0 }, .state = 6 },
     });
     const reduce_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     });
     const accept_actions = try allocator.dupe(serialize.SerializedActionEntry, &.{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -3013,7 +3013,7 @@ fn emitMultiTokenExternalScannerParserCWithOptions(
         .{ .symbol = .{ .external = 1 }, .action = .{ .shift = 3 } },
     };
     const reduce_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     };
     const accept_actions = [_]serialize.SerializedActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -3130,18 +3130,18 @@ fn emitStatefulExternalScannerParserC(allocator: std.mem.Allocator) RuntimeLinkE
         .{ .symbol = .{ .non_terminal = 1 }, .state = 4 },
     };
     const short_item_reduce_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
-        .{ .symbol = .{ .external = 1 }, .action = .{ .reduce = 2 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(2) },
+        .{ .symbol = .{ .external = 1 }, .action = parse_actions.reduce(2) },
     };
     const after_nested_item_actions = [_]serialize.SerializedActionEntry{
         .{ .symbol = .{ .external = 1 }, .action = .{ .shift = 5 } },
     };
     const nested_item_reduce_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
-        .{ .symbol = .{ .external = 1 }, .action = .{ .reduce = 1 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(1) },
+        .{ .symbol = .{ .external = 1 }, .action = parse_actions.reduce(1) },
     };
     const source_reduce_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     };
     const accept_actions = [_]serialize.SerializedActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },
@@ -3261,10 +3261,10 @@ fn emitForkedStatefulExternalScannerGlrParserC(allocator: std.mem.Allocator) Run
         .{ .symbol = .{ .external = 3 }, .action = .{ .shift = 5 } },
     };
     const reduce_a_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 0 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(0) },
     };
     const reduce_b_actions = [_]serialize.SerializedActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 1 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = parse_actions.reduce(1) },
     };
     const accept_actions = [_]serialize.SerializedActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .accept = {} } },

@@ -389,7 +389,7 @@ pub fn parseTableConflictGrammarJson() Fixture {
 
 pub fn parseTableConflictDump() Fixture {
     return .{
-        .name = "parse_table_conflict_dump",
+        .name = "parseTableConflictDump",
         .contents =
         \\state 0
         \\  items:
@@ -403,8 +403,8 @@ pub fn parseTableConflictDump() Fixture {
         \\    #0@0 [end]
         \\  transitions:
         \\    terminal:1 -> 2
-        \\    non_terminal:0 -> 6
-        \\    non_terminal:1 -> 3
+        \\    non_terminal:0 -> 3
+        \\    non_terminal:1 -> 4
         \\
         \\state 2
         \\  items:
@@ -413,35 +413,35 @@ pub fn parseTableConflictDump() Fixture {
         \\
         \\state 3
         \\  items:
+        \\    #0@1 [end]
+        \\  transitions:
+        \\
+        \\state 4
+        \\  items:
         \\    #1@1 [end]
         \\    #2@1 [terminal:0, end]
         \\  transitions:
-        \\    terminal:0 -> 4
+        \\    terminal:0 -> 5
         \\
-        \\state 4
+        \\state 5
         \\  items:
         \\    #3@0 [terminal:0, end]
         \\    #2@0 [terminal:0, end]
         \\    #2@2 [terminal:0, end]
         \\  transitions:
         \\    terminal:1 -> 2
-        \\    non_terminal:1 -> 5
+        \\    non_terminal:1 -> 6
         \\
-        \\state 5
+        \\state 6
         \\  items:
         \\    #2@1 [terminal:0, end]
         \\    #2@3 [terminal:0, end]
         \\  transitions:
-        \\    terminal:0 -> 4
+        \\    terminal:0 -> 5
         \\  conflicts:
         \\    shift_reduce on terminal:0
         \\      #2@1
         \\      #2@3
-        \\
-        \\state 6
-        \\  items:
-        \\    #0@1 [end]
-        \\  transitions:
         \\
         ,
     };
@@ -449,7 +449,7 @@ pub fn parseTableConflictDump() Fixture {
 
 pub fn parseTableConflictActionDump() Fixture {
     return .{
-        .name = "parse_table_conflict_action_dump",
+        .name = "parseTableConflictActionDump",
         .contents =
         \\state 0
         \\  items:
@@ -464,8 +464,8 @@ pub fn parseTableConflictActionDump() Fixture {
         \\    #0@0 [end]
         \\  transitions:
         \\    terminal:1 -> 2
-        \\    non_terminal:0 -> 6
-        \\    non_terminal:1 -> 3
+        \\    non_terminal:0 -> 3
+        \\    non_terminal:1 -> 4
         \\  actions:
         \\    terminal:1 => shift 2
         \\
@@ -479,46 +479,46 @@ pub fn parseTableConflictActionDump() Fixture {
         \\
         \\state 3
         \\  items:
+        \\    #0@1 [end]
+        \\  transitions:
+        \\  actions:
+        \\    end => accept
+        \\
+        \\state 4
+        \\  items:
         \\    #1@1 [end]
         \\    #2@1 [terminal:0, end]
         \\  transitions:
-        \\    terminal:0 -> 4
+        \\    terminal:0 -> 5
         \\  actions:
         \\    end => reduce 1
-        \\    terminal:0 => shift 4
+        \\    terminal:0 => shift 5
         \\
-        \\state 4
+        \\state 5
         \\  items:
         \\    #3@0 [terminal:0, end]
         \\    #2@0 [terminal:0, end]
         \\    #2@2 [terminal:0, end]
         \\  transitions:
         \\    terminal:1 -> 2
-        \\    non_terminal:1 -> 5
+        \\    non_terminal:1 -> 6
         \\  actions:
         \\    terminal:1 => shift 2
         \\
-        \\state 5
+        \\state 6
         \\  items:
         \\    #2@1 [terminal:0, end]
         \\    #2@3 [terminal:0, end]
         \\  transitions:
-        \\    terminal:0 -> 4
+        \\    terminal:0 -> 5
         \\  actions:
         \\    end => reduce 2
         \\    terminal:0 => reduce 2
-        \\    terminal:0 => shift 4
+        \\    terminal:0 => shift 5
         \\  conflicts:
         \\    shift_reduce on terminal:0
         \\      #2@1
         \\      #2@3
-        \\
-        \\state 6
-        \\  items:
-        \\    #0@1 [end]
-        \\  transitions:
-        \\  actions:
-        \\    end => accept
         \\
         ,
     };
@@ -707,8 +707,8 @@ pub fn parseTableConflictSerializedDump() Fixture {
         \\  actions:
         \\    terminal:1 => shift 2
         \\  gotos:
-        \\    non_terminal:0 -> 6
-        \\    non_terminal:1 -> 3
+        \\    non_terminal:0 -> 3
+        \\    non_terminal:1 -> 4
         \\
         \\state 2
         \\  actions:
@@ -718,29 +718,29 @@ pub fn parseTableConflictSerializedDump() Fixture {
         \\
         \\state 3
         \\  actions:
-        \\    end => reduce 1
-        \\    terminal:0 => shift 4
+        \\    end => accept
         \\  gotos:
         \\
         \\state 4
         \\  actions:
-        \\    terminal:1 => shift 2
+        \\    end => reduce 1
+        \\    terminal:0 => shift 5
         \\  gotos:
-        \\    non_terminal:1 -> 5
         \\
         \\state 5
+        \\  actions:
+        \\    terminal:1 => shift 2
+        \\  gotos:
+        \\    non_terminal:1 -> 6
+        \\
+        \\state 6
         \\  actions:
         \\    end => reduce 2
         \\  gotos:
         \\  unresolved:
         \\    terminal:0 (shift_reduce)
         \\      candidate reduce 2
-        \\      candidate shift 4
-        \\
-        \\state 6
-        \\  actions:
-        \\    end => accept
-        \\  gotos:
+        \\      candidate shift 5
         \\
         ,
     };
@@ -784,7 +784,7 @@ pub fn parseTableMetadataEmitterDump() Fixture {
 
 pub fn parseTableConflictEmitterDump() Fixture {
     return .{
-        .name = "parse_table_conflict_emitter_dump",
+        .name = "parseTableConflictEmitterDump",
         .contents =
         \\parser_tables blocked=true
         \\state_count=7
@@ -796,8 +796,8 @@ pub fn parseTableConflictEmitterDump() Fixture {
         \\
         \\state 1 {
         \\  action terminal:1 shift 2
-        \\  goto non_terminal:0 6
-        \\  goto non_terminal:1 3
+        \\  goto non_terminal:0 3
+        \\  goto non_terminal:1 4
         \\}
         \\
         \\state 2 {
@@ -806,22 +806,22 @@ pub fn parseTableConflictEmitterDump() Fixture {
         \\}
         \\
         \\state 3 {
-        \\  action end reduce 1
-        \\  action terminal:0 shift 4
+        \\  action end accept
         \\}
         \\
         \\state 4 {
-        \\  action terminal:1 shift 2
-        \\  goto non_terminal:1 5
+        \\  action end reduce 1
+        \\  action terminal:0 shift 5
         \\}
         \\
         \\state 5 {
-        \\  action end reduce 2
-        \\  unresolved terminal:0 shift_reduce candidates=2
+        \\  action terminal:1 shift 2
+        \\  goto non_terminal:1 6
         \\}
         \\
         \\state 6 {
-        \\  action end accept
+        \\  action end reduce 2
+        \\  unresolved terminal:0 shift_reduce candidates=2
         \\}
         ,
     };
@@ -1254,7 +1254,7 @@ pub fn parseTableMetadataParserCDump() Fixture {
 
 pub fn parseTableConflictParserCDump() Fixture {
     return .{
-        .name = "parse_table_conflict_parser_c_dump",
+        .name = "parseTableConflictParserCDump",
         .contents =
         \\/* generated parser.c */
         \\/* tree-sitter runtime ABI layout */
@@ -1594,8 +1594,8 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\    [2] = ACTIONS(1),
         \\  },
         \\  [STATE(1)] = {
-        \\    [3] = STATE(6),
-        \\    [4] = STATE(3),
+        \\    [3] = STATE(3),
+        \\    [4] = STATE(4),
         \\    [2] = ACTIONS(3),
         \\  },
         \\};
@@ -1603,14 +1603,14 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\static const uint16_t ts_small_parse_table[] = {
         \\  [0] = 1,
         \\  ACTIONS(5), 2, 0, 1,
-        \\  [5] = 2,
+        \\  [5] = 1,
         \\  ACTIONS(7), 1, 0,
-        \\  ACTIONS(9), 1, 1,
-        \\  [12] = 2,
-        \\  STATE(5), 1, 4,
+        \\  [9] = 2,
+        \\  ACTIONS(9), 1, 0,
+        \\  ACTIONS(11), 1, 1,
+        \\  [16] = 2,
+        \\  STATE(6), 1, 4,
         \\  ACTIONS(3), 1, 2,
-        \\  [19] = 1,
-        \\  ACTIONS(11), 1, 0,
         \\  [23] = 1,
         \\  ACTIONS(13), 1, 0,
         \\};
@@ -1618,8 +1618,8 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\static const uint32_t ts_small_parse_table_map[] = {
         \\  [SMALL_STATE(2)] = 0,
         \\  [SMALL_STATE(3)] = 5,
-        \\  [SMALL_STATE(4)] = 12,
-        \\  [SMALL_STATE(5)] = 19,
+        \\  [SMALL_STATE(4)] = 9,
+        \\  [SMALL_STATE(5)] = 16,
         \\  [SMALL_STATE(6)] = 23,
         \\};
         \\
@@ -1628,13 +1628,13 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\  [1] = { .entry = { .count = 1, .reusable = false } }, RECOVER(),
         \\  [3] = { .entry = { .count = 1, .reusable = true } }, SHIFT(2),
         \\  [5] = { .entry = { .count = 1, .reusable = true } }, REDUCE(4, 1, 0, 0),
-        \\  [7] = { .entry = { .count = 1, .reusable = true } }, REDUCE(3, 1, 0, 0),
-        \\  [9] = { .entry = { .count = 1, .reusable = true } }, SHIFT(4),
-        \\  [11] = { .entry = { .count = 1, .reusable = true } }, REDUCE(4, 3, 0, 0),
-        \\  [13] = { .entry = { .count = 1, .reusable = true } }, ACCEPT_INPUT(),
+        \\  [7] = { .entry = { .count = 1, .reusable = true } }, ACCEPT_INPUT(),
+        \\  [9] = { .entry = { .count = 1, .reusable = true } }, REDUCE(3, 1, 0, 0),
+        \\  [11] = { .entry = { .count = 1, .reusable = true } }, SHIFT(5),
+        \\  [13] = { .entry = { .count = 1, .reusable = true } }, REDUCE(4, 3, 0, 0),
         \\};
         \\
-        \\static const TSUnresolvedEntry ts_state_5_unresolved[] = {
+        \\static const TSUnresolvedEntry ts_state_6_unresolved[] = {
         \\  { .symbol_id = 1, .reason = 1, .action_index = 0, .action_count = 0 },
         \\};
         \\
@@ -1654,14 +1654,14 @@ pub fn parseTableConflictParserCDump() Fixture {
         \\
         \\const TSUnresolvedEntry *ts_parser_unresolved(uint16_t state_id) {
         \\  switch (state_id) {
-        \\    case 5: return ts_state_5_unresolved;
+        \\    case 6: return ts_state_6_unresolved;
         \\    default: return NULL;
         \\  }
         \\}
         \\
         \\uint16_t ts_parser_unresolved_count(uint16_t state_id) {
         \\  switch (state_id) {
-        \\    case 5: return 1;
+        \\    case 6: return 1;
         \\    default: return 0;
         \\  }
         \\}
@@ -1736,7 +1736,7 @@ pub fn parseTableConflictParserCDump() Fixture {
 
 pub fn parseTableConflictActionTableDump() Fixture {
     return .{
-        .name = "parse_table_conflict_action_table_dump",
+        .name = "parseTableConflictActionTableDump",
         .contents =
         \\state 0
         \\  actions:
@@ -1752,26 +1752,26 @@ pub fn parseTableConflictActionTableDump() Fixture {
         \\
         \\state 3
         \\  actions:
-        \\    end => reduce 1
-        \\    terminal:0 => shift 4
+        \\    end => accept
         \\
         \\state 4
         \\  actions:
-        \\    terminal:1 => shift 2
+        \\    end => reduce 1
+        \\    terminal:0 => shift 5
         \\
         \\state 5
         \\  actions:
+        \\    terminal:1 => shift 2
+        \\
+        \\state 6
+        \\  actions:
         \\    end => reduce 2
         \\    terminal:0 => reduce 2
-        \\    terminal:0 => shift 4
+        \\    terminal:0 => shift 5
         \\  conflicts:
         \\    shift_reduce on terminal:0
         \\      #2@1
         \\      #2@3
-        \\
-        \\state 6
-        \\  actions:
-        \\    end => accept
         \\
         ,
     };
@@ -1779,7 +1779,7 @@ pub fn parseTableConflictActionTableDump() Fixture {
 
 pub fn parseTableConflictGroupedActionTableDump() Fixture {
     return .{
-        .name = "parse_table_conflict_grouped_action_table_dump",
+        .name = "parseTableConflictGroupedActionTableDump",
         .contents =
         \\state 0
         \\  actions:
@@ -1799,31 +1799,31 @@ pub fn parseTableConflictGroupedActionTableDump() Fixture {
         \\state 3
         \\  actions:
         \\    end:
-        \\      reduce 1
-        \\    terminal:0:
-        \\      shift 4
+        \\      accept
         \\
         \\state 4
+        \\  actions:
+        \\    end:
+        \\      reduce 1
+        \\    terminal:0:
+        \\      shift 5
+        \\
+        \\state 5
         \\  actions:
         \\    terminal:1:
         \\      shift 2
         \\
-        \\state 5
+        \\state 6
         \\  actions:
         \\    end:
         \\      reduce 2
         \\    terminal:0:
         \\      reduce 2
-        \\      shift 4
+        \\      shift 5
         \\  conflicts:
         \\    shift_reduce on terminal:0
         \\      #2@1
         \\      #2@3
-        \\
-        \\state 6
-        \\  actions:
-        \\    end:
-        \\      accept
         \\
         ,
     };
@@ -2388,7 +2388,7 @@ pub fn parseTableNamedPrecedenceShiftGrammarJson() Fixture {
 
 pub fn parseTablePrecedenceResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_precedence_resolved_action_dump",
+        .name = "parseTablePrecedenceResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:
@@ -2404,21 +2404,21 @@ pub fn parseTablePrecedenceResolvedActionDump() Fixture {
         \\
         \\state 3
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:1: shift 2
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
         \\
         \\state 5
         \\  resolved_actions:
-        \\    end: reduce 2
-        \\    terminal:0: reduce 2
+        \\    terminal:1: shift 2
         \\
         \\state 6
         \\  resolved_actions:
-        \\    end: accept
+        \\    end: reduce 2
+        \\    terminal:0: reduce 2
         \\
         ,
     };
@@ -2426,7 +2426,7 @@ pub fn parseTablePrecedenceResolvedActionDump() Fixture {
 
 pub fn parseTableNamedPrecedenceResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_named_precedence_resolved_action_dump",
+        .name = "parseTableNamedPrecedenceResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:
@@ -2442,21 +2442,21 @@ pub fn parseTableNamedPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 3
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:1: shift 4
+        \\    end: accept
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:0: shift 2
+        \\    end: reduce 1
+        \\    terminal:1: shift 5
         \\
         \\state 5
         \\  resolved_actions:
-        \\    end: reduce 2
-        \\    terminal:1: reduce 2
+        \\    terminal:0: shift 2
         \\
         \\state 6
         \\  resolved_actions:
-        \\    end: accept
+        \\    end: reduce 2
+        \\    terminal:1: reduce 2
         \\
         ,
     };
@@ -2464,7 +2464,7 @@ pub fn parseTableNamedPrecedenceResolvedActionDump() Fixture {
 
 pub fn parseTableNamedPrecedenceShiftResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_named_precedence_shift_resolved_action_dump",
+        .name = "parseTableNamedPrecedenceShiftResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:
@@ -2480,21 +2480,21 @@ pub fn parseTableNamedPrecedenceShiftResolvedActionDump() Fixture {
         \\
         \\state 3
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:1: shift 4
+        \\    end: accept
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:0: shift 2
+        \\    end: reduce 1
+        \\    terminal:1: shift 5
         \\
         \\state 5
         \\  resolved_actions:
-        \\    end: reduce 2
-        \\    terminal:1: shift 4
+        \\    terminal:0: shift 2
         \\
         \\state 6
         \\  resolved_actions:
-        \\    end: accept
+        \\    end: reduce 2
+        \\    terminal:1: shift 5
         \\
         ,
     };
@@ -2502,7 +2502,7 @@ pub fn parseTableNamedPrecedenceShiftResolvedActionDump() Fixture {
 
 pub fn parseTableDynamicPrecedenceResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_dynamic_precedence_resolved_action_dump",
+        .name = "parseTableDynamicPrecedenceResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:
@@ -2518,23 +2518,23 @@ pub fn parseTableDynamicPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 3
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:1: shift 2
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
         \\
         \\state 5
+        \\  resolved_actions:
+        \\    terminal:1: shift 2
+        \\
+        \\state 6
         \\  resolved_actions:
         \\    end: reduce 2
         \\    terminal:0: unresolved (shift_reduce)
         \\      candidate reduce 2
-        \\      candidate shift 4
-        \\
-        \\state 6
-        \\  resolved_actions:
-        \\    end: accept
+        \\      candidate shift 5
         \\
         ,
     };
@@ -2542,7 +2542,7 @@ pub fn parseTableDynamicPrecedenceResolvedActionDump() Fixture {
 
 pub fn parseTableNegativeDynamicPrecedenceResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_negative_dynamic_precedence_resolved_action_dump",
+        .name = "parseTableNegativeDynamicPrecedenceResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:
@@ -2558,23 +2558,23 @@ pub fn parseTableNegativeDynamicPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 3
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:1: shift 2
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
         \\
         \\state 5
+        \\  resolved_actions:
+        \\    terminal:1: shift 2
+        \\
+        \\state 6
         \\  resolved_actions:
         \\    end: reduce 2
         \\    terminal:0: unresolved (shift_reduce)
         \\      candidate reduce 2
-        \\      candidate shift 4
-        \\
-        \\state 6
-        \\  resolved_actions:
-        \\    end: accept
+        \\      candidate shift 5
         \\
         ,
     };
@@ -2582,7 +2582,7 @@ pub fn parseTableNegativeDynamicPrecedenceResolvedActionDump() Fixture {
 
 pub fn parseTableDynamicBeatsNamedPrecedenceResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_dynamic_beats_named_precedence_resolved_action_dump",
+        .name = "parseTableDynamicBeatsNamedPrecedenceResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:
@@ -2598,21 +2598,21 @@ pub fn parseTableDynamicBeatsNamedPrecedenceResolvedActionDump() Fixture {
         \\
         \\state 3
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:1: shift 4
+        \\    end: accept
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:0: shift 2
+        \\    end: reduce 1
+        \\    terminal:1: shift 5
         \\
         \\state 5
         \\  resolved_actions:
-        \\    end: reduce 2
-        \\    terminal:1: reduce 2
+        \\    terminal:0: shift 2
         \\
         \\state 6
         \\  resolved_actions:
-        \\    end: accept
+        \\    end: reduce 2
+        \\    terminal:1: reduce 2
         \\
         ,
     };
@@ -2742,7 +2742,7 @@ pub fn parseTableNonAssociativeGrammarJson() Fixture {
 
 pub fn parseTableNegativePrecedenceResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_negative_precedence_resolved_action_dump",
+        .name = "parseTableNegativePrecedenceResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:
@@ -2758,23 +2758,23 @@ pub fn parseTableNegativePrecedenceResolvedActionDump() Fixture {
         \\
         \\state 3
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:1: shift 2
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
         \\
         \\state 5
+        \\  resolved_actions:
+        \\    terminal:1: shift 2
+        \\
+        \\state 6
         \\  resolved_actions:
         \\    end: reduce 2
         \\    terminal:0: unresolved (shift_reduce)
         \\      candidate reduce 2
-        \\      candidate shift 4
-        \\
-        \\state 6
-        \\  resolved_actions:
-        \\    end: accept
+        \\      candidate shift 5
         \\
         ,
     };
@@ -2782,7 +2782,7 @@ pub fn parseTableNegativePrecedenceResolvedActionDump() Fixture {
 
 pub fn parseTableAssociativityResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_associativity_resolved_action_dump",
+        .name = "parseTableAssociativityResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:
@@ -2798,21 +2798,21 @@ pub fn parseTableAssociativityResolvedActionDump() Fixture {
         \\
         \\state 3
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:1: shift 2
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
         \\
         \\state 5
         \\  resolved_actions:
-        \\    end: reduce 2
-        \\    terminal:0: reduce 2
+        \\    terminal:1: shift 2
         \\
         \\state 6
         \\  resolved_actions:
-        \\    end: accept
+        \\    end: reduce 2
+        \\    terminal:0: reduce 2
         \\
         ,
     };
@@ -2820,7 +2820,7 @@ pub fn parseTableAssociativityResolvedActionDump() Fixture {
 
 pub fn parseTableNonAssociativeResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_non_associative_resolved_action_dump",
+        .name = "parseTableNonAssociativeResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:
@@ -2836,23 +2836,23 @@ pub fn parseTableNonAssociativeResolvedActionDump() Fixture {
         \\
         \\state 3
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:1: shift 2
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
         \\
         \\state 5
+        \\  resolved_actions:
+        \\    terminal:1: shift 2
+        \\
+        \\state 6
         \\  resolved_actions:
         \\    end: reduce 2
         \\    terminal:0: unresolved (shift_reduce)
         \\      candidate reduce 2
-        \\      candidate shift 4
-        \\
-        \\state 6
-        \\  resolved_actions:
-        \\    end: accept
+        \\      candidate shift 5
         \\
         ,
     };
@@ -2902,7 +2902,7 @@ pub fn parseTableRightAssociativityGrammarJson() Fixture {
 
 pub fn parseTableRightAssociativityResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_right_associativity_resolved_action_dump",
+        .name = "parseTableRightAssociativityResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:
@@ -2918,21 +2918,21 @@ pub fn parseTableRightAssociativityResolvedActionDump() Fixture {
         \\
         \\state 3
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:1: shift 2
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
         \\
         \\state 5
         \\  resolved_actions:
-        \\    end: reduce 2
-        \\    terminal:0: shift 4
+        \\    terminal:1: shift 2
         \\
         \\state 6
         \\  resolved_actions:
-        \\    end: accept
+        \\    end: reduce 2
+        \\    terminal:0: shift 5
         \\
         ,
     };
@@ -2940,7 +2940,7 @@ pub fn parseTableRightAssociativityResolvedActionDump() Fixture {
 
 pub fn parseTableConflictResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_conflict_resolved_action_dump",
+        .name = "parseTableConflictResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:
@@ -2956,23 +2956,23 @@ pub fn parseTableConflictResolvedActionDump() Fixture {
         \\
         \\state 3
         \\  resolved_actions:
-        \\    end: reduce 1
-        \\    terminal:0: shift 4
+        \\    end: accept
         \\
         \\state 4
         \\  resolved_actions:
-        \\    terminal:1: shift 2
+        \\    end: reduce 1
+        \\    terminal:0: shift 5
         \\
         \\state 5
+        \\  resolved_actions:
+        \\    terminal:1: shift 2
+        \\
+        \\state 6
         \\  resolved_actions:
         \\    end: reduce 2
         \\    terminal:0: unresolved (shift_reduce)
         \\      candidate reduce 2
-        \\      candidate shift 4
-        \\
-        \\state 6
-        \\  resolved_actions:
-        \\    end: accept
+        \\      candidate shift 5
         \\
         ,
     };
@@ -2980,7 +2980,7 @@ pub fn parseTableConflictResolvedActionDump() Fixture {
 
 pub fn parseTableReduceReduceResolvedActionDump() Fixture {
     return .{
-        .name = "parse_table_reduce_reduce_resolved_action_dump",
+        .name = "parseTableReduceReduceResolvedActionDump",
         .contents =
         \\state 0
         \\  resolved_actions:

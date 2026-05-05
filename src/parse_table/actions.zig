@@ -10,10 +10,20 @@ pub const ActionKind = enum {
     accept,
 };
 
+pub const unset_reduce_child_count = std.math.maxInt(u16);
+pub const unset_reduce_dynamic_precedence = std.math.maxInt(i32);
+
+pub const ReduceAction = struct {
+    symbol: syntax_ir.SymbolRef = .{ .non_terminal = item.unset_variable_index },
+    child_count: u16 = unset_reduce_child_count,
+    dynamic_precedence: i32 = unset_reduce_dynamic_precedence,
+    production_id: item.ProductionId,
+};
+
 pub const ParseAction = union(ActionKind) {
     shift: state.StateId,
     shift_extra: void,
-    reduce: item.ProductionId,
+    reduce: ReduceAction,
     accept: void,
 
     pub fn lessThan(_: void, a: ParseAction, b: ParseAction) bool {
@@ -28,13 +38,44 @@ pub const ParseAction = union(ActionKind) {
             },
             .shift_extra => false,
             .reduce => |left| switch (b) {
-                .reduce => |right| left < right,
+                .reduce => |right| reduceActionLessThan(left, right),
                 else => false,
             },
             .accept => false,
         };
     }
 };
+
+pub fn reduce(production_id: item.ProductionId) ParseAction {
+    return .{ .reduce = .{ .production_id = production_id } };
+}
+
+pub fn reduceForItem(productions: anytype, parse_item: item.ParseItem) ParseAction {
+    const production = productions[parse_item.production_id];
+    const variable_index = if (parse_item.variable_index != item.unset_variable_index)
+        parse_item.variable_index
+    else
+        production.lhs;
+    return .{ .reduce = .{
+        .symbol = .{ .non_terminal = variable_index },
+        .child_count = parse_item.step_index,
+        .dynamic_precedence = productionDynamicPrecedence(production),
+        .production_id = parse_item.production_id,
+    } };
+}
+
+fn productionDynamicPrecedence(production: anytype) i32 {
+    const Production = @TypeOf(production);
+    if (@hasField(Production, "dynamic_precedence")) return production.dynamic_precedence;
+    return 0;
+}
+
+fn reduceActionLessThan(left: ReduceAction, right: ReduceAction) bool {
+    if (!symbolRefEql(left.symbol, right.symbol)) return symbolLessThan(left.symbol, right.symbol);
+    if (left.child_count != right.child_count) return left.child_count < right.child_count;
+    if (left.dynamic_precedence != right.dynamic_precedence) return left.dynamic_precedence < right.dynamic_precedence;
+    return left.production_id < right.production_id;
+}
 
 fn parseActionOrder(action: ParseAction) u8 {
     return switch (action) {
@@ -116,7 +157,7 @@ pub fn buildActionsForState(
         const action: ParseAction = if (production.augmented)
             .{ .accept = {} }
         else
-            .{ .reduce = parse_item.production_id };
+            reduceForItem(productions, parse_item);
 
         var terminal_iter = entry.lookaheads.terminals.bits.iterator(.{});
         while (terminal_iter.next()) |index| {
@@ -161,7 +202,7 @@ pub fn buildGroupedActionsForState(
         const action: ParseAction = if (production.augmented)
             .{ .accept = {} }
         else
-            .{ .reduce = parse_item.production_id };
+            reduceForItem(productions, parse_item);
 
         var terminal_iter = entry.lookaheads.terminals.bits.iterator(.{});
         while (terminal_iter.next()) |index| {
@@ -394,7 +435,7 @@ fn parseActionEql(a: ParseAction, b: ParseAction) bool {
             else => false,
         },
         .reduce => |left| switch (b) {
-            .reduce => |right| left == right,
+            .reduce => |right| reduceActionEql(left, right),
             else => false,
         },
         .accept => switch (b) {
@@ -402,6 +443,13 @@ fn parseActionEql(a: ParseAction, b: ParseAction) bool {
             else => false,
         },
     };
+}
+
+fn reduceActionEql(a: ReduceAction, b: ReduceAction) bool {
+    return symbolRefEql(a.symbol, b.symbol) and
+        a.child_count == b.child_count and
+        a.dynamic_precedence == b.dynamic_precedence and
+        a.production_id == b.production_id;
 }
 
 fn symbolRefEql(a: syntax_ir.SymbolRef, b: syntax_ir.SymbolRef) bool {
@@ -440,7 +488,7 @@ fn symbolSortKey(symbol: syntax_ir.SymbolRef) u64 {
 
 test "action helpers sort deterministically" {
     var entries = [_]ActionEntry{
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 2 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = reduce(2) },
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 1 } },
         .{ .symbol = .{ .external = 1 }, .action = .{ .accept = {} } },
     };
@@ -508,7 +556,7 @@ test "buildActionsForState derives shift reduce and accept actions" {
 
     try std.testing.expectEqual(@as(usize, 3), entries.len);
     try std.testing.expect(actionEntriesContain(entries, .{ .external = 2 }, .{ .accept = {} }));
-    try std.testing.expect(actionEntriesContain(entries, .{ .terminal = 0 }, .{ .reduce = 1 }));
+    try std.testing.expect(actionEntriesContain(entries, .{ .terminal = 0 }, reduceForItem(productions[0..], item.ParseItem.init(1, 1))));
     try std.testing.expect(actionEntriesContain(entries, .{ .terminal = 0 }, .{ .shift = 7 }));
 }
 
@@ -581,7 +629,7 @@ test "buildActionTable keeps per-state actions addressable by state id" {
     try std.testing.expectEqual(@as(usize, 1), table.entriesForState(2).len);
     try std.testing.expectEqual(@as(u32, 0), table.entriesForState(2)[0].symbol.terminal);
     try std.testing.expect(switch (table.entriesForState(2)[0].action) {
-        .reduce => |id| id == 1,
+        .reduce => |reduced| reduced.production_id == 1,
         else => false,
     });
     try std.testing.expectEqual(@as(usize, 1), table.entriesForState(7).len);
@@ -660,7 +708,7 @@ test "groupActionsForState groups sorted actions by symbol deterministically" {
 
     const entries = [_]ActionEntry{
         .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 2 } },
-        .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 3 } },
+        .{ .symbol = .{ .terminal = 0 }, .action = reduce(3) },
         .{ .symbol = .{ .external = 1 }, .action = .{ .accept = {} } },
     };
 
@@ -706,7 +754,7 @@ test "groupActionTable keeps grouped states addressable by state id" {
                 .state_id = 2,
                 .entries = &[_]ActionEntry{
                     .{ .symbol = .{ .terminal = 0 }, .action = .{ .shift = 3 } },
-                    .{ .symbol = .{ .terminal = 0 }, .action = .{ .reduce = 4 } },
+                    .{ .symbol = .{ .terminal = 0 }, .action = reduce(4) },
                 },
             },
             .{

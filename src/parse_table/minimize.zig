@@ -529,7 +529,8 @@ fn traceActionInline(
         .shift => |target| std.debug.print(" shift target={d} group={d}\n", .{ target, groupOfState(group_of, target) }),
         .shift_extra => std.debug.print(" shift_extra\n", .{}),
         .accept => std.debug.print(" accept\n", .{}),
-        .reduce => |production_id| {
+        .reduce => |reduced| {
+            const production_id = reduced.production_id;
             std.debug.print(" reduce production={d}", .{production_id});
             if (reduce_productions) |productions| {
                 if (production_id < productions.len) {
@@ -949,7 +950,8 @@ fn unitReductionSymbolsByStateAlloc(
                         reject_stats.accept += 1;
                         only_unit_reductions = false;
                     },
-                    .reduce => |production_id| {
+                    .reduce => |reduced| {
+                        const production_id = reduced.production_id;
                         const symbol = unitReductionSymbolForProductionWithStats(options, production_id, &reject_stats) orelse {
                             only_unit_reductions = false;
                             break;
@@ -1810,7 +1812,7 @@ fn endGroupIsNonTerminalExtraSentinel(
 
 fn actionIsExtraReduce(action: actions.ParseAction, options: UnitReductionOptions) bool {
     const production_id = switch (action) {
-        .reduce => |id| id,
+        .reduce => |reduced| reduced.production_id,
         else => return false,
     };
     if (production_id >= options.productions.len) return false;
@@ -1954,8 +1956,8 @@ fn actionsEquivalent(
                 break :blk false;
             },
         },
-        .reduce => |left_production| switch (right) {
-            .reduce => |right_production| if (reduceActionsEquivalent(left_production, right_production, reduce_productions)) true else blk: {
+        .reduce => |left_reduce| switch (right) {
+            .reduce => |right_reduce| if (reduceActionsEquivalent(left_reduce.production_id, right_reduce.production_id, reduce_productions)) true else blk: {
                 recordMinimizeTraceStat("unequal_action");
                 break :blk false;
             },
@@ -2269,7 +2271,7 @@ test "minimizeAlloc removes hidden unit reduction states" {
     const state2_groups = [_]resolution.ResolvedActionGroup{.{
         .symbol = .{ .end = {} },
         .candidate_actions = &.{},
-        .decision = .{ .chosen = .{ .reduce = 0 } },
+        .decision = .{ .chosen = actions.reduce(0) },
     }};
     const state3_groups = [_]resolution.ResolvedActionGroup{.{
         .symbol = .{ .end = {} },
@@ -2322,19 +2324,19 @@ test "minimizeAlloc ignores diagnostic candidates for chosen actions" {
     };
 
     const state0_candidates = [_]actions.ParseAction{
-        .{ .reduce = 0 },
-        .{ .reduce = 1 },
+        actions.reduce(0),
+        actions.reduce(1),
     };
     const state0_groups = [_]resolution.ResolvedActionGroup{.{
         .symbol = .{ .terminal = 0 },
         .candidate_actions = state0_candidates[0..],
-        .decision = .{ .chosen = .{ .reduce = 0 } },
+        .decision = .{ .chosen = actions.reduce(0) },
     }};
-    const state1_candidates = [_]actions.ParseAction{.{ .reduce = 0 }};
+    const state1_candidates = [_]actions.ParseAction{actions.reduce(0)};
     const state1_groups = [_]resolution.ResolvedActionGroup{.{
         .symbol = .{ .terminal = 0 },
         .candidate_actions = state1_candidates[0..],
-        .decision = .{ .chosen = .{ .reduce = 0 } },
+        .decision = .{ .chosen = actions.reduce(0) },
     }};
     const resolved_states = [_]resolution.ResolvedStateActions{
         .{ .state_id = 0, .groups = state0_groups[0..] },
@@ -2364,12 +2366,12 @@ test "minimizeAlloc does not keep states only referenced by chosen diagnostic ca
 
     const state0_candidates = [_]actions.ParseAction{
         .{ .shift = 2 },
-        .{ .reduce = 0 },
+        actions.reduce(0),
     };
     const state0_groups = [_]resolution.ResolvedActionGroup{.{
         .symbol = .{ .terminal = 0 },
         .candidate_actions = state0_candidates[0..],
-        .decision = .{ .chosen = .{ .reduce = 0 } },
+        .decision = .{ .chosen = actions.reduce(0) },
     }};
     const state1_groups = [_]resolution.ResolvedActionGroup{.{
         .symbol = .{ .end = {} },
@@ -2416,12 +2418,12 @@ test "minimizeAlloc compares emitted production ids for empty reduce metadata" {
     const state0_groups = [_]resolution.ResolvedActionGroup{.{
         .symbol = .{ .terminal = 0 },
         .candidate_actions = &.{},
-        .decision = .{ .chosen = .{ .reduce = 0 } },
+        .decision = .{ .chosen = actions.reduce(0) },
     }};
     const state1_groups = [_]resolution.ResolvedActionGroup{.{
         .symbol = .{ .terminal = 0 },
         .candidate_actions = &.{},
-        .decision = .{ .chosen = .{ .reduce = 1 } },
+        .decision = .{ .chosen = actions.reduce(1) },
     }};
     const resolved_states = [_]resolution.ResolvedStateActions{
         .{ .state_id = 0, .groups = state0_groups[0..] },
@@ -2461,12 +2463,12 @@ test "minimizeAlloc compares compact production info ids for non-empty reduce me
     const state0_groups = [_]resolution.ResolvedActionGroup{.{
         .symbol = .{ .terminal = 0 },
         .candidate_actions = &.{},
-        .decision = .{ .chosen = .{ .reduce = 0 } },
+        .decision = .{ .chosen = actions.reduce(0) },
     }};
     const state1_groups = [_]resolution.ResolvedActionGroup{.{
         .symbol = .{ .terminal = 0 },
         .candidate_actions = &.{},
-        .decision = .{ .chosen = .{ .reduce = 1 } },
+        .decision = .{ .chosen = actions.reduce(1) },
     }};
     const resolved_states = [_]resolution.ResolvedStateActions{
         .{ .state_id = 0, .groups = state0_groups[0..] },
@@ -2547,7 +2549,7 @@ fn buildSig(
         const value: u32 = switch (group.decision) {
             .chosen => |action| switch (action) {
                 .shift => |target| class_of[id_to_idx[target]],
-                .reduce => |prod| prod,
+                .reduce => |reduced| reduced.production_id,
                 .accept => 0,
             },
             .unresolved => |reason| @intFromEnum(reason),
@@ -2683,7 +2685,7 @@ test "minimizeAlloc merges two identical states" {
                     .{
                         .symbol = .{ .terminal = 1 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 1 } },
+                        .decision = .{ .chosen = actions.reduce(1) },
                     },
                 },
             },
@@ -2698,7 +2700,7 @@ test "minimizeAlloc merges two identical states" {
                     .{
                         .symbol = .{ .terminal = 1 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 1 } },
+                        .decision = .{ .chosen = actions.reduce(1) },
                     },
                 },
             },
@@ -2764,7 +2766,7 @@ test "minimizeAlloc keeps distinct states separate" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -2774,7 +2776,7 @@ test "minimizeAlloc keeps distinct states separate" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 1 } },
+                        .decision = .{ .chosen = actions.reduce(1) },
                     },
                 },
             },
@@ -2814,7 +2816,7 @@ test "minimizeAlloc keeps states with different item cores separate" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -2824,7 +2826,7 @@ test "minimizeAlloc keeps states with different item cores separate" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -2854,7 +2856,7 @@ test "minimizeAlloc merges states before lex mode assignment" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -2864,7 +2866,7 @@ test "minimizeAlloc merges states before lex mode assignment" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -2905,7 +2907,7 @@ test "minimizeAlloc merges compatible reserved-word states" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -2915,7 +2917,7 @@ test "minimizeAlloc merges compatible reserved-word states" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -2946,7 +2948,7 @@ test "minimizeAlloc keeps external-internal terminal states separate" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -2956,7 +2958,7 @@ test "minimizeAlloc keeps external-internal terminal states separate" {
                     .{
                         .symbol = .{ .terminal = 1 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -2998,12 +3000,12 @@ test "minimizeAlloc allows internal terminals when both states already allow sam
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                     .{
                         .symbol = .{ .external = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -3013,12 +3015,12 @@ test "minimizeAlloc allows internal terminals when both states already allow sam
                     .{
                         .symbol = .{ .terminal = 1 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                     .{
                         .symbol = .{ .external = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -3074,7 +3076,7 @@ test "minimizeAlloc ignores non-terminal extra target differences" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -3084,7 +3086,7 @@ test "minimizeAlloc ignores non-terminal extra target differences" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -3108,8 +3110,8 @@ test "minimizeAlloc compares unresolved action lists instead of diagnostic reaso
         .{ .id = 1, .core_id = 0, .items = &.{}, .transitions = &.{} },
     };
     const candidates = [_]actions.ParseAction{
-        .{ .reduce = 0 },
-        .{ .reduce = 1 },
+        actions.reduce(0),
+        actions.reduce(1),
     };
 
     const resolved_actions = resolution.ResolvedActionTable{
@@ -3155,11 +3157,11 @@ test "minimizeAlloc propagates unresolved shift successors during successor part
     };
 
     const state0_candidates = [_]actions.ParseAction{
-        .{ .reduce = 0 },
+        actions.reduce(0),
         .{ .shift = 2 },
     };
     const state1_candidates = [_]actions.ParseAction{
-        .{ .reduce = 0 },
+        actions.reduce(0),
         .{ .shift = 3 },
     };
 
@@ -3186,7 +3188,7 @@ test "minimizeAlloc propagates unresolved shift successors during successor part
                 .groups = &[_]resolution.ResolvedActionGroup{.{
                     .symbol = .{ .terminal = 1 },
                     .candidate_actions = &.{},
-                    .decision = .{ .chosen = .{ .reduce = 1 } },
+                    .decision = .{ .chosen = actions.reduce(1) },
                 }},
             },
             .{
@@ -3194,7 +3196,7 @@ test "minimizeAlloc propagates unresolved shift successors during successor part
                 .groups = &[_]resolution.ResolvedActionGroup{.{
                     .symbol = .{ .terminal = 1 },
                     .candidate_actions = &.{},
-                    .decision = .{ .chosen = .{ .reduce = 2 } },
+                    .decision = .{ .chosen = actions.reduce(2) },
                 }},
             },
         },
@@ -3223,7 +3225,7 @@ test "minimizeAlloc permits reserved word terminals across lexical conflicts" {
                     .{
                         .symbol = .{ .terminal = 0 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -3233,7 +3235,7 @@ test "minimizeAlloc permits reserved word terminals across lexical conflicts" {
                     .{
                         .symbol = .{ .terminal = 1 },
                         .candidate_actions = &.{},
-                        .decision = .{ .chosen = .{ .reduce = 0 } },
+                        .decision = .{ .chosen = actions.reduce(0) },
                     },
                 },
             },
@@ -3334,7 +3336,7 @@ test "minimizeAlloc keeps unresolved repetition and non-repetition shifts separa
     };
 
     const candidates = [_]@import("actions.zig").ParseAction{
-        .{ .reduce = 0 },
+        actions.reduce(0),
         .{ .shift = 2 },
     };
     const resolved_actions = resolution.ResolvedActionTable{
