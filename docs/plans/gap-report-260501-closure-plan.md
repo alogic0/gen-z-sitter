@@ -745,17 +745,42 @@ Closure note: the original six JavaScript audit gaps are closed:
 bounded corpus equivalence are preserved. The current closure audit records the
 non-JavaScript promotion blockers.
 
+Post-memory-fix verification note: after reducing retained parse-table memory in
+the local comparison path, the primary JavaScript minimized comparison was rerun
+at `tmp/js-post-commit-compare`. The structural baseline remains fully matched:
+`symbol_count=261/261`, `token_count=134/134`,
+`serialized_state_count=1870/1870`, `emitted_state_count=1870/1870`,
+`large_state_count=387/387`, `parse_action_list_count=3588/3588`,
+`small_parse_row_count=1483/1483`, `small_parse_map_count=1483/1483`,
+`lex_mode_count=1870/1870`, `lex_function_case_count=279/279`,
+`keyword_lex_function_case_count=200/200`,
+`large_character_set_count=3/3`, and `external_lex_state_count=10/10`.
+Bounded corpus samples still match. The only remaining JavaScript summary diff
+is the known `language_version=15/14` ABI surface.
+
+Post-Python-conflict verification note: Python was rechecked at
+`tmp/python-conflict-variable-index-tight-compare` after aligning local
+expected-conflict identity with upstream's item-variable identity. The first
+algorithm difference was that local used the inlined production LHS when
+constructing recorded conflict members, while upstream uses the parse item's
+preserved variable index. With that fixed, Python now matches upstream on the
+parser/table surface: `blocked=false/false`, `symbol_count=273/273`,
+`token_count=108/108`, `serialized_state_count=2788/2788`,
+`emitted_state_count=2788/2788`, `large_state_count=185/185`,
+`parse_action_list_count=4864/4864`, `small_parse_row_count=2603/2603`,
+`small_parse_map_count=2603/2603`, `lex_mode_count=2788/2788`,
+`lex_function_case_count=150/150`, `keyword_lex_function_case_count=162/162`,
+`large_character_set_count=2/2`, and `external_lex_state_count=19/19`.
+Bounded corpus samples and node types match. The only remaining Python summary
+diff is the known local `language_version=15` versus upstream `14` ABI surface.
+
 ## Successor Batch Order
 
-1. Investigate Python parser/table construction parity now that symbol,
-   token, alias, field, node-types, production, parser-table, keyword-lex,
-   large-character-set, and external-lex-state surfaces match upstream. This
-   item is closed for the bounded Python comparison; reopen only if a later
-   non-bounded corpus or emitted artifact shows a concrete regression.
+1. Keep the Python conflict-identity fix guarded by focused parser-table tests
+   and the bounded Python comparison. Reopen only if a later non-bounded corpus
+   or emitted artifact shows a concrete regression.
 2. Bounded comparison/profile path for TypeScript and Rust.
-3. Re-run Python after the symbol-surface fix and then classify the remaining
-   state/action/lexer deltas.
-4. Refresh the closure audit after each promoted non-JavaScript grammar
+3. Refresh the closure audit after each promoted non-JavaScript grammar
    decision.
 
 The original large-character-set, symbol/field ordering, and keyword lex tasks

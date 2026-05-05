@@ -1002,7 +1002,7 @@ fn shiftReduceConflictCandidate(
         member_count = appendConflictMemberUpstreamStyle(
             members_buffer,
             member_count,
-            .{ .non_terminal = production.lhs },
+            conflictMemberForItem(entry.item, productions) orelse return null,
             productions,
             parse_state,
         ) orelse return null;
@@ -1035,7 +1035,7 @@ fn recordedConflictCandidate(
             member_count = appendConflictMemberUpstreamStyle(
                 members_buffer,
                 member_count,
-                .{ .non_terminal = productions[parse_item.production_id].lhs },
+                conflictMemberForItem(parse_item, productions) orelse return null,
                 productions,
                 parse_state,
             ) orelse return null;
@@ -1048,6 +1048,17 @@ fn recordedConflictCandidate(
         };
     }
     return null;
+}
+
+fn conflictMemberForItem(
+    parse_item: item.ParseItem,
+    productions: anytype,
+) ?syntax_ir.SymbolRef {
+    if (parse_item.variable_index != item.unset_variable_index) {
+        return .{ .non_terminal = parse_item.variable_index };
+    }
+    if (parse_item.production_id >= productions.len) return null;
+    return .{ .non_terminal = productions[parse_item.production_id].lhs };
 }
 
 fn candidateActionsContainReduce(candidate_actions: []const actions.ParseAction, production_id: item.ProductionId) bool {
@@ -2094,6 +2105,95 @@ test "resolveActionTable derives shift reduce expected members from conflict ite
     const conflict_items = [_]item.ParseItem{
         item.ParseItem.init(2, 1),
         item.ParseItem.init(1, 1),
+    };
+    const conflicts = [_]state.Conflict{.{
+        .kind = .shift_reduce,
+        .symbol = .{ .terminal = 2 },
+        .items = conflict_items[0..],
+    }};
+    const parse_states = [_]state.ParseState{.{
+        .id = 3,
+        .items = &parse_items,
+        .transitions = &.{},
+        .conflicts = conflicts[0..],
+    }};
+    const grouped = actions.GroupedActionTable{
+        .states = &[_]actions.GroupedStateActions{.{
+            .state_id = 3,
+            .groups = &[_]actions.ActionGroup{.{
+                .symbol = .{ .terminal = 2 },
+                .entries = &[_]actions.ActionEntry{
+                    .{ .symbol = .{ .terminal = 2 }, .action = .{ .shift = 4 } },
+                    .{ .symbol = .{ .terminal = 2 }, .action = actions.reduce(2) },
+                },
+            }},
+        }},
+    };
+
+    const resolved = try resolveActionTableWithContext(
+        allocator,
+        productions[0..],
+        &.{},
+        &.{&expected},
+        &parse_states,
+        grouped,
+    );
+    defer {
+        for (resolved.states) |resolved_state| {
+            for (resolved_state.groups) |group| allocator.free(group.candidate_actions);
+            allocator.free(resolved_state.groups);
+        }
+        allocator.free(resolved.states);
+    }
+
+    try expectUnresolvedGroup(resolved.groupsForState(3)[0], .shift_reduce_expected, 2);
+    try std.testing.expect(!resolved.hasBlockingUnresolvedDecisions());
+}
+
+test "resolveActionTable uses item variable identity for inlined conflict members" {
+    const allocator = std.testing.allocator;
+
+    const ProductionInfo = struct {
+        lhs: u32,
+        steps: []const syntax_ir.ProductionStep,
+        augmented: bool = false,
+        dynamic_precedence: i32 = 0,
+    };
+
+    const shift_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 7 } },
+        .{ .symbol = .{ .terminal = 2 } },
+    };
+    const inlined_reduce_steps = [_]syntax_ir.ProductionStep{
+        .{ .symbol = .{ .terminal = 7 } },
+    };
+    const productions = [_]ProductionInfo{
+        .{ .lhs = 0, .steps = &.{} },
+        .{ .lhs = 83, .steps = shift_steps[0..] },
+        .{ .lhs = 48, .steps = inlined_reduce_steps[0..] },
+    };
+    const expected = [_]syntax_ir.SymbolRef{
+        .{ .non_terminal = 83 },
+        .{ .non_terminal = 99 },
+    };
+
+    var parse_items = [_]item.ParseItemSetEntry{
+        try item.ParseItemSetEntry.initEmpty(allocator, 3, 0, .{
+            .variable_index = 83,
+            .production_id = 1,
+            .step_index = 1,
+        }),
+        try item.ParseItemSetEntry.withLookahead(allocator, 3, 0, .{
+            .variable_index = 99,
+            .production_id = 2,
+            .step_index = 1,
+        }, .{ .terminal = 2 }),
+    };
+    defer for (parse_items) |entry| item.freeSymbolSet(allocator, entry.lookaheads);
+
+    const conflict_items = [_]item.ParseItem{
+        .{ .variable_index = 99, .production_id = 2, .step_index = 1 },
+        .{ .variable_index = 83, .production_id = 1, .step_index = 1 },
     };
     const conflicts = [_]state.Conflict{.{
         .kind = .shift_reduce,
