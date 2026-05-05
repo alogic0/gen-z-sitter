@@ -60,6 +60,27 @@ pub const EmissionStats = struct {
     lex: LexEmissionStats,
 };
 
+pub const ParserCSummaryStats = struct {
+    state_count: usize,
+    large_state_count: usize,
+    symbol_count: usize,
+    symbol_order_hash: u64,
+    token_count: usize,
+    external_token_count: usize,
+    production_id_count: usize,
+    field_count: usize,
+    field_names_hash: u64,
+    alias_count: usize,
+    parse_action_list_count: usize,
+    small_parse_row_count: usize,
+    small_parse_map_count: usize,
+    lex_mode_count: usize,
+    lex_function_case_count: usize,
+    keyword_lex_function_case_count: usize,
+    large_character_set_count: usize,
+    external_lex_state_count: usize,
+};
+
 /// Render parser C into an owned buffer using the default emission options.
 pub fn emitParserCAlloc(
     allocator: std.mem.Allocator,
@@ -137,6 +158,81 @@ pub fn collectLexEmissionStats(serialized: serialize.SerializedTable) LexEmissio
         result.keyword_range_count = keyword.range_count;
     }
     return result;
+}
+
+pub fn collectParserCSummaryStatsAlloc(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+    options: optimize.Options,
+) (EmitError || error{ParseActionListTooLarge})!ParserCSummaryStats {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    const compacted = try optimize.prepareSerializedTableAlloc(arena_allocator, serialized, options);
+    const emitted_symbols = try collectEmittedSymbols(arena_allocator, compacted);
+    const runtime_lex = try buildRuntimeLexTableAlloc(arena_allocator, compacted.lex_tables);
+    const large_character_set_count = try countLargeCharacterSetDeclarationsAlloc(arena_allocator, runtime_lex.table, compacted.keyword_lex_table);
+
+    return .{
+        .state_count = compacted.states.len,
+        .large_state_count = serializedLargeStateCount(compacted),
+        .symbol_count = emitted_symbols.len - aliasSymbolCount(emitted_symbols),
+        .symbol_order_hash = emittedSymbolNamesHash(emitted_symbols),
+        .token_count = tokenCount(emitted_symbols),
+        .external_token_count = compacted.external_scanner.symbols.len,
+        .production_id_count = serializedProductionIdCount(compacted),
+        .field_count = compacted.field_map.names.len,
+        .field_names_hash = try emittedFieldNamesHashAlloc(arena_allocator, compacted.field_map.names),
+        .alias_count = aliasSymbolCount(emitted_symbols),
+        .parse_action_list_count = compacted.parse_action_list.len * 2,
+        .small_parse_row_count = compacted.small_parse_table.rows.len,
+        .small_parse_map_count = compacted.small_parse_table.map.len,
+        .lex_mode_count = compacted.lex_modes.len,
+        .lex_function_case_count = runtime_lex.table.states.len,
+        .keyword_lex_function_case_count = if (compacted.keyword_lex_table) |keyword_table| keyword_table.states.len else 0,
+        .large_character_set_count = large_character_set_count,
+        .external_lex_state_count = compacted.external_scanner.states.len,
+    };
+}
+
+fn countLargeCharacterSetDeclarationsAlloc(
+    allocator: std.mem.Allocator,
+    runtime_lex_table: lexer_serialize.SerializedLexTable,
+    keyword_lex_table: ?lexer_serialize.SerializedLexTable,
+) std.mem.Allocator.Error!usize {
+    var count = try lexer_emit_c.countLargeCharacterSetDeclarationsAlloc(allocator, runtime_lex_table);
+    if (keyword_lex_table) |keyword_table| {
+        count += try lexer_emit_c.countLargeCharacterSetDeclarationsWithAliasesAlloc(allocator, keyword_table, runtime_lex_table);
+    }
+    return count;
+}
+
+fn emittedSymbolNamesHash(symbols: []const EmittedSymbol) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (symbols) |symbol| {
+        hasher.update(symbol.label);
+        hasher.update(&.{0});
+    }
+    return hasher.final();
+}
+
+fn emittedFieldNamesHashAlloc(
+    allocator: std.mem.Allocator,
+    fields: []const serialize.SerializedFieldName,
+) EmitError!u64 {
+    var body: std.Io.Writer.Allocating = .init(allocator);
+    defer body.deinit();
+    try body.writer.writeAll("  [0] = NULL,\n");
+    for (fields) |field| {
+        try body.writer.writeAll("  [field_");
+        try writeCIdentifierFragment(&body.writer, field.name);
+        try body.writer.writeAll("] = \"");
+        try writeCStringLiteralContents(&body.writer, field.name);
+        try body.writer.writeAll("\",\n");
+    }
+    const trimmed = std.mem.trim(u8, body.writer.buffered(), " \n\r\t");
+    return std.hash.Wyhash.hash(0, trimmed);
 }
 
 fn collectLexTablesEmissionStats(tables: []const lexer_serialize.SerializedLexTable) LexEmissionStats {
@@ -2113,6 +2209,16 @@ fn parseActionSlicesEql(
     return true;
 }
 
+fn reduceSymbolForAction(
+    action: @import("../parse_table/actions.zig").ParseAction,
+    productions: []const serialize.SerializedProductionInfo,
+) ?syntax_grammar.SymbolRef {
+    return switch (action) {
+        .reduce => serialize.runtimeActionFromParseAction(action, productions).symbol,
+        .shift, .shift_extra, .accept => null,
+    };
+}
+
 const EmittedSymbol = struct {
     ref: ?syntax_grammar.SymbolRef = null,
     label: []const u8,
@@ -2156,10 +2262,9 @@ fn collectEmittedSymbols(
         for (state.actions) |entry| {
             try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
             switch (entry.action) {
-                .reduce => |reduced| {
-                    const production_id = reduced.production_id;
-                    if (production_id < serialized.productions.len) {
-                        try appendUniqueEmittedSymbol(allocator, &symbols, .{ .non_terminal = serialized.productions[production_id].lhs });
+                .reduce => {
+                    if (reduceSymbolForAction(entry.action, serialized.productions)) |symbol| {
+                        try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
                     }
                 },
                 .shift, .shift_extra, .accept => {},
@@ -2172,10 +2277,9 @@ fn collectEmittedSymbols(
             try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
             for (entry.candidate_actions) |candidate| {
                 switch (candidate) {
-                    .reduce => |reduced| {
-                        const production_id = reduced.production_id;
-                        if (production_id < serialized.productions.len) {
-                            try appendUniqueEmittedSymbol(allocator, &symbols, .{ .non_terminal = serialized.productions[production_id].lhs });
+                    .reduce => {
+                        if (reduceSymbolForAction(candidate, serialized.productions)) |symbol| {
+                            try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
                         }
                     },
                     .shift, .shift_extra, .accept => {},

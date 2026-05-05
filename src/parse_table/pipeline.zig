@@ -664,6 +664,39 @@ pub fn serializeRuntimeTableFromPreparedWithBuildOptions(
     );
 }
 
+pub fn serializeRuntimeTableFromPreparedWithScopedBuildOptions(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    mode: serialize.SerializeMode,
+    build_options: build.BuildOptions,
+) PipelineError!serialize.SerializedTable {
+    var serialized = try serializeTableFromPreparedWithScopedBuildOptions(
+        allocator,
+        prepared,
+        mode,
+        build_options,
+    );
+
+    const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    const eof_valids = try eofValidLexStatesAlloc(allocator, serialized);
+    const runtime_lex_terminal_sets = try serialize.buildKeywordCaptureLexTerminalSetsAlloc(
+        allocator,
+        serialized.lex_state_terminal_sets,
+        prepared,
+        extracted.lexical,
+        extracted.syntax.word_token,
+    );
+    defer serialize.deinitLexStateTerminalSets(allocator, runtime_lex_terminal_sets);
+    serialized.lex_tables = try lexer_serialize.buildSharedSerializedLexTablesWithEofAlloc(
+        allocator,
+        prepared.rules,
+        extracted.lexical,
+        runtime_lex_terminal_sets,
+        eof_valids,
+    );
+    return serialized;
+}
+
 pub fn serializeRuntimeTableFromGrammarPathWithBuildOptionsProfile(
     allocator: std.mem.Allocator,
     path: []const u8,
@@ -833,7 +866,40 @@ pub fn serializeTableFromPreparedWithBuildOptions(
     return serialized;
 }
 
-fn serializePreparedBuildResultAlloc(
+pub fn serializeTableFromPreparedWithScopedBuildOptions(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    mode: serialize.SerializeMode,
+    build_options: build.BuildOptions,
+) PipelineError!serialize.SerializedTable {
+    var build_arena = std.heap.ArenaAllocator.init(allocator);
+    defer build_arena.deinit();
+
+    const progress_log = shouldLogPipelineProgress();
+    const profile_log = shouldProfilePipeline();
+    const result = try buildStatesFromPreparedWithOptions(build_arena.allocator(), prepared, build_options);
+    const timer = maybeStartTimer(progress_log);
+    const stage_profile_timer = profileTimer(profile_log);
+    if (progress_log) logPipelineStart("serialize_build_result");
+    const serialized = try serializePreparedBuildResultAlloc(
+        allocator,
+        prepared,
+        result,
+        mode,
+        build_options.include_unresolved_parse_actions,
+    );
+    logProfileDone("serialize_build_result", stage_profile_timer);
+    if (progress_log) {
+        maybeLogPipelineDone("serialize_build_result", timer);
+        logPipelineSummary(
+            "serialize_build_result summary mode={s} serialized_states={d} blocked={}",
+            .{ @tagName(mode), serialized.states.len, serialized.blocked },
+        );
+    }
+    return serialized;
+}
+
+pub fn serializePreparedBuildResultAlloc(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
     result: build.BuildResult,

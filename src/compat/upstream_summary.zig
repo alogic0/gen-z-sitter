@@ -127,12 +127,17 @@ pub fn generateLocalSummaryAlloc(
     });
     defer loaded.deinit();
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
+    const heavy_allocator = std.heap.smp_allocator;
 
-    const prepared = try parse_grammar.parseRawGrammar(arena.allocator(), &loaded.json.grammar);
-    const serialized = try parse_table_pipeline.serializeRuntimeTableFromPreparedWithBuildOptions(
-        arena.allocator(),
+    var parse_arena = std.heap.ArenaAllocator.init(heavy_allocator);
+    defer parse_arena.deinit();
+
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &loaded.json.grammar);
+
+    var serialized_arena = std.heap.ArenaAllocator.init(heavy_allocator);
+    defer serialized_arena.deinit();
+    const serialized = try parse_table_pipeline.serializeRuntimeTableFromPreparedWithScopedBuildOptions(
+        serialized_arena.allocator(),
         prepared,
         .diagnostic,
         .{
@@ -141,22 +146,41 @@ pub fn generateLocalSummaryAlloc(
             .include_unresolved_parse_actions = false,
         },
     );
-    const emission_stats = try parser_c_emit.collectEmissionStatsWithOptions(arena.allocator(), serialized, .{
+    const parser_stats = try parser_c_emit.collectParserCSummaryStatsAlloc(serialized_arena.allocator(), serialized, .{
         .compact_duplicate_states = options.compact_duplicate_states,
     });
-    const parser_c = try parser_c_emit.emitParserCAllocWithOptions(arena.allocator(), serialized, .{
-        .compact_duplicate_states = options.compact_duplicate_states,
-    });
-    const node_types_json = try node_type_pipeline.generateNodeTypesJsonFromPrepared(arena.allocator(), prepared);
 
-    var summary = try parseUpstreamParserCSummaryAlloc(allocator, loaded.json.grammar.name, parser_c, node_types_json);
-    summary.language_version = parser_compat.language_version;
-    summary.blocked = hasBlockingSerializedUnresolved(serialized);
-    summary.rule_count = loaded.json.grammar.ruleCount();
-    summary.extra_count = loaded.json.grammar.extras.len;
-    summary.serialized_state_count = serialized.states.len;
-    summary.emitted_state_count = emission_stats.state_count;
-    return summary;
+    var node_arena = std.heap.ArenaAllocator.init(heavy_allocator);
+    defer node_arena.deinit();
+    const node_types_json = try node_type_pipeline.generateNodeTypesJsonFromPrepared(node_arena.allocator(), prepared);
+
+    return .{
+        .grammar_name = try allocator.dupe(u8, loaded.json.grammar.name),
+        .language_version = parser_compat.language_version,
+        .blocked = hasBlockingSerializedUnresolved(serialized),
+        .rule_count = loaded.json.grammar.ruleCount(),
+        .external_count = parser_stats.external_token_count,
+        .extra_count = loaded.json.grammar.extras.len,
+        .symbol_count = parser_stats.symbol_count,
+        .symbol_order_hash = parser_stats.symbol_order_hash,
+        .token_count = parser_stats.token_count,
+        .field_count = parser_stats.field_count,
+        .field_names_hash = parser_stats.field_names_hash,
+        .node_types_hash = normalizedJsonHash(node_types_json),
+        .alias_count = parser_stats.alias_count,
+        .production_id_count = parser_stats.production_id_count,
+        .serialized_state_count = serialized.states.len,
+        .emitted_state_count = parser_stats.state_count,
+        .large_state_count = parser_stats.large_state_count,
+        .parse_action_list_count = parser_stats.parse_action_list_count,
+        .small_parse_row_count = parser_stats.small_parse_row_count,
+        .small_parse_map_count = parser_stats.small_parse_map_count,
+        .lex_mode_count = parser_stats.lex_mode_count,
+        .lex_function_case_count = parser_stats.lex_function_case_count,
+        .keyword_lex_function_case_count = parser_stats.keyword_lex_function_case_count,
+        .large_character_set_count = parser_stats.large_character_set_count,
+        .external_lex_state_count = parser_stats.external_lex_state_count,
+    };
 }
 
 fn hasBlockingSerializedUnresolved(serialized: parse_table_serialize.SerializedTable) bool {
@@ -424,35 +448,46 @@ pub fn generateLocalMinimizationSummaryJsonAlloc(
     });
     defer loaded.deinit();
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const arena_allocator = arena.allocator();
+    const heavy_allocator = std.heap.smp_allocator;
 
-    const prepared = try parse_grammar.parseRawGrammar(arena_allocator, &loaded.json.grammar);
-    const default_serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
-        arena_allocator,
-        prepared,
-        .diagnostic,
-        .{
-            .minimize_states = false,
-            .strict_expected_conflicts = false,
-            .include_unresolved_parse_actions = false,
-        },
-    );
-    const minimized_serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
-        arena_allocator,
-        prepared,
-        .diagnostic,
-        .{
-            .minimize_states = true,
-            .strict_expected_conflicts = false,
-            .include_unresolved_parse_actions = false,
-        },
-    );
+    var parse_arena = std.heap.ArenaAllocator.init(heavy_allocator);
+    defer parse_arena.deinit();
+    const prepared = try parse_grammar.parseRawGrammar(parse_arena.allocator(), &loaded.json.grammar);
+
+    const default_snapshot = blk: {
+        var table_arena = std.heap.ArenaAllocator.init(heavy_allocator);
+        defer table_arena.deinit();
+        const serialized = try parse_table_pipeline.serializeTableFromPreparedWithScopedBuildOptions(
+            table_arena.allocator(),
+            prepared,
+            .diagnostic,
+            .{
+                .minimize_states = false,
+                .strict_expected_conflicts = false,
+                .include_unresolved_parse_actions = false,
+            },
+        );
+        break :blk minimizationSnapshot(serialized);
+    };
+    const minimized_snapshot = blk: {
+        var table_arena = std.heap.ArenaAllocator.init(heavy_allocator);
+        defer table_arena.deinit();
+        const serialized = try parse_table_pipeline.serializeTableFromPreparedWithScopedBuildOptions(
+            table_arena.allocator(),
+            prepared,
+            .diagnostic,
+            .{
+                .minimize_states = true,
+                .strict_expected_conflicts = false,
+                .include_unresolved_parse_actions = false,
+            },
+        );
+        break :blk minimizationSnapshot(serialized);
+    };
 
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
-    try writeMinimizationSummaryJson(&out.writer, default_serialized, minimized_serialized);
+    try writeMinimizationSnapshotSummaryJson(&out.writer, default_snapshot, minimized_snapshot);
     return try out.toOwnedSlice();
 }
 
@@ -503,7 +538,7 @@ pub fn generateLocalActionListSummaryJsonAlloc(
     });
     defer loaded.deinit();
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena = std.heap.ArenaAllocator.init(std.heap.smp_allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
 
@@ -518,15 +553,12 @@ pub fn generateLocalActionListSummaryJsonAlloc(
         },
     );
     const raw_grouped_actions = try parse_table_actions.buildGroupedActionTable(arena_allocator, result.productions, result.states);
-    const serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+    const serialized = try parse_table_pipeline.serializePreparedBuildResultAlloc(
         arena_allocator,
         prepared,
+        result,
         .diagnostic,
-        .{
-            .minimize_states = options.minimize_states,
-            .strict_expected_conflicts = false,
-            .include_unresolved_parse_actions = false,
-        },
+        false,
     );
     const emitted = try parser_optimize.prepareSerializedTableAlloc(arena_allocator, serialized, .{});
 
@@ -2137,30 +2169,90 @@ fn writeMinimizationSummaryJson(
     default_serialized: parse_table_serialize.SerializedTable,
     minimized_serialized: parse_table_serialize.SerializedTable,
 ) !void {
+    try writeMinimizationSnapshotSummaryJson(
+        writer,
+        minimizationSnapshot(default_serialized),
+        minimizationSnapshot(minimized_serialized),
+    );
+}
+
+const MinimizationSnapshot = struct {
+    state_count: usize,
+    large_state_count: usize,
+    small_parse_row_count: usize,
+    parse_action_list_count: usize,
+    action_entry_count: usize,
+    shift_action_count: usize,
+    reduce_action_count: usize,
+    accept_action_count: usize,
+    goto_entry_count: usize,
+    unresolved_entry_count: usize,
+    lex_mode_hash: u64,
+    primary_state_id_hash: u64,
+    production_metadata_hash: u64,
+    external_scanner_states_hash: u64,
+    table_counts_hash: u64,
+    state_order_hash: u64,
+    state_actions_hash: u64,
+    state_gotos_hash: u64,
+    parse_action_list_hash: u64,
+    small_parse_table_hash: u64,
+};
+
+fn minimizationSnapshot(serialized: parse_table_serialize.SerializedTable) MinimizationSnapshot {
+    return .{
+        .state_count = serialized.states.len,
+        .large_state_count = serialized.large_state_count,
+        .small_parse_row_count = serialized.small_parse_table.rows.len,
+        .parse_action_list_count = serialized.parse_action_list.len,
+        .action_entry_count = countSerializedActionEntries(serialized.states),
+        .shift_action_count = countSerializedActionsByKind(serialized.states, .shift),
+        .reduce_action_count = countSerializedActionsByKind(serialized.states, .reduce),
+        .accept_action_count = countSerializedActionsByKind(serialized.states, .accept),
+        .goto_entry_count = countSerializedGotoEntries(serialized.states),
+        .unresolved_entry_count = countSerializedUnresolvedEntries(serialized.states),
+        .lex_mode_hash = hashSerializedLexModes(serialized.lex_modes),
+        .primary_state_id_hash = hashPrimaryStateIds(serialized.primary_state_ids),
+        .production_metadata_hash = hashSerializedProductions(serialized.productions),
+        .external_scanner_states_hash = hashSerializedExternalScannerStates(serialized.external_scanner.states),
+        .table_counts_hash = hashSerializedTableCounts(serialized),
+        .state_order_hash = hashSerializedStateOrder(serialized.states),
+        .state_actions_hash = hashSerializedStateActions(serialized.states),
+        .state_gotos_hash = hashSerializedStateGotos(serialized.states),
+        .parse_action_list_hash = hashSerializedParseActionList(serialized.parse_action_list),
+        .small_parse_table_hash = hashSerializedSmallParseTable(serialized.small_parse_table),
+    };
+}
+
+fn writeMinimizationSnapshotSummaryJson(
+    writer: anytype,
+    default_snapshot: MinimizationSnapshot,
+    minimized_snapshot: MinimizationSnapshot,
+) !void {
     try writer.writeAll("{\n");
     try writer.writeAll("  \"default\": {\n");
-    try writeSerializedTableCountFields(writer, default_serialized);
+    try writeMinimizationSnapshotCountFields(writer, default_snapshot);
     try writer.writeAll("  },\n");
     try writer.writeAll("  \"minimized\": {\n");
-    try writeSerializedTableCountFields(writer, minimized_serialized);
+    try writeMinimizationSnapshotCountFields(writer, minimized_snapshot);
     try writer.writeAll("  },\n");
-    try writeUsizeField(writer, 2, "merged_state_count", default_serialized.states.len -| minimized_serialized.states.len, true);
-    try writeUsizeField(writer, 2, "removed_action_entry_count", countSerializedActionEntries(default_serialized.states) -| countSerializedActionEntries(minimized_serialized.states), true);
-    try writeUsizeField(writer, 2, "removed_goto_entry_count", countSerializedGotoEntries(default_serialized.states) -| countSerializedGotoEntries(minimized_serialized.states), true);
-    try writeUsizeField(writer, 2, "removed_reduce_action_count", countSerializedActionsByKind(default_serialized.states, .reduce) -| countSerializedActionsByKind(minimized_serialized.states, .reduce), true);
-    try writeUsizeField(writer, 2, "removed_shift_action_count", countSerializedActionsByKind(default_serialized.states, .shift) -| countSerializedActionsByKind(minimized_serialized.states, .shift), true);
-    try writeUsizeField(writer, 2, "removed_accept_action_count", countSerializedActionsByKind(default_serialized.states, .accept) -| countSerializedActionsByKind(minimized_serialized.states, .accept), true);
+    try writeUsizeField(writer, 2, "merged_state_count", default_snapshot.state_count -| minimized_snapshot.state_count, true);
+    try writeUsizeField(writer, 2, "removed_action_entry_count", default_snapshot.action_entry_count -| minimized_snapshot.action_entry_count, true);
+    try writeUsizeField(writer, 2, "removed_goto_entry_count", default_snapshot.goto_entry_count -| minimized_snapshot.goto_entry_count, true);
+    try writeUsizeField(writer, 2, "removed_reduce_action_count", default_snapshot.reduce_action_count -| minimized_snapshot.reduce_action_count, true);
+    try writeUsizeField(writer, 2, "removed_shift_action_count", default_snapshot.shift_action_count -| minimized_snapshot.shift_action_count, true);
+    try writeUsizeField(writer, 2, "removed_accept_action_count", default_snapshot.accept_action_count -| minimized_snapshot.accept_action_count, true);
     try writer.writeAll("  \"diff\": {\n");
-    try writeBoolField(writer, 4, "state_count_changed", default_serialized.states.len != minimized_serialized.states.len, true);
-    try writeBoolField(writer, 4, "large_state_count_changed", default_serialized.large_state_count != minimized_serialized.large_state_count, true);
-    try writeBoolField(writer, 4, "parse_action_list_changed", default_serialized.parse_action_list.len != minimized_serialized.parse_action_list.len, true);
-    try writeBoolField(writer, 4, "small_parse_rows_changed", default_serialized.small_parse_table.rows.len != minimized_serialized.small_parse_table.rows.len, true);
-    try writeBoolField(writer, 4, "lex_mode_changed", hashSerializedLexModes(default_serialized.lex_modes) != hashSerializedLexModes(minimized_serialized.lex_modes), true);
-    try writeBoolField(writer, 4, "primary_state_id_changed", hashPrimaryStateIds(default_serialized.primary_state_ids) != hashPrimaryStateIds(minimized_serialized.primary_state_ids), true);
-    try writeBoolField(writer, 4, "production_metadata_changed", hashSerializedProductions(default_serialized.productions) != hashSerializedProductions(minimized_serialized.productions), true);
-    try writeBoolField(writer, 4, "external_scanner_states_changed", hashSerializedExternalScannerStates(default_serialized.external_scanner.states) != hashSerializedExternalScannerStates(minimized_serialized.external_scanner.states), false);
+    try writeBoolField(writer, 4, "state_count_changed", default_snapshot.state_count != minimized_snapshot.state_count, true);
+    try writeBoolField(writer, 4, "large_state_count_changed", default_snapshot.large_state_count != minimized_snapshot.large_state_count, true);
+    try writeBoolField(writer, 4, "parse_action_list_changed", default_snapshot.parse_action_list_count != minimized_snapshot.parse_action_list_count, true);
+    try writeBoolField(writer, 4, "small_parse_rows_changed", default_snapshot.small_parse_row_count != minimized_snapshot.small_parse_row_count, true);
+    try writeBoolField(writer, 4, "lex_mode_changed", default_snapshot.lex_mode_hash != minimized_snapshot.lex_mode_hash, true);
+    try writeBoolField(writer, 4, "primary_state_id_changed", default_snapshot.primary_state_id_hash != minimized_snapshot.primary_state_id_hash, true);
+    try writeBoolField(writer, 4, "production_metadata_changed", default_snapshot.production_metadata_hash != minimized_snapshot.production_metadata_hash, true);
+    try writeBoolField(writer, 4, "external_scanner_states_changed", default_snapshot.external_scanner_states_hash != minimized_snapshot.external_scanner_states_hash, false);
     try writer.writeAll("  },\n");
-    try writeMinimizationComparisonKeysJson(writer, default_serialized, minimized_serialized, 2);
+    try writeMinimizationSnapshotComparisonKeysJson(writer, default_snapshot, minimized_snapshot, 2);
     try writer.writeAll("}\n");
 }
 
@@ -3468,6 +3560,20 @@ fn writeMinimizationComparisonKeysJson(
     minimized_serialized: parse_table_serialize.SerializedTable,
     indent: usize,
 ) !void {
+    try writeMinimizationSnapshotComparisonKeysJson(
+        writer,
+        minimizationSnapshot(default_serialized),
+        minimizationSnapshot(minimized_serialized),
+        indent,
+    );
+}
+
+fn writeMinimizationSnapshotComparisonKeysJson(
+    writer: anytype,
+    default_snapshot: MinimizationSnapshot,
+    minimized_snapshot: MinimizationSnapshot,
+    indent: usize,
+) !void {
     try writeIndent(writer, indent);
     try writer.writeAll("\"comparison_keys\": {\n");
     try writeIndent(writer, indent + 2);
@@ -3480,16 +3586,16 @@ fn writeMinimizationComparisonKeysJson(
     try writer.writeAll(",\n");
     try writeIndent(writer, indent + 2);
     try writer.writeAll("\"keys\": [\n");
-    try writeMinimizationComparisonKey(writer, indent + 4, "table_counts", hashMinimizationPair(hashSerializedTableCounts(default_serialized), hashSerializedTableCounts(minimized_serialized)), true);
-    try writeMinimizationComparisonKey(writer, indent + 4, "state_order", hashMinimizationPair(hashSerializedStateOrder(default_serialized.states), hashSerializedStateOrder(minimized_serialized.states)), true);
-    try writeMinimizationComparisonKey(writer, indent + 4, "state_actions", hashMinimizationPair(hashSerializedStateActions(default_serialized.states), hashSerializedStateActions(minimized_serialized.states)), true);
-    try writeMinimizationComparisonKey(writer, indent + 4, "state_gotos", hashMinimizationPair(hashSerializedStateGotos(default_serialized.states), hashSerializedStateGotos(minimized_serialized.states)), true);
-    try writeMinimizationComparisonKey(writer, indent + 4, "lex_modes", hashMinimizationPair(hashSerializedLexModes(default_serialized.lex_modes), hashSerializedLexModes(minimized_serialized.lex_modes)), true);
-    try writeMinimizationComparisonKey(writer, indent + 4, "primary_state_ids", hashMinimizationPair(hashPrimaryStateIds(default_serialized.primary_state_ids), hashPrimaryStateIds(minimized_serialized.primary_state_ids)), true);
-    try writeMinimizationComparisonKey(writer, indent + 4, "production_metadata", hashMinimizationPair(hashSerializedProductions(default_serialized.productions), hashSerializedProductions(minimized_serialized.productions)), true);
-    try writeMinimizationComparisonKey(writer, indent + 4, "parse_action_list", hashMinimizationPair(hashSerializedParseActionList(default_serialized.parse_action_list), hashSerializedParseActionList(minimized_serialized.parse_action_list)), true);
-    try writeMinimizationComparisonKey(writer, indent + 4, "small_parse_table", hashMinimizationPair(hashSerializedSmallParseTable(default_serialized.small_parse_table), hashSerializedSmallParseTable(minimized_serialized.small_parse_table)), true);
-    try writeMinimizationComparisonKey(writer, indent + 4, "external_scanner_states", hashMinimizationPair(hashSerializedExternalScannerStates(default_serialized.external_scanner.states), hashSerializedExternalScannerStates(minimized_serialized.external_scanner.states)), false);
+    try writeMinimizationComparisonKey(writer, indent + 4, "table_counts", hashMinimizationPair(default_snapshot.table_counts_hash, minimized_snapshot.table_counts_hash), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "state_order", hashMinimizationPair(default_snapshot.state_order_hash, minimized_snapshot.state_order_hash), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "state_actions", hashMinimizationPair(default_snapshot.state_actions_hash, minimized_snapshot.state_actions_hash), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "state_gotos", hashMinimizationPair(default_snapshot.state_gotos_hash, minimized_snapshot.state_gotos_hash), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "lex_modes", hashMinimizationPair(default_snapshot.lex_mode_hash, minimized_snapshot.lex_mode_hash), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "primary_state_ids", hashMinimizationPair(default_snapshot.primary_state_id_hash, minimized_snapshot.primary_state_id_hash), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "production_metadata", hashMinimizationPair(default_snapshot.production_metadata_hash, minimized_snapshot.production_metadata_hash), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "parse_action_list", hashMinimizationPair(default_snapshot.parse_action_list_hash, minimized_snapshot.parse_action_list_hash), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "small_parse_table", hashMinimizationPair(default_snapshot.small_parse_table_hash, minimized_snapshot.small_parse_table_hash), true);
+    try writeMinimizationComparisonKey(writer, indent + 4, "external_scanner_states", hashMinimizationPair(default_snapshot.external_scanner_states_hash, minimized_snapshot.external_scanner_states_hash), false);
     try writeIndent(writer, indent + 2);
     try writer.writeAll("]\n");
     try writeIndent(writer, indent);
@@ -3539,19 +3645,26 @@ fn writeSerializedTableCountFields(
     writer: anytype,
     serialized: parse_table_serialize.SerializedTable,
 ) !void {
-    try writeUsizeField(writer, 4, "state_count", serialized.states.len, true);
-    try writeUsizeField(writer, 4, "large_state_count", serialized.large_state_count, true);
-    try writeUsizeField(writer, 4, "small_parse_row_count", serialized.small_parse_table.rows.len, true);
-    try writeUsizeField(writer, 4, "parse_action_list_count", serialized.parse_action_list.len, true);
-    try writeUsizeField(writer, 4, "action_entry_count", countSerializedActionEntries(serialized.states), true);
-    try writeUsizeField(writer, 4, "shift_action_count", countSerializedActionsByKind(serialized.states, .shift), true);
-    try writeUsizeField(writer, 4, "reduce_action_count", countSerializedActionsByKind(serialized.states, .reduce), true);
-    try writeUsizeField(writer, 4, "accept_action_count", countSerializedActionsByKind(serialized.states, .accept), true);
-    try writeUsizeField(writer, 4, "goto_entry_count", countSerializedGotoEntries(serialized.states), true);
-    try writeUsizeField(writer, 4, "unresolved_entry_count", countSerializedUnresolvedEntries(serialized.states), true);
-    try writeU64HexField(writer, 4, "lex_mode_hash", hashSerializedLexModes(serialized.lex_modes), true);
-    try writeU64HexField(writer, 4, "primary_state_id_hash", hashPrimaryStateIds(serialized.primary_state_ids), true);
-    try writeU64HexField(writer, 4, "production_metadata_hash", hashSerializedProductions(serialized.productions), false);
+    try writeMinimizationSnapshotCountFields(writer, minimizationSnapshot(serialized));
+}
+
+fn writeMinimizationSnapshotCountFields(
+    writer: anytype,
+    snapshot: MinimizationSnapshot,
+) !void {
+    try writeUsizeField(writer, 4, "state_count", snapshot.state_count, true);
+    try writeUsizeField(writer, 4, "large_state_count", snapshot.large_state_count, true);
+    try writeUsizeField(writer, 4, "small_parse_row_count", snapshot.small_parse_row_count, true);
+    try writeUsizeField(writer, 4, "parse_action_list_count", snapshot.parse_action_list_count, true);
+    try writeUsizeField(writer, 4, "action_entry_count", snapshot.action_entry_count, true);
+    try writeUsizeField(writer, 4, "shift_action_count", snapshot.shift_action_count, true);
+    try writeUsizeField(writer, 4, "reduce_action_count", snapshot.reduce_action_count, true);
+    try writeUsizeField(writer, 4, "accept_action_count", snapshot.accept_action_count, true);
+    try writeUsizeField(writer, 4, "goto_entry_count", snapshot.goto_entry_count, true);
+    try writeUsizeField(writer, 4, "unresolved_entry_count", snapshot.unresolved_entry_count, true);
+    try writeU64HexField(writer, 4, "lex_mode_hash", snapshot.lex_mode_hash, true);
+    try writeU64HexField(writer, 4, "primary_state_id_hash", snapshot.primary_state_id_hash, true);
+    try writeU64HexField(writer, 4, "production_metadata_hash", snapshot.production_metadata_hash, false);
 }
 
 fn hashSerializedLexModes(modes: []const @import("../lexer/serialize.zig").SerializedLexMode) u64 {

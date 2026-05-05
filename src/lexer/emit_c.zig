@@ -62,6 +62,42 @@ pub fn emitLexFunctionWithResolverAllocAndAliases(
     try emitLexFunctionBodyWithLargeSets(allocator, writer, fn_name, lex_table, resolver, large_sets);
 }
 
+pub fn countLargeCharacterSetDeclarationsAlloc(
+    allocator: std.mem.Allocator,
+    lex_table: lexical_serialize.SerializedLexTable,
+) std.mem.Allocator.Error!usize {
+    const large_sets = try LargeCharacterSetIndex.initAlloc(allocator, lex_table);
+    defer large_sets.deinit(allocator);
+    return countUsedLargeCharacterSetEntries(large_sets);
+}
+
+pub fn countLargeCharacterSetDeclarationsWithAliasesAlloc(
+    allocator: std.mem.Allocator,
+    lex_table: lexical_serialize.SerializedLexTable,
+    alias_table: lexical_serialize.SerializedLexTable,
+) std.mem.Allocator.Error!usize {
+    const large_sets = try LargeCharacterSetIndex.initAlloc(allocator, lex_table);
+    defer large_sets.deinit(allocator);
+    const alias_sets = try LargeCharacterSetIndex.initAlloc(allocator, alias_table);
+    defer alias_sets.deinit(allocator);
+
+    var count: usize = 0;
+    for (large_sets.entries) |entry| {
+        if (!entry.used) continue;
+        if (alias_sets.find(entry.ranges) != null) continue;
+        count += 1;
+    }
+    return count;
+}
+
+fn countUsedLargeCharacterSetEntries(large_sets: LargeCharacterSetIndex) usize {
+    var count: usize = 0;
+    for (large_sets.entries) |entry| {
+        if (entry.used) count += 1;
+    }
+    return count;
+}
+
 fn emitLexFunctionWithLargeSets(
     allocator: ?std.mem.Allocator,
     writer: anytype,

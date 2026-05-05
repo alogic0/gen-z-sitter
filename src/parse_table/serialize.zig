@@ -1506,21 +1506,16 @@ pub fn computeLargeStateCountAlloc(
             try appendUniqueSymbolRef(&symbols, entry.symbol);
             if (entry.candidate_actions.len > 1) {
                 for (entry.candidate_actions) |candidate| {
-                    const production_id = switch (candidate) {
-                        .reduce => |reduced| reduced.production_id,
-                        .shift, .shift_extra, .accept => continue,
-                    };
-                    if (production_id < productions.len) {
-                        try appendUniqueSymbolRef(&symbols, .{ .non_terminal = productions[production_id].lhs });
+                    if (reduceSymbolForAction(candidate, productions)) |symbol| {
+                        try appendUniqueSymbolRef(&symbols, symbol);
                     }
                 }
                 continue;
             }
             switch (entry.action) {
-                .reduce => |reduced| {
-                    const production_id = reduced.production_id;
-                    if (production_id < productions.len) {
-                        try appendUniqueSymbolRef(&symbols, .{ .non_terminal = productions[production_id].lhs });
+                .reduce => {
+                    if (reduceSymbolForAction(entry.action, productions)) |symbol| {
+                        try appendUniqueSymbolRef(&symbols, symbol);
                     }
                 },
                 .shift, .shift_extra, .accept => {},
@@ -1882,6 +1877,16 @@ pub fn runtimeActionFromParseAction(
         .accept => .{
             .kind = .accept,
         },
+    };
+}
+
+fn reduceSymbolForAction(
+    action: actions.ParseAction,
+    productions: []const SerializedProductionInfo,
+) ?syntax_ir.SymbolRef {
+    return switch (action) {
+        .reduce => runtimeActionFromParseAction(action, productions).symbol,
+        .shift, .shift_extra, .accept => null,
     };
 }
 
