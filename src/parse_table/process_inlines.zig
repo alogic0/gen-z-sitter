@@ -12,7 +12,6 @@ pub const InlinedProduction = struct {
     dynamic_precedence: i32 = 0,
 
     fn eql(self: InlinedProduction, other: InlinedProduction) bool {
-        if (self.lhs != other.lhs) return false;
         if (self.dynamic_precedence != other.dynamic_precedence) return false;
         if (self.steps.len != other.steps.len) return false;
         for (self.steps, other.steps) |a, b| {

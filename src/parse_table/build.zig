@@ -397,14 +397,16 @@ const ParseItemCoreContext = struct {
     pub fn hash(_: @This(), value: item.ParseItem) u64 {
         var hasher = std.hash.Wyhash.init(0);
         if (value.merge_identity != item.unset_structural_identity) {
+            hasher.update(std.mem.asBytes(&value.variable_index));
             hasher.update(std.mem.asBytes(&value.merge_identity));
         } else if (value.structural_identity != item.unset_structural_identity) {
+            hasher.update(std.mem.asBytes(&value.variable_index));
             hasher.update(std.mem.asBytes(&value.structural_identity));
         } else {
+            hasher.update(std.mem.asBytes(&value.variable_index));
             hasher.update(std.mem.asBytes(&value.production_id));
             hasher.update(std.mem.asBytes(&value.step_index));
         }
-        hasher.update(std.mem.asBytes(&value.has_preceding_inherited_fields));
         return hasher.final();
     }
 
@@ -417,10 +419,9 @@ fn parseItemMergeEql(a: item.ParseItem, b: item.ParseItem) bool {
     if (a.merge_identity != item.unset_structural_identity and
         b.merge_identity != item.unset_structural_identity)
     {
-        return a.merge_identity == b.merge_identity and
-            a.has_preceding_inherited_fields == b.has_preceding_inherited_fields;
+        return a.variable_index == b.variable_index and a.merge_identity == b.merge_identity;
     }
-    return item.ParseItem.eql(a, b);
+    return a.variable_index == b.variable_index and a.production_id == b.production_id and a.step_index == b.step_index;
 }
 
 const SymbolRefContext = struct {
@@ -469,8 +470,10 @@ fn hashParseItemSetEntries(values: []const item.ParseItemSetEntry) u64 {
     var hasher = std.hash.Wyhash.init(0);
     for (values) |value| {
         if (value.item.structural_identity != item.unset_structural_identity) {
+            hasher.update(std.mem.asBytes(&value.item.variable_index));
             hasher.update(std.mem.asBytes(&value.item.structural_identity));
         } else {
+            hasher.update(std.mem.asBytes(&value.item.variable_index));
             hasher.update(std.mem.asBytes(&value.item.production_id));
             hasher.update(std.mem.asBytes(&value.item.step_index));
         }
@@ -530,8 +533,10 @@ const ParseItemSetCoreContext = struct {
         var hasher = std.hash.Wyhash.init(0);
         for (value.items) |core_item| {
             if (core_item.structural_identity != item.unset_structural_identity) {
+                hasher.update(std.mem.asBytes(&core_item.variable_index));
                 hasher.update(std.mem.asBytes(&core_item.structural_identity));
             } else {
+                hasher.update(std.mem.asBytes(&core_item.variable_index));
                 hasher.update(std.mem.asBytes(&core_item.production_id));
                 hasher.update(std.mem.asBytes(&core_item.step_index));
             }
@@ -658,6 +663,7 @@ const SuccessorGroups = struct {
                         for (inlined_ids) |inlined_id| {
                             var expanded_entry = entry;
                             expanded_entry.item = .{
+                                .variable_index = parse_item.variable_index,
                                 .production_id = inlined_id,
                                 .step_index = parse_item.step_index,
                                 .has_preceding_inherited_fields = parse_item.has_preceding_inherited_fields,
@@ -702,6 +708,7 @@ const SuccessorGroups = struct {
 
         const successor_entry = item.ParseItemSetEntry{
             .item = .{
+                .variable_index = parse_item.variable_index,
                 .production_id = parse_item.production_id,
                 .step_index = parse_item.step_index + 1,
                 .has_preceding_inherited_fields = parse_item.has_preceding_inherited_fields or
@@ -843,6 +850,7 @@ const FollowSets = struct {
 };
 
 const TransitiveClosureAddition = struct {
+    variable_index: u32,
     production_id: item.ProductionId,
     info: ClosureFollowInfo,
 };
@@ -960,7 +968,6 @@ const ParseItemSetBuilder = struct {
                 allocator,
                 extended_productions,
                 first_sets,
-                reserved_word_context_names,
                 reserved_first_set_ids,
                 @intCast(non_terminal),
                 variables_to_inline,
@@ -1011,7 +1018,21 @@ const ParseItemSetBuilder = struct {
     }
 
     fn makeParseItem(self: @This(), production_id: item.ProductionId, step_index: u16) item.ParseItem {
+        const variable_index = if (production_id < self.productions.len and !self.productions[production_id].augmented)
+            self.productions[production_id].lhs
+        else
+            item.unset_variable_index;
+        return self.makeParseItemForVariable(variable_index, production_id, step_index);
+    }
+
+    fn makeParseItemForVariable(
+        self: @This(),
+        variable_index: u32,
+        production_id: item.ProductionId,
+        step_index: u16,
+    ) item.ParseItem {
         return .{
+            .variable_index = variable_index,
             .production_id = production_id,
             .step_index = step_index,
             .structural_identity = itemIdentityId(self.item_identity_ids, production_id, step_index),
@@ -1183,7 +1204,6 @@ fn parseItemStructuralEql(
     if (left_id >= productions.len or right_id >= productions.len) return false;
     const left = productions[left_id];
     const right = productions[right_id];
-    if (left.lhs != right.lhs) return false;
     if (left_step_index != right_step_index) return false;
     if (left.dynamic_precedence != right.dynamic_precedence) return false;
     if (left.steps.len != right.steps.len) return false;
@@ -1228,9 +1248,6 @@ fn parseItemStructuralCompare(
 
     const step_order = compareScalar(left_step_index, right_step_index);
     if (step_order != .eq) return step_order;
-
-    const lhs_order = compareScalar(left.lhs, right.lhs);
-    if (lhs_order != .eq) return lhs_order;
 
     const dynamic_order = compareScalar(left.dynamic_precedence, right.dynamic_precedence);
     if (dynamic_order != .eq) return dynamic_order;
@@ -1825,7 +1842,6 @@ fn computeTransitiveClosureAdditionsAlloc(
     allocator: std.mem.Allocator,
     productions: []const ProductionInfo,
     first_sets: first.FirstSets,
-    reserved_word_context_names: []const []const u8,
     reserved_first_set_ids: []const u16,
     root_non_terminal: u32,
     variables_to_inline: []const syntax_ir.SymbolRef,
@@ -1885,10 +1901,7 @@ fn computeTransitiveClosureAdditionsAlloc(
                         try stack.append(.{
                             .non_terminal = next_non_terminal,
                             .lookaheads = try first_sets.firstOfSequence(allocator, remainder[0..1]),
-                            .reserved_lookaheads = @max(
-                                reservedWordSetIdForStep(remainder[0], reserved_word_context_names),
-                                reservedFirstSetIdForSymbolRef(remainder[0].symbol, reserved_first_set_ids),
-                            ),
+                            .reserved_lookaheads = reservedFirstSetIdForSymbolRef(remainder[0].symbol, reserved_first_set_ids),
                             .propagates_lookaheads = false,
                         });
                     }
@@ -1918,6 +1931,7 @@ fn computeTransitiveClosureAdditionsAlloc(
                         if (inline_map.inlinedProductions(@intCast(production_id), 0)) |exp_ids| {
                             for (exp_ids) |exp_id| {
                                 try appendTransitiveClosureAdditionDedup(allocator, &additions, .{
+                                    .variable_index = @intCast(non_terminal),
                                     .production_id = exp_id,
                                     .info = .{
                                         .lookaheads = try cloneSymbolSet(allocator, info.lookaheads),
@@ -1933,6 +1947,7 @@ fn computeTransitiveClosureAdditionsAlloc(
                 }
             }
             try appendTransitiveClosureAdditionDedup(allocator, &additions, .{
+                .variable_index = @intCast(non_terminal),
                 .production_id = @intCast(production_id),
                 .info = .{
                     .lookaheads = try cloneSymbolSet(allocator, info.lookaheads),
@@ -1961,7 +1976,8 @@ fn appendTransitiveClosureAdditionDedup(
 }
 
 fn transitiveClosureAdditionEql(left: TransitiveClosureAddition, right: TransitiveClosureAddition) bool {
-    return left.production_id == right.production_id and
+    return left.variable_index == right.variable_index and
+        left.production_id == right.production_id and
         first.SymbolSet.eql(left.info.lookaheads, right.info.lookaheads) and
         left.info.reserved_lookaheads == right.info.reserved_lookaheads and
         left.info.propagates_lookaheads == right.info.propagates_lookaheads;
@@ -1984,6 +2000,7 @@ fn buildClosureExpansionItemsAlloc(
             allocator,
             &generated,
             &item_indexes,
+            addition.variable_index,
             addition.production_id,
             item_set_builder.item_identity_ids,
             item_set_builder.item_merge_identity_ids,
@@ -2004,6 +2021,7 @@ fn appendGeneratedItems(
     allocator: std.mem.Allocator,
     generated: *std.array_list.Managed(item.ParseItemSetEntry),
     item_indexes: *ClosureItemIndexMap,
+    variable_index: u32,
     production_id: item.ProductionId,
     item_identity_ids: []const []const u32,
     item_merge_identity_ids: []const []const u32,
@@ -2025,6 +2043,7 @@ fn appendGeneratedItems(
                 first_sets.terminals_len,
                 first_sets.externals_len,
                 .{
+                    .variable_index = variable_index,
                     .production_id = production_id,
                     .step_index = 0,
                     .structural_identity = itemIdentityId(item_identity_ids, production_id, 0),
@@ -2041,6 +2060,7 @@ fn appendGeneratedItems(
         first_sets.terminals_len,
         first_sets.externals_len,
         .{
+            .variable_index = variable_index,
             .production_id = production_id,
             .step_index = 0,
             .structural_identity = itemIdentityId(item_identity_ids, production_id, 0),
@@ -3597,18 +3617,11 @@ pub fn buildStatesWithOptions(
         };
     }
 
-    const compacted = try minimize.compactUnitReductionsAlloc(
-        allocator,
-        constructed.states,
-        resolved_actions_with_extras,
-        unit_reduction_options,
-    );
-
     stage_profile_timer = profileTimer(profile_log);
     const lex_states = try assignLexStateIdsAlloc(
         allocator,
-        compacted.states,
-        compacted.resolved_actions,
+        constructed.states,
+        resolved_actions_with_extras,
         options.lex_state_terminal_conflicts,
         .{
             .word_token = minimizeWordToken(grammar),
@@ -3620,11 +3633,11 @@ pub fn buildStatesWithOptions(
     const fragile_token_sets = try buildFragileTokenSetsAlloc(
         allocator,
         lex_states.states,
-        compacted.resolved_actions,
+        resolved_actions_with_extras,
         options.lex_state_terminal_conflicts,
     );
     const external_internal_tokens = try externalInternalTokensAlloc(allocator, options.lex_state_terminal_conflicts);
-    const compacted_action_projection = try actionTableFromResolvedAlloc(allocator, compacted.resolved_actions);
+    const constructed_action_projection = try actionTableFromResolvedAlloc(allocator, resolved_actions_with_extras);
     logProfileDone("assign_lex_state_ids", stage_profile_timer);
 
     return .{
@@ -3639,8 +3652,8 @@ pub fn buildStatesWithOptions(
         .external_internal_tokens = external_internal_tokens,
         .recovery_coincident_tokens = pre_minimize_coincident_tokens,
         .recovery_coincident_terminal_count = pre_minimize_coincident_terminal_count,
-        .actions = compacted_action_projection,
-        .resolved_actions = compacted.resolved_actions,
+        .actions = constructed_action_projection,
+        .resolved_actions = resolved_actions_with_extras,
     };
 }
 
@@ -4135,6 +4148,7 @@ fn appendAuxiliaryInfosForEntry(
             for (inlined_ids) |inlined_id| {
                 var expanded_entry = entry;
                 expanded_entry.item = .{
+                    .variable_index = parse_item.variable_index,
                     .production_id = inlined_id,
                     .step_index = parse_item.step_index,
                     .has_preceding_inherited_fields = parse_item.has_preceding_inherited_fields,
@@ -4276,6 +4290,7 @@ fn appendParentSymbolsForAuxiliaryEntry(
                     for (inlined_ids) |inlined_id| {
                         var expanded_entry = entry;
                         expanded_entry.item = .{
+                            .variable_index = parse_item.variable_index,
                             .production_id = inlined_id,
                             .step_index = parse_item.step_index,
                             .has_preceding_inherited_fields = parse_item.has_preceding_inherited_fields,
@@ -5119,14 +5134,22 @@ const ClosureRun = struct {
                 if (self.item_set_builder.inline_map.inlinedProductions(parse_item.production_id, step_idx)) |inlined_ids| {
                     for (inlined_ids) |inlined_id| {
                         var new_entry = entry;
-                        new_entry.item = self.item_set_builder.makeParseItem(inlined_id, step_idx);
+                        new_entry.item = self.item_set_builder.makeParseItemForVariable(
+                            parse_item.variable_index,
+                            inlined_id,
+                            step_idx,
+                        );
                         try expanded.append(new_entry);
                     }
                     continue;
                 }
             }
             var canonical_entry = entry;
-            canonical_entry.item = self.item_set_builder.makeParseItem(parse_item.production_id, step_idx);
+            canonical_entry.item = self.item_set_builder.makeParseItemForVariable(
+                parse_item.variable_index,
+                parse_item.production_id,
+                step_idx,
+            );
             try expanded.append(canonical_entry);
         }
         _ = try appendGeneratedItemsToClosure(self.allocator, &self.items, &self.item_indexes, expanded.items, false);
@@ -5178,10 +5201,7 @@ const ClosureRun = struct {
                 const following_reserved_word_set_id = if (suffix.len == 0)
                     parse_entry.following_reserved_word_set_id
                 else
-                    @max(
-                        reservedWordSetIdForStep(suffix[0], self.item_set_builder.reserved_word_context_names),
-                        self.item_set_builder.reservedFirstSetIdForSymbol(suffix[0].symbol),
-                    );
+                    self.item_set_builder.reservedFirstSetIdForSymbol(suffix[0].symbol);
                 const context = try ClosureContext.init(
                     self.allocator,
                     following_tokens,
@@ -5993,9 +6013,16 @@ test "ClosureContext keeps upstream immediate following tokens separate from pro
 
 fn findParseItem(items: []const item.ParseItemSetEntry, needle: item.ParseItem, lookahead: syntax_ir.SymbolRef) ?usize {
     for (items, 0..) |candidate, index| {
-        if (item.ParseItem.eql(candidate.item, needle) and item.containsLookahead(candidate.lookaheads, lookahead)) return index;
+        if (parseItemMatchesTestNeedle(candidate.item, needle) and item.containsLookahead(candidate.lookaheads, lookahead)) return index;
     }
     return null;
+}
+
+fn parseItemMatchesTestNeedle(candidate: item.ParseItem, needle: item.ParseItem) bool {
+    if (needle.variable_index != item.unset_variable_index and candidate.variable_index != needle.variable_index) return false;
+    var normalized_candidate = candidate;
+    normalized_candidate.variable_index = needle.variable_index;
+    return item.ParseItem.eql(normalized_candidate, needle);
 }
 
 const ExtraSeedGroup = struct {
@@ -6050,7 +6077,7 @@ fn addNonTerminalExtraStatesAlloc(
                 allocator,
                 first_sets.terminals_len,
                 first_sets.externals_len,
-                item.ParseItem.init(@intCast(production_id), 1),
+                item_set_builder.makeParseItem(@intCast(production_id), 1),
             );
             item.addLookahead(&entry.lookaheads, .{ .end = {} });
             try groups.items[group_index].items.append(entry);
@@ -6161,7 +6188,7 @@ fn constructStates(
                 allocator,
                 first_sets.terminals_len,
                 first_sets.externals_len,
-                item.ParseItem.init(0, 0),
+                item_set_builder.makeParseItem(0, 0),
             );
             item.addLookahead(&entry.lookaheads, .{ .end = {} });
             break :blk entry;
@@ -6904,7 +6931,7 @@ test "buildStates assigns reserved-word set id for direct word-token context" {
     try std.testing.expectEqual(@as(u16, 1), result.states[1].reserved_word_set_id);
 }
 
-test "buildStates propagates following reserved-word set through nullable closure lookahead" {
+test "buildStates does not propagate immediate reserved-word context through closure suffix" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -6941,17 +6968,17 @@ test "buildStates propagates following reserved-word set through nullable closur
         .reserved_word_context_names = &.{"global"},
     });
 
-    var saw_propagated = false;
+    var saw_leaf_with_word_lookahead = false;
     for (result.states[1].items) |entry| {
         if (entry.item.production_id == 3 and
-            item.containsLookahead(entry.lookaheads, .{ .terminal = 0 }) and
-            entry.following_reserved_word_set_id == 1)
+            item.containsLookahead(entry.lookaheads, .{ .terminal = 0 }))
         {
-            saw_propagated = true;
+            saw_leaf_with_word_lookahead = true;
+            try std.testing.expectEqual(@as(u16, 0), entry.following_reserved_word_set_id);
         }
     }
 
-    try std.testing.expect(saw_propagated);
+    try std.testing.expect(saw_leaf_with_word_lookahead);
 }
 
 test "buildStates propagates following reserved-word set through nested first symbol" {

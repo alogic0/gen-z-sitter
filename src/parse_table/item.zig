@@ -4,6 +4,7 @@ const syntax_ir = @import("../ir/syntax_grammar.zig");
 
 pub const ProductionId = u32;
 pub const unset_structural_identity = std.math.maxInt(u32);
+pub const unset_variable_index = std.math.maxInt(u32);
 
 pub const SymbolSetProfile = struct {
     init_empty_count: usize = 0,
@@ -50,6 +51,7 @@ fn packedSymbolBitsBytes(bit_count: usize) usize {
 }
 
 pub const ParseItem = struct {
+    variable_index: u32 = unset_variable_index,
     production_id: ProductionId,
     step_index: u16,
     structural_identity: u32 = unset_structural_identity,
@@ -65,6 +67,7 @@ pub const ParseItem = struct {
     }
 
     pub fn eql(a: ParseItem, b: ParseItem) bool {
+        if (a.variable_index != b.variable_index) return false;
         if (a.structural_identity != unset_structural_identity and
             b.structural_identity != unset_structural_identity)
         {
@@ -80,6 +83,9 @@ pub const ParseItem = struct {
         if (a.structural_identity != unset_structural_identity and
             b.structural_identity != unset_structural_identity)
         {
+            if (a.variable_index != b.variable_index) {
+                return a.variable_index < b.variable_index;
+            }
             if (a.structural_identity != b.structural_identity) {
                 return a.structural_identity < b.structural_identity;
             }
@@ -88,6 +94,7 @@ pub const ParseItem = struct {
             }
             return false;
         }
+        if (a.variable_index != b.variable_index) return a.variable_index < b.variable_index;
         if (a.production_id != b.production_id) return a.production_id < b.production_id;
         if (a.step_index != b.step_index) return a.step_index < b.step_index;
         return @intFromBool(a.has_preceding_inherited_fields) < @intFromBool(b.has_preceding_inherited_fields);
