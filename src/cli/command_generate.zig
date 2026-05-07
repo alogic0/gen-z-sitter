@@ -15,6 +15,7 @@ const parser_tables_emit = @import("../parser_emit/parser_tables.zig");
 const parser_compat = @import("../parser_emit/compat.zig");
 const parser_c_emit = @import("../parser_emit/parser_c.zig");
 const emit_optimize = @import("../parser_emit/optimize.zig");
+const upstream_summary = @import("../compat/upstream_summary.zig");
 const fixtures = @import("../tests/fixtures.zig");
 
 const EmittedSizeStats = struct {
@@ -139,6 +140,32 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
             else => return err,
         };
 
+        if (!builtin.is_test) {
+            try std.Io.File.stdout().writeStreamingAll(io, json);
+        }
+        return;
+    }
+
+    if (opts.debug_conflicts) {
+        var pipeline_arena = std.heap.ArenaAllocator.init(allocator);
+        defer pipeline_arena.deinit();
+
+        const json = try upstream_summary.generateLocalConflictSummaryJsonFromPreparedAlloc(pipeline_arena.allocator(), prepared, .{
+            .minimize_states = opts.minimize_states,
+        });
+        if (!builtin.is_test) {
+            try std.Io.File.stdout().writeStreamingAll(io, json);
+        }
+        return;
+    }
+
+    if (opts.debug_production_info) {
+        var pipeline_arena = std.heap.ArenaAllocator.init(allocator);
+        defer pipeline_arena.deinit();
+
+        const json = try upstream_summary.generateLocalProductionInfoSummaryJsonFromPreparedAlloc(pipeline_arena.allocator(), prepared, .{
+            .minimize_states = opts.minimize_states,
+        });
         if (!builtin.is_test) {
             try std.Io.File.stdout().writeStreamingAll(io, json);
         }

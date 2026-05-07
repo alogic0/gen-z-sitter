@@ -106,6 +106,9 @@ const Builder = struct {
     allocator: std.mem.Allocator,
     grammar: *const raw.RawGrammar,
     lowered_rules: std.array_list.Managed(ir_rules.Rule),
+    active_rules: []const raw.RawRuleEntry = &.{},
+    active_externals: []const *const raw.RawRule = &.{},
+    active_extras: []const *const raw.RawRule = &.{},
 
     fn init(allocator: std.mem.Allocator, grammar: *const raw.RawGrammar) Builder {
         return .{
@@ -129,10 +132,14 @@ const Builder = struct {
         try self.validatePrecedences();
         try self.validateIndirectRecursion();
 
+        self.active_rules = try self.computeActiveRulesAlloc();
+        self.active_externals = try self.computeActiveExternalRulesAlloc();
+        self.active_extras = try self.computeActiveExtraRulesAlloc();
+
         var symbols = try self.buildSymbols();
         var variables = try self.buildVariables();
         const external_tokens = try self.buildExternalTokens();
-        const extra_rules = try self.lowerRuleList(self.grammar.extras);
+        const extra_rules = try self.lowerRuleList(self.active_extras);
         const expected_conflicts = try normalize.normalizeConflictSets(self.allocator, try self.resolveConflicts());
         const precedence_orderings = try normalize.normalizePrecedenceOrderings(self.allocator, try self.resolvePrecedences());
         const variables_to_inline = try normalize.normalizeSymbolList(self.allocator, try self.resolveInlineRules());
@@ -280,11 +287,108 @@ const Builder = struct {
         return null;
     }
 
+    fn findActiveRuleEntry(self: *const Builder, name: []const u8) ?raw.RawRuleEntry {
+        for (self.active_rules) |entry| {
+            if (std.mem.eql(u8, entry.name, name)) return entry;
+        }
+        return null;
+    }
+
+    fn isActiveRuleName(self: *const Builder, name: []const u8) bool {
+        return self.findActiveRuleEntry(name) != null;
+    }
+
+    fn computeActiveRulesAlloc(self: *Builder) ParseGrammarError![]const raw.RawRuleEntry {
+        var result = std.array_list.Managed(raw.RawRuleEntry).init(self.allocator);
+        defer result.deinit();
+
+        var in_progress = std.StringHashMap(void).init(self.allocator);
+        defer in_progress.deinit();
+
+        for (self.grammar.rules) |entry| {
+            if (self.grammar.word) |word| {
+                if (std.mem.eql(u8, word, entry.name)) {
+                    try result.append(entry);
+                    continue;
+                }
+            }
+            if (try self.variableIsUsed(entry.name, &in_progress)) {
+                try result.append(entry);
+            }
+        }
+
+        return try result.toOwnedSlice();
+    }
+
+    fn computeActiveExternalRulesAlloc(self: *Builder) ParseGrammarError![]const *const raw.RawRule {
+        var result = std.array_list.Managed(*const raw.RawRule).init(self.allocator);
+        defer result.deinit();
+
+        for (self.grammar.externals) |external_rule| {
+            if (!self.ruleReferencesInactiveVariable(external_rule, true)) {
+                try result.append(external_rule);
+            }
+        }
+
+        return try result.toOwnedSlice();
+    }
+
+    fn computeActiveExtraRulesAlloc(self: *Builder) ParseGrammarError![]const *const raw.RawRule {
+        var result = std.array_list.Managed(*const raw.RawRule).init(self.allocator);
+        defer result.deinit();
+
+        for (self.grammar.extras) |extra_rule| {
+            if (!self.ruleReferencesInactiveVariable(extra_rule, true)) {
+                try result.append(extra_rule);
+            }
+        }
+
+        return try result.toOwnedSlice();
+    }
+
+    fn ruleReferencesInactiveVariable(self: *const Builder, rule: *const raw.RawRule, is_external: bool) bool {
+        for (self.grammar.rules) |entry| {
+            if (self.isActiveRuleName(entry.name)) continue;
+            if (ruleIsReferenced(rule, entry.name, is_external)) return true;
+        }
+        return false;
+    }
+
+    fn variableIsUsed(
+        self: *Builder,
+        target_name: []const u8,
+        in_progress: *std.StringHashMap(void),
+    ) ParseGrammarError!bool {
+        if (self.grammar.rules.len != 0 and std.mem.eql(u8, target_name, self.grammar.rules[0].name)) {
+            return true;
+        }
+
+        for (self.grammar.extras) |rule| {
+            if (ruleIsReferenced(rule, target_name, false)) return true;
+        }
+
+        for (self.grammar.externals) |rule| {
+            if (ruleIsReferenced(rule, target_name, true)) return true;
+        }
+
+        try in_progress.put(target_name, {});
+        defer _ = in_progress.remove(target_name);
+
+        for (self.grammar.rules) |entry| {
+            if (std.mem.eql(u8, entry.name, target_name)) continue;
+            if (!ruleIsReferenced(entry.rule, target_name, false)) continue;
+            if (in_progress.contains(entry.name)) continue;
+            if (try self.variableIsUsed(entry.name, in_progress)) return true;
+        }
+
+        return false;
+    }
+
     fn buildSymbols(self: *Builder) ParseGrammarError![]ir_symbols.SymbolInfo {
         var result = std.array_list.Managed(ir_symbols.SymbolInfo).init(self.allocator);
         defer result.deinit();
 
-        for (self.grammar.rules, 0..) |entry, i| {
+        for (self.active_rules, 0..) |entry, i| {
             try result.append(.{
                 .id = ir_symbols.SymbolId.nonTerminal(i),
                 .name = entry.name,
@@ -293,7 +397,7 @@ const Builder = struct {
             });
         }
 
-        for (self.grammar.externals, 0..) |external_rule, i| {
+        for (self.active_externals, 0..) |external_rule, i| {
             const external_name = switch (external_rule.*) {
                 .symbol => |name| name,
                 else => "",
@@ -313,7 +417,7 @@ const Builder = struct {
         var result = std.array_list.Managed(ir.Variable).init(self.allocator);
         defer result.deinit();
 
-        for (self.grammar.rules, 0..) |entry, i| {
+        for (self.active_rules, 0..) |entry, i| {
             try result.append(.{
                 .name = entry.name,
                 .symbol = ir_symbols.SymbolId.nonTerminal(i),
@@ -329,7 +433,7 @@ const Builder = struct {
         var result = std.array_list.Managed(ir.ExternalToken).init(self.allocator);
         defer result.deinit();
 
-        for (self.grammar.externals, 0..) |external_rule, i| {
+        for (self.active_externals, 0..) |external_rule, i| {
             const external_name = switch (external_rule.*) {
                 .symbol => |name| name,
                 else => "",
@@ -352,12 +456,18 @@ const Builder = struct {
         for (self.grammar.expected_conflicts) |conflict_set| {
             var members = std.array_list.Managed(ir_symbols.SymbolId).init(self.allocator);
             defer members.deinit();
+            var skip_conflict = false;
 
             for (conflict_set) |name| {
+                if (self.findRuleEntry(name) != null and !self.isActiveRuleName(name)) {
+                    skip_conflict = true;
+                    break;
+                }
                 const symbol = self.resolveName(name) orelse return self.failUndefinedConflict(name);
                 try members.append(symbol);
             }
 
+            if (skip_conflict) continue;
             try result.append(try members.toOwnedSlice());
         }
 
@@ -371,11 +481,16 @@ const Builder = struct {
         for (self.grammar.precedences) |ordering| {
             var entries = std.array_list.Managed(ir.PrecedenceEntry).init(self.allocator);
             defer entries.deinit();
+            var skip_ordering = false;
 
             for (ordering) |entry| {
                 switch (entry.*) {
                     .string => |value| try entries.append(.{ .name = value }),
                     .symbol => |name| {
+                        if (self.findRuleEntry(name) != null and !self.isActiveRuleName(name)) {
+                            skip_ordering = true;
+                            break;
+                        }
                         const symbol = self.resolveName(name) orelse return error.UndefinedSymbol;
                         try entries.append(.{ .symbol = symbol });
                     },
@@ -383,6 +498,7 @@ const Builder = struct {
                 }
             }
 
+            if (skip_ordering) continue;
             try result.append(try entries.toOwnedSlice());
         }
 
@@ -394,6 +510,7 @@ const Builder = struct {
         defer result.deinit();
 
         for (self.grammar.inline_rules) |name| {
+            if (self.findRuleEntry(name) != null and !self.isActiveRuleName(name)) continue;
             const symbol = self.resolveName(name) orelse continue;
             try appendUniqueSymbol(&result, symbol);
         }
@@ -406,6 +523,7 @@ const Builder = struct {
         defer result.deinit();
 
         for (self.grammar.supertypes) |name| {
+            if (self.findRuleEntry(name) != null and !self.isActiveRuleName(name)) continue;
             const symbol = self.resolveName(name) orelse return self.failUndefinedSupertype(name);
             try appendUniqueSymbol(&result, symbol);
         }
@@ -533,13 +651,13 @@ const Builder = struct {
     }
 
     fn resolveName(self: *Builder, name: []const u8) ?ir_symbols.SymbolId {
-        for (self.grammar.rules, 0..) |entry, i| {
+        for (self.active_rules, 0..) |entry, i| {
             if (std.mem.eql(u8, entry.name, name)) {
                 return ir_symbols.SymbolId.nonTerminal(i);
             }
         }
 
-        for (self.grammar.externals, 0..) |external_rule, i| {
+        for (self.active_externals, 0..) |external_rule, i| {
             switch (external_rule.*) {
                 .symbol => |external_name| {
                     if (std.mem.eql(u8, external_name, name)) {
@@ -556,7 +674,7 @@ const Builder = struct {
     fn symbolTableIndex(self: *const Builder, symbol: ir_symbols.SymbolId) usize {
         return switch (symbol.kind) {
             .non_terminal => @intCast(symbol.index),
-            .external => self.grammar.rules.len + @as(usize, @intCast(symbol.index)),
+            .external => self.active_rules.len + @as(usize, @intCast(symbol.index)),
         };
     }
 
@@ -709,6 +827,36 @@ const OrderingEntry = union(enum) {
         };
     }
 };
+
+fn ruleIsReferenced(rule: *const raw.RawRule, target_name: []const u8, is_external: bool) bool {
+    return switch (rule.*) {
+        .symbol => |name| std.mem.eql(u8, name, target_name) and !is_external,
+        .alias => |alias| ruleIsReferenced(alias.content, target_name, is_external),
+        .field => |field| ruleIsReferenced(field.content, target_name, is_external),
+        .choice => |members| blk: {
+            for (members) |member| {
+                if (ruleIsReferenced(member, target_name, false)) break :blk true;
+            }
+            break :blk false;
+        },
+        .seq => |members| blk: {
+            for (members) |member| {
+                if (ruleIsReferenced(member, target_name, false)) break :blk true;
+            }
+            break :blk false;
+        },
+        .repeat => |inner| ruleIsReferenced(inner, target_name, false),
+        .repeat1 => |inner| ruleIsReferenced(inner, target_name, false),
+        .prec_dynamic => |prec| ruleIsReferenced(prec.content, target_name, is_external),
+        .prec_left => |prec| ruleIsReferenced(prec.content, target_name, is_external),
+        .prec_right => |prec| ruleIsReferenced(prec.content, target_name, is_external),
+        .prec => |prec| ruleIsReferenced(prec.content, target_name, is_external),
+        .token => |inner| ruleIsReferenced(inner, target_name, is_external),
+        .immediate_token => |inner| ruleIsReferenced(inner, target_name, is_external),
+        .reserved => |reserved| ruleIsReferenced(reserved.content, target_name, is_external),
+        .blank, .string, .pattern => false,
+    };
+}
 
 fn variableKindForName(name: []const u8) ir.VariableKind {
     return if (isHidden(name)) .hidden else .named;
@@ -1070,6 +1218,37 @@ test "parseRawGrammar normalizes semantic lists" {
 
     try std.testing.expectEqual(@as(usize, 1), prepared.reserved_word_sets.len);
     try std.testing.expectEqual(@as(usize, 2), prepared.reserved_word_sets[0].members.len);
+}
+
+test "parseRawGrammar prunes variables unreachable from start extras and externals" {
+    const contents =
+        \\{
+        \\  "name": "prune_unreachable",
+        \\  "conflicts": [["source_file", "unused"]],
+        \\  "inline": ["unused"],
+        \\  "supertypes": ["unused"],
+        \\  "rules": {
+        \\    "source_file": { "type": "STRING", "value": "x" },
+        \\    "unused": { "type": "STRING", "value": "y" }
+        \\  }
+        \\}
+    ;
+    var loader_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer loader_arena.deinit();
+    var parse_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer parse_arena.deinit();
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, loader_arena.allocator(), contents, .{});
+    defer parsed.deinit();
+
+    const raw_grammar = try @import("json_loader.zig").parseTopLevel(loader_arena.allocator(), parsed.value);
+    const prepared = try parseRawGrammar(parse_arena.allocator(), &raw_grammar);
+
+    try std.testing.expectEqual(@as(usize, 1), prepared.variables.len);
+    try std.testing.expectEqualStrings("source_file", prepared.variables[0].name);
+    try std.testing.expectEqual(@as(usize, 0), prepared.expected_conflicts.len);
+    try std.testing.expectEqual(@as(usize, 0), prepared.variables_to_inline.len);
+    try std.testing.expectEqual(@as(usize, 0), prepared.supertype_symbols.len);
 }
 
 test "parseRawGrammar lowers expected_conflicts spelling into prepared grammar" {

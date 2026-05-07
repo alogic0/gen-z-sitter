@@ -858,7 +858,6 @@ fn reduceConflictCandidate(
         lookahead,
         productions,
         parse_state,
-        .reduce_reduce,
     )) |candidate| return candidate;
 
     if (candidate_actions.len == 0) return null;
@@ -959,7 +958,6 @@ fn shiftReduceConflictCandidate(
         lookahead,
         productions,
         parse_state,
-        .shift_reduce,
     )) |candidate| return candidate;
 
     if (candidate_actions.len == 0) return null;
@@ -1022,10 +1020,8 @@ fn recordedConflictCandidate(
     lookahead: syntax_ir.SymbolRef,
     productions: anytype,
     parse_state: state.ParseState,
-    kind: state.ConflictKind,
 ) ?conflict_resolution.ConflictCandidate {
     for (parse_state.conflicts) |conflict| {
-        if (conflict.kind != kind) continue;
         const conflict_symbol = conflict.symbol orelse continue;
         if (!symbolRefEql(conflict_symbol, lookahead)) continue;
 
@@ -1151,7 +1147,13 @@ fn compareReduceActionPrecedence(
         else => return null,
     };
     if (first_id >= productions.len or second_id >= productions.len) return null;
-    return compareReducePrecedence(productions[first_id], productions[second_id], precedence_orderings);
+    return compareProductionPrecedence(
+        extractReduceActionResolutionMetadata(productions[first_id], first),
+        reduceActionNonTerminal(first, productions[first_id]),
+        extractReduceActionResolutionMetadata(productions[second_id], second),
+        reduceActionNonTerminal(second, productions[second_id]),
+        precedence_orderings,
+    );
 }
 
 fn resolveReduceReduceByPrecedence(
@@ -1169,49 +1171,20 @@ fn resolveReduceReduceByPrecedence(
         else => return null,
     };
     if (first_id >= productions.len or second_id >= productions.len) return null;
+    const first_symbol = reduceActionNonTerminal(first, productions[first_id]);
+    const second_symbol = reduceActionNonTerminal(second, productions[second_id]);
 
-    return switch (compareReducePrecedence(
-        productions[first_id],
-        productions[second_id],
+    return switch (compareProductionPrecedence(
+        extractReduceActionResolutionMetadata(productions[first_id], first),
+        first_symbol,
+        extractReduceActionResolutionMetadata(productions[second_id], second),
+        second_symbol,
         precedence_orderings,
     )) {
         .greater => first,
         .less => second,
         .equal => null,
     };
-}
-
-fn compareReducePrecedence(
-    left: anytype,
-    right: @TypeOf(left),
-    precedence_orderings: []const []const syntax_ir.PrecedenceEntry,
-) PrecedenceComparison {
-    const left_metadata = extractResolutionMetadata(left);
-    const right_metadata = extractResolutionMetadata(right);
-
-    const left_integer = left_metadata.max_integer_precedence orelse 0;
-    const right_integer = right_metadata.max_integer_precedence orelse 0;
-    if (left_integer != 0 or right_integer != 0) {
-        if (left_integer > right_integer) return .greater;
-        if (left_integer < right_integer) return .less;
-        return .equal;
-    }
-
-    for (precedence_orderings) |ordering| {
-        var saw_left = false;
-        var saw_right = false;
-        for (ordering) |entry| {
-            if (precedenceEntryMatchesProduction(entry, left_metadata, left.lhs)) {
-                if (saw_right) return .less;
-                saw_left = true;
-            } else if (precedenceEntryMatchesProduction(entry, right_metadata, right.lhs)) {
-                if (saw_left) return .greater;
-                saw_right = true;
-            }
-        }
-    }
-
-    return .equal;
 }
 
 fn compareProductionPrecedence(
@@ -1279,46 +1252,8 @@ fn resolveShiftReduce(
 
     if (production_id >= productions.len) return null;
     const production = productions[production_id];
-    const metadata = extractResolutionMetadata(production);
-    const shift_metadata = if (parse_state) |resolved_state|
-        extractShiftResolutionMetadata(productions, resolved_state, first_sets, shift_symbol)
-    else
-        null;
-
-    if (shift_metadata) |shift| {
-        if (metadata.max_integer_precedence) |reduce_value| {
-            if (shift.resolution.max_integer_precedence) |shift_value| {
-                if (reduce_value > shift_value) return reduce_action;
-                if (reduce_value < shift_value) return shift_action;
-                if (resolveEqualPrecedenceByAssociativity(metadata, reduce_action, shift_action)) |action| return action;
-            }
-        }
-
-        if (metadata.named_precedence) |reduce_name| {
-            if (shift.resolution.named_precedence) |shift_name| {
-                if (std.mem.eql(u8, reduce_name, shift_name)) {
-                    return resolveEqualPrecedenceByAssociativity(metadata, reduce_action, shift_action);
-                }
-                if (comparePrecedenceEntries(
-                    precedence_orderings,
-                    .{ .name = reduce_name },
-                    .{ .name = shift_name },
-                )) |reduce_wins| {
-                    return if (reduce_wins) reduce_action else shift_action;
-                }
-            }
-        }
-
-        if (shift.resolution.named_precedence) |shift_name| {
-            if (comparePrecedenceEntries(
-                precedence_orderings,
-                .{ .name = shift_name },
-                .{ .symbol = .{ .non_terminal = production.lhs } },
-            )) |shift_wins| {
-                return if (shift_wins) shift_action else reduce_action;
-            }
-        }
-    }
+    const reduce_lhs = reduceActionNonTerminal(reduce_action, production);
+    const metadata = extractReduceActionResolutionMetadata(production, reduce_action);
 
     if (parse_state) |resolved_state| {
         if (compareShiftItemPrecedence(
@@ -1328,6 +1263,8 @@ fn resolveShiftReduce(
             first_sets,
             shift_symbol,
             production,
+            metadata,
+            reduce_lhs,
         )) |comparison| {
             switch (comparison) {
                 .greater => return shift_action,
@@ -1335,6 +1272,7 @@ fn resolveShiftReduce(
                 .equal => if (resolveEqualPrecedenceByAssociativity(metadata, reduce_action, shift_action)) |action| return action,
             }
         }
+        return null;
     }
 
     if (metadata.named_precedence) |name| {
@@ -1363,8 +1301,10 @@ fn compareShiftItemPrecedence(
     first_sets: ?first_sets_mod.FirstSets,
     shift_symbol: syntax_ir.SymbolRef,
     reduce_production: @TypeOf(productions[0]),
+    reduce_metadata: ProductionResolutionMetadata,
+    reduce_lhs: u32,
 ) ?PrecedenceComparison {
-    const reduce_metadata = extractResolutionMetadata(reduce_production);
+    _ = reduce_production;
     var saw_shift_precedence = false;
     var shift_is_less = false;
     var shift_is_more = false;
@@ -1379,12 +1319,16 @@ fn compareShiftItemPrecedence(
         if (!symbolCanStartLookahead(first_sets, step.symbol, shift_symbol)) continue;
 
         const shift_metadata = extractShiftItemResolutionMetadata(shift_production, parse_item.step_index);
+        const shift_lhs = if (parse_item.variable_index != item.unset_variable_index)
+            parse_item.variable_index
+        else
+            shift_production.lhs;
         saw_shift_precedence = true;
         switch (compareProductionPrecedence(
             shift_metadata,
-            shift_production.lhs,
+            shift_lhs,
             reduce_metadata,
-            reduce_production.lhs,
+            reduce_lhs,
             precedence_orderings,
         )) {
             .greater => shift_is_more = true,
@@ -1397,6 +1341,40 @@ fn compareShiftItemPrecedence(
     if (shift_is_less and !shift_is_more) return .less;
     if (saw_shift_precedence and !shift_is_more and !shift_is_less) return .equal;
     return null;
+}
+
+fn reduceActionNonTerminal(action: actions.ParseAction, production: anytype) u32 {
+    return switch (action) {
+        .reduce => |reduced| switch (reduced.symbol) {
+            .non_terminal => |index| if (index == item.unset_variable_index) production.lhs else index,
+            else => production.lhs,
+        },
+        else => production.lhs,
+    };
+}
+
+fn extractReduceActionResolutionMetadata(production: anytype, action: actions.ParseAction) ProductionResolutionMetadata {
+    var metadata = ProductionResolutionMetadata{
+        .dynamic_precedence = production.dynamic_precedence,
+    };
+    var step_index = switch (action) {
+        .reduce => |reduced| reduced.child_count,
+        else => return metadata,
+    };
+    if (step_index == actions.unset_reduce_child_count) {
+        step_index = @intCast(production.steps.len);
+    }
+    if (step_index == 0 or step_index > production.steps.len) {
+        return metadata;
+    }
+    const step = production.steps[step_index - 1];
+    switch (step.precedence) {
+        .integer => |value| metadata.max_integer_precedence = value,
+        .name => |value| metadata.named_precedence = value,
+        .none => {},
+    }
+    if (step.associativity != .none) metadata.associativity = step.associativity;
+    return metadata;
 }
 
 pub fn hasSameAuxiliaryRepeatConflict(

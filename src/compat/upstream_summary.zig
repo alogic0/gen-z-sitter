@@ -404,6 +404,42 @@ pub fn generateLocalConflictSummaryJsonAlloc(
     return try out.toOwnedSlice();
 }
 
+pub fn generateLocalConflictSummaryJsonFromPreparedAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    const flattened = try flatten_grammar.flattenGrammar(allocator, extracted.syntax);
+    const result = try parse_table_pipeline.buildStatesFromPreparedWithOptions(
+        allocator,
+        prepared,
+        .{
+            .minimize_states = options.minimize_states,
+            .strict_expected_conflicts = false,
+            .include_unresolved_parse_actions = false,
+        },
+    );
+    const unresolved = try result.unresolvedDecisionsAlloc(allocator);
+    const chosen = try result.chosenDecisionsAlloc(allocator);
+    const expected_report = try parse_table_pipeline.expectedConflictReportFromBuildResultAlloc(allocator, result);
+    const conflict_candidates = try result.expectedConflictCandidatesAlloc(allocator);
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeConflictSummaryJson(
+        &out.writer,
+        prepared.expected_conflicts.len,
+        expected_report.unused_expected_conflict_indexes,
+        chosen,
+        unresolved,
+        conflict_candidates,
+        result,
+        flattened,
+    );
+    return try out.toOwnedSlice();
+}
+
 pub fn generateLocalTokenConflictSummaryJsonAlloc(
     allocator: std.mem.Allocator,
     grammar_path: []const u8,
@@ -519,6 +555,33 @@ pub fn generateLocalProductionInfoSummaryJsonAlloc(
         },
     );
     const serialized = try parse_table_serialize.serializeBuildResultWithOptions(arena_allocator, result, .diagnostic, .{
+        .include_unresolved_parse_actions = false,
+    });
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try writeProductionInfoSummaryJson(&out.writer, result, serialized, flattened, extracted.lexical);
+    return try out.toOwnedSlice();
+}
+
+pub fn generateLocalProductionInfoSummaryJsonFromPreparedAlloc(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    options: LocalSummaryOptions,
+) ![]const u8 {
+    const extracted = try extract_tokens.extractTokens(allocator, prepared);
+    const default_aliases = try extract_default_aliases.extractDefaultAliases(allocator, extracted.syntax, extracted.lexical);
+    const flattened = try flatten_grammar.flattenGrammar(allocator, default_aliases.syntax);
+    const result = try parse_table_pipeline.buildStatesFromPreparedWithOptions(
+        allocator,
+        prepared,
+        .{
+            .minimize_states = options.minimize_states,
+            .strict_expected_conflicts = false,
+            .include_unresolved_parse_actions = false,
+        },
+    );
+    const serialized = try parse_table_serialize.serializeBuildResultWithOptions(allocator, result, .diagnostic, .{
         .include_unresolved_parse_actions = false,
     });
 
@@ -1525,6 +1588,16 @@ fn writeConflictSummaryJson(
     try writer.writeAll("  \"declared_expected_conflicts\": ");
     try writeSymbolRefSets(writer, flattened.expected_conflicts);
     try writer.writeAll(",\n");
+    try writer.writeAll("  \"declared_expected_conflict_rule_names\": [");
+    if (flattened.expected_conflicts.len != 0) try writer.writeByte('\n');
+    for (flattened.expected_conflicts, 0..) |expected_conflict, index| {
+        try writeIndent(writer, 4);
+        try writeConflictMemberRuleNames(writer, flattened, expected_conflict);
+        if (index + 1 != flattened.expected_conflicts.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (flattened.expected_conflicts.len != 0) try writer.writeAll("  ");
+    try writer.writeAll("],\n");
     try writeUsizeField(writer, 2, "unused_expected_conflict_count", unused_expected_indexes.len, true);
     try writeU64HexField(writer, 2, "unused_expected_conflict_index_hash", unused_expected_index_hash, true);
     try writer.writeAll("  \"unused_expected_conflict_indexes\": [");
@@ -1596,8 +1669,86 @@ fn writeConflictSummaryJson(
         }
         try writer.writeByte('\n');
     }
-    try writer.writeAll("  }\n");
+    try writer.writeAll("  },\n");
+    try writer.writeAll("  \"conflict_candidates\": [");
+    if (conflict_candidates.len != 0) try writer.writeByte('\n');
+    for (conflict_candidates, 0..) |candidate, index| {
+        try writeConflictCandidateJson(writer, candidate, flattened, 4);
+        if (index + 1 != conflict_candidates.len) try writer.writeByte(',');
+        try writer.writeByte('\n');
+    }
+    if (conflict_candidates.len != 0) try writer.writeAll("  ");
+    try writer.writeAll("],\n");
+    try writer.writeAll("  \"raw_state_conflicts\": [");
+    const raw_conflict_count = countRawStateConflicts(result.states);
+    if (raw_conflict_count != 0) try writer.writeByte('\n');
+    var raw_index: usize = 0;
+    for (result.states) |parse_state| {
+        for (parse_state.conflicts) |conflict| {
+            try writeRawStateConflictJson(writer, parse_state.id, conflict, result, flattened, 4);
+            raw_index += 1;
+            if (raw_index != raw_conflict_count) try writer.writeByte(',');
+            try writer.writeByte('\n');
+        }
+    }
+    if (raw_conflict_count != 0) try writer.writeAll("  ");
+    try writer.writeAll("]\n");
     try writer.writeAll("}\n");
+}
+
+fn countRawStateConflicts(states: []const @import("../parse_table/state.zig").ParseState) usize {
+    var count: usize = 0;
+    for (states) |parse_state| count += parse_state.conflicts.len;
+    return count;
+}
+
+fn writeRawStateConflictJson(
+    writer: anytype,
+    state_id: u32,
+    conflict: @import("../parse_table/state.zig").Conflict,
+    result: parse_table_build.BuildResult,
+    flattened: syntax_ir.SyntaxGrammar,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"state_id\": ");
+    try writer.print("{d}", .{state_id});
+    try writer.writeAll(", \"kind\": ");
+    try writeJsonString(writer, @tagName(conflict.kind));
+    try writer.writeAll(", \"lookahead\": ");
+    if (conflict.symbol) |symbol| {
+        try writeSymbolRef(writer, symbol);
+    } else {
+        try writer.writeAll("null");
+    }
+    try writer.writeAll(", \"rule_names\": [");
+    var written: usize = 0;
+    for (conflict.items) |parse_item| {
+        if (parse_item.production_id >= result.productions.len) continue;
+        const lhs = result.productions[parse_item.production_id].lhs;
+        if (written != 0) try writer.writeAll(", ");
+        try writeJsonString(writer, symbolNameForSyntaxRef(flattened, .{ .non_terminal = lhs }) orelse "?");
+        written += 1;
+    }
+    try writer.writeAll("] }");
+}
+
+fn writeConflictCandidateJson(
+    writer: anytype,
+    candidate: parse_table_conflict_resolution.ConflictCandidate,
+    flattened: syntax_ir.SyntaxGrammar,
+    indent: usize,
+) !void {
+    try writeIndent(writer, indent);
+    try writer.writeAll("{ \"state_id\": ");
+    try writer.print("{d}", .{candidate.state_id});
+    try writer.writeAll(", \"lookahead\": ");
+    try writeSymbolRef(writer, candidate.lookahead);
+    try writer.writeAll(", \"members\": ");
+    try writeSymbolRefArray(writer, candidate.members);
+    try writer.writeAll(", \"rule_names\": ");
+    try writeConflictMemberRuleNames(writer, flattened, candidate.members);
+    try writer.writeAll(" }");
 }
 
 fn writeUnresolvedDecisionSampleJson(
@@ -3263,6 +3414,17 @@ fn symbolNameForRef(
         if (symbolRefEql(info.ref, symbol)) return info.name;
     }
     return null;
+}
+
+fn symbolNameForSyntaxRef(
+    syntax: syntax_ir.SyntaxGrammar,
+    symbol: syntax_ir.SymbolRef,
+) ?[]const u8 {
+    return switch (symbol) {
+        .non_terminal => |index| if (index < syntax.variables.len) syntax.variables[index].name else null,
+        .external => |index| if (index < syntax.external_tokens.len) syntax.external_tokens[index].name else null,
+        .terminal, .end => null,
+    };
 }
 
 fn writeProductionInfoSummaryJson(

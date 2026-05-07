@@ -2247,45 +2247,19 @@ fn collectEmittedSymbols(
         .public_symbol = 0,
     });
 
-    if (serialized.word_token) |word_token| {
-        try appendSerializedSymbolInfoForRef(allocator, &symbols, serialized.symbols, word_token, &repeat_name_counts);
-    }
-
-    for (serialized.symbols) |symbol| {
-        if (serialized.word_token) |word_token| {
-            if (symbolRefEql(symbol.ref, word_token)) continue;
-        }
-        try appendSerializedSymbolInfo(allocator, &symbols, symbol, &repeat_name_counts);
-    }
-
-    for (serialized.states) |state| {
-        for (state.actions) |entry| {
-            try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
-            switch (entry.action) {
-                .reduce => {
-                    if (reduceSymbolForAction(entry.action, serialized.productions)) |symbol| {
-                        try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
-                    }
-                },
-                .shift, .shift_extra, .accept => {},
-            }
-        }
-        for (state.gotos) |entry| {
-            try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
-        }
-        for (state.unresolved) |entry| {
-            try appendUniqueEmittedSymbol(allocator, &symbols, entry.symbol);
-            for (entry.candidate_actions) |candidate| {
-                switch (candidate) {
-                    .reduce => {
-                        if (reduceSymbolForAction(candidate, serialized.productions)) |symbol| {
-                            try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
-                        }
-                    },
-                    .shift, .shift_extra, .accept => {},
-                }
-            }
-        }
+    if (serialized.symbols.len == 0) {
+        try appendEncounterOrderEmittedSymbols(allocator, &symbols, serialized);
+    } else {
+        const used_symbols = try collectUsedSymbolSetsAlloc(allocator, serialized);
+        defer used_symbols.deinit(allocator);
+        try appendUsedSerializedSymbolsInUpstreamOrder(
+            allocator,
+            &symbols,
+            serialized.symbols,
+            used_symbols,
+            serialized.word_token,
+            &repeat_name_counts,
+        );
     }
 
     for (serialized.alias_sequences) |alias| {
@@ -2295,33 +2269,240 @@ fn collectEmittedSymbols(
         try appendUniqueAliasSymbol(&symbols, alias.name, alias.named);
     }
 
+    sortAliasSymbols(symbols.items);
+    assignPublicSymbolIds(symbols.items);
+    return try symbols.toOwnedSlice();
+}
+
+fn appendEncounterOrderEmittedSymbols(
+    allocator: std.mem.Allocator,
+    symbols: *std.array_list.Managed(EmittedSymbol),
+    serialized: serialize.SerializedTable,
+) EmitError!void {
+    for (serialized.states) |state| {
+        for (state.actions) |entry| {
+            try appendUniqueEmittedSymbol(allocator, symbols, entry.symbol);
+            switch (entry.action) {
+                .reduce => {
+                    if (reduceSymbolForAction(entry.action, serialized.productions)) |symbol| {
+                        try appendUniqueEmittedSymbol(allocator, symbols, symbol);
+                    }
+                },
+                .shift, .shift_extra, .accept => {},
+            }
+        }
+        for (state.gotos) |entry| {
+            try appendUniqueEmittedSymbol(allocator, symbols, entry.symbol);
+        }
+        for (state.unresolved) |entry| {
+            try appendUniqueEmittedSymbol(allocator, symbols, entry.symbol);
+            for (entry.candidate_actions) |candidate| {
+                switch (candidate) {
+                    .reduce => {
+                        if (reduceSymbolForAction(candidate, serialized.productions)) |symbol| {
+                            try appendUniqueEmittedSymbol(allocator, symbols, symbol);
+                        }
+                    },
+                    .shift, .shift_extra, .accept => {},
+                }
+            }
+        }
+    }
+
     for (serialized.lex_tables) |lex_table| {
         for (lex_table.states) |lex_state| {
             if (lex_state.accept_symbol) |symbol| {
-                try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
+                try appendUniqueEmittedSymbol(allocator, symbols, symbol);
             }
         }
     }
     if (serialized.keyword_lex_table) |keyword_lex_table| {
         for (keyword_lex_table.states) |lex_state| {
             if (lex_state.accept_symbol) |symbol| {
-                try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
+                try appendUniqueEmittedSymbol(allocator, symbols, symbol);
             }
         }
     }
     for (serialized.external_scanner.symbols) |symbol| {
-        try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
+        try appendUniqueEmittedSymbol(allocator, symbols, symbol);
     }
 
     for (serialized.reserved_words.sets) |set| {
         for (set) |symbol| {
-            try appendUniqueEmittedSymbol(allocator, &symbols, symbol);
+            try appendUniqueEmittedSymbol(allocator, symbols, symbol);
+        }
+    }
+}
+
+const UsedSymbolSets = struct {
+    terminals: []bool,
+    externals: []bool,
+    non_terminals: []bool,
+
+    fn deinit(self: UsedSymbolSets, allocator: std.mem.Allocator) void {
+        allocator.free(self.terminals);
+        allocator.free(self.externals);
+        allocator.free(self.non_terminals);
+    }
+};
+
+fn collectUsedSymbolSetsAlloc(
+    allocator: std.mem.Allocator,
+    serialized: serialize.SerializedTable,
+) EmitError!UsedSymbolSets {
+    var terminal_count: usize = 0;
+    var external_count: usize = 0;
+    var non_terminal_count: usize = 0;
+    for (serialized.symbols) |symbol| {
+        switch (symbol.ref) {
+            .terminal => |index| terminal_count = @max(terminal_count, @as(usize, index) + 1),
+            .external => |index| external_count = @max(external_count, @as(usize, index) + 1),
+            .non_terminal => |index| non_terminal_count = @max(non_terminal_count, @as(usize, index) + 1),
+            .end => {},
         }
     }
 
-    sortAliasSymbols(symbols.items);
-    assignPublicSymbolIds(symbols.items);
-    return try symbols.toOwnedSlice();
+    const terminals = try allocator.alloc(bool, terminal_count);
+    errdefer allocator.free(terminals);
+    const externals = try allocator.alloc(bool, external_count);
+    errdefer allocator.free(externals);
+    const non_terminals = try allocator.alloc(bool, non_terminal_count);
+    errdefer allocator.free(non_terminals);
+    @memset(terminals, false);
+    @memset(externals, false);
+    @memset(non_terminals, false);
+
+    var result = UsedSymbolSets{
+        .terminals = terminals,
+        .externals = externals,
+        .non_terminals = non_terminals,
+    };
+
+    for (serialized.states) |state| {
+        for (state.actions) |entry| {
+            markUsedSymbol(&result, entry.symbol);
+        }
+        for (state.gotos) |entry| {
+            markUsedSymbol(&result, entry.symbol);
+        }
+        for (state.unresolved) |entry| {
+            markUsedSymbol(&result, entry.symbol);
+        }
+    }
+
+    for (serialized.states) |state| {
+        for (state.actions) |entry| {
+            switch (entry.action) {
+                .reduce => {
+                    if (reduceSymbolForAction(entry.action, serialized.productions)) |symbol| {
+                        markUsedSymbol(&result, symbol);
+                    }
+                },
+                .shift, .shift_extra, .accept => {},
+            }
+        }
+        for (state.unresolved) |entry| {
+            for (entry.candidate_actions) |candidate| {
+                switch (candidate) {
+                    .reduce => {
+                        if (reduceSymbolForAction(candidate, serialized.productions)) |symbol| {
+                            markUsedSymbol(&result, symbol);
+                        }
+                    },
+                    .shift, .shift_extra, .accept => {},
+                }
+            }
+        }
+    }
+
+    for (serialized.lex_tables) |lex_table| {
+        for (lex_table.states) |lex_state| {
+            if (lex_state.accept_symbol) |symbol| {
+                markUsedSymbol(&result, symbol);
+            }
+        }
+    }
+    if (serialized.keyword_lex_table) |keyword_lex_table| {
+        for (keyword_lex_table.states) |lex_state| {
+            if (lex_state.accept_symbol) |symbol| {
+                markUsedSymbol(&result, symbol);
+            }
+        }
+    }
+    for (serialized.external_scanner.symbols) |symbol| {
+        markUsedSymbol(&result, symbol);
+    }
+
+    for (serialized.reserved_words.sets) |set| {
+        for (set) |symbol| {
+            markUsedSymbol(&result, symbol);
+        }
+    }
+
+    return result;
+}
+
+fn markUsedSymbol(used: *UsedSymbolSets, symbol: syntax_grammar.SymbolRef) void {
+    switch (symbol) {
+        .terminal => |index| {
+            if (index < used.terminals.len) used.terminals[index] = true;
+        },
+        .external => |index| {
+            if (index < used.externals.len) used.externals[index] = true;
+        },
+        .non_terminal => |index| {
+            if (index < used.non_terminals.len) used.non_terminals[index] = true;
+        },
+        .end => {},
+    }
+}
+
+fn appendUsedSerializedSymbolsInUpstreamOrder(
+    allocator: std.mem.Allocator,
+    symbols: *std.array_list.Managed(EmittedSymbol),
+    serialized_symbols: []const serialize.SerializedSymbolInfo,
+    used: UsedSymbolSets,
+    word_token: ?syntax_grammar.SymbolRef,
+    repeat_name_counts: *std.StringHashMap(usize),
+) EmitError!void {
+    if (word_token) |symbol| {
+        if (symbolIsUsed(used, symbol)) {
+            try appendSerializedSymbolInfoForRef(allocator, symbols, serialized_symbols, symbol, repeat_name_counts);
+        }
+    }
+
+    for (serialized_symbols) |symbol| {
+        if (symbol.ref != .terminal) continue;
+        if (word_token) |word| {
+            if (symbolRefEql(symbol.ref, word)) continue;
+        }
+        if (symbolIsUsed(used, symbol.ref)) {
+            try appendSerializedSymbolInfo(allocator, symbols, symbol, repeat_name_counts);
+        }
+    }
+
+    for (serialized_symbols) |symbol| {
+        if (symbol.ref != .external) continue;
+        if (symbolIsUsed(used, symbol.ref)) {
+            try appendSerializedSymbolInfo(allocator, symbols, symbol, repeat_name_counts);
+        }
+    }
+
+    for (serialized_symbols) |symbol| {
+        if (symbol.ref != .non_terminal) continue;
+        if (symbolIsUsed(used, symbol.ref)) {
+            try appendSerializedSymbolInfo(allocator, symbols, symbol, repeat_name_counts);
+        }
+    }
+}
+
+fn symbolIsUsed(used: UsedSymbolSets, symbol: syntax_grammar.SymbolRef) bool {
+    return switch (symbol) {
+        .terminal => |index| index < used.terminals.len and used.terminals[index],
+        .external => |index| index < used.externals.len and used.externals[index],
+        .non_terminal => |index| index < used.non_terminals.len and used.non_terminals[index],
+        .end => true,
+    };
 }
 
 fn appendSerializedSymbolInfo(
@@ -2722,6 +2903,38 @@ test "emitParserCAlloc emits EOF as builtin symbol zero" {
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = \"end\",\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "  [0] = { .visible = false, .named = false, .supertype = false },\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "    [0] = ACTIONS("));
+}
+
+test "emitParserCAlloc omits unused serialized symbols from public symbol surface" {
+    const allocator = std.testing.allocator;
+    const symbols = [_]serialize.SerializedSymbolInfo{
+        .{ .ref = .{ .terminal = 0 }, .name = "used", .named = false, .visible = true, .supertype = false, .public_symbol = 0 },
+        .{ .ref = .{ .terminal = 1 }, .name = "unused", .named = false, .visible = true, .supertype = false, .public_symbol = 1 },
+        .{ .ref = .{ .non_terminal = 0 }, .name = "source_file", .named = true, .visible = true, .supertype = false, .public_symbol = 2 },
+    };
+    const serialized = serialize.SerializedTable{
+        .blocked = false,
+        .symbols = symbols[0..],
+        .states = &[_]serialize.SerializedState{
+            .{
+                .id = 0,
+                .actions = &[_]serialize.SerializedActionEntry{
+                    .{ .symbol = .{ .terminal = 0 }, .action = .accept },
+                },
+                .gotos = &[_]serialize.SerializedGotoEntry{
+                    .{ .symbol = .{ .non_terminal = 0 }, .state = 1 },
+                },
+                .unresolved = &.{},
+            },
+        },
+    };
+
+    const emitted = try emitParserCAlloc(allocator, serialized);
+    defer allocator.free(emitted);
+
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "\"used\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, emitted, 1, "\"source_file\""));
+    try std.testing.expect(std.mem.indexOf(u8, emitted, "\"unused\"") == null);
 }
 
 test "emitParserCAlloc rejects state counts beyond runtime table width" {

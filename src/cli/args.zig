@@ -23,6 +23,8 @@ pub const GenerateOptions = struct {
     json_summary: bool = false,
     debug_prepared: bool = false,
     debug_node_types: bool = false,
+    debug_conflicts: bool = false,
+    debug_production_info: bool = false,
     report_states_for_rule: ?[]const u8 = null,
     js_runtime: ?[]const u8 = null,
     optimize_merge_states: bool = true,
@@ -197,6 +199,10 @@ fn parseGenerateArgs(args: []const []const u8) ParseError!GenerateOptions {
             opts.debug_prepared = true;
         } else if (std.mem.eql(u8, arg, "--debug-node-types")) {
             opts.debug_node_types = true;
+        } else if (std.mem.eql(u8, arg, "--debug-conflicts")) {
+            opts.debug_conflicts = true;
+        } else if (std.mem.eql(u8, arg, "--debug-production-info")) {
+            opts.debug_production_info = true;
         } else if (std.mem.eql(u8, arg, "--no-optimize-merge-states")) {
             opts.optimize_merge_states = false;
         } else if (std.mem.eql(u8, arg, "--minimize")) {

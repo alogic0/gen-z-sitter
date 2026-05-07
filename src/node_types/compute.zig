@@ -91,6 +91,7 @@ pub fn computeNodeTypes(
 ) ComputeNodeTypesError![]const NodeType {
     var summary_context = try SummaryContext.init(allocator, syntax, lexical, defaults);
     const referenced_terminals = try referencedTerminalsAlloc(allocator, syntax, defaults, lexical.variables.len);
+    const referenced_externals = try referencedExternalsAlloc(allocator, syntax, defaults, syntax.external_tokens.len);
     var nodes = std.array_list.Managed(NodeType).init(allocator);
     defer nodes.deinit();
 
@@ -159,6 +160,7 @@ pub fn computeNodeTypes(
     for (syntax.external_tokens, 0..) |token, index| {
         const symbol: syntax_ir.SymbolRef = .{ .external = @intCast(index) };
         const alias = defaults.findForSymbol(symbol);
+        if (!referenced_externals[index] and alias == null) continue;
         if (!isVisibleExternalToken(token, alias)) continue;
         const kind = effectiveNameForSymbol(symbol, syntax, lexical, defaults);
         const named = isNamedExternalToken(token, alias);
@@ -268,9 +270,47 @@ fn referencedTerminalsAlloc(
     return referenced;
 }
 
+fn referencedExternalsAlloc(
+    allocator: std.mem.Allocator,
+    syntax: syntax_ir.SyntaxGrammar,
+    defaults: alias_ir.AliasMap,
+    external_count: usize,
+) ComputeNodeTypesError![]bool {
+    const referenced = try allocator.alloc(bool, external_count);
+    @memset(referenced, false);
+
+    for (syntax.variables) |variable| {
+        for (variable.productions) |production| {
+            for (production.steps) |step| {
+                markReferencedExternal(referenced, step.symbol);
+            }
+        }
+    }
+    for (syntax.extra_symbols) |symbol| {
+        markReferencedExternal(referenced, symbol);
+    }
+    for (defaults.entries) |entry| {
+        switch (entry.target) {
+            .symbol => |symbol| markReferencedExternal(referenced, symbol),
+            .rule => {},
+        }
+    }
+
+    return referenced;
+}
+
 fn markReferencedTerminal(referenced: []bool, symbol: syntax_ir.SymbolRef) void {
     switch (symbol) {
         .terminal => |index| if (index < referenced.len) {
+            referenced[index] = true;
+        },
+        else => {},
+    }
+}
+
+fn markReferencedExternal(referenced: []bool, symbol: syntax_ir.SymbolRef) void {
+    switch (symbol) {
+        .external => |index| if (index < referenced.len) {
             referenced[index] = true;
         },
         else => {},
@@ -492,15 +532,6 @@ const SummaryContext = struct {
             }
             if (production_self_reference_count > 1 and !isVisibleSyntaxVariable(variable)) {
                 has_repeat_self_recursion = true;
-            }
-
-            if (production_is_self_recursive and !isVisibleSyntaxVariable(variable)) {
-                if (production_children_quantity.exists) production_children_quantity.multiple = true;
-                if (production_children_without_fields_quantity.exists) production_children_without_fields_quantity.multiple = true;
-                var quantity_iter = production_field_quantities.valueIterator();
-                while (quantity_iter.next()) |quantity| {
-                    if (quantity.exists) quantity.multiple = true;
-                }
             }
 
             if (!production_is_pure_self_recursion) {
