@@ -27,16 +27,22 @@ pub fn runCompareUpstream(allocator: std.mem.Allocator, io: std.Io, opts: args.C
     defer snapshot.deinit(allocator);
     var local_artifacts: LocalArtifacts = .{};
     defer local_artifacts.deinit(allocator);
-    const corpus = try runCorpusComparisonAlloc(allocator, opts, output_root, local.grammar_name, snapshot, &local_artifacts);
-    defer corpus.deinit(allocator);
-    const node_types = try compareNodeTypesArtifactsAlloc(allocator, local_artifacts, snapshot);
-    defer if (node_types) |diff| diff.deinit(allocator);
-
     const diffs = if (snapshot.summary) |summary|
         try upstream_summary.compareSummariesAlloc(allocator, local, summary)
     else
         &.{};
     defer if (snapshot.summary != null) upstream_summary.deinitDiffs(allocator, diffs);
+
+    const corpus = if (opts.structural_only)
+        try skippedCorpusComparisonAlloc(allocator, "structural_only", "skipped by --structural-only")
+    else
+        try runCorpusComparisonAlloc(allocator, opts, output_root, local.grammar_name, snapshot, &local_artifacts);
+    defer corpus.deinit(allocator);
+    const node_types = if (opts.structural_only)
+        null
+    else
+        try compareNodeTypesArtifactsAlloc(allocator, local_artifacts, snapshot);
+    defer if (node_types) |diff| diff.deinit(allocator);
 
     const report = try renderReportAlloc(allocator, local, local_prepared, local_artifacts, snapshot, diffs, corpus, node_types);
     defer allocator.free(report);
@@ -380,6 +386,17 @@ fn runCorpusComparisonAlloc(
         .status = try allocator.dupe(u8, if (all_match) "matched" else if (any_failed) "runner_failed" else "different"),
         .note = try allocator.dupe(u8, "compared local and upstream generated parsers on bounded samples"),
         .samples = results,
+    };
+}
+
+fn skippedCorpusComparisonAlloc(
+    allocator: std.mem.Allocator,
+    status: []const u8,
+    note: []const u8,
+) !CorpusComparison {
+    return .{
+        .status = try allocator.dupe(u8, status),
+        .note = try allocator.dupe(u8, note),
     };
 }
 

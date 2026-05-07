@@ -37,6 +37,7 @@ pub const CompareUpstreamOptions = struct {
     js_runtime: ?[]const u8 = null,
     report_states_for_rule: ?[]const u8 = null,
     minimize_states: bool = false,
+    structural_only: bool = false,
 };
 
 pub const CompatReportOptions = struct {
@@ -151,6 +152,8 @@ fn parseCompareUpstreamArgs(args: []const []const u8) ParseError!CompareUpstream
             opts.report_states_for_rule = args[i];
         } else if (std.mem.eql(u8, arg, "--minimize")) {
             opts.minimize_states = true;
+        } else if (std.mem.eql(u8, arg, "--structural-only")) {
+            opts.structural_only = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
             last_error_message = "unknown compare-upstream flag";
             return error.InvalidArguments;
@@ -292,6 +295,7 @@ pub fn helpText() []const u8 {
     \\  --js-runtime <runtime>         Runtime command used for grammar.js loading, default: node.
     \\  --report-states-for-rule <rule> Limit local parse-states.txt to states referencing <rule>.
     \\  --minimize                     Enable parse-table minimization in the local summary.
+    \\  --structural-only              Stop after local/upstream structural summaries and diffs.
     \\
     \\Compat-report options:
     \\  --js-runtime <runtime>         Runtime command used for grammar.js loading, default: node.
@@ -373,6 +377,19 @@ test "parse compare-upstream command with selected parse-state rule" {
     });
     try std.testing.expect(cli.command == .compare_upstream);
     try std.testing.expectEqualStrings("expr", cli.command.compare_upstream.report_states_for_rule.?);
+}
+
+test "parse compare-upstream command with structural-only flag" {
+    const cli = try parseArgs(std.testing.allocator, &.{
+        "gen-z-sitter",
+        "compare-upstream",
+        "--structural-only",
+        "--minimize",
+        "grammar.json",
+    });
+    try std.testing.expect(cli.command == .compare_upstream);
+    try std.testing.expect(cli.command.compare_upstream.structural_only);
+    try std.testing.expect(cli.command.compare_upstream.minimize_states);
 }
 
 test "parse compat-report command with options" {

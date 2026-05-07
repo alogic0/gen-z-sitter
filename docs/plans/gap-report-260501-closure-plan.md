@@ -29,7 +29,7 @@ Current closure status:
 | field_names_hash | mismatch | match | match | closed |
 | Python node-types surface | mismatch | match | match | closed |
 | Python scope gate | serialize_only | surface matched, parser table divergent | promotion decision | blocked |
-| TypeScript/Rust scope gates | serialize_only | timed out in bounded compare | promotion decision | measurement-gated |
+| TypeScript/Rust scope gates | serialize_only | structural-only compare available | promotion decision | measured |
 
 Closure audit: `docs/audits/gap-report-260501-closure-2026-05-02.md`.
 
@@ -794,15 +794,41 @@ from the JavaScript-style memory bubble, but the full artifact/corpus comparison
 still exceeded the bounded batch time budget and remains a measurement-path
 blocker.
 
+Structural-only comparison note: `compare-upstream --structural-only` now stops
+after local/upstream summary generation and summary diffs, skipping corpus
+linkage and node-type artifact comparison. This gives a bounded probe for
+larger grammars before the heavy runtime path. TypeScript completed at
+`tmp/typescript-structural-only-compare` and shows a real upstream-algorithm
+gap before runtime artifacts: local is still `blocked=true/false`,
+`symbol_count=395/376`, `token_count=172/166`,
+`production_id_count=351/340`, `serialized_state_count=5902/5870`,
+`large_state_count=1197/1193`, `parse_action_list_count=9300/9308`,
+`small_parse_row_count=4705/4096`, and `lex_mode_count=5902/5870`.
+TypeScript therefore needs extraction/surface and conflict-table alignment
+before a corpus promotion run is useful. Rust completed at
+`tmp/rust-structural-only-compare`; its parser-table core is much closer:
+`blocked=false/false`, `production_id_count=295/295`,
+`serialized_state_count=3825/3825`, `parse_action_list_count=7336/7336`,
+`lex_mode_count=3825/3825`, `keyword_lex_function_case_count=232/232`,
+`large_character_set_count=2/2`, and `external_lex_state_count=10/10`.
+Rust's remaining structural residuals are narrower:
+`symbol_count=353/351`, `token_count=158/157`, node-types hash mismatch,
+`large_state_count=1061/1064`, small parse rows/maps `2764/2761`, and
+`lex_function_case_count=196/195`, plus the known local ABI
+`language_version=15/14` surface.
+
 ## Successor Batch Order
 
 1. Keep the JavaScript/Python successor-seed and conflict-identity fixes guarded
    by focused parser-table tests and bounded comparisons. Reopen only if a later
    non-bounded corpus or emitted artifact shows a concrete regression.
-2. Add a cheaper TypeScript/Rust comparison profile path that can stop after
-   local/upstream structural summaries before writing every heavy artifact or
-   running corpus linkage.
-3. Refresh the closure audit after each promoted non-JavaScript grammar
+2. Use the structural-only profile to find the first upstream algorithm
+   difference for TypeScript. Start before parse-table debugging: its token,
+   symbol, field, node-type, and production-id surfaces already diverge.
+3. Use Rust as the next narrow promotion candidate after TypeScript triage or
+   in a separate batch: its serialized states and action lists match, so the
+   next target is the extra local token/symbol and one lexer case.
+4. Refresh the closure audit after each promoted non-JavaScript grammar
    decision.
 
 The original large-character-set, symbol/field ordering, and keyword lex tasks
