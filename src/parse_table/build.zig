@@ -1522,7 +1522,7 @@ fn logTopClosureContributors(
         );
     }
 
-    var top_indices = [_]?usize{null} ** 5;
+    var top_indices: [5]?usize = @splat(null);
 
     var slot: usize = 0;
     while (slot < top_indices.len) : (slot += 1) {
@@ -2245,8 +2245,10 @@ fn shouldUseCoarseTransition(options: BuildOptions, source_state_id: state.State
 }
 
 fn canUseSuccessorSeedStateCache(options: BuildOptions) bool {
-    _ = options;
-    return false;
+    return options.closure_lookahead_mode == .full and
+        options.closure_pressure_mode == .none and
+        !options.closure_pressure_thresholds.enabled() and
+        options.coarse_transitions.len == 0;
 }
 
 pub fn minimizeWordToken(grammar: syntax_ir.SyntaxGrammar) ?syntax_ir.SymbolRef {

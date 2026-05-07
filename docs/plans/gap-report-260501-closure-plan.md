@@ -774,12 +774,34 @@ parser/table surface: `blocked=false/false`, `symbol_count=273/273`,
 Bounded corpus samples and node types match. The only remaining Python summary
 diff is the known local `language_version=15` versus upstream `14` ABI surface.
 
+Successor seed-cache note: local state construction now uses the same
+successor-seed lookup shape as upstream's `add_parse_state` path for the normal
+full-closure configuration. Duplicate successor seed item sets are checked
+before computing their transitive closure, while pressure/coarse diagnostic
+modes keep the previous uncached behavior. This resolved the JavaScript
+generation memory bubble: `zig build run -- generate --json-summary --minimize
+compat_targets/tree_sitter_javascript/grammar.json` now completes in the
+bounded path instead of climbing past 6 GB RSS. JavaScript was rechecked at
+`tmp/js-successor-seed-cache-compare` and Python at
+`tmp/python-successor-seed-cache-compare`; both remain structurally matched
+against upstream with bounded corpus samples matched and only the known
+`language_version=15/14` diff. The generate JSON summary path now also follows
+the requested-build boundary: expected-conflict warnings are derived from the
+same scoped build, and minimized summaries no longer perform an unrequested
+non-minimized rebuild. TypeScript was attempted at
+`tmp/typescript-successor-seed-cache-compare`; it no longer fails immediately
+from the JavaScript-style memory bubble, but the full artifact/corpus comparison
+still exceeded the bounded batch time budget and remains a measurement-path
+blocker.
+
 ## Successor Batch Order
 
-1. Keep the Python conflict-identity fix guarded by focused parser-table tests
-   and the bounded Python comparison. Reopen only if a later non-bounded corpus
-   or emitted artifact shows a concrete regression.
-2. Bounded comparison/profile path for TypeScript and Rust.
+1. Keep the JavaScript/Python successor-seed and conflict-identity fixes guarded
+   by focused parser-table tests and bounded comparisons. Reopen only if a later
+   non-bounded corpus or emitted artifact shows a concrete regression.
+2. Add a cheaper TypeScript/Rust comparison profile path that can stop after
+   local/upstream structural summaries before writing every heavy artifact or
+   running corpus linkage.
 3. Refresh the closure audit after each promoted non-JavaScript grammar
    decision.
 

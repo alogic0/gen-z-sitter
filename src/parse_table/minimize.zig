@@ -129,16 +129,16 @@ fn envFlagEnabled(name: []const u8) bool {
 
 const token_trace_max = 256;
 
-threadlocal var token_trace_counts: [token_trace_max * token_trace_max]u64 = [_]u64{0} ** (token_trace_max * token_trace_max);
+threadlocal var token_trace_counts: [token_trace_max * token_trace_max]u64 = @splat(0);
 threadlocal var token_trace_total: u64 = 0;
 threadlocal var token_trace_active: bool = false;
-threadlocal var token_ignore_pairs: [token_trace_max * token_trace_max]bool = [_]bool{false} ** (token_trace_max * token_trace_max);
+threadlocal var token_ignore_pairs: [token_trace_max * token_trace_max]bool = @splat(false);
 threadlocal var token_ignore_pairs_active: bool = false;
-threadlocal var successor_ignore_tokens: [token_trace_max]bool = [_]bool{false} ** token_trace_max;
+threadlocal var successor_ignore_tokens: [token_trace_max]bool = @splat(false);
 threadlocal var successor_ignore_tokens_active: bool = false;
 threadlocal var minimize_trace_stats: MinimizeTraceStats = .{};
 threadlocal var minimize_trace_stats_active: bool = false;
-threadlocal var successor_trace_counts: [token_trace_max]u64 = [_]u64{0} ** token_trace_max;
+threadlocal var successor_trace_counts: [token_trace_max]u64 = @splat(0);
 threadlocal var successor_detail_token: ?usize = null;
 threadlocal var successor_detail_remaining: usize = 0;
 threadlocal var state_detail_id: ?state.StateId = null;

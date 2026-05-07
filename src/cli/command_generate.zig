@@ -28,6 +28,7 @@ const ParseTableMinimizationStats = struct {
     default_state_count: usize,
     minimized_state_count: usize,
     merged_state_count: usize,
+    computed: bool = true,
 };
 
 const ExpectedConflictSummary = struct {
@@ -37,6 +38,11 @@ const ExpectedConflictSummary = struct {
     pub fn unusedCount(self: ExpectedConflictSummary) usize {
         return self.unused_indexes.len;
     }
+};
+
+const JsonSummaryResult = struct {
+    json: []const u8,
+    expected_conflicts: ExpectedConflictSummary,
 };
 
 pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.GenerateOptions) !void {
@@ -243,16 +249,16 @@ pub fn runGenerate(allocator: std.mem.Allocator, io: std.Io, opts: args.Generate
             .minimize_states = opts.minimize_states,
             .strict_expected_conflicts = opts.strict_expected_conflicts,
         };
-        const summary = try generateJsonSummaryAlloc(
+        const summary = try generateJsonSummaryWithReportAlloc(
             pipeline_arena.allocator(),
             loaded.json.grammar,
             prepared,
             build_options,
             .{ .compact_duplicate_states = opts.optimize_merge_states },
         );
-        try printExpectedConflictWarnings(pipeline_arena.allocator(), io, prepared);
+        try printExpectedConflictWarnings(pipeline_arena.allocator(), io, prepared, summary.expected_conflicts);
         if (!builtin.is_test) {
-            try std.Io.File.stdout().writeStreamingAll(io, summary);
+            try std.Io.File.stdout().writeStreamingAll(io, summary.json);
         }
         return;
     }
@@ -300,7 +306,7 @@ fn emitParserCFromPreparedAlloc(
     build_options: parse_table_build.BuildOptions,
     options: emit_optimize.Options,
 ) ![]const u8 {
-    const serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+    const serialized = try parse_table_pipeline.serializeTableFromPreparedWithScopedBuildOptions(
         allocator,
         prepared,
         .diagnostic,
@@ -331,12 +337,30 @@ fn generateJsonSummaryAlloc(
     build_options: parse_table_build.BuildOptions,
     options: emit_optimize.Options,
 ) ![]const u8 {
-    const serialized = try parse_table_pipeline.serializeTableFromPreparedWithBuildOptions(
+    const result = try generateJsonSummaryWithReportAlloc(
+        allocator,
+        grammar,
+        prepared,
+        build_options,
+        options,
+    );
+    return result.json;
+}
+
+fn generateJsonSummaryWithReportAlloc(
+    allocator: std.mem.Allocator,
+    grammar: anytype,
+    prepared: grammar_ir.PreparedGrammar,
+    build_options: parse_table_build.BuildOptions,
+    options: emit_optimize.Options,
+) !JsonSummaryResult {
+    const table_result = try parse_table_pipeline.serializeTableAndExpectedConflictReportFromPreparedWithScopedBuildOptions(
         allocator,
         prepared,
         .diagnostic,
         build_options,
     );
+    const serialized = table_result.serialized;
     const baseline_stats = try parser_c_emit.collectEmissionStatsWithOptions(allocator, serialized, .{
         .compact_duplicate_states = false,
     });
@@ -348,7 +372,10 @@ fn generateJsonSummaryAlloc(
         build_options,
         serialized_state_count,
     );
-    const expected_conflicts = try collectExpectedConflictSummaryAlloc(allocator, prepared);
+    const expected_conflicts = ExpectedConflictSummary{
+        .declared_count = prepared.expected_conflicts.len,
+        .unused_indexes = table_result.expected_conflict_report.unused_expected_conflict_indexes,
+    };
     const emitted_size_stats = try collectEmittedSizeStats(allocator, serialized, options);
 
     var out: std.Io.Writer.Allocating = .init(allocator);
@@ -381,6 +408,9 @@ fn generateJsonSummaryAlloc(
     try writer.print("\"default_state_count\": {d}, ", .{parse_table_minimization.default_state_count});
     try writer.print("\"minimized_state_count\": {d}, ", .{parse_table_minimization.minimized_state_count});
     try writer.print("\"merged_state_count\": {d}", .{parse_table_minimization.merged_state_count});
+    if (!parse_table_minimization.computed) {
+        try writer.writeAll(", \"computed\": false");
+    }
     try writer.writeAll(" },\n");
     try writer.writeAll("  \"expected_conflicts\": { ");
     try writer.print("\"declared_count\": {d}, ", .{expected_conflicts.declared_count});
@@ -439,24 +469,9 @@ fn generateJsonSummaryAlloc(
     try writeRowSharingStats(writer, parser_stats.unresolved_rows);
     try writer.writeAll("\n}\n");
 
-    return try out.toOwnedSlice();
-}
-
-fn collectExpectedConflictSummaryAlloc(
-    allocator: std.mem.Allocator,
-    prepared: grammar_ir.PreparedGrammar,
-) !ExpectedConflictSummary {
-    if (prepared.expected_conflicts.len == 0) {
-        return .{
-            .declared_count = 0,
-            .unused_indexes = &.{},
-        };
-    }
-
-    const report = try parse_table_pipeline.expectedConflictReportFromPreparedAlloc(allocator, prepared);
     return .{
-        .declared_count = prepared.expected_conflicts.len,
-        .unused_indexes = report.unused_expected_conflict_indexes,
+        .json = try out.toOwnedSlice(),
+        .expected_conflicts = expected_conflicts,
     };
 }
 
@@ -464,16 +479,14 @@ fn printExpectedConflictWarnings(
     allocator: std.mem.Allocator,
     io: std.Io,
     prepared: grammar_ir.PreparedGrammar,
+    expected_conflicts: ExpectedConflictSummary,
 ) !void {
-    if (prepared.expected_conflicts.len == 0) return;
-
-    const report = try parse_table_pipeline.expectedConflictReportFromPreparedAlloc(allocator, prepared);
-    if (!report.hasUnusedExpectedConflicts()) return;
+    if (expected_conflicts.unusedCount() == 0) return;
 
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
 
-    for (report.unused_expected_conflict_indexes) |expected_index| {
+    for (expected_conflicts.unused_indexes) |expected_index| {
         try writeExpectedConflictWarning(&out.writer, prepared, expected_index);
     }
 
@@ -535,18 +548,13 @@ fn collectParseTableMinimizationStats(
         };
     }
 
-    var default_build_options = build_options;
-    default_build_options.minimize_states = false;
-    const default_result = try parse_table_pipeline.buildStatesFromPreparedWithOptions(
-        allocator,
-        prepared,
-        default_build_options,
-    );
-    const default_state_count = default_result.states.len;
+    _ = allocator;
+    _ = prepared;
     return .{
-        .default_state_count = default_state_count,
+        .default_state_count = 0,
         .minimized_state_count = serialized_state_count,
-        .merged_state_count = default_state_count - serialized_state_count,
+        .merged_state_count = 0,
+        .computed = false,
     };
 }
 
@@ -728,7 +736,7 @@ test "generateJsonSummaryAlloc reports minimized parse-table option" {
     );
 
     try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"optimization\": { \"compact_duplicate_states\": true, \"minimize_states\": true }"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 6, \"minimized_state_count\": 6, \"merged_state_count\": 0 }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, summary, 1, "\"parse_table_minimization\": { \"default_state_count\": 0, \"minimized_state_count\": 6, \"merged_state_count\": 0, \"computed\": false }"));
 }
 
 test "generateJsonSummaryAlloc reports serialized versus emitted state counts when compaction keeps states" {

@@ -899,6 +899,51 @@ pub fn serializeTableFromPreparedWithScopedBuildOptions(
     return serialized;
 }
 
+pub const SerializedTableWithExpectedConflictReport = struct {
+    serialized: serialize.SerializedTable,
+    expected_conflict_report: ExpectedConflictReport,
+};
+
+pub fn serializeTableAndExpectedConflictReportFromPreparedWithScopedBuildOptions(
+    allocator: std.mem.Allocator,
+    prepared: grammar_ir.PreparedGrammar,
+    mode: serialize.SerializeMode,
+    build_options: build.BuildOptions,
+) PipelineError!SerializedTableWithExpectedConflictReport {
+    var build_arena = std.heap.ArenaAllocator.init(allocator);
+    defer build_arena.deinit();
+
+    const progress_log = shouldLogPipelineProgress();
+    const profile_log = shouldProfilePipeline();
+    const result = try buildStatesFromPreparedWithOptions(build_arena.allocator(), prepared, build_options);
+    const timer = maybeStartTimer(progress_log);
+    const stage_profile_timer = profileTimer(profile_log);
+    if (progress_log) logPipelineStart("serialize_build_result");
+    const serialized = try serializePreparedBuildResultAlloc(
+        allocator,
+        prepared,
+        result,
+        mode,
+        build_options.include_unresolved_parse_actions,
+    );
+    const report = try expectedConflictReportFromBuildResultAlloc(build_arena.allocator(), result);
+    const unused_expected_conflict_indexes = try allocator.dupe(usize, report.unused_expected_conflict_indexes);
+    logProfileDone("serialize_build_result", stage_profile_timer);
+    if (progress_log) {
+        maybeLogPipelineDone("serialize_build_result", timer);
+        logPipelineSummary(
+            "serialize_build_result summary mode={s} serialized_states={d} blocked={}",
+            .{ @tagName(mode), serialized.states.len, serialized.blocked },
+        );
+    }
+    return .{
+        .serialized = serialized,
+        .expected_conflict_report = .{
+            .unused_expected_conflict_indexes = unused_expected_conflict_indexes,
+        },
+    };
+}
+
 pub fn serializePreparedBuildResultAlloc(
     allocator: std.mem.Allocator,
     prepared: grammar_ir.PreparedGrammar,
